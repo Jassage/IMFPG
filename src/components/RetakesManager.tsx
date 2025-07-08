@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -54,7 +53,7 @@ export const RetakesManager = () => {
     switch (status) {
       case 'Programmé': return 'default';
       case 'En cours': return 'secondary';
-      case 'Terminé': return 'success';
+      case 'Terminé': return 'outline';
       default: return 'destructive';
     }
   };
