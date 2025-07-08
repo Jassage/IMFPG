@@ -1,10 +1,9 @@
-
 import { useEffect } from 'react';
 import { useAcademicStore } from '../store/academicStore';
-import { Student, UE, Grade } from '../types/academic';
+import { Student, UE, Grade, Retake } from '../types/academic';
 
 export const useDemoData = () => {
-  const { addStudent, addUE, addGrade, students, ues, grades } = useAcademicStore();
+  const { addStudent, addUE, addGrade, addRetake, students, ues, grades } = useAcademicStore();
 
   useEffect(() => {
     // Éviter de dupliquer les données
@@ -43,6 +42,22 @@ export const useDemoData = () => {
         academicYear: '2024-2025',
         status: 'Active',
         bloodGroup: 'A+',
+      },
+      {
+        id: '3',
+        firstName: 'Sarah',
+        lastName: 'Ndong',
+        studentId: 'ETD-2024-003',
+        email: 'sarah.ndong@university.ga',
+        phone: '+241 03 45 67 89',
+        dateOfBirth: '2003-11-10',
+        placeOfBirth: 'Franceville',
+        address: '789 Rue de la République, Franceville',
+        faculty: 'Informatique',
+        level: 'L2',
+        academicYear: '2024-2025',
+        status: 'Active',
+        bloodGroup: 'B+',
       },
     ];
 
@@ -84,9 +99,21 @@ export const useDemoData = () => {
         semester: 'S1',
         prerequisites: ['INFO-201'],
       },
+      {
+        id: 'ue4',
+        code: 'INFO-202',
+        title: 'Structures de Données',
+        credits: 5,
+        type: 'Obligatoire',
+        passingGrade: 10,
+        faculty: 'Informatique',
+        level: 'L2',
+        semester: 'S2',
+        prerequisites: ['INFO-201'],
+      },
     ];
 
-    // Données d'exemple - Notes
+    // Données d'exemple - Notes avec plus d'échecs
     const demoGrades: Grade[] = [
       {
         id: 'grade1',
@@ -118,11 +145,44 @@ export const useDemoData = () => {
         semester: 'S1',
         academicYear: '2024-2025',
       },
+      {
+        id: 'grade4',
+        studentId: '3',
+        ueId: 'ue1',
+        grade: 7.5,
+        status: 'À reprendre',
+        session: 'Normale',
+        semester: 'S1',
+        academicYear: '2024-2025',
+      },
+      {
+        id: 'grade5',
+        studentId: '3',
+        ueId: 'ue2',
+        grade: 9.0,
+        status: 'À reprendre',
+        session: 'Normale',
+        semester: 'S1',
+        academicYear: '2024-2025',
+      },
+    ];
+
+    // Données d'exemple - Reprises
+    const demoRetakes: Retake[] = [
+      {
+        id: 'retake1',
+        studentId: '1',
+        ueId: 'ue1',
+        originalGrade: 8.5,
+        scheduledSemester: 'S2-2024-2025',
+        status: 'Programmé'
+      },
     ];
 
     // Initialiser les données
     demoStudents.forEach(addStudent);
     demoUEs.forEach(addUE);
     demoGrades.forEach(addGrade);
-  }, [addStudent, addUE, addGrade, students.length]);
+    demoRetakes.forEach(addRetake);
+  }, [addStudent, addUE, addGrade, addRetake, students.length]);
 };

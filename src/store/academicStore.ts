@@ -26,6 +26,7 @@ interface AcademicStore {
   // Retakes
   addRetake: (retake: Retake) => void;
   getStudentRetakes: (studentId: string) => Retake[];
+  updateRetakeStatus: (retakeId: string, status: Retake['status'], retakeGrade?: number) => void;
 }
 
 export const useAcademicStore = create<AcademicStore>((set, get) => ({
@@ -71,4 +72,11 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   
   getStudentRetakes: (studentId) =>
     get().retakes.filter(r => r.studentId === studentId),
+    
+  updateRetakeStatus: (retakeId, status, retakeGrade) =>
+    set((state) => ({
+      retakes: state.retakes.map(r => 
+        r.id === retakeId ? { ...r, status, retakeGrade } : r
+      )
+    })),
 }));
