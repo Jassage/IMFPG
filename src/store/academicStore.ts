@@ -12,6 +12,7 @@ interface AcademicStore {
   // Students
   addStudent: (student: Student) => void;
   updateStudent: (id: string, student: Partial<Student>) => void;
+  deleteStudent: (id: string) => void;
   getStudent: (id: string) => Student | undefined;
   
   // UEs
@@ -42,6 +43,13 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   updateStudent: (id, updates) =>
     set((state) => ({
       students: state.students.map(s => s.id === id ? { ...s, ...updates } : s)
+    })),
+    
+  deleteStudent: (id) =>
+    set((state) => ({
+      students: state.students.filter(s => s.id !== id),
+      grades: state.grades.filter(g => g.studentId !== id),
+      retakes: state.retakes.filter(r => r.studentId !== id),
     })),
   
   getStudent: (id) => get().students.find(s => s.id === id),
