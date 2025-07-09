@@ -1,6 +1,7 @@
 
 import { useState } from 'react';
 import { Navigation } from '../components/Navigation';
+import { Dashboard } from '../components/Dashboard';
 import { StudentsManager } from '../components/StudentsManager';
 import { CoursesManager } from '../components/CoursesManager';
 import { GradesManager } from '../components/GradesManager';
@@ -8,13 +9,15 @@ import { RetakesManager } from '../components/RetakesManager';
 import { useDemoData } from '../hooks/useDemoData';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('students');
+  const [activeTab, setActiveTab] = useState('dashboard');
   
   // Initialiser les données de démonstration
   useDemoData();
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'dashboard':
+        return <Dashboard />;
       case 'students':
         return <StudentsManager />;
       case 'courses':
@@ -24,7 +27,7 @@ const Index = () => {
       case 'retakes':
         return <RetakesManager />;
       default:
-        return <StudentsManager />;
+        return <Dashboard />;
     }
   };
 

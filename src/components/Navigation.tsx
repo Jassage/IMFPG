@@ -1,5 +1,5 @@
 
-import { Users, BookOpen, FileText, RotateCcw } from 'lucide-react';
+import { Home, Users, BookOpen, FileText, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface NavigationProps {
@@ -9,6 +9,7 @@ interface NavigationProps {
 
 export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
   const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'students', label: 'Étudiants', icon: Users },
     { id: 'courses', label: 'Unités d\'Enseignement', icon: BookOpen },
     { id: 'grades', label: 'Notes & Bulletins', icon: FileText },
