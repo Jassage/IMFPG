@@ -28,7 +28,7 @@ export const Dashboard = () => {
 
   const totalUEs = ues.length;
   const totalGrades = grades.length;
-  const passedGrades = grades.filter(g => g.status === 'Réussi').length;
+  const passedGrades = grades.filter(g => g.status === 'Validé').length;
   const failedGrades = grades.filter(g => g.status === 'À reprendre').length;
 
   const successRate = totalGrades > 0 ? Math.round((passedGrades / totalGrades) * 100) : 0;
