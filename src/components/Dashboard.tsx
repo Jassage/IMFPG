@@ -34,7 +34,6 @@ export const Dashboard = () => {
   const successRate = totalGrades > 0 ? Math.round((passedGrades / totalGrades) * 100) : 0;
   const retakeRate = totalStudents > 0 ? Math.round((studentsWithRetakes / totalStudents) * 100) : 0;
 
-  // Données pour les graphiques de tendance
   const quickStats = [
     {
       title: 'Étudiants Actifs',
@@ -74,35 +73,35 @@ export const Dashboard = () => {
   return (
     <div className="space-y-6">
       {/* En-tête du dashboard */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col space-y-2 md:flex-row md:justify-between md:items-center md:space-y-0">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Vue d'ensemble</h1>
           <p className="text-muted-foreground">
-            Vue d'ensemble de votre système de gestion universitaire
+            Tableau de bord de votre système de gestion universitaire
           </p>
         </div>
-        <Badge variant="outline" className="px-4 py-2">
-          <Calendar className="h-4 w-4 mr-2" />
-          Année Académique 2024-2025
+        <Badge variant="outline" className="w-fit">
+          <Calendar className="h-3 w-3 mr-1" />
+          2024-2025
         </Badge>
       </div>
 
       {/* Cartes de statistiques rapides */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {quickStats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.title} className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-6">
+            <Card key={stat.title} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-muted-foreground mb-1">
                       {stat.title}
                     </p>
-                    <div className="flex items-center space-x-2">
-                      <p className="text-2xl font-bold">{stat.value}</p>
+                    <div className="flex items-baseline space-x-2">
+                      <p className="text-xl font-bold">{stat.value}</p>
                       {stat.total && (
-                        <span className="text-sm text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           / {stat.total}
                         </span>
                       )}
@@ -114,8 +113,8 @@ export const Dashboard = () => {
                       </span>
                     </div>
                   </div>
-                  <div className={`p-3 rounded-full ${stat.bgColor}`}>
-                    <Icon className={`h-6 w-6 ${stat.color}`} />
+                  <div className={`p-2 rounded-lg ${stat.bgColor}`}>
+                    <Icon className={`h-5 w-5 ${stat.color}`} />
                   </div>
                 </div>
               </CardContent>
@@ -128,39 +127,35 @@ export const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-lg font-semibold">Taux de Réussite</CardTitle>
-            <Award className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base font-semibold">Taux de Réussite</CardTitle>
+            <Award className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold text-green-600">{successRate}%</span>
-                <Badge variant="secondary">{passedGrades} / {totalGrades}</Badge>
-              </div>
-              <Progress value={successRate} className="h-2" />
-              <p className="text-sm text-muted-foreground">
-                {passedGrades} étudiants ont réussi sur {totalGrades} évaluations
-              </p>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-2xl font-bold text-green-600">{successRate}%</span>
+              <Badge variant="secondary" className="text-xs">{passedGrades} / {totalGrades}</Badge>
             </div>
+            <Progress value={successRate} className="h-2" />
+            <p className="text-xs text-muted-foreground">
+              {passedGrades} étudiants ont réussi sur {totalGrades} évaluations
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-lg font-semibold">Taux de Reprises</CardTitle>
-            <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base font-semibold">Taux de Reprises</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold text-orange-600">{retakeRate}%</span>
-                <Badge variant="destructive">{studentsWithRetakes} étudiants</Badge>
-              </div>
-              <Progress value={retakeRate} className="h-2" />
-              <p className="text-sm text-muted-foreground">
-                {studentsWithRetakes} étudiants ont des UE à reprendre
-              </p>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-2xl font-bold text-orange-600">{retakeRate}%</span>
+              <Badge variant="destructive" className="text-xs">{studentsWithRetakes} étudiants</Badge>
             </div>
+            <Progress value={retakeRate} className="h-2" />
+            <p className="text-xs text-muted-foreground">
+              {studentsWithRetakes} étudiants ont des UE à reprendre
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -168,54 +163,52 @@ export const Dashboard = () => {
       {/* Activités récentes */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <FileText className="h-5 w-5" />
+          <CardTitle className="flex items-center space-x-2 text-base">
+            <FileText className="h-4 w-4" />
             <span>Activités Récentes</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center space-x-4 p-3 bg-muted/50 rounded-lg">
-              <div className="p-2 bg-blue-100 rounded-full">
-                <Users className="h-4 w-4 text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium">Nouveaux étudiants inscrits</p>
-                <p className="text-sm text-muted-foreground">
-                  {activeStudents} étudiants actifs cette année
-                </p>
-              </div>
-              <Badge variant="outline">Aujourd'hui</Badge>
+        <CardContent className="space-y-3">
+          <div className="flex items-center space-x-3 p-3 bg-muted/50 rounded-lg">
+            <div className="p-2 bg-blue-100 rounded-full">
+              <Users className="h-3 w-3 text-blue-600" />
             </div>
-
-            <div className="flex items-center space-x-4 p-3 bg-muted/50 rounded-lg">
-              <div className="p-2 bg-green-100 rounded-full">
-                <BookOpen className="h-4 w-4 text-green-600" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium">Unités d'enseignement</p>
-                <p className="text-sm text-muted-foreground">
-                  {totalUEs} UE disponibles
-                </p>
-              </div>
-              <Badge variant="outline">Cette semaine</Badge>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Nouveaux étudiants inscrits</p>
+              <p className="text-xs text-muted-foreground">
+                {activeStudents} étudiants actifs cette année
+              </p>
             </div>
-
-            {studentsWithRetakes > 0 && (
-              <div className="flex items-center space-x-4 p-3 bg-muted/50 rounded-lg">
-                <div className="p-2 bg-orange-100 rounded-full">
-                  <AlertTriangle className="h-4 w-4 text-orange-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Reprises programmées</p>
-                  <p className="text-sm text-muted-foreground">
-                    {studentsWithRetakes} étudiants concernés
-                  </p>
-                </div>
-                <Badge variant="outline">À traiter</Badge>
-              </div>
-            )}
+            <Badge variant="outline" className="text-xs">Aujourd'hui</Badge>
           </div>
+
+          <div className="flex items-center space-x-3 p-3 bg-muted/50 rounded-lg">
+            <div className="p-2 bg-green-100 rounded-full">
+              <BookOpen className="h-3 w-3 text-green-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Unités d'enseignement</p>
+              <p className="text-xs text-muted-foreground">
+                {totalUEs} UE disponibles
+              </p>
+            </div>
+            <Badge variant="outline" className="text-xs">Cette semaine</Badge>
+          </div>
+
+          {studentsWithRetakes > 0 && (
+            <div className="flex items-center space-x-3 p-3 bg-muted/50 rounded-lg">
+              <div className="p-2 bg-orange-100 rounded-full">
+                <AlertTriangle className="h-3 w-3 text-orange-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Reprises programmées</p>
+                <p className="text-xs text-muted-foreground">
+                  {studentsWithRetakes} étudiants concernés
+                </p>
+              </div>
+              <Badge variant="outline" className="text-xs">À traiter</Badge>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

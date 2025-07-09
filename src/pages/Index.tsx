@@ -1,12 +1,15 @@
 
 import { useState } from 'react';
-import { Navigation } from '../components/Navigation';
+import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
+import { AppSidebar } from '../components/AppSidebar';
 import { Dashboard } from '../components/Dashboard';
 import { StudentsManager } from '../components/StudentsManager';
 import { CoursesManager } from '../components/CoursesManager';
 import { GradesManager } from '../components/GradesManager';
 import { RetakesManager } from '../components/RetakesManager';
 import { useDemoData } from '../hooks/useDemoData';
+import { Separator } from '@/components/ui/separator';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from '@/components/ui/breadcrumb';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -31,25 +34,49 @@ const Index = () => {
     }
   };
 
+  const getPageTitle = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return 'Dashboard';
+      case 'students':
+        return 'Gestion des Étudiants';
+      case 'courses':
+        return 'Unités d\'Enseignement';
+      case 'grades':
+        return 'Notes & Bulletins';
+      case 'retakes':
+        return 'Gestion des Reprises';
+      default:
+        return 'Dashboard';
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-card border-b border-border">
-        <div className="container mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold text-foreground">
-            Système de Gestion Universitaire
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Gestion des étudiants, notes, reprises et documents académiques
-          </p>
-        </div>
-      </header>
-
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-
-      <main className="container mx-auto px-4 py-8">
-        {renderContent()}
-      </main>
-    </div>
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full">
+        <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        
+        <SidebarInset className="flex-1">
+          <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbPage className="font-medium">
+                    {getPageTitle()}
+                  </BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </header>
+          
+          <main className="flex-1 p-6">
+            {renderContent()}
+          </main>
+        </SidebarInset>
+      </div>
+    </SidebarProvider>
   );
 };
 
