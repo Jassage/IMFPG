@@ -1,283 +1,296 @@
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { useAcademicStore } from '../../store/academicStore';
 import { Student } from '../../types/academic';
-import { X } from 'lucide-react';
+import { toast } from 'sonner';
+
+const studentSchema = z.object({
+  firstName: z.string().min(2, 'Prénom requis'),
+  lastName: z.string().min(2, 'Nom requis'),
+  studentId: z.string().min(1, 'Numéro étudiant requis'),
+  email: z.string().email('Email invalide'),
+  phone: z.string().min(10, 'Téléphone requis'),
+  dateOfBirth: z.string().min(1, 'Date de naissance requise'),
+  placeOfBirth: z.string().min(1, 'Lieu de naissance requis'),
+  address: z.string().min(10, 'Adresse requise'),
+  bloodGroup: z.string().optional(),
+  allergies: z.string().optional(),
+  disabilities: z.string().optional(),
+  faculty: z.string().min(1, 'Faculté requise'),
+  level: z.string().min(1, 'Niveau requis'),
+  academicYear: z.string().min(1, 'Année académique requise'),
+  status: z.enum(['Active', 'Inactive', 'Graduated'])
+});
+
+type StudentFormData = z.infer<typeof studentSchema>;
 
 interface StudentFormProps {
-  isOpen: boolean;
+  student?: Student | null;
   onClose: () => void;
-  student?: Student;
-  onSuccess?: () => void;
 }
 
-export const StudentForm = ({ isOpen, onClose, student, onSuccess }: StudentFormProps) => {
+export const StudentForm = ({ student, onClose }: StudentFormProps) => {
   const { addStudent, updateStudent } = useAcademicStore();
-  const [formData, setFormData] = useState({
-    firstName: student?.firstName || '',
-    lastName: student?.lastName || '',
-    studentId: student?.studentId || '',
-    email: student?.email || '',
-    phone: student?.phone || '',
-    dateOfBirth: student?.dateOfBirth || '',
-    placeOfBirth: student?.placeOfBirth || '',
-    address: student?.address || '',
-    bloodGroup: student?.bloodGroup || '',
-    allergies: student?.allergies || '',
-    disabilities: student?.disabilities || '',
-    faculty: student?.faculty || 'Informatique',
-    level: student?.level || 'L1',
-    academicYear: student?.academicYear || '2024-2025',
-    status: student?.status || 'Active' as const,
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const form = useForm<StudentFormData>({
+    resolver: zodResolver(studentSchema),
+    defaultValues: student || {
+      firstName: '',
+      lastName: '',
+      studentId: '',
+      email: '',
+      phone: '',
+      dateOfBirth: '',
+      placeOfBirth: '',
+      address: '',
+      bloodGroup: '',
+      allergies: '',
+      disabilities: '',
+      faculty: '',
+      level: '',
+      academicYear: '2024-2025',
+      status: 'Active'
+    }
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const studentData: Student = {
-      id: student?.id || Date.now().toString(),
-      ...formData,
-    };
-
-    if (student) {
-      updateStudent(student.id, studentData);
-    } else {
-      addStudent(studentData);
+  const onSubmit = async (data: StudentFormData) => {
+    setIsSubmitting(true);
+    try {
+      if (student) {
+        updateStudent(student.id, data);
+        toast.success('Étudiant modifié avec succès');
+      } else {
+        const newStudent: Student = {
+          id: crypto.randomUUID(),
+          ...data
+        };
+        addStudent(newStudent);
+        toast.success('Étudiant ajouté avec succès');
+      }
+      onClose();
+    } catch (error) {
+      toast.error('Erreur lors de la sauvegarde');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onSuccess?.();
-    onClose();
   };
-
-  const handleChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>
-            {student ? 'Modifier l\'étudiant' : 'Nouvel étudiant'}
-          </CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </CardHeader>
-        
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">Prénom *</Label>
-                <Input
-                  id="firstName"
-                  value={formData.firstName}
-                  onChange={(e) => handleChange('firstName', e.target.value)}
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Nom *</Label>
-                <Input
-                  id="lastName"
-                  value={formData.lastName}
-                  onChange={(e) => handleChange('lastName', e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="firstName">Prénom *</Label>
+          <Input
+            id="firstName"
+            {...form.register('firstName')}
+            placeholder="Prénom"
+          />
+          {form.formState.errors.firstName && (
+            <p className="text-sm text-red-500">{form.formState.errors.firstName.message}</p>
+          )}
+        </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="studentId">Numéro étudiant *</Label>
-                <Input
-                  id="studentId"
-                  value={formData.studentId}
-                  onChange={(e) => handleChange('studentId', e.target.value)}
-                  placeholder="ETD-2024-001"
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleChange('email', e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="lastName">Nom *</Label>
+          <Input
+            id="lastName"
+            {...form.register('lastName')}
+            placeholder="Nom de famille"
+          />
+          {form.formState.errors.lastName && (
+            <p className="text-sm text-red-500">{form.formState.errors.lastName.message}</p>
+          )}
+        </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Téléphone</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => handleChange('phone', e.target.value)}
-                  placeholder="+241 01 23 45 67"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="dateOfBirth">Date de naissance</Label>
-                <Input
-                  id="dateOfBirth"
-                  type="date"
-                  value={formData.dateOfBirth}
-                  onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-                />
-              </div>
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="studentId">Numéro Étudiant *</Label>
+          <Input
+            id="studentId"
+            {...form.register('studentId')}
+            placeholder="Ex: 2024001"
+          />
+          {form.formState.errors.studentId && (
+            <p className="text-sm text-red-500">{form.formState.errors.studentId.message}</p>
+          )}
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="placeOfBirth">Lieu de naissance</Label>
-              <Input
-                id="placeOfBirth"
-                value={formData.placeOfBirth}
-                onChange={(e) => handleChange('placeOfBirth', e.target.value)}
-              />
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="email">Email *</Label>
+          <Input
+            id="email"
+            type="email"
+            {...form.register('email')}
+            placeholder="email@exemple.com"
+          />
+          {form.formState.errors.email && (
+            <p className="text-sm text-red-500">{form.formState.errors.email.message}</p>
+          )}
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="address">Adresse</Label>
-              <Textarea
-                id="address"
-                value={formData.address}
-                onChange={(e) => handleChange('address', e.target.value)}
-                rows={2}
-              />
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="phone">Téléphone *</Label>
+          <Input
+            id="phone"
+            {...form.register('phone')}
+            placeholder="+33 1 23 45 67 89"
+          />
+          {form.formState.errors.phone && (
+            <p className="text-sm text-red-500">{form.formState.errors.phone.message}</p>
+          )}
+        </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="faculty">Faculté</Label>
-                <Select value={formData.faculty} onValueChange={(value) => handleChange('faculty', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Informatique">Informatique</SelectItem>
-                    <SelectItem value="Mathématiques">Mathématiques</SelectItem>
-                    <SelectItem value="Physique">Physique</SelectItem>
-                    <SelectItem value="Économie">Économie</SelectItem>
-                    <SelectItem value="Droit">Droit</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="level">Niveau</Label>
-                <Select value={formData.level} onValueChange={(value) => handleChange('level', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="L1">L1</SelectItem>
-                    <SelectItem value="L2">L2</SelectItem>
-                    <SelectItem value="L3">L3</SelectItem>
-                    <SelectItem value="M1">M1</SelectItem>
-                    <SelectItem value="M2">M2</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="academicYear">Année académique</Label>
-                <Select value={formData.academicYear} onValueChange={(value) => handleChange('academicYear', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2023-2024">2023-2024</SelectItem>
-                    <SelectItem value="2024-2025">2024-2025</SelectItem>
-                    <SelectItem value="2025-2026">2025-2026</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="dateOfBirth">Date de Naissance *</Label>
+          <Input
+            id="dateOfBirth"
+            type="date"
+            {...form.register('dateOfBirth')}
+          />
+          {form.formState.errors.dateOfBirth && (
+            <p className="text-sm text-red-500">{form.formState.errors.dateOfBirth.message}</p>
+          )}
+        </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="bloodGroup">Groupe sanguin</Label>
-                <Select value={formData.bloodGroup} onValueChange={(value) => handleChange('bloodGroup', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="A+">A+</SelectItem>
-                    <SelectItem value="A-">A-</SelectItem>
-                    <SelectItem value="B+">B+</SelectItem>
-                    <SelectItem value="B-">B-</SelectItem>
-                    <SelectItem value="AB+">AB+</SelectItem>
-                    <SelectItem value="AB-">AB-</SelectItem>
-                    <SelectItem value="O+">O+</SelectItem>
-                    <SelectItem value="O-">O-</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="status">Statut</Label>
-                <Select value={formData.status} onValueChange={(value) => handleChange('status', value as Student['status'])}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Active">Actif</SelectItem>
-                    <SelectItem value="Inactive">Inactif</SelectItem>
-                    <SelectItem value="Graduated">Diplômé</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="placeOfBirth">Lieu de Naissance *</Label>
+          <Input
+            id="placeOfBirth"
+            {...form.register('placeOfBirth')}
+            placeholder="Ville, Pays"
+          />
+          {form.formState.errors.placeOfBirth && (
+            <p className="text-sm text-red-500">{form.formState.errors.placeOfBirth.message}</p>
+          )}
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="allergies">Allergies</Label>
-              <Textarea
-                id="allergies"
-                value={formData.allergies}
-                onChange={(e) => handleChange('allergies', e.target.value)}
-                placeholder="Aucune allergie connue"
-                rows={2}
-              />
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="faculty">Faculté *</Label>
+          <Select onValueChange={(value) => form.setValue('faculty', value)} defaultValue={form.getValues('faculty')}>
+            <SelectTrigger>
+              <SelectValue placeholder="Sélectionner une faculté" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Informatique">Informatique</SelectItem>
+              <SelectItem value="Mathématiques">Mathématiques</SelectItem>
+              <SelectItem value="Physique">Physique</SelectItem>
+              <SelectItem value="Chimie">Chimie</SelectItem>
+              <SelectItem value="Biologie">Biologie</SelectItem>
+            </SelectContent>
+          </Select>
+          {form.formState.errors.faculty && (
+            <p className="text-sm text-red-500">{form.formState.errors.faculty.message}</p>
+          )}
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="disabilities">Handicaps/Besoins spéciaux</Label>
-              <Textarea
-                id="disabilities"
-                value={formData.disabilities}
-                onChange={(e) => handleChange('disabilities', e.target.value)}
-                placeholder="Aucun handicap connu"
-                rows={2}
-              />
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="level">Niveau *</Label>
+          <Select onValueChange={(value) => form.setValue('level', value)} defaultValue={form.getValues('level')}>
+            <SelectTrigger>
+              <SelectValue placeholder="Sélectionner un niveau" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="L1">Licence 1</SelectItem>
+              <SelectItem value="L2">Licence 2</SelectItem>
+              <SelectItem value="L3">Licence 3</SelectItem>
+              <SelectItem value="M1">Master 1</SelectItem>
+              <SelectItem value="M2">Master 2</SelectItem>
+            </SelectContent>
+          </Select>
+          {form.formState.errors.level && (
+            <p className="text-sm text-red-500">{form.formState.errors.level.message}</p>
+          )}
+        </div>
 
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button type="button" variant="outline" onClick={onClose}>
-                Annuler
-              </Button>
-              <Button type="submit">
-                {student ? 'Modifier' : 'Créer'}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+        <div className="space-y-2">
+          <Label htmlFor="academicYear">Année Académique *</Label>
+          <Input
+            id="academicYear"
+            {...form.register('academicYear')}
+            placeholder="2024-2025"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="status">Statut</Label>
+          <Select onValueChange={(value) => form.setValue('status', value as Student['status'])} defaultValue={form.getValues('status')}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Active">Actif</SelectItem>
+              <SelectItem value="Inactive">Inactif</SelectItem>
+              <SelectItem value="Graduated">Diplômé</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="bloodGroup">Groupe Sanguin</Label>
+          <Select onValueChange={(value) => form.setValue('bloodGroup', value)} defaultValue={form.getValues('bloodGroup')}>
+            <SelectTrigger>
+              <SelectValue placeholder="Sélectionner" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="A+">A+</SelectItem>
+              <SelectItem value="A-">A-</SelectItem>
+              <SelectItem value="B+">B+</SelectItem>
+              <SelectItem value="B-">B-</SelectItem>
+              <SelectItem value="AB+">AB+</SelectItem>
+              <SelectItem value="AB-">AB-</SelectItem>
+              <SelectItem value="O+">O+</SelectItem>
+              <SelectItem value="O-">O-</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="address">Adresse *</Label>
+        <Textarea
+          id="address"
+          {...form.register('address')}
+          placeholder="Adresse complète"
+        />
+        {form.formState.errors.address && (
+          <p className="text-sm text-red-500">{form.formState.errors.address.message}</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="allergies">Allergies</Label>
+        <Textarea
+          id="allergies"
+          {...form.register('allergies')}
+          placeholder="Allergies connues (optionnel)"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="disabilities">Handicaps</Label>
+        <Textarea
+          id="disabilities"
+          {...form.register('disabilities')}
+          placeholder="Handicaps ou besoins spéciaux (optionnel)"
+        />
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Annuler
+        </Button>
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Sauvegarde...' : student ? 'Modifier' : 'Ajouter'}
+        </Button>
+      </div>
+    </form>
   );
 };

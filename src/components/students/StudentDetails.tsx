@@ -1,221 +1,188 @@
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { useAcademicStore } from '../../store/academicStore';
+import { User, Mail, Phone, MapPin, Calendar, GraduationCap, Heart, AlertTriangle } from 'lucide-react';
 import { Student } from '../../types/academic';
-import { X, Mail, Phone, MapPin, Calendar, Heart, AlertTriangle, BookOpen } from 'lucide-react';
+import { useAcademicStore } from '../../store/academicStore';
 
 interface StudentDetailsProps {
-  isOpen: boolean;
+  student: Student;
   onClose: () => void;
-  student: Student | null;
-  onEdit?: (student: Student) => void;
 }
 
-export const StudentDetails = ({ isOpen, onClose, student, onEdit }: StudentDetailsProps) => {
-  const { getStudentGrades, ues, grades } = useAcademicStore();
+export const StudentDetails = ({ student }: StudentDetailsProps) => {
+  const { getStudentGrades } = useAcademicStore();
+  const grades = getStudentGrades(student.id);
 
-  if (!isOpen || !student) return null;
-
-  const studentGrades = getStudentGrades(student.id);
-  const failedGrades = studentGrades.filter(g => g.status === 'À reprendre');
-  const validatedGrades = studentGrades.filter(g => g.status === 'Validé');
-
-  const getStatusBadge = () => {
-    if (failedGrades.length > 0) {
-      return <Badge variant="destructive">Reprises ({failedGrades.length})</Badge>;
-    }
-    return <Badge variant="default">En règle</Badge>;
-  };
-
-  const getUETitle = (ueId: string) => {
-    const ue = ues.find(u => u.id === ueId);
-    return ue ? `${ue.code} - ${ue.title}` : 'UE inconnue';
+  const getStatusBadge = (status: Student['status']) => {
+    const config = {
+      'Active': { variant: 'default' as const, label: 'Actif' },
+      'Inactive': { variant: 'secondary' as const, label: 'Inactif' },
+      'Graduated': { variant: 'outline' as const, label: 'Diplômé' }
+    };
+    
+    const { variant, label } = config[status];
+    return <Badge variant={variant}>{label}</Badge>;
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
-              {student.photo ? (
-                <img src={student.photo} alt={`${student.firstName} ${student.lastName}`} className="w-full h-full rounded-full object-cover" />
-              ) : (
-                <span className="text-lg font-semibold text-muted-foreground">
-                  {student.firstName[0]}{student.lastName[0]}
-                </span>
-              )}
+    <div className="space-y-6">
+      {/* En-tête avec photo et infos principales */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-start gap-6">
+            <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
+              {student.firstName[0]}{student.lastName[0]}
             </div>
-            <div>
-              <CardTitle className="text-2xl">
-                {student.firstName} {student.lastName}
-              </CardTitle>
-              <p className="text-muted-foreground">{student.studentId}</p>
-              {getStatusBadge()}
-            </div>
-          </div>
-          <div className="flex space-x-2">
-            {onEdit && (
-              <Button variant="outline" onClick={() => onEdit(student)}>
-                Modifier
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardHeader>
-        
-        <CardContent className="space-y-6">
-          {/* Informations personnelles */}
-          <div>
-            <h3 className="text-lg font-semibold mb-3">Informations personnelles</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center space-x-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span>{student.email}</span>
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <h2 className="text-2xl font-bold">
+                  {student.firstName} {student.lastName}
+                </h2>
+                {getStatusBadge(student.status)}
               </div>
-              <div className="flex items-center space-x-2">
-                <Phone className="h-4 w-4 text-muted-foreground" />
-                <span>{student.phone}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>Né(e) le {new Date(student.dateOfBirth).toLocaleDateString('fr-FR')}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <span>{student.placeOfBirth}</span>
-              </div>
-            </div>
-            <div className="mt-3">
-              <p className="text-sm text-muted-foreground">Adresse</p>
-              <p>{student.address}</p>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Informations académiques */}
-          <div>
-            <h3 className="text-lg font-semibold mb-3">Informations académiques</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Faculté</p>
-                <p className="font-medium">{student.faculty}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Niveau</p>
-                <p className="font-medium">{student.level}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Année académique</p>
-                <p className="font-medium">{student.academicYear}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Statut</p>
-                <Badge variant={student.status === 'Active' ? 'default' : 'secondary'}>
-                  {student.status === 'Active' ? 'Actif' : student.status === 'Inactive' ? 'Inactif' : 'Diplômé'}
-                </Badge>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Informations médicales */}
-          <div>
-            <h3 className="text-lg font-semibold mb-3 flex items-center">
-              <Heart className="h-5 w-5 mr-2 text-red-500" />
-              Informations médicales
-            </h3>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <p className="text-sm text-muted-foreground">Groupe sanguin</p>
-                <p className="font-medium">{student.bloodGroup || 'Non renseigné'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Allergies</p>
-                <p>{student.allergies || 'Aucune allergie connue'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Handicaps/Besoins spéciaux</p>
-                <p>{student.disabilities || 'Aucun handicap connu'}</p>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Résultats académiques */}
-          <div>
-            <h3 className="text-lg font-semibold mb-3 flex items-center">
-              <BookOpen className="h-5 w-5 mr-2" />
-              Résultats académiques
-            </h3>
-            
-            {studentGrades.length === 0 ? (
-              <p className="text-muted-foreground">Aucune note enregistrée</p>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div className="text-center">
-                    <p className="font-semibold text-2xl text-green-600">{validatedGrades.length}</p>
-                    <p className="text-muted-foreground">UE validées</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="font-semibold text-2xl text-red-600">{failedGrades.length}</p>
-                    <p className="text-muted-foreground">UE à reprendre</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="font-semibold text-2xl">{studentGrades.length}</p>
-                    <p className="text-muted-foreground">Total UE</p>
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                  <span>ID: {student.studentId}</span>
                 </div>
-
-                {failedGrades.length > 0 && (
-                  <div>
-                    <h4 className="font-medium mb-2 flex items-center text-red-600">
-                      <AlertTriangle className="h-4 w-4 mr-1" />
-                      UE à reprendre
-                    </h4>
-                    <div className="space-y-2">
-                      {failedGrades.map((grade) => (
-                        <div key={grade.id} className="flex justify-between items-center p-2 bg-red-50 rounded">
-                          <span className="text-sm">{getUETitle(grade.ueId)}</span>
-                          <Badge variant="destructive">{grade.grade}/20</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {validatedGrades.length > 0 && (
-                  <div>
-                    <h4 className="font-medium mb-2 text-green-600">UE validées</h4>
-                    <div className="space-y-2">
-                      {validatedGrades.slice(0, 5).map((grade) => (
-                        <div key={grade.id} className="flex justify-between items-center p-2 bg-green-50 rounded">
-                          <span className="text-sm">{getUETitle(grade.ueId)}</span>
-                          <Badge variant="default">{grade.grade}/20</Badge>
-                        </div>
-                      ))}
-                      {validatedGrades.length > 5 && (
-                        <p className="text-sm text-muted-foreground text-center">
-                          ... et {validatedGrades.length - 5} autres UE validées
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <span>{student.email}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <span>{student.phone}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>{new Date(student.dateOfBirth).toLocaleDateString()}</span>
+                </div>
               </div>
-            )}
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Informations académiques */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <GraduationCap className="h-5 w-5" />
+              Informations Académiques
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Faculté</label>
+              <p className="font-medium">{student.faculty}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Niveau</label>
+              <p className="font-medium">{student.level}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Année Académique</label>
+              <p className="font-medium">{student.academicYear}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Nombre de Notes</label>
+              <p className="font-medium">{grades.length} évaluations</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Informations personnelles */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Informations Personnelles
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Lieu de Naissance</label>
+              <p className="font-medium">{student.placeOfBirth}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Adresse</label>
+              <div className="flex items-start gap-2">
+                <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                <p className="font-medium">{student.address}</p>
+              </div>
+            </div>
+            {student.bloodGroup && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Groupe Sanguin</label>
+                <div className="flex items-center gap-2">
+                  <Heart className="h-4 w-4 text-red-500" />
+                  <p className="font-medium">{student.bloodGroup}</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Informations médicales */}
+      {(student.allergies || student.disabilities) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Informations Médicales
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {student.allergies && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Allergies</label>
+                <p className="font-medium">{student.allergies}</p>
+              </div>
+            )}
+            {student.disabilities && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Handicaps / Besoins Spéciaux</label>
+                <p className="font-medium">{student.disabilities}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Résumé des notes */}
+      {grades.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Résumé des Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold text-green-600">
+                  {grades.filter(g => g.status === 'Validé').length}
+                </p>
+                <p className="text-sm text-muted-foreground">Validées</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-600">
+                  {grades.filter(g => g.status === 'À reprendre').length}
+                </p>
+                <p className="text-sm text-muted-foreground">À reprendre</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-600">
+                  {grades.filter(g => g.status === 'En cours').length}
+                </p>
+                <p className="text-sm text-muted-foreground">En cours</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

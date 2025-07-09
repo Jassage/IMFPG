@@ -1,188 +1,174 @@
+
 import { useEffect } from 'react';
 import { useAcademicStore } from '../store/academicStore';
-import { Student, UE, Grade, Retake } from '../types/academic';
 
 export const useDemoData = () => {
-  const { addStudent, addUE, addGrade, addRetake, students, ues, grades } = useAcademicStore();
+  const { students, ues, grades, retakes, addStudent, addUE, addGrade, addRetake } = useAcademicStore();
 
   useEffect(() => {
-    // Éviter de dupliquer les données
+    // Vérifier si les données existent déjà
     if (students.length > 0) return;
 
-    // Données d'exemple - Étudiants
-    const demoStudents: Student[] = [
+    // Ajouter des étudiants de démonstration
+    const demoStudents = [
       {
         id: '1',
-        firstName: 'Marie',
-        lastName: 'Dupont',
-        studentId: 'ETD-2024-001',
-        email: 'marie.dupont@university.ga',
-        phone: '+241 01 23 45 67',
-        dateOfBirth: '2003-05-15',
-        placeOfBirth: 'Libreville',
-        address: '123 Avenue de la Paix, Libreville',
+        firstName: 'Alice',
+        lastName: 'Martin',
+        studentId: '2024001',
+        email: 'alice.martin@universite.fr',
+        phone: '+33 1 23 45 67 89',
+        dateOfBirth: '2000-05-15',
+        placeOfBirth: 'Paris, France',
+        address: '123 Rue de la République, 75001 Paris',
+        bloodGroup: 'A+',
+        allergies: 'Aucune',
+        disabilities: '',
         faculty: 'Informatique',
-        level: 'L2',
+        level: 'L3',
         academicYear: '2024-2025',
-        status: 'Active',
-        bloodGroup: 'O+',
+        status: 'Active' as const
       },
       {
         id: '2',
-        firstName: 'Jean',
-        lastName: 'Mbeng',
-        studentId: 'ETD-2024-002',
-        email: 'jean.mbeng@university.ga',
-        phone: '+241 02 34 56 78',
-        dateOfBirth: '2002-08-22',
-        placeOfBirth: 'Port-Gentil',
-        address: '456 Boulevard Omar Bongo, Port-Gentil',
+        firstName: 'Bob',
+        lastName: 'Dupont',
+        studentId: '2024002', 
+        email: 'bob.dupont@universite.fr',
+        phone: '+33 1 23 45 67 90',
+        dateOfBirth: '1999-12-03',
+        placeOfBirth: 'Lyon, France',
+        address: '456 Avenue des Sciences, 69000 Lyon',
+        bloodGroup: 'O-',
+        allergies: 'Arachides',
+        disabilities: '',
         faculty: 'Informatique',
         level: 'L3',
         academicYear: '2024-2025',
-        status: 'Active',
-        bloodGroup: 'A+',
+        status: 'Active' as const
       },
       {
         id: '3',
-        firstName: 'Sarah',
-        lastName: 'Ndong',
-        studentId: 'ETD-2024-003',
-        email: 'sarah.ndong@university.ga',
-        phone: '+241 03 45 67 89',
-        dateOfBirth: '2003-11-10',
-        placeOfBirth: 'Franceville',
-        address: '789 Rue de la République, Franceville',
-        faculty: 'Informatique',
+        firstName: 'Claire',
+        lastName: 'Bernard',
+        studentId: '2024003',
+        email: 'claire.bernard@universite.fr',
+        phone: '+33 1 23 45 67 91',
+        dateOfBirth: '2001-08-22',
+        placeOfBirth: 'Marseille, France',
+        address: '789 Boulevard de l\'Université, 13000 Marseille',
+        bloodGroup: 'B+',
+        allergies: '',
+        disabilities: 'Dyslexie',
+        faculty: 'Mathématiques',
         level: 'L2',
         academicYear: '2024-2025',
-        status: 'Active',
-        bloodGroup: 'B+',
-      },
+        status: 'Active' as const
+      }
     ];
 
-    // Données d'exemple - UE
-    const demoUEs: UE[] = [
+    // Ajouter des UE de démonstration
+    const demoUEs = [
       {
         id: 'ue1',
-        code: 'INFO-201',
+        code: 'INFO101',
         title: 'Programmation Orientée Objet',
         credits: 6,
-        type: 'Obligatoire',
-        passingGrade: 10,
-        faculty: 'Informatique',
-        level: 'L2',
-        semester: 'S1',
-        prerequisites: ['INFO-101'],
-      },
-      {
-        id: 'ue2',
-        code: 'MATH-201',
-        title: 'Mathématiques Discrètes',
-        credits: 4,
-        type: 'Obligatoire',
-        passingGrade: 10,
-        faculty: 'Informatique',
-        level: 'L2',
-        semester: 'S1',
-        prerequisites: [],
-      },
-      {
-        id: 'ue3',
-        code: 'INFO-301',
-        title: 'Base de Données Avancées',
-        credits: 6,
-        type: 'Obligatoire',
+        type: 'Obligatoire' as const,
         passingGrade: 10,
         faculty: 'Informatique',
         level: 'L3',
-        semester: 'S1',
-        prerequisites: ['INFO-201'],
+        semester: 'S1' as const,
+        prerequisites: []
       },
       {
-        id: 'ue4',
-        code: 'INFO-202',
-        title: 'Structures de Données',
-        credits: 5,
-        type: 'Obligatoire',
+        id: 'ue2',
+        code: 'INFO102',
+        title: 'Base de Données',
+        credits: 6,
+        type: 'Obligatoire' as const,
         passingGrade: 10,
         faculty: 'Informatique',
-        level: 'L2',
-        semester: 'S2',
-        prerequisites: ['INFO-201'],
+        level: 'L3',
+        semester: 'S1' as const,
+        prerequisites: []
       },
+      {
+        id: 'ue3',
+        code: 'MATH201',
+        title: 'Analyse Fonctionnelle',
+        credits: 8,
+        type: 'Obligatoire' as const,
+        passingGrade: 10,
+        faculty: 'Mathématiques',
+        level: 'L2',
+        semester: 'S1' as const,
+        prerequisites: []
+      }
     ];
 
-    // Données d'exemple - Notes avec plus d'échecs
-    const demoGrades: Grade[] = [
+    // Ajouter des notes de démonstration
+    const demoGrades = [
       {
         id: 'grade1',
         studentId: '1',
         ueId: 'ue1',
-        grade: 8.5,
-        status: 'À reprendre',
-        session: 'Normale',
+        grade: 16.5,
+        status: 'Validé' as const,
+        session: 'Normale' as const,
         semester: 'S1',
-        academicYear: '2024-2025',
+        academicYear: '2024-2025'
       },
       {
         id: 'grade2',
         studentId: '1',
         ueId: 'ue2',
-        grade: 14,
-        status: 'Validé',
-        session: 'Normale',
+        grade: 12.0,
+        status: 'Validé' as const,
+        session: 'Normale' as const,
         semester: 'S1',
-        academicYear: '2024-2025',
+        academicYear: '2024-2025'
       },
       {
         id: 'grade3',
         studentId: '2',
-        ueId: 'ue3',
-        grade: 16,
-        status: 'Validé',
-        session: 'Normale',
+        ueId: 'ue1',
+        grade: 8.5,
+        status: 'À reprendre' as const,
+        session: 'Normale' as const,
         semester: 'S1',
-        academicYear: '2024-2025',
+        academicYear: '2024-2025'
       },
       {
         id: 'grade4',
         studentId: '3',
-        ueId: 'ue1',
-        grade: 7.5,
-        status: 'À reprendre',
-        session: 'Normale',
+        ueId: 'ue3',
+        grade: 14.0,
+        status: 'Validé' as const,
+        session: 'Normale' as const,
         semester: 'S1',
-        academicYear: '2024-2025',
-      },
-      {
-        id: 'grade5',
-        studentId: '3',
-        ueId: 'ue2',
-        grade: 9.0,
-        status: 'À reprendre',
-        session: 'Normale',
-        semester: 'S1',
-        academicYear: '2024-2025',
-      },
+        academicYear: '2024-2025'
+      }
     ];
 
-    // Données d'exemple - Reprises
-    const demoRetakes: Retake[] = [
+    // Ajouter des reprises de démonstration
+    const demoRetakes = [
       {
         id: 'retake1',
-        studentId: '1',
+        studentId: '2',
         ueId: 'ue1',
         originalGrade: 8.5,
-        scheduledSemester: 'S2-2024-2025',
-        status: 'Programmé'
-      },
+        retakeGrade: undefined,
+        scheduledSemester: 'S2',
+        status: 'Programmé' as const
+      }
     ];
 
     // Initialiser les données
-    demoStudents.forEach(addStudent);
-    demoUEs.forEach(addUE);
-    demoGrades.forEach(addGrade);
-    demoRetakes.forEach(addRetake);
-  }, [addStudent, addUE, addGrade, addRetake, students.length]);
+    demoStudents.forEach(student => addStudent(student));
+    demoUEs.forEach(ue => addUE(ue));
+    demoGrades.forEach(grade => addGrade(grade));
+    demoRetakes.forEach(retake => addRetake(retake));
+
+  }, [students.length, addStudent, addUE, addGrade, addRetake]);
 };

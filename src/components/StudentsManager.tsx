@@ -1,230 +1,185 @@
+
 import { useState } from 'react';
-import { Plus, Search, Eye, Edit, Trash2, UserPlus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Plus, Search, Edit, Trash2, UserCheck, GraduationCap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAcademicStore } from '../store/academicStore';
-import { Student } from '../types/academic';
 import { StudentForm } from './students/StudentForm';
 import { StudentDetails } from './students/StudentDetails';
+import { Student } from '../types/academic';
 
 export const StudentsManager = () => {
-  const { students, getStudentGrades, deleteStudent } = useAcademicStore();
+  const { students, deleteStudent } = useAcademicStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
-  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const filteredStudents = students.filter(student =>
-    student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    `${student.firstName} ${student.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
     student.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.faculty.toLowerCase().includes(searchTerm.toLowerCase())
+    student.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getStudentStatus = (studentId: string) => {
-    const grades = getStudentGrades(studentId);
-    const failedGrades = grades.filter(g => g.status === 'À reprendre');
-    
-    if (failedGrades.length > 0) {
-      return { status: 'Reprises', count: failedGrades.length, variant: 'destructive' as const };
-    }
-    return { status: 'En règle', count: 0, variant: 'default' as const };
-  };
-
-  const handleNewStudent = () => {
-    setEditingStudent(null);
-    setShowForm(true);
-  };
-
   const handleEditStudent = (student: Student) => {
-    setEditingStudent(student);
-    setShowForm(true);
+    setSelectedStudent(student);
+    setIsFormOpen(true);
   };
 
   const handleViewDetails = (student: Student) => {
     setSelectedStudent(student);
-    setShowDetails(true);
+    setIsDetailsOpen(true);
   };
 
-  const handleFormSuccess = () => {
-    setShowForm(false);
-    setEditingStudent(null);
-  };
-
-  const handleEditFromDetails = (student: Student) => {
-    setShowDetails(false);
-    setEditingStudent(student);
-    setShowForm(true);
-  };
-
-  const handleDeleteStudent = (student: Student) => {
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer l'étudiant ${student.firstName} ${student.lastName} ? Cette action est irréversible.`)) {
-      deleteStudent(student.id);
+  const handleDeleteStudent = (studentId: string) => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cet étudiant ?')) {
+      deleteStudent(studentId);
     }
+  };
+
+  const getStatusBadge = (status: Student['status']) => {
+    const variants = {
+      'Active': 'default',
+      'Inactive': 'secondary',
+      'Graduated': 'outline'
+    } as const;
+    
+    return <Badge variant={variants[status]}>{status}</Badge>;
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold">Gestion des Étudiants</h2>
           <p className="text-muted-foreground">
-            {students.length} étudiant{students.length > 1 ? 's' : ''} inscrit{students.length > 1 ? 's' : ''}
+            Gérez les informations des étudiants
           </p>
         </div>
-        <Button onClick={handleNewStudent}>
-          <UserPlus className="h-4 w-4 mr-2" />
-          Nouvel Étudiant
-        </Button>
-      </div>
-
-      {/* Statistiques rapides */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold">{students.length}</div>
-            <div className="text-sm text-muted-foreground">Total étudiants</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-600">
-              {students.filter(s => s.status === 'Active').length}
-            </div>
-            <div className="text-sm text-muted-foreground">Actifs</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-600">
-              {students.filter(s => s.status === 'Graduated').length}
-            </div>
-            <div className="text-sm text-muted-foreground">Diplômés</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-red-600">
-              {students.filter(s => {
-                const grades = getStudentGrades(s.id);
-                return grades.some(g => g.status === 'À reprendre');
-              }).length}
-            </div>
-            <div className="text-sm text-muted-foreground">Avec reprises</div>
-          </CardContent>
-        </Card>
+        
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={() => setSelectedStudent(null)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nouvel Étudiant
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {selectedStudent ? 'Modifier Étudiant' : 'Nouvel Étudiant'}
+              </DialogTitle>
+            </DialogHeader>
+            <StudentForm 
+              student={selectedStudent} 
+              onClose={() => {
+                setIsFormOpen(false);
+                setSelectedStudent(null);
+              }} 
+            />
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Search className="h-5 w-5" />
-            <span>Rechercher un étudiant</span>
-          </CardTitle>
-          <input
-            type="text"
-            placeholder="Nom, prénom, numéro étudiant ou faculté..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              Liste des Étudiants ({filteredStudents.length})
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher un étudiant..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-64"
+              />
+            </div>
+          </div>
         </CardHeader>
-      </Card>
-
-      <div className="grid gap-4">
-        {filteredStudents.map((student) => {
-          const statusInfo = getStudentStatus(student.id);
-          return (
-            <Card key={student.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex justify-between items-start">
-                  <div className="flex space-x-4">
-                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
-                      {student.photo ? (
-                        <img src={student.photo} alt={`${student.firstName} ${student.lastName}`} className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        <span className="text-lg font-semibold text-muted-foreground">
-                          {student.firstName[0]}{student.lastName[0]}
-                        </span>
-                      )}
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-semibold">
-                        {student.firstName} {student.lastName}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        {student.studentId} • {student.faculty} - {student.level}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {student.email} • {student.phone}
-                      </p>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant={student.status === 'Active' ? 'default' : 'secondary'}>
-                          {student.status === 'Active' ? 'Actif' : student.status === 'Inactive' ? 'Inactif' : 'Diplômé'}
-                        </Badge>
-                        <Badge variant={statusInfo.variant}>
-                          {statusInfo.status}
-                          {statusInfo.count > 0 && ` (${statusInfo.count})`}
-                        </Badge>
+        <CardContent>
+          <div className="grid gap-4">
+            {filteredStudents.map((student) => (
+              <Card key={student.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+                        {student.firstName[0]}{student.lastName[0]}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold">
+                            {student.firstName} {student.lastName}
+                          </h3>
+                          {getStatusBadge(student.status)}
+                        </div>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <p>ID: {student.studentId} • {student.email}</p>
+                          <p>{student.faculty} - {student.level} • {student.academicYear}</p>
+                        </div>
                       </div>
                     </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewDetails(student)}
+                      >
+                        <GraduationCap className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditStudent(student)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteStudent(student.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  
-                  <div className="flex space-x-1">
-                    <Button variant="ghost" size="sm" onClick={() => handleViewDetails(student)}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => handleDeleteStudent(student)}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {filteredStudents.length === 0 && (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <p className="text-muted-foreground">
-              {searchTerm ? 'Aucun étudiant trouvé pour cette recherche' : 'Aucun étudiant inscrit'}
-            </p>
-            {!searchTerm && (
-              <Button className="mt-4" onClick={handleNewStudent}>
-                <Plus className="h-4 w-4 mr-2" />
-                Ajouter le premier étudiant
-              </Button>
+                </CardContent>
+              </Card>
+            ))}
+            
+            {filteredStudents.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <UserCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Aucun étudiant trouvé</p>
+              </div>
             )}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Modals */}
-      <StudentForm
-        isOpen={showForm}
-        onClose={() => setShowForm(false)}
-        student={editingStudent}
-        onSuccess={handleFormSuccess}
-      />
-
-      <StudentDetails
-        isOpen={showDetails}
-        onClose={() => setShowDetails(false)}
-        student={selectedStudent}
-        onEdit={handleEditFromDetails}
-      />
+      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Détails de l'Étudiant</DialogTitle>
+          </DialogHeader>
+          {selectedStudent && (
+            <StudentDetails 
+              student={selectedStudent} 
+              onClose={() => {
+                setIsDetailsOpen(false);
+                setSelectedStudent(null);
+              }} 
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
