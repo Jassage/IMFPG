@@ -10,6 +10,9 @@ import { RetakesManager } from '../components/RetakesManager';
 import { useDemoData } from '../hooks/useDemoData';
 import { Separator } from '@/components/ui/separator';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from '@/components/ui/breadcrumb';
+import { Input } from '@/components/ui/input';
+import { Search, User } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -37,17 +40,17 @@ const Index = () => {
   const getPageTitle = () => {
     switch (activeTab) {
       case 'dashboard':
-        return 'Dashboard';
+        return 'Accueil';
       case 'students':
         return 'Gestion des Étudiants';
       case 'courses':
-        return 'Unités d\'Enseignement';
+        return 'Les cours';
       case 'grades':
         return 'Notes & Bulletins';
       case 'retakes':
-        return 'Gestion des Reprises';
+        return 'Catalogues';
       default:
-        return 'Dashboard';
+        return 'Accueil';
     }
   };
 
@@ -57,21 +60,38 @@ const Index = () => {
         <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
         
         <SidebarInset className="flex-1">
-          <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="font-medium">
-                    {getPageTitle()}
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+          <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 ujeph-header">
+            <SidebarTrigger className="-ml-1 text-white hover:bg-white/20" />
+            <Separator orientation="vertical" className="mr-2 h-4 bg-white/30" />
+            
+            <div className="flex-1 flex items-center justify-between">
+              <Breadcrumb>
+                <BreadcrumbList>
+                  <BreadcrumbItem>
+                    <BreadcrumbPage className="font-medium text-white">
+                      {getPageTitle()}
+                    </BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
+
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60 h-4 w-4" />
+                  <Input 
+                    placeholder="Search..." 
+                    className="pl-10 bg-white/20 border-white/30 text-white placeholder:text-white/60 focus:bg-white/30"
+                  />
+                </div>
+                <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                  <User className="h-4 w-4 mr-2" />
+                  Deshaun Marvin
+                </Button>
+              </div>
+            </div>
           </header>
           
-          <main className="flex-1 p-6">
+          <main className="flex-1 p-6 bg-gray-50">
             {renderContent()}
           </main>
         </SidebarInset>

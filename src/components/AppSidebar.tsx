@@ -5,7 +5,9 @@ import {
   BookOpen, 
   FileText, 
   RotateCcw,
-  GraduationCap 
+  GraduationCap,
+  Building2,
+  UserCog
 } from 'lucide-react';
 import {
   Sidebar,
@@ -27,11 +29,16 @@ interface AppSidebarProps {
 }
 
 const menuItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: Home },
+  { id: 'dashboard', label: 'Accueil', icon: Home },
   { id: 'students', label: 'Étudiants', icon: Users },
-  { id: 'courses', label: 'Unités d\'Enseignement', icon: BookOpen },
-  { id: 'grades', label: 'Notes & Bulletins', icon: FileText },
-  { id: 'retakes', label: 'Gestion des Reprises', icon: RotateCcw },
+  { id: 'courses', label: 'Les cours', icon: BookOpen },
+  { id: 'grades', label: 'Notes', icon: FileText },
+  { id: 'retakes', label: 'Catalogues', icon: RotateCcw },
+];
+
+const adminItems = [
+  { id: 'users', label: 'Utilisateurs', icon: UserCog },
+  { id: 'faculties', label: 'Les Facultés', icon: Building2 },
 ];
 
 export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
@@ -39,24 +46,24 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
   const isCollapsed = state === 'collapsed';
 
   return (
-    <Sidebar className="border-r">
-      <SidebarHeader className="p-4">
+    <Sidebar className="border-r bg-sidebar">
+      <SidebarHeader className="p-4 ujeph-header">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <GraduationCap className="h-4 w-4" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20 text-white">
+            <GraduationCap className="h-6 w-6" />
           </div>
           {!isCollapsed && (
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold">SGU</span>
-              <span className="text-xs text-muted-foreground">Système de Gestion</span>
+            <div className="flex flex-col text-white">
+              <span className="text-lg font-bold">UJEPH</span>
+              <span className="text-xs opacity-90">Université de Jacmel</span>
             </div>
           )}
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="bg-sidebar">
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Navigation Principale</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => {
@@ -68,7 +75,32 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
                       onClick={() => onTabChange(item.id)}
                       isActive={isActive}
                       tooltip={isCollapsed ? item.label : undefined}
-                      className="w-full justify-start"
+                      className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {!isCollapsed && <span>{item.label}</span>}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Administration</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {adminItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      onClick={() => onTabChange(item.id)}
+                      isActive={isActive}
+                      tooltip={isCollapsed ? item.label : undefined}
+                      className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     >
                       <Icon className="h-4 w-4" />
                       {!isCollapsed && <span>{item.label}</span>}
@@ -81,10 +113,11 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 bg-sidebar border-t border-sidebar-border">
         {!isCollapsed && (
-          <div className="text-xs text-muted-foreground">
-            Année Académique 2024-2025
+          <div className="text-xs text-sidebar-foreground/70">
+            <div className="font-medium">Année Académique</div>
+            <div>2024-2025</div>
           </div>
         )}
       </SidebarFooter>
