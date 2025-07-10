@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { AppSidebar } from '../components/AppSidebar';
@@ -13,6 +12,8 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from '@/co
 import { Input } from '@/components/ui/input';
 import { Search, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { UsersManager } from '../components/UsersManager';
+import { FacultiesManager } from '../components/FacultiesManager';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -32,6 +33,10 @@ const Index = () => {
         return <GradesManager />;
       case 'retakes':
         return <RetakesManager />;
+      case 'users':
+        return <UsersManager />;
+      case 'faculties':
+        return <FacultiesManager />;
       default:
         return <Dashboard />;
     }
@@ -49,6 +54,10 @@ const Index = () => {
         return 'Notes & Bulletins';
       case 'retakes':
         return 'Catalogues';
+      case 'users':
+        return 'Gestion des Utilisateurs';
+      case 'faculties':
+        return 'Gestion des Facultés';
       default:
         return 'Accueil';
     }
