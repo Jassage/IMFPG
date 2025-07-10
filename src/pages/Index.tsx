@@ -18,9 +18,21 @@ type ActiveTab = 'dashboard' | 'students' | 'courses' | 'grades' | 'bulk-grades'
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [isSchedulerOpen, setIsSchedulerOpen] = useState(false);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   
   // Charger les données de démonstration
   useDemoData();
+
+  const handleOpenScheduler = (studentId?: string) => {
+    setSelectedStudentId(studentId || null);
+    setIsSchedulerOpen(true);
+  };
+
+  const handleCloseScheduler = () => {
+    setIsSchedulerOpen(false);
+    setSelectedStudentId(null);
+  };
 
   return (
     <div className="min-h-screen bg-background p-4">
@@ -74,7 +86,11 @@ const Index = () => {
             </TabsContent>
             
             <TabsContent value="scheduler">
-              <RetakeScheduler />
+              <RetakeScheduler 
+                isOpen={isSchedulerOpen}
+                onClose={handleCloseScheduler}
+                selectedStudentId={selectedStudentId}
+              />
             </TabsContent>
             
             <TabsContent value="users">
