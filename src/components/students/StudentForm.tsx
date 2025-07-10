@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,7 @@ interface StudentFormProps {
 }
 
 export const StudentForm = ({ student, onClose }: StudentFormProps) => {
-  const { addStudent, updateStudent } = useAcademicStore();
+  const { addStudent, updateStudent, faculties } = useAcademicStore();
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -122,20 +123,22 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="faculty">Faculté *</Label>
-          <Select value={formData.faculty} onValueChange={(value) => setFormData({...formData, faculty: value})}>
+          <Select value={formData.faculty || undefined} onValueChange={(value) => setFormData({...formData, faculty: value})}>
             <SelectTrigger>
               <SelectValue placeholder="Sélectionner une faculté" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Sciences Informatiques">Sciences Informatiques</SelectItem>
-              <SelectItem value="Sciences Agronomiques">Sciences Agronomiques</SelectItem>
-              <SelectItem value="Théologie">Théologie</SelectItem>
+              {faculties.map((faculty) => (
+                <SelectItem key={faculty.id} value={faculty.name}>
+                  {faculty.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="level">Niveau *</Label>
-          <Select value={formData.level} onValueChange={(value) => setFormData({...formData, level: value})}>
+          <Select value={formData.level || undefined} onValueChange={(value) => setFormData({...formData, level: value})}>
             <SelectTrigger>
               <SelectValue placeholder="Sélectionner un niveau" />
             </SelectTrigger>
