@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -61,7 +62,13 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
-				}
+				},
+				// UJEPH brand colors
+				'ujeph-purple': 'hsl(260 60% 60%)',
+				'ujeph-blue': 'hsl(220 70% 50%)',
+				'ujeph-green': 'hsl(142 71% 45%)',
+				'ujeph-orange': 'hsl(25 95% 53%)',
+				'ujeph-red': 'hsl(0 84% 60%)'
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

@@ -100,29 +100,50 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 }
 
 /* UJEPH specific styles */
 .ujeph-header {
-  background: linear-gradient(90deg, hsl(var(--ujeph-purple)), hsl(var(--ujeph-blue)));
+  background: linear-gradient(90deg, hsl(260 60% 60%), hsl(220 70% 50%));
 }
 
 .ujeph-card {
-  border-left: 4px solid hsl(var(--ujeph-purple));
+  border-left: 4px solid hsl(260 60% 60%);
 }
 
 .ujeph-badge-success {
-  background-color: hsl(var(--ujeph-green));
+  background-color: hsl(142 71% 45%);
   color: white;
 }
 
 .ujeph-badge-warning {
-  background-color: hsl(var(--ujeph-orange));
+  background-color: hsl(25 95% 53%);
   color: white;
 }
 
 .ujeph-badge-danger {
-  background-color: hsl(var(--ujeph-red));
+  background-color: hsl(0 84% 60%);
   color: white;
+}
+
+/* Fixes for common UI issues */
+.bg-white {
+  background-color: hsl(var(--background));
+}
+
+.text-black {
+  color: hsl(var(--foreground));
+}
+
+/* Ensure dropdowns have proper background */
+[data-radix-popper-content-wrapper] {
+  z-index: 50;
+}
+
+.dropdown-content {
+  background-color: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
 }
