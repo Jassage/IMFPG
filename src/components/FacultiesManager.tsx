@@ -22,57 +22,78 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-
-interface Faculty {
-  id: string;
-  name: string;
-  code: string;
-  description: string;
-  dean: string;
-  studentsCount: number;
-  coursesCount: number;
-  levels: string[];
-  status: 'Active' | 'Inactive';
-}
+import { Label } from '@/components/ui/label';
+import { useAcademicStore } from '../store/academicStore';
+import { Faculty } from '../types/academic';
 
 export const FacultiesManager = () => {
+  const { faculties, students, ues, addFaculty, updateFaculty, deleteFaculty } = useAcademicStore();
   const [searchTerm, setSearchTerm] = useState('');
-  const [isAddFacultyOpen, setIsAddFacultyOpen] = useState(false);
-  const [faculties] = useState<Faculty[]>([
-    {
-      id: '1',
-      name: 'Faculté des Sciences et Technologies',
-      code: 'FST',
-      description: 'Formation en sciences informatiques, mathématiques et technologies',
-      dean: 'Dr. Marie Dupont',
-      studentsCount: 245,
-      coursesCount: 32,
-      levels: ['L1', 'L2', 'L3', 'M1', 'M2'],
-      status: 'Active'
-    },
-    {
-      id: '2',
-      name: 'Faculté des Sciences Économiques',
-      code: 'FSE',
-      description: 'Formation en économie, gestion et commerce',
-      dean: 'Dr. Jean Pierre',
-      studentsCount: 189,
-      coursesCount: 28,
-      levels: ['L1', 'L2', 'L3', 'M1'],
-      status: 'Active'
-    },
-    {
-      id: '3',
-      name: 'Faculté de Droit',
-      code: 'FD',
-      description: 'Formation juridique et sciences politiques',
-      dean: 'Dr. Sophie Martin',
-      studentsCount: 156,
-      coursesCount: 24,
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedFaculty, setSelectedFaculty] = useState<Faculty | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    code: '',
+    description: '',
+    dean: '',
+    levels: ['L1', 'L2', 'L3'],
+    status: 'Active' as Faculty['status']
+  });
+
+  const handleSubmit = () => {
+    if (formData.name && formData.code && formData.dean) {
+      const studentsCount = students.filter(s => s.faculty === formData.name).length;
+      const coursesCount = ues.filter(ue => ue.faculty === formData.name).length;
+      
+      const facultyData: Faculty = {
+        id: selectedFaculty?.id || crypto.randomUUID(),
+        ...formData,
+        studentsCount,
+        coursesCount,
+        createdAt: selectedFaculty?.createdAt || new Date().toISOString()
+      };
+      
+      if (selectedFaculty) {
+        updateFaculty(selectedFaculty.id, facultyData);
+      } else {
+        addFaculty(facultyData);
+      }
+      
+      setIsFormOpen(false);
+      resetForm();
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      code: '',
+      description: '',
+      dean: '',
       levels: ['L1', 'L2', 'L3'],
       status: 'Active'
+    });
+    setSelectedFaculty(null);
+  };
+
+  const handleEdit = (faculty: Faculty) => {
+    setSelectedFaculty(faculty);
+    setFormData({
+      name: faculty.name,
+      code: faculty.code,
+      description: faculty.description,
+      dean: faculty.dean,
+      levels: faculty.levels,
+      status: faculty.status
+    });
+    setIsFormOpen(true);
+  };
+
+  const handleDelete = (facultyId: string) => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cette faculté ?')) {
+      deleteFaculty(facultyId);
     }
-  ]);
+  };
 
   const filteredFaculties = faculties.filter(faculty =>
     faculty.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -89,29 +110,60 @@ export const FacultiesManager = () => {
           </p>
         </div>
         
-        <Dialog open={isAddFacultyOpen} onOpenChange={setIsAddFacultyOpen}>
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90">
+            <Button className="bg-primary hover:bg-primary/90" onClick={resetForm}>
               <Plus className="h-4 w-4 mr-2" />
               Nouvelle Faculté
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Ajouter une faculté</DialogTitle>
+              <DialogTitle>
+                {selectedFaculty ? 'Modifier Faculté' : 'Ajouter une faculté'}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <Input placeholder="Nom de la faculté" />
-                <Input placeholder="Code (ex: FST)" />
+                <div className="space-y-2">
+                  <Label>Nom de la faculté</Label>
+                  <Input 
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    placeholder="Nom de la faculté" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Code</Label>
+                  <Input 
+                    value={formData.code}
+                    onChange={(e) => setFormData({...formData, code: e.target.value})}
+                    placeholder="Code (ex: FST)" 
+                  />
+                </div>
               </div>
-              <Input placeholder="Doyen" />
-              <Textarea placeholder="Description" rows={3} />
+              <div className="space-y-2">
+                <Label>Doyen</Label>
+                <Input 
+                  value={formData.dean}
+                  onChange={(e) => setFormData({...formData, dean: e.target.value})}
+                  placeholder="Doyen" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea 
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  placeholder="Description" 
+                  rows={3} 
+                />
+              </div>
               <div className="flex gap-2">
-                <Button className="flex-1" onClick={() => setIsAddFacultyOpen(false)}>
-                  Ajouter
+                <Button className="flex-1" onClick={handleSubmit}>
+                  {selectedFaculty ? 'Modifier' : 'Ajouter'}
                 </Button>
-                <Button variant="outline" onClick={() => setIsAddFacultyOpen(false)}>
+                <Button variant="outline" onClick={() => setIsFormOpen(false)}>
                   Annuler
                 </Button>
               </div>
@@ -142,10 +194,10 @@ export const FacultiesManager = () => {
                   <Badge variant="outline" className="w-fit">{faculty.code}</Badge>
                 </div>
                 <div className="flex space-x-1">
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" onClick={() => handleEdit(faculty)}>
                     <Edit className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(faculty.id)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -204,6 +256,13 @@ export const FacultiesManager = () => {
             </CardContent>
           </Card>
         ))}
+        
+        {filteredFaculties.length === 0 && (
+          <div className="col-span-full text-center py-8 text-muted-foreground">
+            <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>Aucune faculté trouvée</p>
+          </div>
+        )}
       </div>
     </div>
   );

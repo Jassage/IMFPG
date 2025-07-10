@@ -8,13 +8,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Search, 
   Plus, 
-  UserCog, 
   Edit, 
   Trash2,
-  Shield,
-  User,
   Mail,
-  Phone
+  Phone,
+  UserCheck
 } from 'lucide-react';
 import {
   Dialog,
@@ -30,57 +28,74 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  role: 'Admin' | 'Professeur' | 'Secrétaire' | 'Directeur';
-  status: 'Actif' | 'Inactif';
-  lastLogin: string;
-  avatar?: string;
-}
+import { Label } from '@/components/ui/label';
+import { useAcademicStore } from '../store/academicStore';
+import { User } from '../types/academic';
 
 export const UsersManager = () => {
+  const { users, addUser, updateUser, deleteUser } = useAcademicStore();
   const [searchTerm, setSearchTerm] = useState('');
-  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [users] = useState<User[]>([
-    {
-      id: '1',
-      firstName: 'Marie',
-      lastName: 'Dupont',
-      email: 'marie.dupont@ujeph.edu.ht',
-      phone: '+509 3456 7890',
-      role: 'Admin',
-      status: 'Actif',
-      lastLogin: '2024-01-15',
-      avatar: ''
-    },
-    {
-      id: '2',
-      firstName: 'Jean',
-      lastName: 'Pierre',
-      email: 'jean.pierre@ujeph.edu.ht',
-      phone: '+509 3456 7891',
-      role: 'Professeur',
-      status: 'Actif',
-      lastLogin: '2024-01-14',
-      avatar: ''
-    },
-    {
-      id: '3',
-      firstName: 'Sophie',
-      lastName: 'Martin',
-      email: 'sophie.martin@ujeph.edu.ht',
-      phone: '+509 3456 7892',
-      role: 'Secrétaire',
-      status: 'Actif',
-      lastLogin: '2024-01-13',
-      avatar: ''
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    role: 'Professeur' as User['role'],
+    status: 'Actif' as User['status']
+  });
+
+  const handleSubmit = () => {
+    if (formData.firstName && formData.lastName && formData.email) {
+      const userData: User = {
+        id: selectedUser?.id || crypto.randomUUID(),
+        ...formData,
+        lastLogin: new Date().toISOString().split('T')[0],
+        createdAt: selectedUser?.createdAt || new Date().toISOString()
+      };
+      
+      if (selectedUser) {
+        updateUser(selectedUser.id, userData);
+      } else {
+        addUser(userData);
+      }
+      
+      setIsFormOpen(false);
+      resetForm();
     }
-  ]);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      role: 'Professeur',
+      status: 'Actif'
+    });
+    setSelectedUser(null);
+  };
+
+  const handleEdit = (user: User) => {
+    setSelectedUser(user);
+    setFormData({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      status: user.status
+    });
+    setIsFormOpen(true);
+  };
+
+  const handleDelete = (userId: string) => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
+      deleteUser(userId);
+    }
+  };
 
   const filteredUsers = users.filter(user =>
     `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -106,40 +121,74 @@ export const UsersManager = () => {
           </p>
         </div>
         
-        <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90">
+            <Button className="bg-primary hover:bg-primary/90" onClick={resetForm}>
               <Plus className="h-4 w-4 mr-2" />
               Nouvel Utilisateur
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Ajouter un utilisateur</DialogTitle>
+              <DialogTitle>
+                {selectedUser ? 'Modifier Utilisateur' : 'Ajouter un utilisateur'}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <Input placeholder="Prénom" />
-                <Input placeholder="Nom" />
+                <div className="space-y-2">
+                  <Label>Prénom</Label>
+                  <Input 
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+                    placeholder="Prénom" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nom</Label>
+                  <Input 
+                    value={formData.lastName}
+                    onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+                    placeholder="Nom" 
+                  />
+                </div>
               </div>
-              <Input placeholder="Email" type="email" />
-              <Input placeholder="Téléphone" />
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Rôle" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="professeur">Professeur</SelectItem>
-                  <SelectItem value="secretaire">Secrétaire</SelectItem>
-                  <SelectItem value="directeur">Directeur</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input 
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  placeholder="Email" 
+                  type="email" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Téléphone</Label>
+                <Input 
+                  value={formData.phone}
+                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  placeholder="Téléphone" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Rôle</Label>
+                <Select value={formData.role} onValueChange={(value: User['role']) => setFormData({...formData, role: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Rôle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Admin">Admin</SelectItem>
+                    <SelectItem value="Professeur">Professeur</SelectItem>
+                    <SelectItem value="Secrétaire">Secrétaire</SelectItem>
+                    <SelectItem value="Directeur">Directeur</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex gap-2">
-                <Button className="flex-1" onClick={() => setIsAddUserOpen(false)}>
-                  Ajouter
+                <Button className="flex-1" onClick={handleSubmit}>
+                  {selectedUser ? 'Modifier' : 'Ajouter'}
                 </Button>
-                <Button variant="outline" onClick={() => setIsAddUserOpen(false)}>
+                <Button variant="outline" onClick={() => setIsFormOpen(false)}>
                   Annuler
                 </Button>
               </div>
@@ -178,10 +227,10 @@ export const UsersManager = () => {
                   </div>
                 </div>
                 <div className="flex space-x-1">
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
                     <Edit className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(user.id)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -207,6 +256,13 @@ export const UsersManager = () => {
             </CardContent>
           </Card>
         ))}
+        
+        {filteredUsers.length === 0 && (
+          <div className="col-span-full text-center py-8 text-muted-foreground">
+            <UserCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>Aucun utilisateur trouvé</p>
+          </div>
+        )}
       </div>
     </div>
   );

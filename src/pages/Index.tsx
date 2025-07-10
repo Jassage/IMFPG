@@ -14,6 +14,7 @@ import { Search, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UsersManager } from '../components/UsersManager';
 import { FacultiesManager } from '../components/FacultiesManager';
+import { GuardiansManager } from '../components/GuardiansManager';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -37,6 +38,8 @@ const Index = () => {
         return <UsersManager />;
       case 'faculties':
         return <FacultiesManager />;
+      case 'guardians':
+        return <GuardiansManager />;
       default:
         return <Dashboard />;
     }
@@ -58,6 +61,8 @@ const Index = () => {
         return 'Gestion des Utilisateurs';
       case 'faculties':
         return 'Gestion des Facultés';
+      case 'guardians':
+        return 'Gestion des Tuteurs';
       default:
         return 'Accueil';
     }

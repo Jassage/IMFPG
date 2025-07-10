@@ -64,3 +64,29 @@ export interface Retake {
   scheduledSemester: string;
   status: 'Programmé' | 'En cours' | 'Terminé';
 }
+
+export interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  role: 'Admin' | 'Professeur' | 'Secrétaire' | 'Directeur';
+  status: 'Actif' | 'Inactif';
+  lastLogin: string;
+  avatar?: string;
+  createdAt: string;
+}
+
+export interface Faculty {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+  dean: string;
+  studentsCount: number;
+  coursesCount: number;
+  levels: string[];
+  status: 'Active' | 'Inactive';
+  createdAt: string;
+}
