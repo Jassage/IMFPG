@@ -37,21 +37,21 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
   useEffect(() => {
     if (student) {
       setFormData({
-        firstName: student.firstName,
-        lastName: student.lastName,
-        studentId: student.studentId,
-        email: student.email,
-        phone: student.phone,
-        dateOfBirth: student.dateOfBirth,
-        placeOfBirth: student.placeOfBirth,
-        address: student.address,
+        firstName: student.firstName || '',
+        lastName: student.lastName || '',
+        studentId: student.studentId || '',
+        email: student.email || '',
+        phone: student.phone || '',
+        dateOfBirth: student.dateOfBirth || '',
+        placeOfBirth: student.placeOfBirth || '',
+        address: student.address || '',
         bloodGroup: student.bloodGroup || '',
         allergies: student.allergies || '',
         disabilities: student.disabilities || '',
-        faculty: student.faculty,
-        level: student.level,
-        academicYear: student.academicYear,
-        status: student.status
+        faculty: student.faculty || '',
+        level: student.level || '',
+        academicYear: student.academicYear || '2024-2025',
+        status: student.status || 'Active'
       });
     }
   }, [student]);
@@ -123,12 +123,12 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="faculty">Faculté *</Label>
-          <Select value={formData.faculty || undefined} onValueChange={(value) => setFormData({...formData, faculty: value})}>
+          <Select value={formData.faculty || undefined} onValueChange={(value) => setFormData({...formData, faculty: value || ''})}>
             <SelectTrigger>
               <SelectValue placeholder="Sélectionner une faculté" />
             </SelectTrigger>
             <SelectContent>
-              {faculties.map((faculty) => (
+              {faculties.filter(faculty => faculty.name.trim() !== '').map((faculty) => (
                 <SelectItem key={faculty.id} value={faculty.name}>
                   {faculty.name}
                 </SelectItem>
@@ -138,7 +138,7 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
         </div>
         <div className="space-y-2">
           <Label htmlFor="level">Niveau *</Label>
-          <Select value={formData.level || undefined} onValueChange={(value) => setFormData({...formData, level: value})}>
+          <Select value={formData.level || undefined} onValueChange={(value) => setFormData({...formData, level: value || ''})}>
             <SelectTrigger>
               <SelectValue placeholder="Sélectionner un niveau" />
             </SelectTrigger>
