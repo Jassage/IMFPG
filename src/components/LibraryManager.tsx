@@ -125,7 +125,15 @@ export const LibraryManager = () => {
   };
 
   const handleLoanEdit = (loan: BookLoan) => {
-    setLoanFormData(loan);
+    setLoanFormData({
+      bookId: loan.bookId,
+      studentId: loan.studentId,
+      loanDate: loan.loanDate,
+      dueDate: loan.dueDate,
+      status: loan.status,
+      renewalCount: loan.renewalCount,
+      fine: loan.fine || 0
+    });
     setEditingLoan(loan);
     setShowLoanForm(true);
   };
