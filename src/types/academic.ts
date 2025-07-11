@@ -90,3 +90,76 @@ export interface Faculty {
   status: 'Active' | 'Inactive';
   createdAt: string;
 }
+
+// Nouvelles interfaces pour les fonctionnalités ajoutées
+export interface Schedule {
+  id: string;
+  ueId: string;
+  professorId: string;
+  classroom: string;
+  dayOfWeek: number; // 0 = Dimanche, 1 = Lundi, etc.
+  startTime: string;
+  endTime: string;
+  faculty: string;
+  level: string;
+  semester: 'S1' | 'S2';
+  academicYear: string;
+}
+
+export interface Attendance {
+  id: string;
+  studentId: string;
+  scheduleId: string;
+  date: string;
+  status: 'Présent' | 'Absent' | 'Retard' | 'Excusé';
+  notes?: string;
+}
+
+export interface Payment {
+  id: string;
+  studentId: string;
+  amount: number;
+  type: 'Inscription' | 'Scolarité' | 'Examen' | 'Certificat' | 'Autre';
+  status: 'Payé' | 'En attente' | 'Retard' | 'Annulé';
+  dueDate: string;
+  paidDate?: string;
+  description: string;
+  academicYear: string;
+}
+
+export interface Book {
+  id: string;
+  title: string;
+  author: string;
+  isbn: string;
+  category: string;
+  faculty: string;
+  quantity: number;
+  available: number;
+  location: string;
+  status: 'Disponible' | 'Épuisé' | 'En commande';
+}
+
+export interface BookLoan {
+  id: string;
+  bookId: string;
+  studentId: string;
+  loanDate: string;
+  dueDate: string;
+  returnDate?: string;
+  status: 'En cours' | 'Retourné' | 'En retard' | 'Perdu';
+  renewalCount: number;
+  fine?: number;
+}
+
+export interface Transcript {
+  id: string;
+  studentId: string;
+  semester: string;
+  academicYear: string;
+  grades: Grade[];
+  gpa: number;
+  totalCredits: number;
+  creditsEarned: number;
+  generatedDate: string;
+}

@@ -13,8 +13,12 @@ import { UsersManager } from "../components/UsersManager";
 import { FacultiesManager } from "../components/FacultiesManager";
 import { GuardiansManager } from "../components/GuardiansManager";
 import { Dashboard } from "../components/Dashboard";
+import { ScheduleManager } from "../components/ScheduleManager";
+import { AttendanceManager } from "../components/AttendanceManager";
+import { PaymentManager } from "../components/PaymentManager";
+import { LibraryManager } from "../components/LibraryManager";
 
-type ActiveTab = 'dashboard' | 'students' | 'courses' | 'grades' | 'bulk-grades' | 'retakes' | 'scheduler' | 'users' | 'faculties' | 'guardians';
+type ActiveTab = 'dashboard' | 'students' | 'courses' | 'grades' | 'bulk-grades' | 'retakes' | 'scheduler' | 'users' | 'faculties' | 'guardians' | 'schedules' | 'attendance' | 'payments' | 'library';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -46,6 +50,14 @@ const Index = () => {
         return <GradesBulkEditor />;
       case 'retakes':
         return <RetakesManager />;
+      case 'schedules':
+        return <ScheduleManager />;
+      case 'attendance':
+        return <AttendanceManager />;
+      case 'payments':
+        return <PaymentManager />;
+      case 'library':
+        return <LibraryManager />;
       case 'users':
         return <UsersManager />;
       case 'faculties':

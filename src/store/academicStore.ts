@@ -1,6 +1,5 @@
-
 import { create } from 'zustand';
-import { Student, UE, Grade, Retake, Guardian, User, Faculty } from '../types/academic';
+import { Student, UE, Grade, Retake, Guardian, User, Faculty, Schedule, Attendance, Payment, Book, BookLoan, Transcript } from '../types/academic';
 
 interface AcademicStore {
   students: Student[];
@@ -10,6 +9,12 @@ interface AcademicStore {
   guardians: Guardian[];
   users: User[];
   faculties: Faculty[];
+  schedules: Schedule[];
+  attendances: Attendance[];
+  payments: Payment[];
+  books: Book[];
+  bookLoans: BookLoan[];
+  transcripts: Transcript[];
   
   // Students
   addStudent: (student: Student) => void;
@@ -51,6 +56,37 @@ interface AcademicStore {
   updateFaculty: (id: string, faculty: Partial<Faculty>) => void;
   deleteFaculty: (id: string) => void;
   getFaculties: () => Faculty[];
+
+  // Schedules
+  addSchedule: (schedule: Schedule) => void;
+  updateSchedule: (id: string, schedule: Partial<Schedule>) => void;
+  deleteSchedule: (id: string) => void;
+  getSchedulesByLevel: (faculty: string, level: string) => Schedule[];
+
+  // Attendance
+  addAttendance: (attendance: Attendance) => void;
+  updateAttendance: (id: string, attendance: Partial<Attendance>) => void;
+  getStudentAttendance: (studentId: string) => Attendance[];
+
+  // Payments
+  addPayment: (payment: Payment) => void;
+  updatePayment: (id: string, payment: Partial<Payment>) => void;
+  getStudentPayments: (studentId: string) => Payment[];
+
+  // Books
+  addBook: (book: Book) => void;
+  updateBook: (id: string, book: Partial<Book>) => void;
+  deleteBook: (id: string) => void;
+  getBooks: () => Book[];
+
+  // Book Loans
+  addBookLoan: (loan: BookLoan) => void;
+  updateBookLoan: (id: string, loan: Partial<BookLoan>) => void;
+  getStudentLoans: (studentId: string) => BookLoan[];
+
+  // Transcripts
+  generateTranscript: (studentId: string, semester: string, academicYear: string) => Transcript;
+  getStudentTranscripts: (studentId: string) => Transcript[];
 }
 
 export const useAcademicStore = create<AcademicStore>((set, get) => ({
@@ -61,6 +97,12 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   guardians: [],
   users: [],
   faculties: [],
+  schedules: [],
+  attendances: [],
+  payments: [],
+  books: [],
+  bookLoans: [],
+  transcripts: [],
   
   addStudent: (student) => 
     set((state) => ({ students: [...state.students, student] })),
@@ -176,4 +218,115 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
     })),
     
   getFaculties: () => get().faculties,
+
+  // Schedules
+  addSchedule: (schedule) =>
+    set((state) => ({ schedules: [...state.schedules, schedule] })),
+    
+  updateSchedule: (id, updates) =>
+    set((state) => ({
+      schedules: state.schedules.map(s => s.id === id ? { ...s, ...updates } : s)
+    })),
+    
+  deleteSchedule: (id) =>
+    set((state) => ({
+      schedules: state.schedules.filter(s => s.id !== id)
+    })),
+    
+  getSchedulesByLevel: (faculty, level) =>
+    get().schedules.filter(s => s.faculty === faculty && s.level === level),
+
+  // Attendance
+  addAttendance: (attendance) =>
+    set((state) => ({ attendances: [...state.attendances, attendance] })),
+    
+  updateAttendance: (id, updates) =>
+    set((state) => ({
+      attendances: state.attendances.map(a => a.id === id ? { ...a, ...updates } : a)
+    })),
+    
+  getStudentAttendance: (studentId) =>
+    get().attendances.filter(a => a.studentId === studentId),
+
+  // Payments
+  addPayment: (payment) =>
+    set((state) => ({ payments: [...state.payments, payment] })),
+    
+  updatePayment: (id, updates) =>
+    set((state) => ({
+      payments: state.payments.map(p => p.id === id ? { ...p, ...updates } : p)
+    })),
+    
+  getStudentPayments: (studentId) =>
+    get().payments.filter(p => p.studentId === studentId),
+
+  // Books
+  addBook: (book) =>
+    set((state) => ({ books: [...state.books, book] })),
+    
+  updateBook: (id, updates) =>
+    set((state) => ({
+      books: state.books.map(b => b.id === id ? { ...b, ...updates } : b)
+    })),
+    
+  deleteBook: (id) =>
+    set((state) => ({
+      books: state.books.filter(b => b.id !== id)
+    })),
+    
+  getBooks: () => get().books,
+
+  // Book Loans
+  addBookLoan: (loan) =>
+    set((state) => ({ bookLoans: [...state.bookLoans, loan] })),
+    
+  updateBookLoan: (id, updates) =>
+    set((state) => ({
+      bookLoans: state.bookLoans.map(l => l.id === id ? { ...l, ...updates } : l)
+    })),
+    
+  getStudentLoans: (studentId) =>
+    get().bookLoans.filter(l => l.studentId === studentId),
+
+  // Transcripts
+  generateTranscript: (studentId, semester, academicYear) => {
+    const student = get().getStudent(studentId);
+    const grades = get().grades.filter(g => 
+      g.studentId === studentId && 
+      g.semester === semester && 
+      g.academicYear === academicYear
+    );
+    
+    const totalCredits = grades.reduce((sum, grade) => {
+      const ue = get().ues.find(u => u.id === grade.ueId);
+      return sum + (ue?.credits || 0);
+    }, 0);
+    
+    const creditsEarned = grades.reduce((sum, grade) => {
+      const ue = get().ues.find(u => u.id === grade.ueId);
+      return sum + (grade.status === 'Validé' ? (ue?.credits || 0) : 0);
+    }, 0);
+    
+    const gpa = grades.length > 0 
+      ? grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length 
+      : 0;
+    
+    const transcript: Transcript = {
+      id: `transcript_${Date.now()}`,
+      studentId,
+      semester,
+      academicYear,
+      grades,
+      gpa: Math.round(gpa * 100) / 100,
+      totalCredits,
+      creditsEarned,
+      generatedDate: new Date().toISOString()
+    };
+    
+    set((state) => ({ transcripts: [...state.transcripts, transcript] }));
+    return transcript;
+  },
+  
+  getStudentTranscripts: (studentId) =>
+    get().transcripts.filter(t => t.studentId === studentId),
 }));

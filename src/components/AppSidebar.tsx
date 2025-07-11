@@ -7,7 +7,11 @@ import {
   RotateCcw,
   GraduationCap,
   Building2,
-  UserCog
+  UserCog,
+  Calendar,
+  UserCheck,
+  DollarSign,
+  Book
 } from 'lucide-react';
 import {
   Sidebar,
@@ -34,6 +38,13 @@ const menuItems = [
   { id: 'courses', label: 'Les cours', icon: BookOpen },
   { id: 'grades', label: 'Notes', icon: FileText },
   { id: 'retakes', label: 'Catalogues', icon: RotateCcw },
+];
+
+const academicItems = [
+  { id: 'schedules', label: 'Emplois du temps', icon: Calendar },
+  { id: 'attendance', label: 'Présences', icon: UserCheck },
+  { id: 'payments', label: 'Paiements', icon: DollarSign },
+  { id: 'library', label: 'Bibliothèque', icon: Book },
 ];
 
 const adminItems = [
@@ -67,6 +78,31 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      onClick={() => onTabChange(item.id)}
+                      isActive={isActive}
+                      tooltip={isCollapsed ? item.label : undefined}
+                      className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {!isCollapsed && <span>{item.label}</span>}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Gestion Académique</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {academicItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
                 return (
