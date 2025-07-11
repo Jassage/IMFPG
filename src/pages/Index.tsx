@@ -1,6 +1,7 @@
 
 import React, { useState } from "react";
-import { useAcademicStore } from "../store/academicStore";
+import { SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
+import { AppSidebar } from "../components/AppSidebar";
 import { useDemoData } from "../hooks/useDemoData";
 import { StudentsManager } from "../components/StudentsManager";
 import { CoursesManager } from "../components/CoursesManager";
@@ -12,7 +13,6 @@ import { UsersManager } from "../components/UsersManager";
 import { FacultiesManager } from "../components/FacultiesManager";
 import { GuardiansManager } from "../components/GuardiansManager";
 import { Dashboard } from "../components/Dashboard";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type ActiveTab = 'dashboard' | 'students' | 'courses' | 'grades' | 'bulk-grades' | 'retakes' | 'scheduler' | 'users' | 'faculties' | 'guardians';
 
@@ -34,80 +34,60 @@ const Index = () => {
     setSelectedStudentId(null);
   };
 
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <Dashboard />;
+      case 'students':
+        return <StudentsManager />;
+      case 'courses':
+        return <CoursesManager />;
+      case 'grades':
+        return <GradesBulkEditor />;
+      case 'retakes':
+        return <RetakesManager />;
+      case 'users':
+        return <UsersManager />;
+      case 'faculties':
+        return <FacultiesManager />;
+      case 'guardians':
+        return <GuardiansManager />;
+      default:
+        return <Dashboard />;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">
-            Système de Gestion Universitaire
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Université Saint Joseph de Pétionville
-          </p>
-        </div>
-
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ActiveTab)}>
-          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-10">
-            <TabsTrigger value="dashboard">Tableau de Bord</TabsTrigger>
-            <TabsTrigger value="students">Étudiants</TabsTrigger>
-            <TabsTrigger value="courses">UE</TabsTrigger>
-            <TabsTrigger value="grades">Notes</TabsTrigger>
-            <TabsTrigger value="bulk-grades">Notes en Masse</TabsTrigger>
-            <TabsTrigger value="retakes">Rattrapages</TabsTrigger>
-            <TabsTrigger value="scheduler">Planification</TabsTrigger>
-            <TabsTrigger value="users">Utilisateurs</TabsTrigger>
-            <TabsTrigger value="faculties">Facultés</TabsTrigger>
-            <TabsTrigger value="guardians">Tuteurs</TabsTrigger>
-          </TabsList>
-
-          <div className="mt-6">
-            <TabsContent value="dashboard">
-              <Dashboard />
-            </TabsContent>
-            
-            <TabsContent value="students">
-              <StudentsManager />
-            </TabsContent>
-            
-            <TabsContent value="courses">
-              <CoursesManager />
-            </TabsContent>
-            
-            <TabsContent value="grades">
-              <GradesManager />
-            </TabsContent>
-
-            <TabsContent value="bulk-grades">
-              <GradesBulkEditor />
-            </TabsContent>
-            
-            <TabsContent value="retakes">
-              <RetakesManager />
-            </TabsContent>
-            
-            <TabsContent value="scheduler">
-              <RetakeScheduler 
-                isOpen={isSchedulerOpen}
-                onClose={handleCloseScheduler}
-                selectedStudentId={selectedStudentId}
-              />
-            </TabsContent>
-            
-            <TabsContent value="users">
-              <UsersManager />
-            </TabsContent>
-            
-            <TabsContent value="faculties">
-              <FacultiesManager />
-            </TabsContent>
-            
-            <TabsContent value="guardians">
-              <GuardiansManager />
-            </TabsContent>
+    <>
+      <AppSidebar activeTab={activeTab} onTabChange={(tab) => setActiveTab(tab as ActiveTab)} />
+      
+      <SidebarInset>
+        {/* Header */}
+        <header className="flex h-16 shrink-0 items-center gap-2 px-4 border-b bg-background">
+          <SidebarTrigger className="-ml-1" />
+          <div className="flex flex-col">
+            <h1 className="text-lg font-semibold text-foreground">
+              Système de Gestion Universitaire
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Université Saint Joseph de Pétionville
+            </p>
           </div>
-        </Tabs>
-      </div>
-    </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-auto p-4">
+          {renderContent()}
+        </main>
+      </SidebarInset>
+
+      {/* Modal components */}
+      <RetakeScheduler 
+        isOpen={isSchedulerOpen}
+        onClose={handleCloseScheduler}
+        selectedStudentId={selectedStudentId}
+      />
+    </>
   );
 };
 
