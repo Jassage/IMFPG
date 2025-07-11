@@ -63,12 +63,12 @@ export default {
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
 				},
-				// UJEPH brand colors
-				'ujeph-purple': 'hsl(260 60% 60%)',
-				'ujeph-blue': 'hsl(220 70% 50%)',
-				'ujeph-green': 'hsl(142 71% 45%)',
-				'ujeph-orange': 'hsl(25 95% 53%)',
-				'ujeph-red': 'hsl(0 84% 60%)'
+				// UJEPH brand colors using CSS variables for consistency
+				'ujeph-purple': 'hsl(var(--ujeph-purple))',
+				'ujeph-blue': 'hsl(var(--ujeph-blue))',
+				'ujeph-green': 'hsl(var(--ujeph-green))',
+				'ujeph-orange': 'hsl(var(--ujeph-orange))',
+				'ujeph-red': 'hsl(var(--ujeph-red))'
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

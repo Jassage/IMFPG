@@ -90,6 +90,12 @@
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 260 60% 60%;
+
+    --ujeph-purple: 260 60% 60%;
+    --ujeph-blue: 220 70% 50%;
+    --ujeph-green: 142 71% 45%;
+    --ujeph-orange: 25 95% 53%;
+    --ujeph-red: 0 84% 60%;
   }
 }
 
@@ -100,50 +106,73 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
 /* UJEPH specific styles */
 .ujeph-header {
-  background: linear-gradient(90deg, hsl(260 60% 60%), hsl(220 70% 50%));
+  background: linear-gradient(90deg, hsl(var(--ujeph-purple)), hsl(var(--ujeph-blue)));
 }
 
 .ujeph-card {
-  border-left: 4px solid hsl(260 60% 60%);
+  border-left: 4px solid hsl(var(--ujeph-purple));
 }
 
 .ujeph-badge-success {
-  background-color: hsl(142 71% 45%);
+  background-color: hsl(var(--ujeph-green));
   color: white;
 }
 
 .ujeph-badge-warning {
-  background-color: hsl(25 95% 53%);
+  background-color: hsl(var(--ujeph-orange));
   color: white;
 }
 
 .ujeph-badge-danger {
-  background-color: hsl(0 84% 60%);
+  background-color: hsl(var(--ujeph-red));
   color: white;
 }
 
-/* Fixes for common UI issues */
-.bg-white {
+/* Ensure consistent backgrounds and text colors */
+.bg-background {
   background-color: hsl(var(--background));
 }
 
-.text-black {
+.text-foreground {
   color: hsl(var(--foreground));
 }
 
-/* Ensure dropdowns have proper background */
+/* Ensure dropdowns have proper styling */
 [data-radix-popper-content-wrapper] {
   z-index: 50;
 }
 
-.dropdown-content {
+.dropdown-content,
+[data-radix-dropdown-menu-content],
+[data-radix-select-content] {
   background-color: hsl(var(--popover));
   border: 1px solid hsl(var(--border));
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  border-radius: calc(var(--radius) - 2px);
+}
+
+/* Card styling consistency */
+.card {
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border: 1px solid hsl(var(--border));
+}
+
+/* Button consistency */
+.btn-primary {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.btn-secondary {
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
 }
