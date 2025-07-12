@@ -11,7 +11,13 @@ import {
   Calendar,
   UserCheck,
   DollarSign,
-  Book
+  Book,
+  MessageSquare,
+  CalendarDays,
+  Megaphone,
+  BarChart3,
+  Award,
+  MapPin
 } from 'lucide-react';
 import {
   Sidebar,
@@ -45,6 +51,18 @@ const academicItems = [
   { id: 'attendance', label: 'Présences', icon: UserCheck },
   { id: 'payments', label: 'Paiements', icon: DollarSign },
   { id: 'library', label: 'Bibliothèque', icon: Book },
+];
+
+const communicationItems = [
+  { id: 'messaging', label: 'Messagerie', icon: MessageSquare },
+  { id: 'events', label: 'Événements', icon: CalendarDays },
+  { id: 'announcements', label: 'Annonces', icon: Megaphone },
+];
+
+const analyticsItems = [
+  { id: 'analytics', label: 'Analyses', icon: BarChart3 },
+  { id: 'scholarships', label: 'Bourses', icon: Award },
+  { id: 'rooms', label: 'Salles', icon: MapPin },
 ];
 
 const adminItems = [
@@ -103,6 +121,56 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {academicItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      onClick={() => onTabChange(item.id)}
+                      isActive={isActive}
+                      tooltip={isCollapsed ? item.label : undefined}
+                      className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {!isCollapsed && <span>{item.label}</span>}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Communication</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {communicationItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      onClick={() => onTabChange(item.id)}
+                      isActive={isActive}
+                      tooltip={isCollapsed ? item.label : undefined}
+                      className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {!isCollapsed && <span>{item.label}</span>}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Analyses & Gestion</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {analyticsItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
                 return (

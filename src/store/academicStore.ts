@@ -1,5 +1,9 @@
 import { create } from 'zustand';
-import { Student, UE, Grade, Retake, Guardian, User, Faculty, Schedule, Attendance, Payment, Book, BookLoan, Transcript } from '../types/academic';
+import { 
+  Student, UE, Grade, Retake, Guardian, User, Faculty, Schedule, Attendance, Payment, 
+  Book, BookLoan, Transcript, Message, Event, Announcement, Scholarship, ScholarshipApplication,
+  Room, RoomReservation, Certificate, Analytics
+} from '../types/academic';
 
 interface AcademicStore {
   students: Student[];
@@ -16,77 +20,105 @@ interface AcademicStore {
   bookLoans: BookLoan[];
   transcripts: Transcript[];
   
-  // Students
+  messages: Message[];
+  events: Event[];
+  announcements: Announcement[];
+  scholarships: Scholarship[];
+  scholarshipApplications: ScholarshipApplication[];
+  rooms: Room[];
+  roomReservations: RoomReservation[];
+  certificates: Certificate[];
+  analytics: Analytics[];
+  
   addStudent: (student: Student) => void;
   updateStudent: (id: string, student: Partial<Student>) => void;
   deleteStudent: (id: string) => void;
   getStudent: (id: string) => Student | undefined;
   
-  // UEs
   addUE: (ue: UE) => void;
   updateUE: (id: string, ue: Partial<UE>) => void;
   deleteUE: (id: string) => void;
   getUEsByLevel: (faculty: string, level: string, semester: string) => UE[];
   
-  // Grades
   addGrade: (grade: Grade) => void;
   updateGrade: (id: string, grade: Partial<Grade>) => void;
   getStudentGrades: (studentId: string) => Grade[];
   updateGradeStatus: (gradeId: string, status: Grade['status']) => void;
   
-  // Retakes
   addRetake: (retake: Retake) => void;
   getStudentRetakes: (studentId: string) => Retake[];
   updateRetakeStatus: (retakeId: string, status: Retake['status'], retakeGrade?: number) => void;
   
-  // Guardians
   addGuardian: (guardian: Guardian) => void;
   updateGuardian: (id: string, guardian: Partial<Guardian>) => void;
   deleteGuardian: (id: string) => void;
   getStudentGuardians: (studentId: string) => Guardian[];
   
-  // Users
   addUser: (user: User) => void;
   updateUser: (id: string, user: Partial<User>) => void;
   deleteUser: (id: string) => void;
   getUsers: () => User[];
   
-  // Faculties
   addFaculty: (faculty: Faculty) => void;
   updateFaculty: (id: string, faculty: Partial<Faculty>) => void;
   deleteFaculty: (id: string) => void;
   getFaculties: () => Faculty[];
 
-  // Schedules
   addSchedule: (schedule: Schedule) => void;
   updateSchedule: (id: string, schedule: Partial<Schedule>) => void;
   deleteSchedule: (id: string) => void;
   getSchedulesByLevel: (faculty: string, level: string) => Schedule[];
 
-  // Attendance
   addAttendance: (attendance: Attendance) => void;
   updateAttendance: (id: string, attendance: Partial<Attendance>) => void;
   getStudentAttendance: (studentId: string) => Attendance[];
 
-  // Payments
   addPayment: (payment: Payment) => void;
   updatePayment: (id: string, payment: Partial<Payment>) => void;
   getStudentPayments: (studentId: string) => Payment[];
 
-  // Books
   addBook: (book: Book) => void;
   updateBook: (id: string, book: Partial<Book>) => void;
   deleteBook: (id: string) => void;
   getBooks: () => Book[];
 
-  // Book Loans
   addBookLoan: (loan: BookLoan) => void;
   updateBookLoan: (id: string, loan: Partial<BookLoan>) => void;
   getStudentLoans: (studentId: string) => BookLoan[];
 
-  // Transcripts
   generateTranscript: (studentId: string, semester: string, academicYear: string) => Transcript;
   getStudentTranscripts: (studentId: string) => Transcript[];
+
+  addMessage: (message: Message) => void;
+  markMessageAsRead: (messageId: string) => void;
+  getUnreadMessages: (userId: string) => Message[];
+  getUserMessages: (userId: string) => Message[];
+
+  addEvent: (event: Event) => void;
+  updateEvent: (id: string, event: Partial<Event>) => void;
+  deleteEvent: (id: string) => void;
+  getUpcomingEvents: () => Event[];
+
+  addAnnouncement: (announcement: Announcement) => void;
+  updateAnnouncement: (id: string, announcement: Partial<Announcement>) => void;
+  deleteAnnouncement: (id: string) => void;
+  getActiveAnnouncements: () => Announcement[];
+
+  addScholarship: (scholarship: Scholarship) => void;
+  updateScholarship: (id: string, scholarship: Partial<Scholarship>) => void;
+  addScholarshipApplication: (application: ScholarshipApplication) => void;
+  updateScholarshipApplication: (id: string, application: Partial<ScholarshipApplication>) => void;
+
+  addRoom: (room: Room) => void;
+  updateRoom: (id: string, room: Partial<Room>) => void;
+  addRoomReservation: (reservation: RoomReservation) => void;
+  getAvailableRooms: (startTime: string, endTime: string) => Room[];
+
+  generateCertificate: (studentId: string, type: Certificate['type'], title: string) => Certificate;
+  getCertificates: (studentId: string) => Certificate[];
+
+  generateAnalytics: (type: Analytics['type'], parameters: Record<string, any>) => Analytics;
+  getAnalytics: (type?: Analytics['type']) => Analytics[];
 }
 
 export const useAcademicStore = create<AcademicStore>((set, get) => ({
@@ -103,6 +135,16 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   books: [],
   bookLoans: [],
   transcripts: [],
+  
+  messages: [],
+  events: [],
+  announcements: [],
+  scholarships: [],
+  scholarshipApplications: [],
+  rooms: [],
+  roomReservations: [],
+  certificates: [],
+  analytics: [],
   
   addStudent: (student) => 
     set((state) => ({ students: [...state.students, student] })),
@@ -219,7 +261,6 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
     
   getFaculties: () => get().faculties,
 
-  // Schedules
   addSchedule: (schedule) =>
     set((state) => ({ schedules: [...state.schedules, schedule] })),
     
@@ -236,7 +277,6 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   getSchedulesByLevel: (faculty, level) =>
     get().schedules.filter(s => s.faculty === faculty && s.level === level),
 
-  // Attendance
   addAttendance: (attendance) =>
     set((state) => ({ attendances: [...state.attendances, attendance] })),
     
@@ -248,7 +288,6 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   getStudentAttendance: (studentId) =>
     get().attendances.filter(a => a.studentId === studentId),
 
-  // Payments
   addPayment: (payment) =>
     set((state) => ({ payments: [...state.payments, payment] })),
     
@@ -260,7 +299,6 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   getStudentPayments: (studentId) =>
     get().payments.filter(p => p.studentId === studentId),
 
-  // Books
   addBook: (book) =>
     set((state) => ({ books: [...state.books, book] })),
     
@@ -276,7 +314,6 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
     
   getBooks: () => get().books,
 
-  // Book Loans
   addBookLoan: (loan) =>
     set((state) => ({ bookLoans: [...state.bookLoans, loan] })),
     
@@ -288,7 +325,6 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   getStudentLoans: (studentId) =>
     get().bookLoans.filter(l => l.studentId === studentId),
 
-  // Transcripts
   generateTranscript: (studentId, semester, academicYear) => {
     const student = get().getStudent(studentId);
     const grades = get().grades.filter(g => 
@@ -329,4 +365,169 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   
   getStudentTranscripts: (studentId) =>
     get().transcripts.filter(t => t.studentId === studentId),
+
+  addMessage: (message) =>
+    set((state) => ({ messages: [...state.messages, message] })),
+    
+  markMessageAsRead: (messageId) =>
+    set((state) => ({
+      messages: state.messages.map(m => 
+        m.id === messageId ? { ...m, isRead: true } : m
+      )
+    })),
+    
+  getUnreadMessages: (userId) =>
+    get().messages.filter(m => m.receiverId === userId && !m.isRead),
+    
+  getUserMessages: (userId) =>
+    get().messages.filter(m => m.senderId === userId || m.receiverId === userId),
+  
+  addEvent: (event) =>
+    set((state) => ({ events: [...state.events, event] })),
+    
+  updateEvent: (id, updates) =>
+    set((state) => ({
+      events: state.events.map(e => e.id === id ? { ...e, ...updates } : e)
+    })),
+    
+  deleteEvent: (id) =>
+    set((state) => ({
+      events: state.events.filter(e => e.id !== id)
+    })),
+    
+  getUpcomingEvents: () => {
+    const now = new Date().toISOString();
+    return get().events.filter(e => e.startDate > now && e.status === 'Programmé');
+  },
+  
+  addAnnouncement: (announcement) =>
+    set((state) => ({ announcements: [...state.announcements, announcement] })),
+    
+  updateAnnouncement: (id, updates) =>
+    set((state) => ({
+      announcements: state.announcements.map(a => a.id === id ? { ...a, ...updates } : a)
+    })),
+    
+  deleteAnnouncement: (id) =>
+    set((state) => ({
+      announcements: state.announcements.filter(a => a.id !== id)
+    })),
+    
+  getActiveAnnouncements: () => {
+    const now = new Date().toISOString();
+    return get().announcements.filter(a => 
+      a.isActive && (!a.expiryDate || a.expiryDate > now)
+    );
+  },
+  
+  addScholarship: (scholarship) =>
+    set((state) => ({ scholarships: [...state.scholarships, scholarship] })),
+    
+  updateScholarship: (id, updates) =>
+    set((state) => ({
+      scholarships: state.scholarships.map(s => s.id === id ? { ...s, ...updates } : s)
+    })),
+    
+  addScholarshipApplication: (application) =>
+    set((state) => ({ scholarshipApplications: [...state.scholarshipApplications, application] })),
+    
+  updateScholarshipApplication: (id, updates) =>
+    set((state) => ({
+      scholarshipApplications: state.scholarshipApplications.map(a => 
+        a.id === id ? { ...a, ...updates } : a
+      )
+    })),
+  
+  addRoom: (room) =>
+    set((state) => ({ rooms: [...state.rooms, room] })),
+    
+  updateRoom: (id, updates) =>
+    set((state) => ({
+      rooms: state.rooms.map(r => r.id === id ? { ...r, ...updates } : r)
+    })),
+    
+  addRoomReservation: (reservation) =>
+    set((state) => ({ roomReservations: [...state.roomReservations, reservation] })),
+    
+  getAvailableRooms: (startTime, endTime) => {
+    const reservations = get().roomReservations.filter(r =>
+      r.status === 'Confirmée' &&
+      ((r.startTime <= startTime && r.endTime > startTime) ||
+       (r.startTime < endTime && r.endTime >= endTime) ||
+       (r.startTime >= startTime && r.endTime <= endTime))
+    );
+    
+    const reservedRoomIds = reservations.map(r => r.roomId);
+    return get().rooms.filter(r => 
+      r.status === 'Disponible' && !reservedRoomIds.includes(r.id)
+    );
+  },
+  
+  generateCertificate: (studentId, type, title) => {
+    const certificate: Certificate = {
+      id: `cert_${Date.now()}`,
+      studentId,
+      type,
+      title,
+      issueDate: new Date().toISOString(),
+      signedBy: 'Direction Académique',
+      verificationCode: `UJEPH-${Date.now().toString(36).toUpperCase()}`,
+      status: 'Émis'
+    };
+    
+    set((state) => ({ certificates: [...state.certificates, certificate] }));
+    return certificate;
+  },
+  
+  getCertificates: (studentId) =>
+    get().certificates.filter(c => c.studentId === studentId),
+  
+  generateAnalytics: (type, parameters) => {
+    const analytics: Analytics = {
+      id: `analytics_${Date.now()}`,
+      type,
+      data: {},
+      generatedDate: new Date().toISOString(),
+      parameters
+    };
+    
+    switch (type) {
+      case 'Performance':
+        const grades = get().grades;
+        analytics.data = {
+          averageGrade: grades.reduce((sum, g) => sum + g.grade, 0) / grades.length,
+          totalStudents: get().students.length,
+          passRate: (grades.filter(g => g.status === 'Validé').length / grades.length) * 100
+        };
+        break;
+      case 'Présence':
+        const attendances = get().attendances;
+        const presentCount = attendances.filter(a => a.status === 'Présent').length;
+        analytics.data = {
+          attendanceRate: (presentCount / attendances.length) * 100,
+          totalSessions: attendances.length,
+          absenteeism: ((attendances.length - presentCount) / attendances.length) * 100
+        };
+        break;
+      case 'Paiements':
+        const payments = get().payments;
+        const paidAmount = payments.filter(p => p.status === 'Payé').reduce((sum, p) => sum + p.amount, 0);
+        analytics.data = {
+          totalRevenue: paidAmount,
+          pendingAmount: payments.filter(p => p.status === 'En attente').reduce((sum, p) => sum + p.amount, 0),
+          collectionRate: (payments.filter(p => p.status === 'Payé').length / payments.length) * 100
+        };
+        break;
+    }
+    
+    set((state) => ({ analytics: [...state.analytics, analytics] }));
+    return analytics;
+  },
+  
+  getAnalytics: (type) => {
+    if (type) {
+      return get().analytics.filter(a => a.type === type);
+    }
+    return get().analytics;
+  },
 }));

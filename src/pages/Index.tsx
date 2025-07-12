@@ -17,8 +17,12 @@ import { ScheduleManager } from "../components/ScheduleManager";
 import { AttendanceManager } from "../components/AttendanceManager";
 import { PaymentManager } from "../components/PaymentManager";
 import { LibraryManager } from "../components/LibraryManager";
+import { MessagingSystem } from "../components/MessagingSystem";
+import { EventManager } from "../components/EventManager";
+import { AnnouncementSystem } from "../components/AnnouncementSystem";
+import { AnalyticsDashboard } from "../components/AnalyticsDashboard";
 
-type ActiveTab = 'dashboard' | 'students' | 'courses' | 'grades' | 'bulk-grades' | 'retakes' | 'scheduler' | 'users' | 'faculties' | 'guardians' | 'schedules' | 'attendance' | 'payments' | 'library';
+type ActiveTab = 'dashboard' | 'students' | 'courses' | 'grades' | 'bulk-grades' | 'retakes' | 'scheduler' | 'users' | 'faculties' | 'guardians' | 'schedules' | 'attendance' | 'payments' | 'library' | 'messaging' | 'events' | 'announcements' | 'analytics' | 'scholarships' | 'rooms';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -58,12 +62,34 @@ const Index = () => {
         return <PaymentManager />;
       case 'library':
         return <LibraryManager />;
+      case 'messaging':
+        return <MessagingSystem />;
+      case 'events':
+        return <EventManager />;
+      case 'announcements':
+        return <AnnouncementSystem />;
+      case 'analytics':
+        return <AnalyticsDashboard />;
       case 'users':
         return <UsersManager />;
       case 'faculties':
         return <FacultiesManager />;
       case 'guardians':
         return <GuardiansManager />;
+      case 'scholarships':
+        return (
+          <div className="p-6">
+            <h1 className="text-2xl font-bold text-foreground mb-4">Gestion des Bourses</h1>
+            <p className="text-muted-foreground">Module de gestion des bourses en développement...</p>
+          </div>
+        );
+      case 'rooms':
+        return (
+          <div className="p-6">
+            <h1 className="text-2xl font-bold text-foreground mb-4">Gestion des Salles</h1>
+            <p className="text-muted-foreground">Module de gestion des salles en développement...</p>
+          </div>
+        );
       default:
         return <Dashboard />;
     }

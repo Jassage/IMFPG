@@ -163,3 +163,111 @@ export interface Transcript {
   creditsEarned: number;
   generatedDate: string;
 }
+
+// Nouvelles interfaces pour les fonctionnalités avancées
+export interface Message {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  subject: string;
+  content: string;
+  timestamp: string;
+  isRead: boolean;
+  attachments?: string[];
+  priority: 'Normal' | 'Urgent' | 'Important';
+}
+
+export interface Event {
+  id: string;
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  organizer: string;
+  category: 'Académique' | 'Culturel' | 'Sportif' | 'Administratif' | 'Autre';
+  participants: string[];
+  isPublic: boolean;
+  status: 'Programmé' | 'En cours' | 'Terminé' | 'Annulé';
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  authorId: string;
+  publishDate: string;
+  expiryDate?: string;
+  targetAudience: 'Tous' | 'Étudiants' | 'Professeurs' | 'Administration';
+  priority: 'Normal' | 'Important' | 'Urgent';
+  attachments?: string[];
+  isActive: boolean;
+}
+
+export interface Scholarship {
+  id: string;
+  name: string;
+  description: string;
+  amount: number;
+  criteria: string;
+  applicationDeadline: string;
+  academicYear: string;
+  maxRecipients: number;
+  currentRecipients: number;
+  status: 'Ouvert' | 'Fermé' | 'En évaluation' | 'Attribué';
+}
+
+export interface ScholarshipApplication {
+  id: string;
+  scholarshipId: string;
+  studentId: string;
+  applicationDate: string;
+  documents: string[];
+  motivation: string;
+  status: 'Soumise' | 'En cours' | 'Acceptée' | 'Refusée';
+  reviewNotes?: string;
+}
+
+export interface Room {
+  id: string;
+  name: string;
+  type: 'Amphithéâtre' | 'Salle de cours' | 'Laboratoire' | 'Bibliothèque' | 'Bureau';
+  capacity: number;
+  equipment: string[];
+  location: string;
+  status: 'Disponible' | 'Occupée' | 'Maintenance' | 'Réservée';
+}
+
+export interface RoomReservation {
+  id: string;
+  roomId: string;
+  userId: string;
+  startTime: string;
+  endTime: string;
+  purpose: string;
+  status: 'Confirmée' | 'En attente' | 'Annulée';
+  recurring?: {
+    frequency: 'Quotidien' | 'Hebdomadaire' | 'Mensuel';
+    endDate: string;
+  };
+}
+
+export interface Certificate {
+  id: string;
+  studentId: string;
+  type: 'Diplôme' | 'Certificat' | 'Attestation' | 'Relevé de notes';
+  title: string;
+  issueDate: string;
+  validUntil?: string;
+  signedBy: string;
+  verificationCode: string;
+  status: 'Émis' | 'En préparation' | 'Annulé';
+}
+
+export interface Analytics {
+  id: string;
+  type: 'Performance' | 'Présence' | 'Paiements' | 'Général';
+  data: Record<string, any>;
+  generatedDate: string;
+  parameters: Record<string, any>;
+}
