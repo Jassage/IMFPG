@@ -74,8 +74,12 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
     }
   };
 
-  // Filter faculties to only include those with valid names
-  const validFaculties = faculties.filter(faculty => faculty.name && faculty.name.trim() !== '');
+  // Filter faculties to only include those with valid non-empty names
+  const validFaculties = faculties.filter(faculty => 
+    faculty.name && 
+    typeof faculty.name === 'string' && 
+    faculty.name.trim().length > 0
+  );
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
