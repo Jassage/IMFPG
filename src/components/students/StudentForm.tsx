@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,6 +74,9 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
     }
   };
 
+  // Filter faculties to only include those with valid names
+  const validFaculties = faculties.filter(faculty => faculty.name && faculty.name.trim() !== '');
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-2 gap-4">
@@ -128,7 +130,7 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
               <SelectValue placeholder="Sélectionner une faculté" />
             </SelectTrigger>
             <SelectContent>
-              {faculties.filter(faculty => faculty.name.trim() !== '').map((faculty) => (
+              {validFaculties.map((faculty) => (
                 <SelectItem key={faculty.id} value={faculty.name}>
                   {faculty.name}
                 </SelectItem>
