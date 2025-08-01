@@ -22,22 +22,22 @@ export const GradesBulkEditor = () => {
 
   // Filtrer les étudiants selon les critères
   const filteredStudents = students.filter(student => 
-    (!selectedFaculty || student.faculty === selectedFaculty) &&
-    (!selectedLevel || student.level === selectedLevel) &&
+    (selectedFaculty === '' || selectedFaculty === 'ALL_FACULTIES' || student.faculty === selectedFaculty) &&
+    (selectedLevel === '' || selectedLevel === 'ALL_LEVELS' || student.level === selectedLevel) &&
     student.status === 'Active'
   );
 
   // Filtrer les UE selon les critères
   const filteredUEs = ues.filter(ue => 
-    (!selectedFaculty || ue.faculty === selectedFaculty) &&
-    (!selectedLevel || ue.level === selectedLevel) &&
-    (!selectedSemester || ue.semester === selectedSemester)
+    (selectedFaculty === '' || selectedFaculty === 'ALL_FACULTIES' || ue.faculty === selectedFaculty) &&
+    (selectedLevel === '' || selectedLevel === 'ALL_LEVELS' || ue.level === selectedLevel) &&
+    (selectedSemester === '' || selectedSemester === 'ALL_SEMESTERS' || ue.semester === selectedSemester)
   );
 
   // Obtenir les niveaux disponibles pour la faculté sélectionnée
-  const availableLevels = selectedFaculty 
+  const availableLevels = selectedFaculty && selectedFaculty !== 'ALL_FACULTIES'
     ? [...new Set(students.filter(s => s.faculty === selectedFaculty).map(s => s.level))]
-    : [];
+    : [...new Set(students.map(s => s.level))];
 
   // Obtenir les notes existantes pour les étudiants et UE sélectionnés
   const getExistingGrade = (studentId: string, ueId: string) => {
@@ -146,7 +146,7 @@ export const GradesBulkEditor = () => {
                   <SelectValue placeholder="Toutes les facultés" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Toutes les facultés</SelectItem>
+                  <SelectItem value="ALL_FACULTIES">Toutes les facultés</SelectItem>
                   {faculties.map(faculty => (
                     <SelectItem key={faculty.id} value={faculty.name}>
                       {faculty.name}
@@ -163,7 +163,7 @@ export const GradesBulkEditor = () => {
                   <SelectValue placeholder="Tous les niveaux" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tous les niveaux</SelectItem>
+                  <SelectItem value="ALL_LEVELS">Tous les niveaux</SelectItem>
                   {availableLevels.map(level => (
                     <SelectItem key={level} value={level}>
                       {level}
@@ -180,7 +180,7 @@ export const GradesBulkEditor = () => {
                   <SelectValue placeholder="Semestre" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tous les semestres</SelectItem>
+                  <SelectItem value="ALL_SEMESTERS">Tous les semestres</SelectItem>
                   <SelectItem value="S1">Semestre 1</SelectItem>
                   <SelectItem value="S2">Semestre 2</SelectItem>
                 </SelectContent>
