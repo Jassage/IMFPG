@@ -21,8 +21,10 @@ import { MessagingSystem } from "../components/MessagingSystem";
 import { EventManager } from "../components/EventManager";
 import { AnnouncementSystem } from "../components/AnnouncementSystem";
 import { AnalyticsDashboard } from "../components/AnalyticsDashboard";
+import { StudentCardGenerator } from "../components/StudentCardGenerator";
+import { TranscriptGenerator } from "../components/TranscriptGenerator";
 
-type ActiveTab = 'dashboard' | 'students' | 'courses' | 'grades' | 'bulk-grades' | 'retakes' | 'scheduler' | 'users' | 'faculties' | 'guardians' | 'schedules' | 'attendance' | 'payments' | 'library' | 'messaging' | 'events' | 'announcements' | 'analytics' | 'scholarships' | 'rooms';
+type ActiveTab = 'dashboard' | 'students' | 'courses' | 'grades' | 'bulk-grades' | 'retakes' | 'scheduler' | 'users' | 'faculties' | 'guardians' | 'schedules' | 'attendance' | 'payments' | 'library' | 'messaging' | 'events' | 'announcements' | 'analytics' | 'scholarships' | 'rooms' | 'student-cards' | 'transcripts';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -90,6 +92,10 @@ const Index = () => {
             <p className="text-muted-foreground">Module de gestion des salles en développement...</p>
           </div>
         );
+      case 'student-cards':
+        return <StudentCardGenerator />;
+      case 'transcripts':
+        return <TranscriptGenerator />;
       default:
         return <Dashboard />;
     }

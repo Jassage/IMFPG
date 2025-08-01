@@ -17,7 +17,9 @@ import {
   Megaphone,
   BarChart3,
   Award,
-  MapPin
+  MapPin,
+  CreditCard,
+  ScrollText
 } from 'lucide-react';
 import {
   Sidebar,
@@ -51,6 +53,11 @@ const academicItems = [
   { id: 'attendance', label: 'Présences', icon: UserCheck },
   { id: 'payments', label: 'Paiements', icon: DollarSign },
   { id: 'library', label: 'Bibliothèque', icon: Book },
+];
+
+const documentItems = [
+  { id: 'student-cards', label: 'Cartes Étudiants', icon: CreditCard },
+  { id: 'transcripts', label: 'Bulletins', icon: ScrollText },
 ];
 
 const communicationItems = [
@@ -121,6 +128,31 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {academicItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      onClick={() => onTabChange(item.id)}
+                      isActive={isActive}
+                      tooltip={isCollapsed ? item.label : undefined}
+                      className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {!isCollapsed && <span>{item.label}</span>}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Documents</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {documentItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
                 return (
