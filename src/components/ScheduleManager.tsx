@@ -79,8 +79,8 @@ export const ScheduleManager = () => {
   };
 
   const filteredSchedules = schedules.filter(schedule => 
-    (!selectedFaculty || schedule.faculty === selectedFaculty) &&
-    (!selectedLevel || schedule.level === selectedLevel)
+    (selectedFaculty === '' || selectedFaculty === 'ALL_FACULTIES' || schedule.faculty === selectedFaculty) &&
+    (selectedLevel === '' || selectedLevel === 'ALL_LEVELS' || schedule.level === selectedLevel)
   );
 
   const getUETitle = (ueId: string) => {
@@ -117,7 +117,7 @@ export const ScheduleManager = () => {
                   <SelectValue placeholder="Toutes les facultés" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Toutes les facultés</SelectItem>
+                  <SelectItem value="ALL_FACULTIES">Toutes les facultés</SelectItem>
                   {faculties.map((faculty) => (
                     <SelectItem key={faculty.id} value={faculty.name}>
                       {faculty.name}
@@ -133,7 +133,7 @@ export const ScheduleManager = () => {
                   <SelectValue placeholder="Tous les niveaux" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tous les niveaux</SelectItem>
+                  <SelectItem value="ALL_LEVELS">Tous les niveaux</SelectItem>
                   <SelectItem value="L1">L1</SelectItem>
                   <SelectItem value="L2">L2</SelectItem>
                   <SelectItem value="L3">L3</SelectItem>

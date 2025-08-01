@@ -331,7 +331,7 @@ export const LibraryManager = () => {
                           <SelectValue placeholder="Sélectionner une faculté" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Générale</SelectItem>
+                          <SelectItem value="GENERAL">Générale</SelectItem>
                           {faculties.map((faculty) => (
                             <SelectItem key={faculty.id} value={faculty.name}>
                               {faculty.name}

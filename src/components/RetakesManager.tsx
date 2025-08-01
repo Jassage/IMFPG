@@ -13,7 +13,7 @@ export const RetakesManager = () => {
   const [selectedStatus, setSelectedStatus] = useState<string>('');
 
   const filteredRetakes = retakes.filter(retake => {
-    return !selectedStatus || retake.status === selectedStatus;
+    return selectedStatus === '' || selectedStatus === 'ALL_STATUSES' || retake.status === selectedStatus;
   });
 
   const getStatusBadge = (status: string) => {
@@ -103,7 +103,7 @@ export const RetakesManager = () => {
               <SelectValue placeholder="Tous les statuts" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tous les statuts</SelectItem>
+              <SelectItem value="ALL_STATUSES">Tous les statuts</SelectItem>
               <SelectItem value="Programmé">Programmé</SelectItem>
               <SelectItem value="En cours">En cours</SelectItem>
               <SelectItem value="Terminé">Terminé</SelectItem>

@@ -32,8 +32,8 @@ export const AttendanceManager = () => {
   
   const filteredSchedules = schedules.filter(schedule => 
     schedule.dayOfWeek === dayOfWeek &&
-    (!selectedFaculty || schedule.faculty === selectedFaculty) &&
-    (!selectedLevel || schedule.level === selectedLevel)
+    (selectedFaculty === '' || selectedFaculty === 'ALL_FACULTIES' || schedule.faculty === selectedFaculty) &&
+    (selectedLevel === '' || selectedLevel === 'ALL_LEVELS' || schedule.level === selectedLevel)
   );
 
   const getScheduleStudents = (scheduleId: string) => {
@@ -144,7 +144,7 @@ export const AttendanceManager = () => {
                   <SelectValue placeholder="Toutes les facultés" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Toutes les facultés</SelectItem>
+                  <SelectItem value="ALL_FACULTIES">Toutes les facultés</SelectItem>
                   {faculties.map((faculty) => (
                     <SelectItem key={faculty.id} value={faculty.name}>
                       {faculty.name}
@@ -160,7 +160,7 @@ export const AttendanceManager = () => {
                   <SelectValue placeholder="Tous les niveaux" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tous les niveaux</SelectItem>
+                  <SelectItem value="ALL_LEVELS">Tous les niveaux</SelectItem>
                   <SelectItem value="L1">L1</SelectItem>
                   <SelectItem value="L2">L2</SelectItem>
                   <SelectItem value="L3">L3</SelectItem>

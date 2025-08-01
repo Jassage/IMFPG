@@ -109,8 +109,8 @@ export const PaymentManager = () => {
   };
 
   const filteredPayments = payments.filter(payment => {
-    const matchesStudent = !selectedStudent || payment.studentId === selectedStudent;
-    const matchesStatus = !selectedStatus || payment.status === selectedStatus;
+    const matchesStudent = selectedStudent === '' || selectedStudent === 'ALL_STUDENTS' || payment.studentId === selectedStudent;
+    const matchesStatus = selectedStatus === '' || selectedStatus === 'ALL_STATUSES' || payment.status === selectedStatus;
     return matchesStudent && matchesStatus;
   });
 
@@ -199,7 +199,7 @@ export const PaymentManager = () => {
                   <SelectValue placeholder="Tous les étudiants" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tous les étudiants</SelectItem>
+                  <SelectItem value="ALL_STUDENTS">Tous les étudiants</SelectItem>
                   {students.map((student) => (
                     <SelectItem key={student.id} value={student.id}>
                       {student.firstName} {student.lastName} - {student.studentId}
@@ -215,7 +215,7 @@ export const PaymentManager = () => {
                   <SelectValue placeholder="Tous les statuts" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tous les statuts</SelectItem>
+                  <SelectItem value="ALL_STATUSES">Tous les statuts</SelectItem>
                   <SelectItem value="Payé">Payé</SelectItem>
                   <SelectItem value="En attente">En attente</SelectItem>
                   <SelectItem value="Retard">En retard</SelectItem>

@@ -25,8 +25,8 @@ export const GradesManager = () => {
       (ue && ue.code.toLowerCase().includes(searchTerm.toLowerCase()))
     );
     
-    const matchesSemester = !selectedSemester || grade.semester === selectedSemester;
-    const matchesStatus = !selectedStatus || grade.status === selectedStatus;
+    const matchesSemester = selectedSemester === '' || selectedSemester === 'ALL_SEMESTERS' || grade.semester === selectedSemester;
+    const matchesStatus = selectedStatus === '' || selectedStatus === 'ALL_STATUSES' || grade.status === selectedStatus;
     
     return matchesSearch && matchesSemester && matchesStatus;
   });
@@ -157,7 +157,7 @@ export const GradesManager = () => {
                 <SelectValue placeholder="Tous les semestres" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Tous les semestres</SelectItem>
+                <SelectItem value="ALL_SEMESTERS">Tous les semestres</SelectItem>
                 <SelectItem value="S1">Semestre 1</SelectItem>
                 <SelectItem value="S2">Semestre 2</SelectItem>
               </SelectContent>
@@ -167,7 +167,7 @@ export const GradesManager = () => {
                 <SelectValue placeholder="Tous les statuts" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Tous les statuts</SelectItem>
+                <SelectItem value="ALL_STATUSES">Tous les statuts</SelectItem>
                 <SelectItem value="Validé">Validé</SelectItem>
                 <SelectItem value="À reprendre">À reprendre</SelectItem>
                 <SelectItem value="En cours">En cours</SelectItem>
