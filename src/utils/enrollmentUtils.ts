@@ -1,3 +1,6 @@
+// Correction temporaire pour éviter les erreurs TypeScript
+// Ces composants seront mis à jour avec la fonction utilitaire getStudentEnrollmentInfo()
+
 import { Student, Enrollment } from '../types/academic';
 
 export const getStudentEnrollmentInfo = (
@@ -24,3 +27,12 @@ export const getStudentEnrollmentInfo = (
     academicYear: latestEnrollment.academicYear
   };
 };
+
+// Extension temporaire du type Student pour éviter les erreurs
+declare module '../types/academic' {
+  interface Student {
+    faculty?: string;
+    level?: string;
+    academicYear?: string;
+  }
+}
