@@ -27,7 +27,7 @@ import { useAcademicStore } from '../store/academicStore';
 import { Faculty } from '../types/academic';
 
 export const FacultiesManager = () => {
-  const { faculties, students, ues, addFaculty, updateFaculty, deleteFaculty } = useAcademicStore();
+  const { faculties, students, enrollments, ues, addFaculty, updateFaculty, deleteFaculty } = useAcademicStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedFaculty, setSelectedFaculty] = useState<Faculty | null>(null);
