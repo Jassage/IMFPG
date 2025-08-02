@@ -2,11 +2,12 @@ import { create } from 'zustand';
 import { 
   Student, UE, Grade, Retake, Guardian, User, Faculty, Schedule, Attendance, Payment, 
   Book, BookLoan, Transcript, Message, Event, Announcement, Scholarship, ScholarshipApplication,
-  Room, RoomReservation, Certificate, Analytics
+  Room, RoomReservation, Certificate, Analytics, Enrollment
 } from '../types/academic';
 
 interface AcademicStore {
   students: Student[];
+  enrollments: Enrollment[];
   ues: UE[];
   grades: Grade[];
   retakes: Retake[];
@@ -34,6 +35,11 @@ interface AcademicStore {
   updateStudent: (id: string, student: Partial<Student>) => void;
   deleteStudent: (id: string) => void;
   getStudent: (id: string) => Student | undefined;
+  
+  addEnrollment: (enrollment: Enrollment) => void;
+  updateEnrollment: (id: string, enrollment: Partial<Enrollment>) => void;
+  deleteEnrollment: (id: string) => void;
+  getStudentEnrollments: (studentId: string) => Enrollment[];
   
   addUE: (ue: UE) => void;
   updateUE: (id: string, ue: Partial<UE>) => void;
@@ -119,10 +125,13 @@ interface AcademicStore {
 
   generateAnalytics: (type: Analytics['type'], parameters: Record<string, any>) => Analytics;
   getAnalytics: (type?: Analytics['type']) => Analytics[];
+  
+  getStudentCurrentEnrollment: (studentId: string) => Enrollment | undefined;
 }
 
 export const useAcademicStore = create<AcademicStore>((set, get) => ({
   students: [],
+  enrollments: [],
   ues: [],
   grades: [],
   retakes: [],
@@ -157,12 +166,29 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
   deleteStudent: (id) =>
     set((state) => ({
       students: state.students.filter(s => s.id !== id),
+      enrollments: state.enrollments.filter(e => e.studentId !== id),
       grades: state.grades.filter(g => g.studentId !== id),
       retakes: state.retakes.filter(r => r.studentId !== id),
       guardians: state.guardians.filter(g => g.studentId !== id),
     })),
   
   getStudent: (id) => get().students.find(s => s.id === id),
+  
+  addEnrollment: (enrollment) =>
+    set((state) => ({ enrollments: [...state.enrollments, enrollment] })),
+    
+  updateEnrollment: (id, updates) =>
+    set((state) => ({
+      enrollments: state.enrollments.map(e => e.id === id ? { ...e, ...updates } : e)
+    })),
+    
+  deleteEnrollment: (id) =>
+    set((state) => ({
+      enrollments: state.enrollments.filter(e => e.id !== id)
+    })),
+    
+  getStudentEnrollments: (studentId) =>
+    get().enrollments.filter(e => e.studentId === studentId),
   
   addUE: (ue) =>
     set((state) => ({ ues: [...state.ues, ue] })),
@@ -529,5 +555,14 @@ export const useAcademicStore = create<AcademicStore>((set, get) => ({
       return get().analytics.filter(a => a.type === type);
     }
     return get().analytics;
+  },
+  
+  getStudentCurrentEnrollment: (studentId) => {
+    const enrollments = get().enrollments.filter(e => 
+      e.studentId === studentId && e.status === 'Active'
+    );
+    return enrollments.sort((a, b) => 
+      new Date(b.enrollmentDate).getTime() - new Date(a.enrollmentDate).getTime()
+    )[0];
   },
 }));

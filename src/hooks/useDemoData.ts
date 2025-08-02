@@ -5,7 +5,9 @@ import { useAcademicStore } from '../store/academicStore';
 export const useDemoData = () => {
   const { 
     students, 
+    enrollments,
     addStudent, 
+    addEnrollment,
     addUE, 
     addGrade, 
     addUser, 
@@ -111,9 +113,6 @@ export const useDemoData = () => {
         dateOfBirth: '2000-05-15',
         placeOfBirth: 'Port-au-Prince',
         address: '123 Rue de la Paix, Port-au-Prince',
-        faculty: 'Sciences Informatiques',
-        level: 'L2',
-        academicYear: '2023-2024',
         status: 'Active'
       });
 
@@ -127,9 +126,6 @@ export const useDemoData = () => {
         dateOfBirth: '1999-08-22',
         placeOfBirth: 'Cap-Haïtien',
         address: '456 Avenue des Fleurs, Cap-Haïtien',
-        faculty: 'Sciences Agronomiques',
-        level: 'L3',
-        academicYear: '2023-2024',
         status: 'Active'
       });
 
@@ -143,9 +139,39 @@ export const useDemoData = () => {
         dateOfBirth: '2001-01-10',
         placeOfBirth: 'Les Cayes',
         address: '789 Rue du Commerce, Les Cayes',
+        status: 'Active'
+      });
+    }
+
+    // Ajouter des immatriculations de démonstration
+    if (enrollments.length === 0) {
+      addEnrollment({
+        id: 'enrollment-1',
+        studentId: 'student-1',
+        faculty: 'Sciences Informatiques',
+        level: 'L2',
+        academicYear: '2023-2024',
+        enrollmentDate: '2023-09-01T00:00:00Z',
+        status: 'Active'
+      });
+
+      addEnrollment({
+        id: 'enrollment-2',
+        studentId: 'student-2',
+        faculty: 'Sciences Agronomiques',
+        level: 'L3',
+        academicYear: '2023-2024',
+        enrollmentDate: '2023-09-01T00:00:00Z',
+        status: 'Active'
+      });
+
+      addEnrollment({
+        id: 'enrollment-3',
+        studentId: 'student-3',
         faculty: 'Théologie',
         level: 'L1',
         academicYear: '2023-2024',
+        enrollmentDate: '2023-09-01T00:00:00Z',
         status: 'Active'
       });
     }
@@ -239,5 +265,5 @@ export const useDemoData = () => {
       semester: 'S1',
       academicYear: '2023-2024'
     });
-  }, [students.length, ues.length, users.length, faculties.length, guardians.length]);
+  }, [students.length, enrollments.length, ues.length, users.length, faculties.length, guardians.length]);
 };

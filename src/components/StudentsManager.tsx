@@ -10,9 +10,10 @@ import { useAcademicStore } from '../store/academicStore';
 import { StudentForm } from './students/StudentForm';
 import { StudentDetails } from './students/StudentDetails';
 import { Student } from '../types/academic';
+import { getStudentEnrollmentInfo } from '../utils/enrollmentUtils';
 
 export const StudentsManager = () => {
-  const { students, deleteStudent } = useAcademicStore();
+  const { students, enrollments, deleteStudent } = useAcademicStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -121,7 +122,12 @@ export const StudentsManager = () => {
                         </div>
                         <div className="text-sm text-muted-foreground space-y-1">
                           <p>ID: {student.studentId} • {student.email}</p>
-                          <p>{student.faculty} - {student.level} • {student.academicYear}</p>
+                          <p>
+                            {(() => {
+                              const enrollmentInfo = getStudentEnrollmentInfo(student, enrollments);
+                              return `${enrollmentInfo.faculty} - ${enrollmentInfo.level} (${enrollmentInfo.academicYear})`;
+                            })()}
+                          </p>
                         </div>
                       </div>
                     </div>

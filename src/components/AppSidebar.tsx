@@ -19,7 +19,8 @@ import {
   Award,
   MapPin,
   CreditCard,
-  ScrollText
+  ScrollText,
+  UserPlus
 } from 'lucide-react';
 import {
   Sidebar,
@@ -43,6 +44,7 @@ interface AppSidebarProps {
 const menuItems = [
   { id: 'dashboard', label: 'Accueil', icon: Home },
   { id: 'students', label: 'Étudiants', icon: Users },
+  { id: 'enrollments', label: 'Immatriculations', icon: UserPlus },
   { id: 'courses', label: 'Les cours', icon: BookOpen },
   { id: 'grades', label: 'Notes', icon: FileText },
   { id: 'retakes', label: 'Catalogues', icon: RotateCcw },

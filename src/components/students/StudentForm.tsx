@@ -27,9 +27,6 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
     bloodGroup: '',
     allergies: '',
     disabilities: '',
-    faculty: '',
-    level: '',
-    academicYear: '2024-2025',
     status: 'Active' as 'Active' | 'Inactive' | 'Graduated'
   });
 
@@ -47,9 +44,6 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
         bloodGroup: student.bloodGroup || '',
         allergies: student.allergies || '',
         disabilities: student.disabilities || '',
-        faculty: student.faculty || '',
-        level: student.level || '',
-        academicYear: student.academicYear || '2024-2025',
         status: student.status || 'Active'
       });
     }
@@ -58,7 +52,7 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (formData.firstName && formData.lastName && formData.studentId && formData.email && formData.faculty && formData.level) {
+    if (formData.firstName && formData.lastName && formData.studentId && formData.email) {
       const studentData: Student = {
         id: student?.id || crypto.randomUUID(),
         ...formData
@@ -126,38 +120,6 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="faculty">Faculté *</Label>
-          <Select value={formData.faculty || undefined} onValueChange={(value) => setFormData({...formData, faculty: value || ''})}>
-            <SelectTrigger>
-              <SelectValue placeholder="Sélectionner une faculté" />
-            </SelectTrigger>
-            <SelectContent>
-              {validFaculties.map((faculty) => (
-                <SelectItem key={faculty.id} value={faculty.name}>
-                  {faculty.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="level">Niveau *</Label>
-          <Select value={formData.level || undefined} onValueChange={(value) => setFormData({...formData, level: value || ''})}>
-            <SelectTrigger>
-              <SelectValue placeholder="Sélectionner un niveau" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="L1">L1</SelectItem>
-              <SelectItem value="L2">L2</SelectItem>
-              <SelectItem value="L3">L3</SelectItem>
-              <SelectItem value="M1">M1</SelectItem>
-              <SelectItem value="M2">M2</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
 
       <div className="space-y-2">
         <Label htmlFor="phone">Téléphone</Label>

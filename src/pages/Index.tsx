@@ -23,8 +23,9 @@ import { AnnouncementSystem } from "../components/AnnouncementSystem";
 import { AnalyticsDashboard } from "../components/AnalyticsDashboard";
 import { StudentCardGenerator } from "../components/StudentCardGenerator";
 import { TranscriptGenerator } from "../components/TranscriptGenerator";
+import { EnrollmentManager } from "../components/students/EnrollmentManager";
 
-type ActiveTab = 'dashboard' | 'students' | 'courses' | 'grades' | 'bulk-grades' | 'retakes' | 'scheduler' | 'users' | 'faculties' | 'guardians' | 'schedules' | 'attendance' | 'payments' | 'library' | 'messaging' | 'events' | 'announcements' | 'analytics' | 'scholarships' | 'rooms' | 'student-cards' | 'transcripts';
+type ActiveTab = 'dashboard' | 'students' | 'enrollments' | 'courses' | 'grades' | 'bulk-grades' | 'retakes' | 'scheduler' | 'users' | 'faculties' | 'guardians' | 'schedules' | 'attendance' | 'payments' | 'library' | 'messaging' | 'events' | 'announcements' | 'analytics' | 'scholarships' | 'rooms' | 'student-cards' | 'transcripts';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -50,6 +51,8 @@ const Index = () => {
         return <Dashboard />;
       case 'students':
         return <StudentsManager />;
+      case 'enrollments':
+        return <EnrollmentManager />;
       case 'courses':
         return <CoursesManager />;
       case 'grades':

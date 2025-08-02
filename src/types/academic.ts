@@ -13,10 +13,17 @@ export interface Student {
   bloodGroup?: string;
   allergies?: string;
   disabilities?: string;
+  status: 'Active' | 'Inactive' | 'Graduated';
+}
+
+export interface Enrollment {
+  id: string;
+  studentId: string;
   faculty: string;
   level: string;
   academicYear: string;
-  status: 'Active' | 'Inactive' | 'Graduated';
+  enrollmentDate: string;
+  status: 'Active' | 'Suspended' | 'Completed';
 }
 
 export interface Guardian {

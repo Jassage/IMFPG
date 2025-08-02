@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { User, Mail, Phone, MapPin, Calendar, GraduationCap, Heart, AlertTriangle } from 'lucide-react';
 import { Student } from '../../types/academic';
 import { useAcademicStore } from '../../store/academicStore';
+import { getStudentEnrollmentInfo } from '../../utils/enrollmentUtils';
 
 interface StudentDetailsProps {
   student: Student;
@@ -12,8 +13,9 @@ interface StudentDetailsProps {
 }
 
 export const StudentDetails = ({ student }: StudentDetailsProps) => {
-  const { getStudentGrades } = useAcademicStore();
+  const { getStudentGrades, enrollments } = useAcademicStore();
   const grades = getStudentGrades(student.id);
+  const enrollmentInfo = getStudentEnrollmentInfo(student, enrollments);
 
   const getStatusBadge = (status: Student['status']) => {
     const config = {
@@ -77,15 +79,15 @@ export const StudentDetails = ({ student }: StudentDetailsProps) => {
           <CardContent className="space-y-4">
             <div>
               <label className="text-sm font-medium text-muted-foreground">Faculté</label>
-              <p className="font-medium">{student.faculty}</p>
+              <p className="font-medium">{enrollmentInfo.faculty}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Niveau</label>
-              <p className="font-medium">{student.level}</p>
+              <p className="font-medium">{enrollmentInfo.level}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Année Académique</label>
-              <p className="font-medium">{student.academicYear}</p>
+              <p className="font-medium">{enrollmentInfo.academicYear}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Nombre de Notes</label>
