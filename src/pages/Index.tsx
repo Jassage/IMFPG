@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "../components/AppSidebar";
 import { Bell, Search, Settings, User, LogOut, Moon, Sun } from "lucide-react";
@@ -13,6 +13,9 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { SearchResults } from "../components/SearchResults";
+import { NotificationPanel } from "../components/NotificationPanel";
+import { useToast } from "@/hooks/use-toast";
 import { useDemoData } from "../hooks/useDemoData";
 import { StudentsManager } from "../components/StudentsManager";
 import { CoursesManager } from "../components/CoursesManager";
@@ -44,9 +47,74 @@ const Index = () => {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
   
   // Charger les données de démonstration
   useDemoData();
+
+  // Gestion des clics à l'extérieur
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSearchResults(false);
+      }
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Gestion du thème
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setShowSearchResults(value.trim().length > 0);
+  };
+
+  const handleSelectStudent = (studentId: string) => {
+    setSelectedStudentId(studentId);
+    setActiveTab('students');
+    toast({
+      title: "Étudiant sélectionné",
+      description: "Redirection vers la page des étudiants"
+    });
+  };
+
+  const handleSettingsClick = () => {
+    toast({
+      title: "Paramètres",
+      description: "Page des paramètres en développement"
+    });
+  };
+
+  const handleProfileClick = () => {
+    toast({
+      title: "Profil",
+      description: "Page de profil en développement"
+    });
+  };
+
+  const handleLogout = () => {
+    toast({
+      title: "Déconnexion",
+      description: "Vous avez été déconnecté avec succès",
+      variant: "destructive"
+    });
+  };
 
   const handleOpenScheduler = (studentId?: string) => {
     setSelectedStudentId(studentId || null);
@@ -137,26 +205,45 @@ const Index = () => {
 
           {/* Search Bar */}
           <div className="flex items-center gap-2 flex-1 max-w-md">
-            <div className="relative flex-1">
+            <div className="relative flex-1" ref={searchRef}>
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Rechercher des étudiants, cours..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onFocus={() => searchQuery.trim() && setShowSearchResults(true)}
                 className="pl-9"
               />
+              {showSearchResults && (
+                <SearchResults
+                  query={searchQuery}
+                  onClose={() => setShowSearchResults(false)}
+                  onSelectStudent={handleSelectStudent}
+                />
+              )}
             </div>
           </div>
 
           {/* Right side actions */}
           <div className="flex items-center gap-2">
             {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-4 w-4" />
-              <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 text-xs">
-                3
-              </Badge>
-            </Button>
+            <div className="relative" ref={notificationRef}>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="relative"
+                onClick={() => setShowNotifications(!showNotifications)}
+              >
+                <Bell className="h-4 w-4" />
+                <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 text-xs">
+                  3
+                </Badge>
+              </Button>
+              <NotificationPanel
+                isOpen={showNotifications}
+                onClose={() => setShowNotifications(false)}
+              />
+            </div>
 
             {/* Theme Toggle */}
             <Button 
@@ -168,7 +255,11 @@ const Index = () => {
             </Button>
 
             {/* Settings */}
-            <Button variant="ghost" size="icon">
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={handleSettingsClick}
+            >
               <Settings className="h-4 w-4" />
             </Button>
 
@@ -180,16 +271,16 @@ const Index = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleProfileClick}>
                   <User className="mr-2 h-4 w-4" />
                   <span>Mon Profil</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSettingsClick}>
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Paramètres</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive">
+                <DropdownMenuItem className="text-destructive" onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Se déconnecter</span>
                 </DropdownMenuItem>
