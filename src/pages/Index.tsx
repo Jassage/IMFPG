@@ -2,6 +2,17 @@
 import React, { useState } from "react";
 import { SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "../components/AppSidebar";
+import { Bell, Search, Settings, User, LogOut, Moon, Sun } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import { useDemoData } from "../hooks/useDemoData";
 import { StudentsManager } from "../components/StudentsManager";
 import { CoursesManager } from "../components/CoursesManager";
@@ -31,6 +42,8 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [isSchedulerOpen, setIsSchedulerOpen] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   
   // Charger les données de démonstration
   useDemoData();
@@ -110,9 +123,10 @@ const Index = () => {
       
       <SidebarInset>
         {/* Header */}
-        <header className="flex h-16 shrink-0 items-center gap-2 px-4 border-b bg-background">
+        <header className="fixed top-0 right-0 left-0 z-40 flex h-16 shrink-0 items-center gap-4 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <SidebarTrigger className="-ml-1" />
-          <div className="flex flex-col">
+          
+          <div className="flex flex-col flex-1">
             <h1 className="text-lg font-semibold text-foreground">
               Système de Gestion Universitaire
             </h1>
@@ -120,10 +134,72 @@ const Index = () => {
               Université Saint Joseph de Pétionville
             </p>
           </div>
+
+          {/* Search Bar */}
+          <div className="flex items-center gap-2 flex-1 max-w-md">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher des étudiants, cours..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
+
+          {/* Right side actions */}
+          <div className="flex items-center gap-2">
+            {/* Notifications */}
+            <Button variant="ghost" size="icon" className="relative">
+              <Bell className="h-4 w-4" />
+              <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 text-xs">
+                3
+              </Badge>
+            </Button>
+
+            {/* Theme Toggle */}
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => setIsDarkMode(!isDarkMode)}
+            >
+              {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+
+            {/* Settings */}
+            <Button variant="ghost" size="icon">
+              <Settings className="h-4 w-4" />
+            </Button>
+
+            {/* User Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <User className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Mon Profil</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Paramètres</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Se déconnecter</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto p-4">
+        <main className="flex-1 overflow-auto p-4 pt-20">
           {renderContent()}
         </main>
       </SidebarInset>

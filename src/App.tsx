@@ -17,7 +17,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <SidebarProvider>
+        <SidebarProvider defaultOpen={false}>
           <div className="min-h-screen flex w-full">
             <Routes>
               <Route path="/" element={<Index />} />
