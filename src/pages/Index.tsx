@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "../components/AppSidebar";
-import { Bell, Search, Settings, User, LogOut, Moon, Sun } from "lucide-react";
+import { Bell, Search, Settings, User, LogOut, Moon, Sun, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { SearchResults } from "../components/SearchResults";
 import { NotificationPanel } from "../components/NotificationPanel";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate, useLocation } from "react-router-dom";
+import { SettingsPage } from "./SettingsPage";
 import { useDemoData } from "../hooks/useDemoData";
 import { StudentsManager } from "../components/StudentsManager";
 import { CoursesManager } from "../components/CoursesManager";
@@ -52,6 +54,8 @@ const Index = () => {
   const searchRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
   
   // Charger les données de démonstration
   useDemoData();
@@ -95,10 +99,7 @@ const Index = () => {
   };
 
   const handleSettingsClick = () => {
-    toast({
-      title: "Paramètres",
-      description: "Page des paramètres en développement"
-    });
+    navigate('/settings');
   };
 
   const handleProfileClick = () => {
@@ -194,35 +195,50 @@ const Index = () => {
         <header className="fixed top-0 right-0 left-0 z-40 flex h-16 shrink-0 items-center gap-4 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <SidebarTrigger className="-ml-1" />
           
+          {/* Navigation back button for settings */}
+          {location.pathname === '/settings' && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => navigate('/')}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Retour au tableau de bord
+            </Button>
+          )}
+          
           <div className="flex flex-col flex-1">
             <h1 className="text-lg font-semibold text-foreground">
-              Système de Gestion Universitaire
+              {location.pathname === '/settings' ? 'Paramètres' : 'Système de Gestion Universitaire'}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Université Saint Joseph de Pétionville
+              {location.pathname === '/settings' ? 'Configuration et préférences' : 'Université Saint Joseph de Pétionville'}
             </p>
           </div>
 
-          {/* Search Bar */}
-          <div className="flex items-center gap-2 flex-1 max-w-md">
-            <div className="relative flex-1" ref={searchRef}>
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher des étudiants, cours..."
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onFocus={() => searchQuery.trim() && setShowSearchResults(true)}
-                className="pl-9"
-              />
-              {showSearchResults && (
-                <SearchResults
-                  query={searchQuery}
-                  onClose={() => setShowSearchResults(false)}
-                  onSelectStudent={handleSelectStudent}
+          {/* Search Bar - Hide on settings page */}
+          {location.pathname !== '/settings' && (
+            <div className="flex items-center gap-2 flex-1 max-w-md">
+              <div className="relative flex-1" ref={searchRef}>
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher des étudiants, cours..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  onFocus={() => searchQuery.trim() && setShowSearchResults(true)}
+                  className="pl-9"
                 />
-              )}
+                {showSearchResults && (
+                  <SearchResults
+                    query={searchQuery}
+                    onClose={() => setShowSearchResults(false)}
+                    onSelectStudent={handleSelectStudent}
+                  />
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Right side actions */}
           <div className="flex items-center gap-2">
@@ -291,7 +307,7 @@ const Index = () => {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto p-4 pt-20">
-          {renderContent()}
+          {location.pathname === '/settings' ? <SettingsPage /> : renderContent()}
         </main>
       </SidebarInset>
 
