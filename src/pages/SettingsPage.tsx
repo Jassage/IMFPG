@@ -33,39 +33,57 @@ import {
   Phone
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ProfileSettings } from '@/components/settings/ProfileSettings';
+import { SecuritySettings } from '@/components/settings/SecuritySettings';
 
 export const SettingsPage = () => {
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [settings, setSettings] = useState({
     // Profil
-    firstName: 'Jean',
-    lastName: 'Dupont',
-    email: 'jean.dupont@ujeph.edu.ht',
-    phone: '+509 1234 5678',
-    bio: 'Administrateur système à l\'Université Saint Joseph de Pétionville',
+    profile: {
+      firstName: 'Jean',
+      lastName: 'Dupont',
+      email: 'jean.dupont@ujeph.edu.ht',
+      phone: '+509 1234 5678',
+      bio: 'Administrateur système à l\'Université Saint Joseph de Pétionville',
+      address: 'Pétion-Ville, Haïti',
+      birthDate: '1985-06-15',
+      department: 'Administration Système',
+      position: 'Administrateur Principal',
+    },
     
     // Notifications
-    emailNotifications: true,
-    pushNotifications: true,
-    academicAlerts: true,
-    paymentReminders: true,
-    systemUpdates: false,
+    notifications: {
+      emailNotifications: true,
+      pushNotifications: true,
+      academicAlerts: true,
+      paymentReminders: true,
+      systemUpdates: false,
+    },
     
     // Apparence
-    theme: 'system',
-    language: 'fr',
-    dateFormat: 'dd/mm/yyyy',
-    timeFormat: '24h',
+    appearance: {
+      theme: 'system',
+      language: 'fr',
+      dateFormat: 'dd/mm/yyyy',
+      timeFormat: '24h',
+    },
     
     // Sécurité
-    twoFactorAuth: false,
-    sessionTimeout: 30,
+    security: {
+      twoFactorAuth: false,
+      sessionTimeout: 30,
+      loginAlerts: true,
+      deviceManagement: true,
+    },
     
     // Préférences académiques
-    defaultAcademicYear: '2024-2025',
-    defaultSemester: 'Semestre 1',
-    autoSaveInterval: 5,
+    academic: {
+      defaultAcademicYear: '2024-2025',
+      defaultSemester: 'Semestre 1',
+      autoSaveInterval: 5,
+    },
   });
 
   const handleSave = (section: string) => {
@@ -131,98 +149,10 @@ export const SettingsPage = () => {
 
         {/* Profil */}
         <TabsContent value="profile">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Informations du profil
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Photo de profil */}
-              <div className="flex items-center gap-6">
-                <Avatar className="h-24 w-24">
-                  <AvatarImage src="/placeholder-avatar.jpg" />
-                  <AvatarFallback className="text-lg">
-                    {settings.firstName[0]}{settings.lastName[0]}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="space-y-2">
-                  <Button variant="outline" className="flex items-center gap-2">
-                    <Camera className="h-4 w-4" />
-                    Changer la photo
-                  </Button>
-                  <p className="text-sm text-muted-foreground">
-                    JPG, PNG ou GIF. Taille maximale : 2MB
-                  </p>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Informations personnelles */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">Prénom</Label>
-                  <Input
-                    id="firstName"
-                    value={settings.firstName}
-                    onChange={(e) => setSettings({...settings, firstName: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Nom</Label>
-                  <Input
-                    id="lastName"
-                    value={settings.lastName}
-                    onChange={(e) => setSettings({...settings, lastName: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      className="pl-9"
-                      value={settings.email}
-                      onChange={(e) => setSettings({...settings, email: e.target.value})}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Téléphone</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="phone"
-                      type="tel"
-                      className="pl-9"
-                      value={settings.phone}
-                      onChange={(e) => setSettings({...settings, phone: e.target.value})}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bio">Biographie</Label>
-                <Textarea
-                  id="bio"
-                  rows={3}
-                  value={settings.bio}
-                  onChange={(e) => setSettings({...settings, bio: e.target.value})}
-                  placeholder="Décrivez votre rôle et vos responsabilités..."
-                />
-              </div>
-
-              <Button onClick={() => handleSave('profil')} className="w-full md:w-auto">
-                <Save className="h-4 w-4 mr-2" />
-                Sauvegarder le profil
-              </Button>
-            </CardContent>
-          </Card>
+          <ProfileSettings 
+            profile={settings.profile}
+            onProfileUpdate={(profile) => setSettings({...settings, profile})}
+          />
         </TabsContent>
 
         {/* Notifications */}
@@ -244,9 +174,12 @@ export const SettingsPage = () => {
                     </p>
                   </div>
                   <Switch
-                    checked={settings.emailNotifications}
+                    checked={settings.notifications.emailNotifications}
                     onCheckedChange={(checked) => 
-                      setSettings({...settings, emailNotifications: checked})
+                      setSettings({
+                        ...settings, 
+                        notifications: {...settings.notifications, emailNotifications: checked}
+                      })
                     }
                   />
                 </div>
@@ -259,9 +192,12 @@ export const SettingsPage = () => {
                     </p>
                   </div>
                   <Switch
-                    checked={settings.pushNotifications}
+                    checked={settings.notifications.pushNotifications}
                     onCheckedChange={(checked) => 
-                      setSettings({...settings, pushNotifications: checked})
+                      setSettings({
+                        ...settings, 
+                        notifications: {...settings.notifications, pushNotifications: checked}
+                      })
                     }
                   />
                 </div>
@@ -274,9 +210,12 @@ export const SettingsPage = () => {
                     </p>
                   </div>
                   <Switch
-                    checked={settings.academicAlerts}
+                    checked={settings.notifications.academicAlerts}
                     onCheckedChange={(checked) => 
-                      setSettings({...settings, academicAlerts: checked})
+                      setSettings({
+                        ...settings, 
+                        notifications: {...settings.notifications, academicAlerts: checked}
+                      })
                     }
                   />
                 </div>
@@ -289,9 +228,12 @@ export const SettingsPage = () => {
                     </p>
                   </div>
                   <Switch
-                    checked={settings.paymentReminders}
+                    checked={settings.notifications.paymentReminders}
                     onCheckedChange={(checked) => 
-                      setSettings({...settings, paymentReminders: checked})
+                      setSettings({
+                        ...settings, 
+                        notifications: {...settings.notifications, paymentReminders: checked}
+                      })
                     }
                   />
                 </div>
@@ -304,9 +246,12 @@ export const SettingsPage = () => {
                     </p>
                   </div>
                   <Switch
-                    checked={settings.systemUpdates}
+                    checked={settings.notifications.systemUpdates}
                     onCheckedChange={(checked) => 
-                      setSettings({...settings, systemUpdates: checked})
+                      setSettings({
+                        ...settings, 
+                        notifications: {...settings.notifications, systemUpdates: checked}
+                      })
                     }
                   />
                 </div>
@@ -333,8 +278,11 @@ export const SettingsPage = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>Thème</Label>
-                  <Select value={settings.theme} onValueChange={(value) => 
-                    setSettings({...settings, theme: value})
+                  <Select value={settings.appearance.theme} onValueChange={(value) => 
+                    setSettings({
+                      ...settings, 
+                      appearance: {...settings.appearance, theme: value}
+                    })
                   }>
                     <SelectTrigger>
                       <SelectValue />
@@ -349,8 +297,11 @@ export const SettingsPage = () => {
 
                 <div className="space-y-2">
                   <Label>Langue</Label>
-                  <Select value={settings.language} onValueChange={(value) => 
-                    setSettings({...settings, language: value})
+                  <Select value={settings.appearance.language} onValueChange={(value) => 
+                    setSettings({
+                      ...settings, 
+                      appearance: {...settings.appearance, language: value}
+                    })
                   }>
                     <SelectTrigger>
                       <SelectValue />
@@ -365,8 +316,11 @@ export const SettingsPage = () => {
 
                 <div className="space-y-2">
                   <Label>Format de date</Label>
-                  <Select value={settings.dateFormat} onValueChange={(value) => 
-                    setSettings({...settings, dateFormat: value})
+                  <Select value={settings.appearance.dateFormat} onValueChange={(value) => 
+                    setSettings({
+                      ...settings, 
+                      appearance: {...settings.appearance, dateFormat: value}
+                    })
                   }>
                     <SelectTrigger>
                       <SelectValue />
@@ -381,8 +335,11 @@ export const SettingsPage = () => {
 
                 <div className="space-y-2">
                   <Label>Format d'heure</Label>
-                  <Select value={settings.timeFormat} onValueChange={(value) => 
-                    setSettings({...settings, timeFormat: value})
+                  <Select value={settings.appearance.timeFormat} onValueChange={(value) => 
+                    setSettings({
+                      ...settings, 
+                      appearance: {...settings.appearance, timeFormat: value}
+                    })
                   }>
                     <SelectTrigger>
                       <SelectValue />
@@ -405,107 +362,10 @@ export const SettingsPage = () => {
 
         {/* Sécurité */}
         <TabsContent value="security">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                Sécurité et authentification
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Changement de mot de passe */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Mot de passe</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="currentPassword">Mot de passe actuel</Label>
-                    <div className="relative">
-                      <Input
-                        id="currentPassword"
-                        type={showPassword ? "text" : "password"}
-                        placeholder="Mot de passe actuel"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="newPassword">Nouveau mot de passe</Label>
-                    <Input
-                      id="newPassword"
-                      type="password"
-                      placeholder="Nouveau mot de passe"
-                    />
-                  </div>
-                </div>
-                <Button variant="outline">Changer le mot de passe</Button>
-              </div>
-
-              <Separator />
-
-              {/* Authentification à deux facteurs */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Authentification à deux facteurs</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Sécurisez votre compte avec un code à usage unique
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {settings.twoFactorAuth && (
-                      <Badge variant="secondary">Activé</Badge>
-                    )}
-                    <Switch
-                      checked={settings.twoFactorAuth}
-                      onCheckedChange={(checked) => 
-                        setSettings({...settings, twoFactorAuth: checked})
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Délai d'expiration de session */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Session</h3>
-                <div className="space-y-2">
-                  <Label>Délai d'expiration (minutes)</Label>
-                  <Select 
-                    value={settings.sessionTimeout.toString()} 
-                    onValueChange={(value) => 
-                      setSettings({...settings, sessionTimeout: parseInt(value)})
-                    }
-                  >
-                    <SelectTrigger className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="15">15 minutes</SelectItem>
-                      <SelectItem value="30">30 minutes</SelectItem>
-                      <SelectItem value="60">1 heure</SelectItem>
-                      <SelectItem value="120">2 heures</SelectItem>
-                      <SelectItem value="480">8 heures</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <Button onClick={() => handleSave('sécurité')} className="w-full md:w-auto">
-                <Save className="h-4 w-4 mr-2" />
-                Sauvegarder la sécurité
-              </Button>
-            </CardContent>
-          </Card>
+          <SecuritySettings 
+            security={settings.security}
+            onSecurityUpdate={(security) => setSettings({...settings, security})}
+          />
         </TabsContent>
 
         {/* Préférences académiques */}
@@ -521,8 +381,11 @@ export const SettingsPage = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>Année académique par défaut</Label>
-                  <Select value={settings.defaultAcademicYear} onValueChange={(value) => 
-                    setSettings({...settings, defaultAcademicYear: value})
+                  <Select value={settings.academic.defaultAcademicYear} onValueChange={(value) => 
+                    setSettings({
+                      ...settings, 
+                      academic: {...settings.academic, defaultAcademicYear: value}
+                    })
                   }>
                     <SelectTrigger>
                       <SelectValue />
@@ -537,8 +400,11 @@ export const SettingsPage = () => {
 
                 <div className="space-y-2">
                   <Label>Semestre par défaut</Label>
-                  <Select value={settings.defaultSemester} onValueChange={(value) => 
-                    setSettings({...settings, defaultSemester: value})
+                  <Select value={settings.academic.defaultSemester} onValueChange={(value) => 
+                    setSettings({
+                      ...settings, 
+                      academic: {...settings.academic, defaultSemester: value}
+                    })
                   }>
                     <SelectTrigger>
                       <SelectValue />
@@ -554,9 +420,12 @@ export const SettingsPage = () => {
                 <div className="space-y-2">
                   <Label>Sauvegarde automatique (minutes)</Label>
                   <Select 
-                    value={settings.autoSaveInterval.toString()} 
+                    value={settings.academic.autoSaveInterval.toString()} 
                     onValueChange={(value) => 
-                      setSettings({...settings, autoSaveInterval: parseInt(value)})
+                      setSettings({
+                        ...settings, 
+                        academic: {...settings.academic, autoSaveInterval: parseInt(value)}
+                      })
                     }
                   >
                     <SelectTrigger>
