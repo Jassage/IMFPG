@@ -420,7 +420,7 @@ export const SettingsPage = () => {
                 <div className="space-y-2">
                   <Label>Sauvegarde automatique (minutes)</Label>
                   <Select 
-                    value={settings.academic.autoSaveInterval.toString()} 
+                    value={(settings.academic?.autoSaveInterval ?? 5).toString()}
                     onValueChange={(value) => 
                       setSettings({
                         ...settings, 
