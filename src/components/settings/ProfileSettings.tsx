@@ -18,6 +18,7 @@ import {
   Building
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface ProfileData {
   firstName: string;
@@ -39,6 +40,7 @@ interface ProfileSettingsProps {
 
 export const ProfileSettings = ({ profile, onProfileUpdate }: ProfileSettingsProps) => {
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [formData, setFormData] = useState<ProfileData>(profile);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -75,7 +77,7 @@ export const ProfileSettings = ({ profile, onProfileUpdate }: ProfileSettingsPro
       
       onProfileUpdate(formData);
       toast({
-        title: "Profil mis à jour",
+        title: t('common.success'),
         description: "Vos informations ont été sauvegardées avec succès.",
       });
     } catch (error) {
@@ -94,7 +96,7 @@ export const ProfileSettings = ({ profile, onProfileUpdate }: ProfileSettingsPro
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <User className="h-5 w-5" />
-          Informations du profil
+          {t('profile.title')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -118,7 +120,7 @@ export const ProfileSettings = ({ profile, onProfileUpdate }: ProfileSettingsPro
             <Button variant="outline" className="flex items-center gap-2" asChild>
               <label className="cursor-pointer">
                 <Camera className="h-4 w-4" />
-                Changer la photo
+                {t('profile.changePhoto')}
               </label>
             </Button>
             <p className="text-sm text-muted-foreground">

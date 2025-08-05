@@ -30,14 +30,18 @@ import {
   EyeOff,
   Camera,
   Mail,
-  Phone
+  Phone,
+  ArrowLeft
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ProfileSettings } from '@/components/settings/ProfileSettings';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { LanguageSelector } from '@/components/LanguageSelector';
 
 export const SettingsPage = () => {
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [showPassword, setShowPassword] = useState(false);
   const [settings, setSettings] = useState({
     // Profil
@@ -109,13 +113,26 @@ export const SettingsPage = () => {
 
   return (
     <div className="container mx-auto p-6 max-w-4xl">
+      {/* Navigation Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => window.history.back()}
+          className="flex items-center gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t('nav.back')}
+        </Button>
+      </div>
+      
       <div className="flex items-center gap-4 mb-6">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <Settings className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Paramètres</h1>
-          <p className="text-muted-foreground">Configurez vos préférences et paramètres du système</p>
+          <h1 className="text-3xl font-bold text-foreground">{t('settings.title')}</h1>
+          <p className="text-muted-foreground">{t('settings.subtitle')}</p>
         </div>
       </div>
 
@@ -123,27 +140,27 @@ export const SettingsPage = () => {
         <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
-            Profil
+            {t('settings.profile')}
           </TabsTrigger>
           <TabsTrigger value="notifications" className="flex items-center gap-2">
             <Bell className="h-4 w-4" />
-            Notifications
+            {t('settings.notifications')}
           </TabsTrigger>
           <TabsTrigger value="appearance" className="flex items-center gap-2">
             <Palette className="h-4 w-4" />
-            Apparence
+            {t('settings.appearance')}
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
-            Sécurité
+            {t('settings.security')}
           </TabsTrigger>
           <TabsTrigger value="academic" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
-            Académique
+            {t('settings.academic')}
           </TabsTrigger>
           <TabsTrigger value="data" className="flex items-center gap-2">
             <Download className="h-4 w-4" />
-            Données
+            {t('settings.data')}
           </TabsTrigger>
         </TabsList>
 
@@ -271,13 +288,13 @@ export const SettingsPage = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Palette className="h-5 w-5" />
-                Apparence et langue
+                {t('settings.appearance')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Thème</Label>
+                  <Label>{t('settings.appearance')}</Label>
                   <Select value={settings.appearance.theme} onValueChange={(value) => 
                     setSettings({
                       ...settings, 
@@ -288,30 +305,16 @@ export const SettingsPage = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="light">Clair</SelectItem>
-                      <SelectItem value="dark">Sombre</SelectItem>
-                      <SelectItem value="system">Système</SelectItem>
+                      <SelectItem value="light">{t('theme.light')}</SelectItem>
+                      <SelectItem value="dark">{t('theme.dark')}</SelectItem>
+                      <SelectItem value="system">{t('theme.system')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Langue</Label>
-                  <Select value={settings.appearance.language} onValueChange={(value) => 
-                    setSettings({
-                      ...settings, 
-                      appearance: {...settings.appearance, language: value}
-                    })
-                  }>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="fr">Français</SelectItem>
-                      <SelectItem value="en">English</SelectItem>
-                      <SelectItem value="ht">Krèyol Ayisyen</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Langue / Language</Label>
+                  <LanguageSelector />
                 </div>
 
                 <div className="space-y-2">
