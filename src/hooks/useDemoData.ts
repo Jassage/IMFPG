@@ -2,6 +2,9 @@
 import { useEffect } from 'react';
 import { useAcademicStore } from '../store/academicStore';
 
+// DEPRECATED: Ce hook est remplacé par useDataSync pour une meilleure architecture
+// Il reste temporairement pour éviter les erreurs, mais sera supprimé plus tard
+
 export const useDemoData = () => {
   const { 
     students, 
