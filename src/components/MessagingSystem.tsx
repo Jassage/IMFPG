@@ -23,7 +23,7 @@ export const MessagingSystem = () => {
   });
 
   // Simuler l'utilisateur actuel (dans une vraie app, cela viendrait de l'authentification)
-  const currentUserId = users[0]?.id || 'user_1';
+  const currentUserId = users.length > 0 ? users[0]?.id : 'user_1';
   const currentUser = users.find(u => u.id === currentUserId);
 
   const userMessages = getUserMessages(currentUserId);

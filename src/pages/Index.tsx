@@ -18,7 +18,7 @@ import { NotificationPanel } from "../components/NotificationPanel";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useLocation } from "react-router-dom";
 import { SettingsPage } from "./SettingsPage";
-import { useDemoData } from "../hooks/useDemoData";
+
 import { StudentsManager } from "../components/StudentsManager";
 import { CoursesManager } from "../components/CoursesManager";
 import { GradesManager } from "../components/GradesManager";
@@ -57,8 +57,7 @@ const Index = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Charger les données de démonstration
-  useDemoData();
+  // Les données sont maintenant chargées via useDataSync dans DataContext
 
   // Gestion des clics à l'extérieur
   useEffect(() => {
