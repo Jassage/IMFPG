@@ -70,14 +70,14 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
   };
 
   return (
-    <div className="space-y-6 max-h-[90vh] overflow-auto">
+    <div className="space-y-6 max-h-[90vh] overflow-auto animate-fade-in">
       {/* En-tête moderne avec photo et infos principales */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary/10 via-background to-secondary/10 border">
-        <div className="absolute inset-0 bg-grid-small-white/10" />
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary/10 via-background to-secondary/10 border hover:shadow-xl transition-all duration-500">
+        <div className="absolute inset-0 bg-grid-small-white/10 animate-pulse" />
         <div className="relative p-8">
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-8">
-              <Avatar className="w-28 h-28 border-4 border-background shadow-xl">
+              <Avatar className="w-28 h-28 border-4 border-background shadow-xl hover-scale transition-all duration-300">
                 <AvatarImage src={student.photo} />
                 <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-primary to-secondary text-primary-foreground">
                   {student.firstName[0]}{student.lastName[0]}
@@ -85,8 +85,8 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
               </Avatar>
               <div className="flex-1 space-y-4">
                 <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h1 className="text-3xl font-bold tracking-tight">
+                  <div className="flex items-center gap-3 mb-2 animate-scale-in">
+                    <h1 className="text-3xl font-bold tracking-tight story-link">
                       {student.firstName} {student.lastName}
                     </h1>
                     {getStatusBadge(student.status)}
@@ -97,11 +97,11 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
                 </div>
                 
                 {/* Statistiques rapides */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-fade-in" style={{animationDelay: '0.2s'}}>
                   <HoverCard>
                     <HoverCardTrigger>
-                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 transition-colors">
-                        <div className="text-2xl font-bold text-primary">{calculateGPA()}</div>
+                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
+                        <div className="text-2xl font-bold text-primary animate-scale-in">{calculateGPA()}</div>
                         <div className="text-sm text-muted-foreground">Moyenne</div>
                       </div>
                     </HoverCardTrigger>
@@ -117,8 +117,8 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
 
                   <HoverCard>
                     <HoverCardTrigger>
-                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 transition-colors">
-                        <div className="text-2xl font-bold text-success">{getSuccessRate()}%</div>
+                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
+                        <div className="text-2xl font-bold text-success animate-scale-in">{getSuccessRate()}%</div>
                         <div className="text-sm text-muted-foreground">Réussite</div>
                       </div>
                     </HoverCardTrigger>
@@ -134,8 +134,8 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
 
                   <HoverCard>
                     <HoverCardTrigger>
-                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 transition-colors">
-                        <div className="text-2xl font-bold text-warning">{retakes.length}</div>
+                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
+                        <div className="text-2xl font-bold text-warning animate-scale-in">{retakes.length}</div>
                         <div className="text-sm text-muted-foreground">Rattrapages</div>
                       </div>
                     </HoverCardTrigger>
@@ -151,8 +151,8 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
 
                   <HoverCard>
                     <HoverCardTrigger>
-                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 transition-colors">
-                        <div className="text-2xl font-bold text-primary">{getPaidAmount().toLocaleString()}</div>
+                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
+                        <div className="text-2xl font-bold text-primary animate-scale-in">{getPaidAmount().toLocaleString()}</div>
                         <div className="text-sm text-muted-foreground">HTG Payés</div>
                       </div>
                     </HoverCardTrigger>
@@ -171,9 +171,9 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
             </div>
             
             {/* Actions */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 animate-slide-in-right">
               {onEdit && (
-                <Button variant="outline" size="sm" onClick={() => onEdit(student)} className="backdrop-blur-sm">
+                <Button variant="outline" size="sm" onClick={() => onEdit(student)} className="backdrop-blur-sm hover-scale transition-all duration-300">
                   <Edit className="h-4 w-4 mr-2" />
                   Modifier
                 </Button>
@@ -181,7 +181,7 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
               {onDelete && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="backdrop-blur-sm">
+                    <Button variant="outline" size="sm" className="backdrop-blur-sm hover-scale transition-all duration-300">
                       <Trash2 className="h-4 w-4 mr-2" />
                       Supprimer
                     </Button>
@@ -212,34 +212,34 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
       </div>
 
       {/* Navigation moderne par onglets */}
-      <Tabs defaultValue="info" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 h-12 p-1 bg-muted/50">
-          <TabsTrigger value="info" className="flex items-center gap-2 data-[state=active]:bg-background">
+      <Tabs defaultValue="info" className="w-full animate-fade-in" style={{animationDelay: '0.3s'}}>
+        <TabsList className="grid w-full grid-cols-5 h-12 p-1 bg-muted/50 hover:shadow-md transition-shadow duration-300">
+          <TabsTrigger value="info" className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200">
             <User className="h-4 w-4" />
             <span className="hidden sm:inline">Informations</span>
           </TabsTrigger>
-          <TabsTrigger value="grades" className="flex items-center gap-2 data-[state=active]:bg-background">
+          <TabsTrigger value="grades" className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200">
             <BookOpen className="h-4 w-4" />
             <span className="hidden sm:inline">Notes</span>
             <Badge variant="secondary" className="ml-1 text-xs">
               {grades.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="payments" className="flex items-center gap-2 data-[state=active]:bg-background">
+          <TabsTrigger value="payments" className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200">
             <CreditCard className="h-4 w-4" />
             <span className="hidden sm:inline">Paiements</span>
             <Badge variant="secondary" className="ml-1 text-xs">
               {payments.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="retakes" className="flex items-center gap-2 data-[state=active]:bg-background">
+          <TabsTrigger value="retakes" className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200">
             <AlertTriangle className="h-4 w-4" />
             <span className="hidden sm:inline">Rattrapages</span>
             <Badge variant="secondary" className="ml-1 text-xs">
               {retakes.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="guardians" className="flex items-center gap-2 data-[state=active]:bg-background">
+          <TabsTrigger value="guardians" className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200">
             <Users className="h-4 w-4" />
             <span className="hidden sm:inline">Tuteurs</span>
             <Badge variant="secondary" className="ml-1 text-xs">
@@ -248,13 +248,13 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="info" className="mt-6">
+        <TabsContent value="info" className="mt-6 animate-fade-in">
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {/* Informations académiques */}
-            <Card className="group hover:shadow-lg transition-all duration-300">
+            <Card className="group hover:shadow-lg transition-all duration-500 hover:-translate-y-1 animate-scale-in" style={{animationDelay: '0.1s'}}>
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className="p-2 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300 group-hover:scale-110">
                     <GraduationCap className="h-5 w-5" />
                   </div>
                   Informations Académiques
@@ -287,10 +287,10 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
             </Card>
 
             {/* Informations personnelles */}
-            <Card className="group hover:shadow-lg transition-all duration-300">
+            <Card className="group hover:shadow-lg transition-all duration-500 hover:-translate-y-1 animate-scale-in" style={{animationDelay: '0.2s'}}>
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300 group-hover:scale-110">
                     <User className="h-5 w-5" />
                   </div>
                   Informations Personnelles
@@ -328,10 +328,10 @@ export const StudentDetails = ({ student, onClose, onEdit, onDelete }: StudentDe
             </Card>
 
             {/* Informations de contact et adresse */}
-            <Card className="group hover:shadow-lg transition-all duration-300 lg:col-span-2 xl:col-span-1">
+            <Card className="group hover:shadow-lg transition-all duration-500 hover:-translate-y-1 animate-scale-in lg:col-span-2 xl:col-span-1" style={{animationDelay: '0.3s'}}>
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className="p-2 rounded-lg bg-green-500/10 text-green-600 group-hover:bg-green-500 group-hover:text-white transition-colors">
+                  <div className="p-2 rounded-lg bg-green-500/10 text-green-600 group-hover:bg-green-500 group-hover:text-white transition-all duration-300 group-hover:scale-110">
                     <MapPin className="h-5 w-5" />
                   </div>
                   Contact & Adresse
