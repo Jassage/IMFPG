@@ -1,0 +1,12 @@
+import { z } from 'zod';
+import type { Prisma } from '../../../../../generated/prisma';
+
+
+export const RoomEquipmentUncheckedCreateWithoutRoomInputObjectSchema: z.ZodType<Prisma.RoomEquipmentUncheckedCreateWithoutRoomInput, z.ZodTypeDef, Prisma.RoomEquipmentUncheckedCreateWithoutRoomInput> = z.object({
+  id: z.string().optional(),
+  name: z.string()
+}).strict();
+export const RoomEquipmentUncheckedCreateWithoutRoomInputObjectZodSchema = z.object({
+  id: z.string().optional(),
+  name: z.string()
+}).strict();

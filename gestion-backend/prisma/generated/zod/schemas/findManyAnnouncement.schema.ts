@@ -1,0 +1,44 @@
+import type { Prisma } from '../../../../generated/prisma';
+import { z } from 'zod';
+import { AnnouncementIncludeObjectSchema } from './objects/AnnouncementInclude.schema';
+import { AnnouncementOrderByWithRelationInputObjectSchema } from './objects/AnnouncementOrderByWithRelationInput.schema';
+import { AnnouncementWhereInputObjectSchema } from './objects/AnnouncementWhereInput.schema';
+import { AnnouncementWhereUniqueInputObjectSchema } from './objects/AnnouncementWhereUniqueInput.schema';
+import { AnnouncementScalarFieldEnumSchema } from './enums/AnnouncementScalarFieldEnum.schema';
+import { AnnouncementAttachmentArgsObjectSchema } from './objects/AnnouncementAttachmentArgs.schema';
+import { AnnouncementCountOutputTypeArgsObjectSchema } from './objects/AnnouncementCountOutputTypeArgs.schema';
+
+// Select schema needs to be in file to prevent circular imports
+//------------------------------------------------------
+
+export const AnnouncementFindManySelectSchema: z.ZodType<Prisma.AnnouncementSelect, z.ZodTypeDef, Prisma.AnnouncementSelect> = z.object({
+    id: z.boolean().optional(),
+    title: z.boolean().optional(),
+    content: z.boolean().optional(),
+    authorId: z.boolean().optional(),
+    publishDate: z.boolean().optional(),
+    expiryDate: z.boolean().optional(),
+    targetAudience: z.boolean().optional(),
+    priority: z.boolean().optional(),
+    attachments: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+    _count: z.boolean().optional()
+  }).strict();
+
+export const AnnouncementFindManySelectZodSchema = z.object({
+    id: z.boolean().optional(),
+    title: z.boolean().optional(),
+    content: z.boolean().optional(),
+    authorId: z.boolean().optional(),
+    publishDate: z.boolean().optional(),
+    expiryDate: z.boolean().optional(),
+    targetAudience: z.boolean().optional(),
+    priority: z.boolean().optional(),
+    attachments: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+    _count: z.boolean().optional()
+  }).strict();
+
+export const AnnouncementFindManySchema: z.ZodType<Prisma.AnnouncementFindManyArgs, z.ZodTypeDef, Prisma.AnnouncementFindManyArgs> = z.object({ select: AnnouncementFindManySelectSchema.optional(), include: z.lazy(() => AnnouncementIncludeObjectSchema.optional()), orderBy: z.union([AnnouncementOrderByWithRelationInputObjectSchema, AnnouncementOrderByWithRelationInputObjectSchema.array()]).optional(), where: AnnouncementWhereInputObjectSchema.optional(), cursor: AnnouncementWhereUniqueInputObjectSchema.optional(), take: z.number().optional(), skip: z.number().optional(), distinct: z.union([AnnouncementScalarFieldEnumSchema, AnnouncementScalarFieldEnumSchema.array()]).optional() }).strict();
+
+export const AnnouncementFindManyZodSchema = z.object({ select: AnnouncementFindManySelectSchema.optional(), include: z.lazy(() => AnnouncementIncludeObjectSchema.optional()), orderBy: z.union([AnnouncementOrderByWithRelationInputObjectSchema, AnnouncementOrderByWithRelationInputObjectSchema.array()]).optional(), where: AnnouncementWhereInputObjectSchema.optional(), cursor: AnnouncementWhereUniqueInputObjectSchema.optional(), take: z.number().optional(), skip: z.number().optional(), distinct: z.union([AnnouncementScalarFieldEnumSchema, AnnouncementScalarFieldEnumSchema.array()]).optional() }).strict();
