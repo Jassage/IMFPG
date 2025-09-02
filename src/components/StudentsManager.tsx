@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { Plus, Search, Edit, Trash2, UserCheck, GraduationCap } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, UserCheck, GraduationCap, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,7 +17,7 @@ export const StudentsManager = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'details'>('list');
 
   const filteredStudents = students.filter(student =>
     `${student.firstName} ${student.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -32,13 +32,18 @@ export const StudentsManager = () => {
 
   const handleViewDetails = (student: Student) => {
     setSelectedStudent(student);
-    setIsDetailsOpen(true);
+    setViewMode('details');
   };
 
   const handleDeleteStudent = (studentId: string) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer cet étudiant ?')) {
       deleteStudent(studentId);
     }
+  };
+
+  const handleBackToList = () => {
+    setViewMode('list');
+    setSelectedStudent(null);
   };
 
   const getStatusBadge = (status: Student['status']) => {
@@ -50,6 +55,52 @@ export const StudentsManager = () => {
     
     return <Badge variant={variants[status]}>{status}</Badge>;
   };
+
+  // Affichage des détails de l'étudiant
+  if (viewMode === 'details' && selectedStudent) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            onClick={handleBackToList}
+            className="hover-scale transition-all duration-200"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Retour à la liste
+          </Button>
+          <div>
+            <h2 className="text-2xl font-bold">Détails de l'étudiant</h2>
+            <p className="text-muted-foreground">
+              {selectedStudent.firstName} {selectedStudent.lastName}
+            </p>
+          </div>
+        </div>
+        
+        <StudentDetails 
+          student={selectedStudent} 
+          onClose={handleBackToList}
+          onEdit={handleEditStudent}
+          onDelete={handleDeleteStudent}
+        />
+
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Modifier Étudiant</DialogTitle>
+            </DialogHeader>
+            <StudentForm 
+              student={selectedStudent} 
+              onClose={() => {
+                setIsFormOpen(false);
+                setSelectedStudent(null);
+              }} 
+            />
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -169,23 +220,6 @@ export const StudentsManager = () => {
           </div>
         </CardContent>
       </Card>
-
-      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Détails de l'Étudiant</DialogTitle>
-          </DialogHeader>
-          {selectedStudent && (
-            <StudentDetails 
-              student={selectedStudent} 
-              onClose={() => {
-                setIsDetailsOpen(false);
-                setSelectedStudent(null);
-              }} 
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
