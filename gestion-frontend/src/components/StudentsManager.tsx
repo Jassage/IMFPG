@@ -11,6 +11,7 @@ import {
   Filter,
   MoreVertical,
   User,
+  ArrowLeft,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,7 +84,7 @@ export const StudentsManager = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "details">("list");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<string | null>(null);
   const { currentAcademicYear } = useAcademicYearStore();
@@ -111,14 +112,17 @@ export const StudentsManager = () => {
 
   const handleViewDetails = (student: Student) => {
     setSelectedStudent(student);
-    setIsDetailsOpen(true);
+    setViewMode("details");
   };
 
   const handleDeleteStudent = (studentId: string) => {
     setStudentToDelete(studentId);
     setIsModalOpen(true);
   };
-
+  const handleBackToList = () => {
+    setViewMode("list");
+    setSelectedStudent(null);
+  };
   const handleConfirmDelete = () => {
     if (studentToDelete) {
       deleteStudent(studentToDelete);
@@ -219,6 +223,52 @@ export const StudentsManager = () => {
 
     return <Badge variant={variants[status]}>{labels[status]}</Badge>;
   };
+
+  // Affichage des détails de l'étudiant
+  if (viewMode === "details" && selectedStudent) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            onClick={handleBackToList}
+            className="hover-scale transition-all duration-200"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Retour à la liste
+          </Button>
+          <div>
+            <h2 className="text-2xl font-bold">Détails de l'étudiant</h2>
+            <p className="text-muted-foreground">
+              {selectedStudent.firstName} {selectedStudent.lastName}
+            </p>
+          </div>
+        </div>
+
+        <StudentDetails
+          student={selectedStudent}
+          onClose={handleBackToList}
+          onEdit={handleEditStudent}
+          onDelete={handleDeleteStudent}
+        />
+
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Modifier Étudiant</DialogTitle>
+            </DialogHeader>
+            <StudentForm
+              student={selectedStudent}
+              onClose={() => {
+                setIsFormOpen(false);
+                setSelectedStudent(null);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
 
   const StudentCard = ({ student }: { student: Student }) => {
     const enrollmentInfo = getStudentEnrollmentInfo(
@@ -558,45 +608,6 @@ export const StudentsManager = () => {
         </CardHeader>
         <CardContent className="p-0">{renderContent()}</CardContent>
       </Card>
-
-      {/* Modal de détails */}
-      {isDesktop ? (
-        <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Détails de l'Étudiant</DialogTitle>
-            </DialogHeader>
-            {selectedStudent && (
-              <StudentDetails
-                student={selectedStudent}
-                onClose={() => {
-                  setIsDetailsOpen(false);
-                  setSelectedStudent(null);
-                }}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
-      ) : (
-        <Drawer open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-          <DrawerContent className="max-h-[80vh]">
-            <DrawerHeader>
-              <DrawerTitle>Détails de l'Étudiant</DrawerTitle>
-            </DrawerHeader>
-            <div className="px-4 pb-4 overflow-y-auto">
-              {selectedStudent && (
-                <StudentDetails
-                  student={selectedStudent}
-                  onClose={() => {
-                    setIsDetailsOpen(false);
-                    setSelectedStudent(null);
-                  }}
-                />
-              )}
-            </div>
-          </DrawerContent>
-        </Drawer>
-      )}
 
       {/* Modal de confirmation de suppression */}
       <ConfirmationModal
