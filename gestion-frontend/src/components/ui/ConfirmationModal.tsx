@@ -1,6 +1,6 @@
-import React from 'react';
-import { AlertTriangle } from 'lucide-react';
-import Modal from './Modal';
+import React from "react";
+import { AlertTriangle } from "lucide-react";
+import Modal from "./Modal";
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -18,8 +18,8 @@ export default function ConfirmationModal({
   onConfirm,
   title,
   message,
-  confirmLabel = 'Supprimer',
-  cancelLabel = 'Annuler'
+  confirmLabel = "Supprimer",
+  cancelLabel = "Annuler",
 }: ConfirmationModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title}>

@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import api from "../services/api";
 import { User } from "../types/academic";
+import { toast } from "sonner";
 
 interface AuthState {
   user: User | null;
@@ -10,13 +11,65 @@ interface AuthState {
   isAuthenticated: boolean;
   loading: boolean;
   error: string | null;
+  initialized: boolean;
+  lastActivity: number;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  getCurrentUser: () => Promise<void>;
+  logout: (reason?: string) => void;
+  checkAuth: () => Promise<void>;
   clearError: () => void;
-  setUser: (user: User | null) => void;
-  setToken: (token: string | null) => void;
+  refreshToken: () => Promise<boolean>;
+  updateActivity: () => void;
+  initialize: () => Promise<void>;
+  fetchPotentialDeans: () => Promise<any[]>;
 }
+
+// Timeout d'inactivité (30 minutes)
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
+
+// Monitoring d'activité
+let activityMonitor: NodeJS.Timeout;
+
+const startActivityMonitoring = (logout: (reason: string) => void) => {
+  stopActivityMonitoring();
+
+  activityMonitor = setInterval(() => {
+    const state = useAuthStore.getState();
+    if (
+      state.isAuthenticated &&
+      Date.now() - state.lastActivity > INACTIVITY_TIMEOUT
+    ) {
+      logout("Inactivité prolongée");
+    }
+  }, 60000); // Vérifier toutes les minutes
+};
+
+const stopActivityMonitoring = () => {
+  if (activityMonitor) {
+    clearInterval(activityMonitor);
+  }
+};
+
+// Gestionnaire d'événements pour l'activité utilisateur
+const setupActivityListeners = () => {
+  const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
+
+  const updateActivity = () => {
+    const state = useAuthStore.getState();
+    if (state.isAuthenticated) {
+      state.updateActivity();
+    }
+  };
+
+  events.forEach((event) => {
+    document.addEventListener(event, updateActivity, { passive: true });
+  });
+
+  return () => {
+    events.forEach((event) => {
+      document.removeEventListener(event, updateActivity);
+    });
+  };
+};
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -26,97 +79,275 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       loading: false,
       error: null,
+      initialized: false,
+      lastActivity: Date.now(),
 
+      // MÉTHODE D'INITIALISATION - CORRIGÉE
+      // Dans src/store/authStore.ts
+      initialize: async () => {
+        const { token, initialized } = get();
+
+        // Si déjà initialisé, ne rien faire
+        if (initialized) {
+          console.log("✅ Authentification déjà initialisée");
+          return;
+        }
+
+        console.log("🔄 Initialisation de l'authentification...");
+
+        if (!token) {
+          console.log("❌ Aucun token trouvé");
+          set({
+            initialized: true,
+            isAuthenticated: false,
+            loading: false,
+          });
+          return;
+        }
+
+        try {
+          set({ loading: true });
+          console.log("🔍 Vérification du token...");
+
+          // Configurer le header
+          if (api?.defaults?.headers) {
+            api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          }
+
+          // Vérifier le token
+          const response = await api.get("/auth/me");
+
+          set({
+            user: response.data,
+            isAuthenticated: true,
+            loading: false,
+            error: null,
+            initialized: true, // ← TRÈS IMPORTANT
+            lastActivity: Date.now(),
+          });
+
+          startActivityMonitoring(get().logout);
+          setupActivityListeners();
+
+          console.log("✅ Authentification initialisée avec succès");
+        } catch (error: any) {
+          console.error("❌ Erreur d'initialisation:", error);
+
+          // Nettoyer
+          localStorage.removeItem("authToken");
+          localStorage.removeItem("userData");
+
+          if (api?.defaults?.headers) {
+            delete api.defaults.headers.common["Authorization"];
+          }
+
+          set({
+            user: null,
+            token: null,
+            isAuthenticated: false,
+            loading: false,
+            error: "Session expirée",
+            initialized: true, // ← MÊME EN CAS D'ERREUR, ON MARQUE COMME INITIALISÉ
+          });
+        }
+      },
+
+      // MÉTHODE DE CONNEXION - CORRIGÉE
       login: async (email: string, password: string) => {
         set({ loading: true, error: null });
+
         try {
-          const response = await api.post("/auth/login", { email, password });
-          const { token, user } = response.data;
+          if (!email || !password) {
+            throw new Error("Email et mot de passe requis");
+          }
 
-          // Stocker le token dans les headers API par défaut
-          api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          console.log("🔄 Tentative de connexion avec:", email);
 
+          const response = await api.post("/auth/login", {
+            email: email.trim(),
+            password,
+          });
+
+          const { token, user, expiresIn } = response.data;
+
+          console.log("✅ Réponse API reçue:", {
+            token: token ? "✓ Présent" : "✗ Absent",
+            user: user ? "✓ Présent" : "✗ Absent",
+            expiresIn,
+          });
+
+          if (!token || !user) {
+            throw new Error("Réponse d'authentification invalide");
+          }
+
+          // Vérifier si le compte est actif ou verrouillé
+          if (user.status && user.status !== "Actif") {
+            throw new Error(
+              "Votre compte est désactivé. Contactez l'administrateur."
+            );
+          }
+
+          if (user.lockUntil && new Date(user.lockUntil) > new Date()) {
+            const unlockDate = new Date(user.lockUntil).toLocaleString("fr-FR");
+            throw new Error(`Compte verrouillé jusqu'au ${unlockDate}`);
+          }
+
+          // CORRECTION CRITIQUE : Mettre à jour le store AVANT le stockage
           set({
             user,
             token,
             isAuthenticated: true,
             loading: false,
             error: null,
+            initialized: true, // IMPORTANT : marquer comme initialisé
+            lastActivity: Date.now(),
           });
+
+          // Stockage sécurisé
+          localStorage.setItem("authToken", token);
+          localStorage.setItem("userData", JSON.stringify(user));
+
+          // Configurer les headers API
+          if (api?.defaults?.headers) {
+            api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          }
+
+          // Démarrer le monitoring
+          startActivityMonitoring(get().logout);
+          setupActivityListeners();
+
+          console.log("✅ Connexion réussie, utilisateur:", user.email);
+          toast.success(`Bienvenue ${user.firstName} ${user.lastName} !`);
         } catch (error: any) {
-          const errorMessage =
-            error.response?.data?.message || "Erreur de connexion";
+          console.error("❌ Erreur de connexion:", error);
+
+          let errorMessage = "Erreur de connexion au serveur";
+
+          if (error.response?.data?.message) {
+            errorMessage = error.response.data.message;
+          } else if (error.response?.status === 423) {
+            errorMessage = "Compte verrouillé temporairement.";
+          } else if (error.response?.status === 401) {
+            errorMessage = "Email ou mot de passe incorrect";
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+
+          // Affichage du nombre de tentatives restantes si disponible
+          if (error.response?.data?.remainingAttempts !== undefined) {
+            toast.info(
+              `Tentatives restantes : ${error.response.data.remainingAttempts}`
+            );
+          }
+
+          toast.error(errorMessage);
+
+          // Nettoyage en cas d'erreur
+          localStorage.removeItem("authToken");
+          localStorage.removeItem("userData");
+
+          if (api?.defaults?.headers) {
+            delete api.defaults.headers.common["Authorization"];
+          }
+
           set({
-            error: errorMessage,
-            loading: false,
+            user: null,
+            token: null,
             isAuthenticated: false,
+            loading: false,
+            error: errorMessage,
+            initialized: true, // IMPORTANT : même en cas d'erreur
           });
-          // Nettoyer le token en cas d'erreur
-          api.defaults.headers.common["Authorization"] = "";
-          throw new Error(errorMessage);
+
+          throw error;
         }
       },
 
-      logout: () => {
-        // Nettoyer les headers API
-        api.defaults.headers.common["Authorization"] = "";
+      // MÉTHODE DE DÉCONNEXION
+      logout: (reason = "Déconnexion utilisateur") => {
+        console.log(`🔒 Déconnexion: ${reason}`);
+
+        // Nettoyage sécurisé
+        if (api?.defaults?.headers) {
+          delete api.defaults.headers.common["Authorization"];
+        }
+
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("userData");
 
         set({
           user: null,
           token: null,
           isAuthenticated: false,
-          error: null,
           loading: false,
+          error: null,
+          initialized: true,
         });
+
+        // Arrêter le monitoring
+        stopActivityMonitoring();
+
+        toast.info("Vous avez été déconnecté");
       },
 
-      getCurrentUser: async () => {
+      // VÉRIFICATION D'AUTHENTIFICATION
+      checkAuth: async () => {
+        console.log("🔍 Vérification de l'authentification...");
+        await get().initialize();
+      },
+
+      // EFFACER LES ERREURS
+      clearError: () => set({ error: null }),
+
+      // RAFRAÎCHISSEMENT DU TOKEN
+      refreshToken: async (): Promise<boolean> => {
         const { token } = get();
 
         if (!token) {
-          set({ isAuthenticated: false, loading: false });
-          return;
+          console.log("❌ Aucun token à rafraîchir");
+          return false;
         }
 
-        set({ loading: true });
         try {
-          // Définir le token dans les headers avant la requête
-          api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          console.log("🔄 Rafraîchissement du token...");
+          const response = await api.post("/auth/refresh", { token });
+          const { newToken } = response.data;
 
-          const response = await api.get("/auth/me");
-          set({
-            user: response.data.user,
-            isAuthenticated: true,
-            loading: false,
-            error: null,
-          });
-        } catch (error: any) {
-          console.error("Erreur vérification utilisateur:", error);
-
-          // Nettoyer en cas d'erreur
-          api.defaults.headers.common["Authorization"] = "";
+          if (api?.defaults?.headers) {
+            api.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
+          }
 
           set({
-            error: error.response?.data?.message || "Session expirée",
-            isAuthenticated: false,
-            loading: false,
-            user: null,
-            token: null,
+            token: newToken,
+            lastActivity: Date.now(),
           });
+
+          localStorage.setItem("authToken", newToken);
+          console.log("✅ Token rafraîchi avec succès");
+          return true;
+        } catch (error) {
+          console.error("❌ Erreur lors du rafraîchissement du token:", error);
+          get().logout("Impossible de rafraîchir le token");
+          return false;
         }
       },
 
-      clearError: () => set({ error: null }),
+      // MISE À JOUR DE L'ACTIVITÉ
+      updateActivity: () => {
+        set({ lastActivity: Date.now() });
+      },
 
-      setUser: (user: User | null) => set({ user }),
-
-      setToken: (token: string | null) => {
-        if (token) {
-          api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-        } else {
-          api.defaults.headers.common["Authorization"] = "";
+      // RÉCUPÉRATION DES DOYENS POTENTIELS
+      fetchPotentialDeans: async (): Promise<any[]> => {
+        try {
+          console.log("🔍 Récupération des doyens potentiels...");
+          const response = await api.get("/users/potential-deans");
+          console.log("✅ Doyens potentiels récupérés:", response.data.length);
+          return response.data;
+        } catch (error) {
+          console.error("❌ Erreur lors de la récupération des doyens:", error);
+          throw new Error("Impossible de charger la liste des doyens");
         }
-        set({ token });
       },
     }),
     {
@@ -125,43 +356,75 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         token: state.token,
         user: state.user,
-        isAuthenticated: state.isAuthenticated,
+        lastActivity: state.lastActivity,
+        initialized: state.initialized, // IMPORTANT : persister l'état d'initialisation
       }),
-      onRehydrateStorage: () => (state) => {
-        if (state?.token) {
-          // Réhydrater le token dans les headers API
-          api.defaults.headers.common[
-            "Authorization"
-          ] = `Bearer ${state.token}`;
-
-          // Vérifier l'utilisateur actuel après réhydratation
-          if (state.token && !state.user) {
-            setTimeout(() => {
-              state.getCurrentUser?.();
-            }, 1000);
-          }
-        }
-      },
+      // NOTE: On ne utilise plus onRehydrateStorage car il causait des problèmes
     }
   )
 );
 
-// Initialisation au démarrage
-export const initializeAuth = () => {
-  const { token, getCurrentUser } = useAuthStore.getState();
+// Export pour utilisation dans les intercepteurs
+export const getAuthState = () => useAuthStore.getState();
 
-  if (token) {
-    // Définir le token dans les headers API
-    api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+// Initialisation automatique au chargement de l'application
+// Dans src/store/authStore.ts - remplacez initializeAuthStore
+export const initializeAuthStore = () => {
+  console.log("🚀 Initialisation du store d'authentification...");
 
-    // Récupérer les infos utilisateur si token mais pas d'user
-    if (token && !useAuthStore.getState().user) {
-      setTimeout(() => {
-        getCurrentUser();
-      }, 1000);
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("authToken");
+    const userData = localStorage.getItem("userData");
+
+    console.log("📋 État initial:", {
+      token: !!token,
+      userData: !!userData,
+    });
+
+    // Si on a un token, on initialise le store avec les données
+    if (token) {
+      try {
+        const user = userData ? JSON.parse(userData) : null;
+
+        // Mettre à jour l'état initial IMMÉDIATEMENT
+        useAuthStore.setState({
+          token,
+          user,
+          isAuthenticated: true, // ← Important pour éviter le flash de login
+          initialized: false, // ← On va vérifier avec le serveur
+          loading: true,
+        });
+
+        // Configurer l'API immédiatement
+        if (api?.defaults?.headers) {
+          api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+        }
+
+        // Lancer la vérification asynchrone
+        setTimeout(() => {
+          useAuthStore.getState().initialize();
+        }, 100);
+      } catch (error) {
+        console.error("❌ Erreur parsing userData:", error);
+        // En cas d'erreur, on marque comme initialisé mais non authentifié
+        useAuthStore.setState({
+          initialized: true,
+          isAuthenticated: false,
+          loading: false,
+        });
+      }
+    } else {
+      // Pas de token = directement initialisé et non authentifié
+      useAuthStore.setState({
+        initialized: true,
+        isAuthenticated: false,
+        loading: false,
+      });
     }
   }
 };
 
-// Appeler l'initialisation au chargement du store
-initializeAuth();
+// Démarrer l'initialisation automatique
+if (typeof window !== "undefined") {
+  initializeAuthStore();
+}

@@ -18,6 +18,7 @@ import facultyLevelRoutes from "./routes/facultyLevelRoutes";
 import scheduleRoutes from "./routes/scheduleRoutes";
 import attendanceRoutes from "./routes/attendanceRoutes";
 import paymentRoutes from "./routes/paymentRoutes";
+import expensRoutes from "./routes/expenseRoutes";
 import bookRoutes from "./routes/bookRoutes";
 import bookLoanRoutes from "./routes/bookLoanRoutes";
 import transcriptRoutes from "./routes/transcriptRoutes";
@@ -38,9 +39,21 @@ import analyticsRoutes from "./routes/analyticsRoutes";
 import authRoutes from "./routes/auth.routes";
 import academicYearRoutes from "./routes/academicYear.routes";
 import courseAssignmentRoutes from "./routes/courseAssignmentRoutes";
+import feeStructureRoutes from "./routes/feeStructureRoutes";
+import studentFeeRoutes from "./routes/studentFeeRoutes";
+import feePaymentRoutes from "./routes/feePaymentRoutes";
+import auditRoutes from "./routes/auditRoutes";
+import backupRoutes from "./routes/backupRoutes";
+import documentRoutes from "./routes/documentRoutes";
 
-import { validate } from "../src/middleware/zodMiddleware";
+import { initializeAcademicYear } from "./services/academicYearService";
 import path from "path";
+import { auditMiddleware } from "./middleware/auditMiddleware";
+import {
+  checkSessionTimeout,
+  cleanupExpiredSessions,
+  trackUserActivity,
+} from "./middleware/sessionTimeout";
 
 dotenv.config();
 
@@ -48,9 +61,20 @@ const app = express();
 // Middleware pour gérer les CORS et le JSON
 
 app.use(cors());
+cleanupExpiredSessions();
+app.use(trackUserActivity);
+
+// app.use(auditMiddleware);
 app.use(express.json());
 // Servir les fichiers uploads
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use(
+  "/uploads/profiles",
+  express.static(path.join(process.cwd(), "uploads", "profiles"))
+);
+app.use(
+  "/uploads/imports",
+  express.static(path.join(process.cwd(), "uploads", "imports"))
+);
 
 const PORT = process.env.PORT || 4000;
 
@@ -72,6 +96,7 @@ app.use("/api/faculty-levels", facultyLevelRoutes);
 app.use("/api/schedules", scheduleRoutes);
 app.use("/api/attendances", attendanceRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/expenses", expensRoutes);
 app.use("/api/books", bookRoutes);
 app.use("/api/book-loans", bookLoanRoutes);
 app.use("/api/transcripts", transcriptRoutes);
@@ -89,8 +114,26 @@ app.use("/api/room-equipments", roomEquipmentRoutes);
 app.use("/api/room-reservations", roomReservationRoutes);
 app.use("/api/certificates", certificateRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/fee-structures", feeStructureRoutes);
+app.use("/api/student-fees", studentFeeRoutes);
+app.use("/api/fee-payments", feePaymentRoutes);
+app.use("/api/audit", auditRoutes);
+app.use("/api/backup", backupRoutes);
+app.use("/api/document", documentRoutes);
+app.use((req, res, next) => {
+  // Vérifie si aucune route n'a matché
+  if (!req.route) {
+    res.status(404).json({
+      message: "Route non trouvée",
+      path: req.originalUrl,
+    });
+  } else {
+    next();
+  }
+});
 
 // Lancer le serveur
 app.listen(PORT, () => {
   console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);
+  initializeAcademicYear();
 });

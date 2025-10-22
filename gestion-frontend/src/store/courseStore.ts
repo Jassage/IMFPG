@@ -1,40 +1,41 @@
+// src/store/courseStore.ts
 import { create } from "zustand";
 import api from "../services/api";
-import { UE, UEPrerequisite } from "../types/academic";
+import { CreateUEData, UE, UpdateUEData } from "../types/academic";
+
+interface UEFilters {
+  type?: string;
+  search?: string;
+  facultyId?: string;
+  level?: string;
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
 
 interface UEState {
   ues: UE[];
   currentUE: UE | null;
   loading: boolean;
   error: string | null;
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  };
+  pagination: Pagination;
   fetchUEs: (
     filters?: UEFilters,
     page?: number,
     limit?: number
   ) => Promise<void>;
   fetchUEById: (id: string) => Promise<void>;
-  createUE: (
-    ueData: Omit<UE, "id" | "createdAt" | "updatedAt" | "createdBy"> & {
-      createdById: string;
-    }
-  ) => Promise<void>;
-  updateUE: (id: string, ueData: Partial<UE>) => Promise<void>;
+  createUE: (ueData: CreateUEData) => Promise<UE>; // ← Utiliser CreateUEData
+  updateUE: (id: string, ueData: UpdateUEData) => Promise<void>; // ← Utiliser UpdateUEData
   deleteUE: (id: string) => Promise<void>;
   addPrerequisite: (ueId: string, prerequisiteId: string) => Promise<void>;
   removePrerequisite: (ueId: string, prerequisiteId: string) => Promise<void>;
   searchUEs: (query: string) => Promise<UE[]>;
   getUEStats: (ueId: string) => Promise<any>;
-}
-
-interface UEFilters {
-  type?: string;
-  search?: string;
 }
 
 export const useUEStore = create<UEState>((set, get) => ({
@@ -62,15 +63,24 @@ export const useUEStore = create<UEState>((set, get) => ({
         }
       });
 
+      console.log(`🔄 Fetching UEs: /ues?${params.toString()}`);
+
       const response = await api.get(`/ues?${params}`);
+
       set({
-        ues: response.data.ues,
-        pagination: response.data.pagination,
+        ues: response.data.ues || [],
+        pagination: response.data.pagination || {
+          page: 1,
+          limit: 10,
+          total: 0,
+          pages: 0,
+        },
         loading: false,
       });
     } catch (error: any) {
+      console.error("❌ Erreur fetchUEs:", error);
       set({
-        error: error.response?.data?.message || "Erreur de chargement",
+        error: error.response?.data?.message || "Erreur de chargement des UEs",
         loading: false,
       });
       throw error;
@@ -84,43 +94,54 @@ export const useUEStore = create<UEState>((set, get) => ({
       set({ currentUE: response.data, loading: false });
     } catch (error: any) {
       set({
-        error: error.response?.data?.message || "Erreur de chargement",
+        error: error.response?.data?.message || "Erreur de chargement de l'UE",
         loading: false,
       });
       throw error;
     }
   },
 
-  createUE: async (ueData) => {
+  createUE: async (ueData: CreateUEData) => {
+    // ← Type correct
     set({ loading: true });
     try {
+      // Préparer le payload correctement
       const payload = {
         code: ueData.code,
         title: ueData.title,
         credits: ueData.credits,
         type: ueData.type,
-        passingGrade: ueData.passingGrade,
-        description: ueData.description,
-        createdBy: ueData.createdById,
-        prerequisites: ueData.prerequisites?.map((prerequis) => {
-          ueId: prerequis.ueId;
-        }),
+        passingGrade: ueData.passingGrade || 60,
+        description: ueData.description || "",
+        objectives: ueData.objectives || "",
+        createdById: ueData.createdById,
+        prerequisites: ueData.prerequisites || [], // ← Ce sont des strings
       };
+
+      console.log("📤 Payload création UE:", payload);
+
       const response = await api.post("/ues", payload);
+
       set((state) => ({
         ues: [...state.ues, response.data],
         loading: false,
       }));
+
+      return response.data;
     } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.message || "Erreur de création de l'UE";
+      console.error("❌ Erreur création UE:", error.response?.data);
       set({
-        error: error.response?.data?.message || "Erreur de création",
+        error: errorMessage,
         loading: false,
       });
-      throw error;
+      throw new Error(errorMessage);
     }
   },
 
-  updateUE: async (id, ueData) => {
+  updateUE: async (id: string, ueData: UpdateUEData) => {
+    // ← Type correct
     set({ loading: true });
     try {
       const response = await api.put(`/ues/${id}`, ueData);
@@ -131,14 +152,15 @@ export const useUEStore = create<UEState>((set, get) => ({
       }));
     } catch (error: any) {
       set({
-        error: error.response?.data?.message || "Erreur de modification",
+        error:
+          error.response?.data?.message || "Erreur de modification de l'UE",
         loading: false,
       });
       throw error;
     }
   },
 
-  deleteUE: async (id) => {
+  deleteUE: async (id: string) => {
     set({ loading: true });
     try {
       await api.delete(`/ues/${id}`);
@@ -149,14 +171,14 @@ export const useUEStore = create<UEState>((set, get) => ({
       }));
     } catch (error: any) {
       set({
-        error: error.response?.data?.message || "Erreur de suppression",
+        error: error.response?.data?.message || "Erreur de suppression de l'UE",
         loading: false,
       });
       throw error;
     }
   },
 
-  addPrerequisite: async (ueId, prerequisiteId) => {
+  addPrerequisite: async (ueId: string, prerequisiteId: string) => {
     set({ loading: true });
     try {
       const response = await api.post(`/ues/${ueId}/prerequisites`, {
@@ -168,7 +190,7 @@ export const useUEStore = create<UEState>((set, get) => ({
             ? {
                 ...state.currentUE,
                 prerequisites: [
-                  ...state.currentUE.prerequisites,
+                  ...(state.currentUE.prerequisites || []),
                   response.data,
                 ],
               }
@@ -184,7 +206,7 @@ export const useUEStore = create<UEState>((set, get) => ({
     }
   },
 
-  removePrerequisite: async (ueId, prerequisiteId) => {
+  removePrerequisite: async (ueId: string, prerequisiteId: string) => {
     set({ loading: true });
     try {
       await api.delete(`/ues/${ueId}/prerequisites/${prerequisiteId}`);
@@ -193,8 +215,8 @@ export const useUEStore = create<UEState>((set, get) => ({
           state.currentUE?.id === ueId
             ? {
                 ...state.currentUE,
-                prerequisites: state.currentUE.prerequisites.filter(
-                  (p) => p.prerequisiteId !== prerequisiteId
+                prerequisites: (state.currentUE.prerequisites || []).filter(
+                  (p: any) => p.prerequisiteId !== prerequisiteId
                 ),
               }
             : state.currentUE,

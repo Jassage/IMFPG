@@ -9,8 +9,11 @@ import {
   getUEsByFacultyAndLevel,
   // getAssignmentStats,
 } from "../controllers/courseAssignmentControllers";
+import { authenticateToken } from "../middleware/auth.middleware";
+import { deanPermissions } from "../middleware/deanPermissions";
 
 const router = express.Router();
+router.use(authenticateToken, deanPermissions);
 
 router.post("/", createCourseAssignment);
 router.get("/", getCourseAssignments);

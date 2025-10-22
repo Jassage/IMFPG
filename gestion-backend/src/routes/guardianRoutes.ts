@@ -6,8 +6,11 @@ import {
   updateGuardian,
   deleteGuardian,
 } from "../controllers/guardianController";
+import { authenticateToken } from "../middleware/auth.middleware";
+import { deanPermissions } from "../middleware/deanPermissions";
 
 const router = Router();
+router.use(authenticateToken, deanPermissions);
 
 router.get("/", getAllGuardians);
 router.get("/:id", getGuardianById);

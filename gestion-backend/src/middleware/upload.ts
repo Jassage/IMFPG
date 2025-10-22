@@ -1,49 +1,79 @@
 // middleware/upload.ts
 import multer from "multer";
 import path from "path";
-import { Request } from "express";
+import fs from "fs";
+import { Request, Response, NextFunction } from "express";
 
 // Configuration de Multer pour les photos de profil
 const profileStorage = multer.diskStorage({
   destination: (req: Request, file, cb) => {
-    cb(null, "uploads/profiles/");
+    // Utiliser un chemin ABSOLU
+    const uploadDir = path.resolve(process.cwd(), "uploads", "profiles");
+
+    console.log("📁 Destination profile:", uploadDir);
+
+    // Créer le dossier récursivement s'il n'existe pas
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+        console.log("✅ Dossier profiles créé:", uploadDir);
+      }
+      cb(null, uploadDir);
+    } catch (error) {
+      console.error("❌ Erreur création dossier profiles:", error);
+      cb(error as Error, uploadDir);
+    }
   },
   filename: (req: Request, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "profile-" + uniqueSuffix + path.extname(file.originalname));
+    const filename =
+      "profile-" + uniqueSuffix + path.extname(file.originalname);
+    console.log("📸 Fichier profile généré:", filename);
+    cb(null, filename);
   },
 });
 
-// // Configuration pour les fichiers d'importation
-// const importStorage = multer.diskStorage({
-//   destination: (req: Request, file, cb) => {
-//     cb(null, 'uploads/imports/');
-//   },
-//   filename: (req: Request, file, cb) => {
-//     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-//     cb(null, 'import-' + uniqueSuffix + path.extname(file.originalname));
-//   }
-// });
+// Configuration pour les fichiers d'importation
+const importStorage = multer.diskStorage({
+  destination: (req: Request, file, cb) => {
+    // Utiliser un chemin ABSOLU
+    const uploadDir = path.resolve(process.cwd(), "uploads", "imports");
+
+    console.log("📁 Destination import:", uploadDir);
+
+    // Créer le dossier récursivement s'il n'existe pas
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+        console.log("✅ Dossier imports créé:", uploadDir);
+      }
+      cb(null, uploadDir);
+    } catch (error) {
+      console.error("❌ Erreur création dossier imports:", error);
+      cb(error as Error, uploadDir);
+    }
+  },
+  filename: (req: Request, file, cb) => {
+    // Corriger le problème de double extension
+    const originalName = file.originalname;
+    const extension = path.extname(originalName);
+    const baseName = path.basename(originalName, extension);
+
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const filename = baseName + "-" + uniqueSuffix + extension;
+    console.log("📄 Fichier import généré:", filename);
+    cb(null, filename);
+  },
+});
 
 // Filtres de fichiers
-// const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-//   if (file.mimetype.startsWith('image/')) {
-//     cb(null, true);
-//   } else if (
-//     file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-//     file.mimetype === 'application/vnd.ms-excel' ||
-//     file.mimetype === 'application/json'
-//   ) {
-//     cb(null, true);
-//   } else {
-//     cb(new Error('Type de fichier non supporté'));
-//   }
-// };
 const fileFilter = (
-  req: any,
+  req: Request,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ) => {
+  console.log("🔍 Fichier reçu:", file.originalname, "Type:", file.mimetype);
+
   const allowedTypes = [
     "image/jpeg",
     "image/png",
@@ -55,8 +85,10 @@ const fileFilter = (
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
+    console.log("✅ Type accepté");
     cb(null, true);
   } else {
+    console.log("❌ Type refusé:", file.mimetype);
     cb(new Error("Type de fichier non supporté: " + file.mimetype));
   }
 };
@@ -69,31 +101,6 @@ export const uploadProfile = multer({
   },
 });
 
-// // middleware/upload.ts
-// import multer from 'multer';
-// import path from 'path';
-
-const importStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // Créer le dossier s'il n'existe pas
-    const fs = require("fs");
-    const dir = "uploads/imports/";
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    // Corriger le problème de double extension
-    const originalName = file.originalname;
-    const extension = path.extname(originalName);
-    const baseName = path.basename(originalName, extension);
-
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, baseName + "-" + uniqueSuffix + extension);
-  },
-});
-
 export const uploadImport = multer({
   storage: importStorage,
   fileFilter,
@@ -101,3 +108,13 @@ export const uploadImport = multer({
     fileSize: 10 * 1024 * 1024, // 10MB max
   },
 });
+
+// Middleware de debug pour voir les fichiers uploadés
+export const logUpload = (req: Request, res: Response, next: NextFunction) => {
+  console.log("=== UPLOAD DEBUG ===");
+  console.log("Body:", req.body);
+  console.log("File:", req.file);
+  console.log("Files:", req.files);
+  console.log("====================");
+  next();
+};

@@ -1,3 +1,4 @@
+// src/components/students/StudentDetails.tsx
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,16 +37,35 @@ import {
   BookOpen,
   Award,
   Users,
-  TrendingUp,
-  Clock,
   CreditCard,
   BarChart3,
+  FileText,
+  Download,
+  Filter,
+  ScrollText,
+  User2,
 } from "lucide-react";
-import { Student, Enrollment } from "../../types/academic";
-import { useAcademicStore } from "../../store/academicStore";
+import { Student, Enrollment, GradeWithDetails } from "../../types/academic";
+import { useAcademicStore } from "../../store/studentStore";
 import { useEnrollmentStore } from "../../store/enrollmentStore";
 import { usePaymentStore } from "../../store/paymentStore";
 import { useInitialData } from "@/hooks/useInitialData";
+import { Checkbox } from "../ui/checkbox";
+import { useFeeStructureStore } from "@/store/feeStructureStore";
+import { StudentFeesSection } from "../StudentFeesSection";
+import { GradesModal } from "./GradesModal";
+import { useGradeStore } from "@/store/gradeStore";
+import { DocumentGeneratorModal } from "@/components/documents/DocumentGeneratorModal";
+import { useDocumentStore } from "@/store/documentStore";
+import { DocumentTypeI } from "@/types/academic";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { useAuthStore } from "@/store/authStore";
 
 interface StudentDetailsProps {
   student: Student;
@@ -61,18 +81,147 @@ export const StudentDetails = ({
   onDelete,
 }: StudentDetailsProps) => {
   useInitialData();
-  const { getStudentGrades, getStudentGuardians, getStudentRetakes } =
-    useAcademicStore();
+
+  const {
+    getStudentGrades,
+    getStudentGuardians,
+    getStudentRetakes,
+    fetchGrades,
+    fetchUEs,
+    ues,
+  } = useAcademicStore();
+
+  // CORRECTION: Utiliser le store des notes directement
+  const { grades: allGrades, fetchGrades: fetchAllGrades } = useGradeStore();
   const { enrollments, getEnrollmentsByStudent } = useEnrollmentStore();
   const { payments, getPaymentsByStudent, getTotalAmount, getPaidAmount } =
     usePaymentStore();
 
   const [activeTab, setActiveTab] = useState("info");
-  const grades = getStudentGrades(student.id);
+  const [grades, setGrades] = useState<GradeWithDetails[]>([]);
   const guardians = getStudentGuardians(student.id);
   const retakes = getStudentRetakes(student.id);
   const studentEnrollments = getEnrollmentsByStudent(student.id);
   const studentPayments = getPaymentsByStudent(student.id);
+  const [selectedEnrollment, setSelectedEnrollment] =
+    useState<Enrollment | null>(null);
+  const [showGradesModal, setShowGradesModal] = useState(false);
+  const [loadingGrades, setLoadingGrades] = useState(false);
+
+  const { studentFees, getStudentFees, getStudentFeeByYear } =
+    useFeeStructureStore();
+  const { user } = useAuthStore();
+  const [currentStudentFee, setCurrentStudentFee] = useState<any>(null);
+  const [documentModal, setDocumentModal] = useState<{
+    isOpen: boolean;
+    type: DocumentTypeI;
+    enrollment: Enrollment | null;
+  }>({
+    isOpen: false,
+    type: DocumentTypeI.BULLETIN,
+    enrollment: null,
+  });
+
+  useEffect(() => {
+    const loadStudentGrades = async () => {
+      if (student.id) {
+        setLoadingGrades(true);
+        try {
+          // Option 1: Utiliser le store académique si disponible
+          const studentGrades = getStudentGrades(student.id);
+          if (studentGrades && studentGrades.length > 0) {
+            setGrades(studentGrades);
+          } else {
+            // Option 2: Filtrer depuis le store des notes
+            const filteredGrades = allGrades.filter(
+              (grade) => grade.studentId === student.id
+            );
+            setGrades(filteredGrades as GradeWithDetails[]);
+
+            // Si toujours pas de notes, essayer de les charger
+            if (filteredGrades.length === 0) {
+              await fetchAllGrades({ studentId: student.id });
+            }
+          }
+        } catch (error) {
+          console.error("Erreur lors du chargement des notes:", error);
+        } finally {
+          setLoadingGrades(false);
+        }
+      }
+    };
+
+    if (activeTab === "academic" || activeTab === "enrollments") {
+      loadStudentGrades();
+    }
+  }, [student.id, activeTab, allGrades, getStudentGrades, fetchAllGrades]);
+
+  const loadStudentFeeData = async () => {
+    try {
+      await getStudentFees(student.id);
+      if (currentEnrollment) {
+        const fee = await getStudentFeeByYear(
+          student.id,
+          currentEnrollment.academicYear
+        );
+        setCurrentStudentFee(fee);
+      }
+    } catch (error) {
+      console.error("Error loading fee data:", error);
+    }
+  };
+  // CORRECTION: Fonction pour obtenir les notes d'une inscription spécifique
+  const getGradesForEnrollment = (
+    enrollment: Enrollment
+  ): GradeWithDetails[] => {
+    return grades.filter(
+      (grade) =>
+        grade.studentId === enrollment.studentId &&
+        grade.academicYearId === enrollment.academicYearId
+    );
+  };
+
+  // CORRECTION: Fonction pour ouvrir le modal des notes
+  const handleViewGrades = (enrollment: Enrollment) => {
+    setSelectedEnrollment(enrollment);
+    const enrollmentGrades = getGradesForEnrollment(enrollment);
+    console.log("Notes pour l'inscription:", {
+      enrollment,
+      gradesCount: enrollmentGrades.length,
+      grades: enrollmentGrades,
+    });
+    setShowGradesModal(true);
+  };
+  // Fonction pour ouvrir le modal des notes
+  // const handleViewGrades = (enrollment: Enrollment) => {
+  //   setSelectedEnrollment(enrollment);
+  //   setShowGradesModal(true);
+  // };
+
+  // Fonctions pour ouvrir les modaux
+  const openDocumentModal = (type: DocumentTypeI, enrollment: Enrollment) => {
+    setDocumentModal({
+      isOpen: true,
+      type,
+      enrollment,
+    });
+  };
+
+  // Fonction pour fermer le modal
+  const handleCloseGradesModal = () => {
+    setShowGradesModal(false);
+    setSelectedEnrollment(null);
+  };
+
+  // Fonction pour générer le bulletin
+  const handleGenerateReport = (session?: string) => {
+    console.log("Générer bulletin pour:", {
+      student: `${student.firstName} ${student.lastName}`,
+      enrollment: selectedEnrollment,
+      session: session || "toutes sessions",
+    });
+    // Implémentez ici la logique de génération du bulletin
+  };
 
   useEffect(() => {
     // Charger les données supplémentaires si nécessaire
@@ -81,6 +230,12 @@ export const StudentDetails = ({
     }
     if (activeTab === "enrollments" && studentEnrollments.length === 0) {
       // Potentiellement charger les inscriptions ici
+    }
+    if (grades.length === 0) {
+      fetchGrades();
+    }
+    if (ues.length === 0) {
+      fetchUEs();
     }
   }, [activeTab]);
 
@@ -94,6 +249,7 @@ export const StudentDetails = ({
       Active: { variant: "default" as const, label: "Actif" },
       Inactive: { variant: "secondary" as const, label: "Inactif" },
       Graduated: { variant: "outline" as const, label: "Diplômé" },
+      Suspended: { variant: "destructive" as const, label: "Suspendu" },
     };
 
     const { variant, label } = config[status];
@@ -108,8 +264,25 @@ export const StudentDetails = ({
 
   const getSuccessRate = () => {
     if (grades.length === 0) return 0;
-    const validatedGrades = grades.filter((g) => g.status === "Validé").length;
+    const validatedGrades = grades.filter((g) => g.status === "Valid_").length;
     return Math.round((validatedGrades / grades.length) * 100);
+  };
+
+  // Convertir le niveau en format texte
+  const getLevelText = (level: string) => {
+    const levelNum = parseInt(level);
+    if (isNaN(levelNum)) return level;
+    if (levelNum === 1) return "1ère année";
+    return `${levelNum}ème année`;
+  };
+
+  // Formater la date
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("fr-FR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
   };
 
   return (
@@ -121,7 +294,14 @@ export const StudentDetails = ({
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-8">
               <Avatar className="w-28 h-28 border-4 border-background shadow-xl hover-scale transition-all duration-300">
-                <AvatarImage src={student.photo} />
+                <AvatarImage
+                  src={student.photo}
+                  alt={`${student.firstName} ${student.lastName}`}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = "none";
+                  }}
+                />
                 <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-primary to-secondary text-primary-foreground">
                   {student.firstName[0]}
                   {student.lastName[0]}
@@ -137,7 +317,8 @@ export const StudentDetails = ({
                   </div>
                   {currentEnrollment && (
                     <p className="text-muted-foreground">
-                      {currentEnrollment.faculty} • {currentEnrollment.level} •{" "}
+                      {currentEnrollment.faculty} •{" "}
+                      {getLevelText(currentEnrollment.level)} •{" "}
                       {currentEnrollment.academicYear}
                     </p>
                   )}
@@ -172,7 +353,7 @@ export const StudentDetails = ({
                   <HoverCard>
                     <HoverCardTrigger>
                       <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
-                        <div className="text-2xl font-bold text-success animate-scale-in">
+                        <div className="text-2xl font-bold text-green-600 animate-scale-in">
                           {getSuccessRate()}%
                         </div>
                         <div className="text-sm text-muted-foreground">
@@ -184,8 +365,8 @@ export const StudentDetails = ({
                       <div className="space-y-2">
                         <h4 className="font-semibold">Taux de Réussite</h4>
                         <p className="text-sm text-muted-foreground">
-                          {grades.filter((g) => g.status === "Validé").length}{" "}
-                          UE validées sur {grades.length}
+                          {grades.filter((g) => g.status === "Valid_").length}{" "}
+                          Cours validées sur {grades.length}
                         </p>
                       </div>
                     </HoverCardContent>
@@ -194,7 +375,7 @@ export const StudentDetails = ({
                   <HoverCard>
                     <HoverCardTrigger>
                       <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
-                        <div className="text-2xl font-bold text-warning animate-scale-in">
+                        <div className="text-2xl font-bold text-yellow-600 animate-scale-in">
                           {retakes.length}
                         </div>
                         <div className="text-sm text-muted-foreground">
@@ -221,7 +402,7 @@ export const StudentDetails = ({
                   <HoverCard>
                     <HoverCardTrigger>
                       <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
-                        <div className="text-2xl font-bold text-primary animate-scale-in">
+                        <div className="text-2xl font-bold text-blue-600 animate-scale-in">
                           {getPaidAmount({
                             studentId: student.id,
                           }).toLocaleString()}{" "}
@@ -265,54 +446,58 @@ export const StudentDetails = ({
 
             {/* Actions */}
             <div className="flex gap-2 animate-slide-in-right">
-              {onEdit && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onEdit(student)}
-                  className="backdrop-blur-sm hover-scale transition-all duration-300"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Modifier
-                </Button>
-              )}
-              {onDelete && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
+              {user?.role === "Admin" && (
+                <>
+                  {onEdit && (
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => onEdit(student)}
                       className="backdrop-blur-sm hover-scale transition-all duration-300"
                     >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Supprimer
+                      <Edit className="h-4 w-4 mr-2" />
+                      Modifier
                     </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        Confirmer la suppression
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Êtes-vous sûr de vouloir supprimer l'étudiant{" "}
-                        <strong>
-                          {student.firstName} {student.lastName}
-                        </strong>{" "}
-                        ? Cette action est irréversible et supprimera toutes les
-                        données associées (notes, paiements, etc.).
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Annuler</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => onDelete(student.id)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        Supprimer définitivement
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                  )}
+                  {onDelete && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="backdrop-blur-sm hover-scale transition-all duration-300 text-destructive border-destructive hover:bg-destructive hover:text-white"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Supprimer
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            Confirmer la suppression
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Êtes-vous sûr de vouloir supprimer l'étudiant{" "}
+                            <strong>
+                              {student.firstName} {student.lastName}
+                            </strong>{" "}
+                            ? Cette action est irréversible et supprimera toutes
+                            les données associées (notes, paiements, etc.).
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Annuler</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => onDelete(student.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Supprimer définitivement
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -326,7 +511,7 @@ export const StudentDetails = ({
         style={{ animationDelay: "0.3s" }}
         onValueChange={setActiveTab}
       >
-        <TabsList className="grid w-full grid-cols-5 h-12 p-1 bg-muted/50 hover:shadow-md transition-shadow duration-300">
+        <TabsList className="grid w-full grid-cols-6 h-12 p-1 bg-muted/50 hover:shadow-md transition-shadow duration-300">
           <TabsTrigger
             value="info"
             className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200"
@@ -340,6 +525,13 @@ export const StudentDetails = ({
           >
             <GraduationCap className="h-4 w-4" />
             <span className="hidden sm:inline">Académique</span>
+          </TabsTrigger>
+          <TabsTrigger value="fees" className="flex items-center gap-2">
+            <CreditCard className="h-4 w-4" />
+            <span>Frais</span>
+            <Badge variant="secondary">
+              {currentStudentFee ? "Défini" : "Non défini"}
+            </Badge>
           </TabsTrigger>
           <TabsTrigger
             value="payments"
@@ -375,44 +567,7 @@ export const StudentDetails = ({
 
         {/* Contenu des onglets */}
         <TabsContent value="info" className="mt-6 animate-fade-in">
-          {/* ... (contenu des informations personnelles inchangé) ... */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {/* Informations académiques */}
-            {/* <Card className="group hover:shadow-lg transition-all duration-500 hover:-translate-y-1 animate-scale-in" style={{animationDelay: '0.1s'}}>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className="p-2 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300 group-hover:scale-110">
-                    <GraduationCap className="h-5 w-5" />
-                  </div>
-                  Informations Académiques
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-muted-foreground">Faculté</label>
-                    <Badge variant="outline" className="ml-2">{enrollmentInfo.faculty}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-muted-foreground">Niveau</label>
-                    <Badge variant="outline" className="ml-2">{enrollmentInfo.level}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-muted-foreground">Année Académique</label>
-                    <Badge variant="outline" className="ml-2">{enrollmentInfo.academicYear}</Badge>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-muted-foreground">Moyenne Générale</label>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-primary">{calculateGPA()}<span className="text-sm text-muted-foreground">/20</span></div>
-                      <Progress value={(calculateGPA() / 20) * 100} className="w-16 h-2" />
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card> */}
-
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
             {/* Informations personnelles */}
             <Card
               className="group hover:shadow-lg transition-all duration-500 hover:-translate-y-1 animate-scale-in"
@@ -443,7 +598,9 @@ export const StudentDetails = ({
                     </label>
                     <div className="flex items-center gap-2 mt-1">
                       <Phone className="h-4 w-4 text-muted-foreground" />
-                      <p className="font-medium">{student.phone}</p>
+                      <p className="font-medium">
+                        {student.phone || "Non renseigné"}
+                      </p>
                     </div>
                   </div>
                   <div>
@@ -453,9 +610,9 @@ export const StudentDetails = ({
                     <div className="flex items-center gap-2 mt-1">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
                       <p className="font-medium">
-                        {new Date(student.dateOfBirth).toLocaleDateString(
-                          "fr-FR"
-                        )}
+                        {student.dateOfBirth
+                          ? formatDate(student.dateOfBirth)
+                          : "Non renseignée"}
                       </p>
                     </div>
                   </div>
@@ -463,7 +620,36 @@ export const StudentDetails = ({
                     <label className="text-sm font-medium text-muted-foreground">
                       Lieu de Naissance
                     </label>
-                    <p className="font-medium mt-1">{student.placeOfBirth}</p>
+                    <p className="font-medium mt-1">
+                      {student.placeOfBirth || "Non renseigné"}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      CIN
+                    </label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <ScrollText className="h-4 w-4 text-muted-foreground" />
+                      {student.cin ? (
+                        <p className="font-medium">{student.cin}</p>
+                      ) : (
+                        <p className="text-muted-foreground italic">
+                          Non renseigné
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      Sexe
+                    </label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <User2 className="h-4 w-4 text-muted-foreground" />
+                      <Badge variant="outline" className="capitalize">
+                        {student.sexe || "Non spécifié"}
+                      </Badge>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -488,7 +674,7 @@ export const StudentDetails = ({
                     Adresse Complète
                   </label>
                   <p className="font-medium mt-1 leading-relaxed">
-                    {student.address}
+                    {student.address || "Non renseignée"}
                   </p>
                 </div>
                 <div>
@@ -520,7 +706,7 @@ export const StudentDetails = ({
 
             {/* Informations médicales */}
             {(student.allergies || student.disabilities) && (
-              <Card className="lg:col-span-2 xl:col-span-3 group hover:shadow-lg transition-all duration-300">
+              <Card className="group hover:shadow-lg transition-all duration-300">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <div className="p-2 rounded-lg bg-orange-500/10 text-orange-600 group-hover:bg-orange-500 group-hover:text-white transition-colors">
@@ -529,7 +715,7 @@ export const StudentDetails = ({
                     Informations Médicales
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <CardContent className="grid grid-cols-1 md:grid-cols-1 gap-6">
                   {student.allergies && (
                     <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
                       <label className="text-sm font-medium text-red-700 dark:text-red-400 flex items-center gap-2">
@@ -563,13 +749,15 @@ export const StudentDetails = ({
             {/* Statistiques académiques */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="text-center p-4 hover:shadow-md transition-shadow">
-                <div className="text-3xl font-bold text-success mb-1">
-                  {grades.filter((g) => g.status === "Validé").length}
+                <div className="text-3xl font-bold text-green-600 mb-1">
+                  {grades.filter((g) => g.status === "Valid_").length}
                 </div>
-                <div className="text-sm text-muted-foreground">UE Validées</div>
+                <div className="text-sm text-muted-foreground">
+                  Cours Validées
+                </div>
                 <Progress
                   value={
-                    (grades.filter((g) => g.status === "Validé").length /
+                    (grades.filter((g) => g.status === "Valid_").length /
                       Math.max(grades.length, 1)) *
                     100
                   }
@@ -577,7 +765,7 @@ export const StudentDetails = ({
                 />
               </Card>
               <Card className="text-center p-4 hover:shadow-md transition-shadow">
-                <div className="text-3xl font-bold text-warning mb-1">
+                <div className="text-3xl font-bold text-yellow-600 mb-1">
                   {retakes.length}
                 </div>
                 <div className="text-sm text-muted-foreground">Rattrapages</div>
@@ -610,7 +798,49 @@ export const StudentDetails = ({
                         key={grade.id}
                         className="group p-4 border rounded-lg hover:shadow-md transition-all duration-200 hover:border-primary/50"
                       >
-                        {/* ... (affichage des détails de chaque note) ... */}
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h4 className="font-semibold">
+                                {grade.ue.title}
+                              </h4>
+                              <Badge
+                                variant={
+                                  grade.status === "Valid_"
+                                    ? ("default" as const)
+                                    : grade.status === "Non_valid_"
+                                    ? ("secondary" as const)
+                                    : ("destructive" as const)
+                                }
+                              >
+                                {grade.status}
+                              </Badge>
+                              <Badge
+                                variant={
+                                  grade.session === "Normale"
+                                    ? ("secondary" as const)
+                                    : grade.session === "Reprise"
+                                    ? ("destructive" as const)
+                                    : ("default" as const)
+                                }
+                              >
+                                {grade.session}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-1">
+                              Semestre {grade.semester} •{" "}
+                              {grade.academicYear.year}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-primary">
+                              {grade.grade > 0 ? grade.grade : "-"}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Coefficient: {100}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -624,6 +854,20 @@ export const StudentDetails = ({
                 )}
               </CardContent>
             </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="fees" className="mt-6">
+          <div className="space-y-6">
+            {/* Chargement des données de frais */}
+            {activeTab === "fees" && (
+              <div className="animate-fade-in">
+                <StudentFeesSection
+                  student={student}
+                  currentEnrollment={currentEnrollment}
+                />
+              </div>
+            )}
           </div>
         </TabsContent>
 
@@ -641,7 +885,7 @@ export const StudentDetails = ({
                 </div>
               </Card>
               <Card className="text-center p-4 hover:shadow-md transition-shadow">
-                <div className="text-2xl font-bold text-success mb-1">
+                <div className="text-2xl font-bold text-green-600 mb-1">
                   {getPaidAmount({ studentId: student.id }).toLocaleString()}{" "}
                   HTG
                 </div>
@@ -649,8 +893,10 @@ export const StudentDetails = ({
               </Card>
               <Card className="text-center p-4 hover:shadow-md transition-shadow">
                 <div className="text-2xl font-bold text-destructive mb-1">
-                  {getTotalAmount({ studentId: student.id }) -
-                    getPaidAmount({ studentId: student.id })}{" "}
+                  {(
+                    getTotalAmount({ studentId: student.id }) -
+                    getPaidAmount({ studentId: student.id })
+                  ).toLocaleString()}{" "}
                   HTG
                 </div>
                 <div className="text-sm text-muted-foreground">Solde</div>
@@ -693,18 +939,9 @@ export const StudentDetails = ({
                               {payment.description}
                             </p>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <span>
-                                Échéance:{" "}
-                                {new Date(payment.dueDate).toLocaleDateString(
-                                  "fr-FR"
-                                )}
-                              </span>
                               {payment.paidDate && (
                                 <span>
-                                  Payé le:{" "}
-                                  {new Date(
-                                    payment.paidDate
-                                  ).toLocaleDateString("fr-FR")}
+                                  Payé le: {formatDate(payment.paidDate)}
                                 </span>
                               )}
                             </div>
@@ -735,56 +972,197 @@ export const StudentDetails = ({
         </TabsContent>
 
         <TabsContent value="enrollments" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BookOpen className="h-5 w-5" />
+          <Card className="border-0 shadow-lg overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white pb-4">
+              <CardTitle className="flex items-center gap-2 text-2xl font-bold">
+                <BookOpen className="h-6 w-6" />
                 Historique des Inscriptions
               </CardTitle>
+              <p className="text-blue-100 font-light">
+                Parcours académique de {student.firstName} {student.lastName}
+              </p>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               {studentEnrollments.length > 0 ? (
-                <div className="space-y-3">
-                  {studentEnrollments.map((enrollment) => (
-                    <div
-                      key={enrollment.id}
-                      className="group p-4 border rounded-lg hover:shadow-md transition-all duration-200"
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h4 className="font-semibold">
-                            {enrollment.faculty} - {enrollment.level}
-                          </h4>
-                          <p className="text-sm text-muted-foreground">
-                            Année: {enrollment.academicYear}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            Inscrit le:{" "}
-                            {new Date(
-                              enrollment.enrollmentDate
-                            ).toLocaleDateString("fr-FR")}
-                          </p>
-                        </div>
-                        <Badge
-                          variant={
-                            enrollment.status === "Active"
-                              ? "default"
-                              : enrollment.status === "Completed"
-                              ? "secondary"
-                              : "outline"
-                          }
-                        >
-                          {enrollment.status}
-                        </Badge>
+                <div className="overflow-hidden">
+                  {/* Regrouper les inscriptions par faculté */}
+                  {Object.entries(
+                    studentEnrollments.reduce((acc, enrollment) => {
+                      if (!acc[enrollment.faculty]) {
+                        acc[enrollment.faculty] = [];
+                      }
+                      acc[enrollment.faculty].push(enrollment);
+                      return acc;
+                    }, {} as Record<string, Enrollment[]>)
+                  ).map(([faculty, enrollments]) => (
+                    <div key={faculty} className="mb-6 last:mb-0">
+                      {/* En-tête de faculté */}
+                      <div className="bg-slate-100 dark:bg-slate-800 px-6 py-3">
+                        <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full mr-3"></div>
+                          {faculty}
+                        </h3>
+                      </div>
+
+                      {/* Tableau des inscriptions */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="bg-slate-50 dark:bg-slate-700/30 border-b border-slate-200 dark:border-slate-700">
+                              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                                Niveau
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                                Année Académique
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                                Statut
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                                Date d'Inscription
+                              </th>
+                              <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                                Actions
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            {enrollments.map((enrollment) => {
+                              return (
+                                <tr
+                                  key={enrollment.id}
+                                  className="hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors duration-150"
+                                >
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="font-medium text-slate-900 dark:text-white">
+                                      {getLevelText(enrollment.level)}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700"
+                                    >
+                                      {enrollment.academicYear}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <Badge
+                                      variant={
+                                        enrollment.status === "Active"
+                                          ? "default"
+                                          : enrollment.status === "Completed"
+                                          ? "secondary"
+                                          : "outline"
+                                      }
+                                      className="flex items-center gap-1 w-fit"
+                                    >
+                                      {enrollment.status === "Active" && (
+                                        <div className="w-2 h-2 bg-white rounded-full"></div>
+                                      )}
+                                      {enrollment.status === "Active"
+                                        ? "Actif"
+                                        : enrollment.status === "Completed"
+                                        ? "Terminé"
+                                        : enrollment.status}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
+                                    {formatDate(enrollment.enrollmentDate)}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                                    <div className="flex gap-2 justify-center">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 w-8 p-0 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100"
+                                        onClick={() =>
+                                          handleViewGrades(enrollment)
+                                        }
+                                        title="Voir les notes"
+                                      >
+                                        <FileText className="h-4 w-4" />
+                                      </Button>
+
+                                      {/* Menu déroulant pour tous les documents */}
+                                      <Select
+                                        onValueChange={(value: DocumentTypeI) =>
+                                          openDocumentModal(value, enrollment)
+                                        }
+                                      >
+                                        <SelectTrigger className="h-8 w-32 bg-green-50 text-green-600 hover:bg-green-100 border-green-200">
+                                          <SelectValue placeholder="Documents" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem
+                                            value={DocumentTypeI.BULLETIN}
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <FileText className="h-4 w-4" />
+                                              Bulletin
+                                            </div>
+                                          </SelectItem>
+                                          <SelectItem
+                                            value={DocumentTypeI.RELEVE}
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <BookOpen className="h-4 w-4" />
+                                              Relevé
+                                            </div>
+                                          </SelectItem>
+                                          <SelectItem
+                                            value={
+                                              DocumentTypeI.ATTESTATION_NIVEAU
+                                            }
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <GraduationCap className="h-4 w-4" />
+                                              Attestation Niveau
+                                            </div>
+                                          </SelectItem>
+                                          <SelectItem
+                                            value={
+                                              DocumentTypeI.ATTESTATION_FIN_ETUDES
+                                            }
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <Award className="h-4 w-4" />
+                                              Fin d'Études
+                                            </div>
+                                          </SelectItem>
+                                          <SelectItem
+                                            value={
+                                              DocumentTypeI.CERTIFICAT_SCOLARITE
+                                            }
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <FileText className="h-4 w-4" />
+                                              Scolarité
+                                            </div>
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12">
-                  <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">
+                <div className="text-center py-16 px-6">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full mb-4">
+                    <BookOpen className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Aucune inscription enregistrée
+                  </h3>
+                  <p className="text-slate-500 dark:text-slate-400">
+                    Cet étudiant n'a pas encore d'inscription.
                   </p>
                 </div>
               )}
@@ -815,6 +1193,7 @@ export const StudentDetails = ({
                           </h4>
                           <Badge variant="outline" className="text-xs">
                             {guardian.relationship}
+                            {guardian.isPrimary && " • Principal"}
                           </Badge>
                         </div>
                         <div className="space-y-2 text-sm">
@@ -822,16 +1201,20 @@ export const StudentDetails = ({
                             <Phone className="h-4 w-4 text-muted-foreground" />
                             <span>{guardian.phone}</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-4 w-4 text-muted-foreground" />
-                            <span>{guardian.email}</span>
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                            <span className="text-muted-foreground">
-                              {guardian.address}
-                            </span>
-                          </div>
+                          {guardian.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-4 w-4 text-muted-foreground" />
+                              <span>{guardian.email}</span>
+                            </div>
+                          )}
+                          {guardian.address && (
+                            <div className="flex items-start gap-2">
+                              <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                              <span className="text-muted-foreground">
+                                {guardian.address}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </Card>
@@ -849,6 +1232,38 @@ export const StudentDetails = ({
           </Card>
         </TabsContent>
       </Tabs>
+
+      {documentModal.isOpen && documentModal.enrollment && (
+        <DocumentGeneratorModal
+          student={student}
+          enrollment={documentModal.enrollment}
+          isOpen={documentModal.isOpen}
+          onClose={() =>
+            setDocumentModal({
+              isOpen: false,
+              type: DocumentTypeI.BULLETIN,
+              enrollment: null,
+            })
+          }
+          documentType={documentModal.type}
+        />
+      )}
+
+      {showGradesModal && selectedEnrollment && (
+        <GradesModal
+          enrollment={selectedEnrollment}
+          student={student}
+          grades={grades.filter(
+            (grade) =>
+              grade.studentId === selectedEnrollment.studentId &&
+              grade.academicYearId === selectedEnrollment.academicYearId
+          )}
+          onClose={() => setShowGradesModal(false)}
+          onGenerateReport={(session) => {
+            console.log("Générer bulletin pour:", session);
+          }}
+        />
+      )}
     </div>
   );
 };

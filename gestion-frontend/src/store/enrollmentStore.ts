@@ -1,4 +1,4 @@
-// store/enrollmentStore.ts
+// store/enrollmentStore.ts - VERSION CORRIGÉE
 import { create } from "zustand";
 import api from "../services/api";
 import {
@@ -6,6 +6,7 @@ import {
   CreateEnrollmentData,
   UpdateEnrollmentData,
 } from "../types/academic";
+import { toast } from "sonner";
 
 interface EnrollmentStore {
   enrollments: Enrollment[];
@@ -21,16 +22,21 @@ interface EnrollmentStore {
   ) => Promise<void>;
   updateEnrollmentStatus: (
     id: string,
-    status: "Active" | "Suspended" | "Completed"
+    status: "Active" | "Completed" | "Suspended"
   ) => Promise<void>;
   deleteEnrollment: (id: string) => Promise<void>;
 
   // Méthodes utilitaires synchrones
   getEnrollmentsByStudent: (studentId: string) => Enrollment[];
   getEnrollmentsByFaculty: (faculty: string, level?: string) => Enrollment[];
+  getActiveEnrollment: (studentId: string) => Enrollment | null;
 
   // Méthode pour charger les inscriptions par étudiant
   fetchEnrollmentsByStudent: (studentId: string) => Promise<void>;
+  assignFeeToStudent: (feeAssignmentData: any) => Promise<any>;
+
+  // Utilitaires
+  clearError: () => void;
 }
 
 export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
@@ -38,7 +44,6 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   loading: false,
   error: null,
 
-  // Récupère toutes les inscriptions
   fetchEnrollments: async () => {
     set({ loading: true, error: null });
     try {
@@ -59,30 +64,35 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
     }
   },
 
-  // Ajoute une nouvelle inscription
   addEnrollment: async (enrollmentData: CreateEnrollmentData) => {
     set({ loading: true, error: null });
     try {
+      // console.log("🔍 DEBUG - Données envoyées à l'API:", enrollmentData);
       const payload = {
         studentId: enrollmentData.studentId,
         faculty: enrollmentData.faculty,
         level: enrollmentData.level,
-        academicYear: enrollmentData.academicYearId,
+        academicYearId: enrollmentData.academicYearId,
         enrollmentDate:
           enrollmentData.enrollmentDate || new Date().toISOString(),
-        status: enrollmentData.status || "Active",
+        status: "Active",
       };
 
+      // console.log("🔍 DEBUG - Données formatées:", payload);
       const response = await api.post("/enrollments", payload);
 
-      // Ajoute la nouvelle inscription à la liste actuelle
-      set((state) => ({
-        enrollments: [...state.enrollments, response.data],
-        loading: false,
-      }));
+      // Recharger toutes les inscriptions
+      const enrollmentsResponse = await api.get("/enrollments");
 
+      set({
+        enrollments: enrollmentsResponse.data,
+        loading: false,
+      });
+
+      toast.success("Inscription créée avec succès");
       return response.data;
     } catch (err: any) {
+      console.error("❌ Erreur détaillée lors de l'ajout:", err);
       const errorMessage =
         err.response?.data?.error ||
         err.response?.data?.details ||
@@ -92,11 +102,12 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         error: errorMessage,
         loading: false,
       });
+
+      toast.error(errorMessage);
       throw new Error(errorMessage);
     }
   },
 
-  // Met à jour une inscription
   updateEnrollment: async (
     id: string,
     enrollmentData: UpdateEnrollmentData
@@ -109,22 +120,41 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         cleanData.faculty = enrollmentData.faculty;
       if (enrollmentData.level !== undefined)
         cleanData.level = enrollmentData.level;
-      if (enrollmentData.academicYear !== undefined)
-        cleanData.academicYear = enrollmentData.academicYear;
+      if (enrollmentData.academicYearId !== undefined)
+        cleanData.academicYearId = enrollmentData.academicYearId;
       if (enrollmentData.status !== undefined)
         cleanData.status = enrollmentData.status;
 
       const response = await api.put(`/enrollments/${id}`, cleanData);
 
-      // Met à jour l'inscription dans la liste
+      // CORRECTION CRITIQUE : Normaliser les données reçues de l'API
+      const updatedData = response.data;
+      const normalizedEnrollment = {
+        ...updatedData,
+        // S'assurer que faculty et academicYear sont des strings, pas des objets
+        faculty:
+          typeof updatedData.faculty === "object"
+            ? updatedData.faculty.name || updatedData.faculty.id
+            : updatedData.faculty,
+        academicYear:
+          typeof updatedData.academicYear === "object"
+            ? updatedData.academicYear.year || updatedData.academicYear.id
+            : updatedData.academicYear,
+      };
+
+      console.log(
+        "🔍 DEBUG updateEnrollment - Données normalisées:",
+        normalizedEnrollment
+      );
+
       set((state) => ({
         enrollments: state.enrollments.map((e) =>
-          e.id === id ? { ...e, ...response.data } : e
+          e.id === id ? normalizedEnrollment : e
         ),
         loading: false,
       }));
 
-      return response.data;
+      return normalizedEnrollment;
     } catch (err: any) {
       const errorMessage =
         err.response?.data?.error ||
@@ -139,16 +169,14 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
     }
   },
 
-  // Met à jour uniquement le statut
   updateEnrollmentStatus: async (
     id: string,
-    status: "Active" | "Suspended" | "Completed"
+    status: "Active" | "Completed" | "Suspended"
   ) => {
     set({ loading: true, error: null });
     try {
       const response = await api.patch(`/enrollments/${id}/status`, { status });
 
-      // Met à jour le statut dans la liste
       set((state) => ({
         enrollments: state.enrollments.map((e) =>
           e.id === id ? { ...e, status } : e
@@ -156,6 +184,7 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         loading: false,
       }));
 
+      toast.success("Statut d'inscription mis à jour");
       return response.data;
     } catch (err: any) {
       const errorMessage =
@@ -165,21 +194,23 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         error: errorMessage,
         loading: false,
       });
+
+      toast.error(errorMessage);
       throw new Error(errorMessage);
     }
   },
 
-  // Supprime une inscription
   deleteEnrollment: async (id: string) => {
     set({ loading: true, error: null });
     try {
       await api.delete(`/enrollments/${id}`);
 
-      // Supprime l'inscription de la liste
       set((state) => ({
         enrollments: state.enrollments.filter((e) => e.id !== id),
         loading: false,
       }));
+
+      toast.success("Inscription supprimée avec succès");
     } catch (err: any) {
       const errorMessage =
         err.response?.data?.error ||
@@ -189,11 +220,12 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         error: errorMessage,
         loading: false,
       });
+
+      toast.error(errorMessage);
       throw new Error(errorMessage);
     }
   },
 
-  // Méthodes utilitaires (synchrone)
   getEnrollmentsByStudent: (studentId: string) => {
     return get().enrollments.filter((e) => e.studentId === studentId);
   },
@@ -204,7 +236,14 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
     );
   },
 
-  // Charge les inscriptions par étudiant
+  getActiveEnrollment: (studentId: string) => {
+    return (
+      get().enrollments.find(
+        (e) => e.studentId === studentId && e.status === "Active"
+      ) || null
+    );
+  },
+
   fetchEnrollmentsByStudent: async (studentId: string) => {
     set({ loading: true, error: null });
     try {
@@ -224,4 +263,26 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
       throw new Error(errorMessage);
     }
   },
+
+  assignFeeToStudent: async (feeAssignmentData: any) => {
+    set({ loading: true, error: null });
+    console.log("frais etudiant", feeAssignmentData);
+
+    try {
+      const response = await api.post("/student-fees", feeAssignmentData);
+
+      toast.success("Frais attribués avec succès");
+      set({ loading: false });
+      return response.data;
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.error || "Erreur lors de l'attribution des frais";
+      set({ error: errorMessage, loading: false });
+
+      toast.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+  },
+
+  clearError: () => set({ error: null }),
 }));

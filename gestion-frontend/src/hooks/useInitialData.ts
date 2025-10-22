@@ -6,6 +6,7 @@ import { useAcademicYearStore } from "@/store/academicYearStore";
 import { useUEStore } from "@/store/courseStore";
 import { useCourseAssignmentStore } from "@/store/courseAssignmentStore";
 import { usePaymentStore } from "@/store/paymentStore";
+import { useGradeStore } from "@/store/gradeStore";
 
 export const useInitialData = () => {
   const { fetchEnrollments, enrollments } = useEnrollmentStore();
@@ -19,7 +20,8 @@ export const useInitialData = () => {
     fetchUeByFacultyAndLevel,
   } = useCourseAssignmentStore();
   const { fetchPayments } = usePaymentStore();
- 
+  const { grades, fetchGrades } = useGradeStore();
+
   useEffect(() => {
     const loadData = async () => {
       const promises = [];
@@ -51,6 +53,9 @@ export const useInitialData = () => {
 
       if (fetchPayments.length === 0) {
         promises.push(fetchPayments);
+      }
+      if (grades.length === 0) {
+        promises.push(fetchGrades());
       }
 
       if (promises.length > 0) {

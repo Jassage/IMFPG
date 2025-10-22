@@ -37,15 +37,19 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAcademicStore } from "../store/academicStore";
+import { useAcademicStore } from "../store/studentStore";
 import { Student } from "../types/academic";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { useFacultyStore } from "@/store/facultyStore";
+import { useAcademicYearStore } from "@/store/academicYearStore"; // Import du store des années académiques
 
 export const StudentCardGenerator = () => {
-  const { students, faculties } = useAcademicStore();
+  const { students } = useAcademicStore();
+  const { faculties } = useFacultyStore();
+  const { academicYears } = useAcademicYearStore(); // Récupération des années académiques
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [selectedFaculty, setSelectedFaculty] = useState<string>("");
   const [cardStyle, setCardStyle] = useState<"modern" | "classic" | "premium">(
@@ -58,12 +62,62 @@ export const StudentCardGenerator = () => {
   const backCardRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Fonction pour récupérer la faculté depuis les enrollments
+  const getStudentFaculty = (student: Student) => {
+    if (student.enrollments && student.enrollments.length > 0) {
+      const latestEnrollment =
+        student.enrollments[student.enrollments.length - 1];
+      const faculty = faculties.find(
+        (f) => f.id === latestEnrollment.facultyId
+      );
+      return faculty ? faculty.name : "Non assigné";
+    }
+    return "Non assigné";
+  };
+
+  // Fonction pour récupérer le niveau depuis les enrollments
+  const getStudentLevel = (student: Student) => {
+    if (student.enrollments && student.enrollments.length > 0) {
+      const latestEnrollment =
+        student.enrollments[student.enrollments.length - 1];
+      return latestEnrollment.level || "Non assigné";
+    }
+    return "Non assigné";
+  };
+
+  // Fonction pour récupérer l'année académique depuis les enrollments
+  const getStudentAcademicYear = (student: Student) => {
+    if (student.enrollments && student.enrollments.length > 0) {
+      const latestEnrollment =
+        student.enrollments[student.enrollments.length - 1];
+      const academicYear = academicYears.find(
+        (ay) => ay.id === latestEnrollment.academicYearId
+      );
+      return academicYear ? academicYear.year : "Non assigné";
+    }
+    return "Non assigné";
+  };
+
+  // Fonction pour récupérer l'ID de faculté pour le filtrage
+  const getStudentFacultyId = (student: Student) => {
+    if (student.enrollments && student.enrollments.length > 0) {
+      const latestEnrollment =
+        student.enrollments[student.enrollments.length - 1];
+      return latestEnrollment.facultyId || "";
+    }
+    return "";
+  };
+
+  const getLevelText = (level: string) => {
+    return level === "1" ? "1ère Année" : `${level}ème Année`;
+  };
+
   // Filtrer les étudiants selon la faculté sélectionnée et le terme de recherche
   const filteredStudents = students.filter(
     (student) =>
       (selectedFaculty === "" ||
         selectedFaculty === "ALL_FACULTIES" ||
-        student.faculty === selectedFaculty) &&
+        getStudentFacultyId(student) === selectedFaculty) &&
       student.status === "Active" &&
       (searchTerm === "" ||
         student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -255,7 +309,7 @@ export const StudentCardGenerator = () => {
         );
 
         // Télécharger le PDF
-        pdf.save(`carte-etudiant-${selectedStudentData?.studentId}.pdf`);
+        pdf.save(`carte-etudiant-${selectedStudentData?.firstName}.pdf`);
       } catch (error) {
         console.error("Erreur lors de l'export PDF:", error);
         alert("Erreur lors de l'export PDF. Veuillez réessayer.");
@@ -266,7 +320,10 @@ export const StudentCardGenerator = () => {
   };
 
   const generateQRCode = (studentData: Student) => {
-    const data = `${studentData.studentId}|${studentData.firstName}|${studentData.lastName}|${studentData.faculty}|${studentData.level}`;
+    const faculty = getStudentFaculty(studentData);
+    const level = getStudentLevel(studentData);
+    const academicYear = getStudentAcademicYear(studentData);
+    const data = `${studentData.studentId}|${studentData.firstName}|${studentData.lastName}|${faculty}|${level}|${academicYear}`;
     return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
       data
     )}&bgcolor=ffffff&color=000000&format=svg`;
@@ -275,7 +332,8 @@ export const StudentCardGenerator = () => {
   const selectedStudentData = students.find((s) => s.id === selectedStudent);
 
   // Fonction pour générer une couleur basée sur la faculté
-  const getFacultyColor = (faculty: string) => {
+  const getFacultyColor = (student: Student) => {
+    const facultyName = getStudentFaculty(student);
     const facultyColors: Record<string, string> = {
       Sciences: "bg-blue-600",
       Médecine: "bg-red-600",
@@ -287,7 +345,7 @@ export const StudentCardGenerator = () => {
       default: "bg-gray-600",
     };
 
-    return facultyColors[faculty] || facultyColors.default;
+    return facultyColors[facultyName] || facultyColors.default;
   };
 
   return (
@@ -330,7 +388,7 @@ export const StudentCardGenerator = () => {
                       Toutes les facultés
                     </SelectItem>
                     {faculties.map((faculty) => (
-                      <SelectItem key={faculty.id} value={faculty.name}>
+                      <SelectItem key={faculty.id} value={faculty.id}>
                         {faculty.name}
                       </SelectItem>
                     ))}
@@ -350,7 +408,7 @@ export const StudentCardGenerator = () => {
                   <SelectContent>
                     {filteredStudents.map((student) => (
                       <SelectItem key={student.id} value={student.id}>
-                        {student.firstName} {student.lastName} -{" "}
+                        {getStudentFaculty(student)} - {student.lastName} -{" "}
                         {student.studentId}
                       </SelectItem>
                     ))}
@@ -371,39 +429,6 @@ export const StudentCardGenerator = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Style de Carte</Label>
-              <Tabs
-                value={cardStyle}
-                onValueChange={(value: any) => setCardStyle(value)}
-                className="w-full"
-              >
-                <TabsList className="grid grid-cols-3">
-                  <TabsTrigger
-                    value="modern"
-                    className="flex items-center gap-2"
-                  >
-                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                    Moderne
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="classic"
-                    className="flex items-center gap-2"
-                  >
-                    <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                    Classique
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="premium"
-                    className="flex items-center gap-2"
-                  >
-                    <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                    Premium
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
             </div>
           </CardContent>
         </Card>
@@ -489,7 +514,7 @@ export const StudentCardGenerator = () => {
                 {/* Carte avant - Style UJEPH */}
                 <div
                   ref={frontCardRef}
-                  className="w-[300px] h-[477px] rounded-2xl shadow-2xl overflow-hidden relative p-4 export-card"
+                  className="w-[300px] h-[477px] rounded-2xl shadow-2xl overflow-hidden relative mt-1 p-4"
                   style={{
                     backgroundImage: "url('../../public/ID_CARD.png')",
                     backgroundSize: "cover",
@@ -498,8 +523,8 @@ export const StudentCardGenerator = () => {
                   }}
                 >
                   {/* En-tête avec logo */}
-                  <div className="flex items-center justify-center border border-orange-500 rounded-tl-xl rounded-br-xl mx-1 mt-3 px-0 py-1 bg-white/10 backdrop-blur-sm">
-                    <div className="w-14 h-10 flex items-center justify-center mr-0 pl-2">
+                  <div className="flex items-center justify-center border border-orange-500 rounded-tl-xl rounded-br-xl mx-1 mt-3 px-0 py-1 pt-1 backdrop-blur-sm">
+                    <div className="w-14 h-10 flex items-center justify-center mr-0 pl-1">
                       <img
                         src="../../public/logo.png"
                         alt="Logo UJEPH"
@@ -520,26 +545,32 @@ export const StudentCardGenerator = () => {
 
                   {/* Photo circulaire */}
                   <div className="w-32 h-32 rounded-full bg-white mx-auto mt-4 flex items-center justify-center overflow-hidden border-2 border-orange-500">
-                    <User className="h-20 w-20 text-gray-400" />
+                    {/* <User className="h-20 w-20 text-gray-400" /> */}
+                    {/* photo de l'etudiant */}
+                    <img
+                      src={`http://localhost:4000${selectedStudentData.photo}`}
+                      alt={`${selectedStudentData.firstName} ${selectedStudentData.lastName}`}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
 
                   {/* Informations verticales (faculté, année) */}
                   <div className="flex flex-col items-center justify-center text-center w-24 absolute left-[-18px] top-1/2 transform -translate-y-1/2 space-y-4">
                     <div className="rotate-90 transform origin-center whitespace-nowrap mb-[-20px] px-[-10px]">
-                      <p className="text-[13px] text-sky-950 font-extrabold">
-                        {selectedStudentData.faculty
-                          ? selectedStudentData.faculty
-                          : "Faculté des Sciences Informatique"}
+                      <p className="text-[16px] text-sky-950 font-extrabold">
+                        {getStudentFaculty(selectedStudentData)}
                       </p>
                     </div>
 
-                    <div className="rotate-90 transform origin-center whitespace-nowrap mb-0 ml-6">
-                      <p className="text-xs font-bold">2023-2024</p>
+                    <div className="rotate-90 transform origin-center whitespace-nowrap mb-0 ml-9">
+                      <p className="text-[12px] font-bold text-blue-800">
+                        {getStudentAcademicYear(selectedStudentData)}
+                      </p>
                     </div>
                   </div>
 
                   {/* Nom de l'étudiant */}
-                  <div className="text-center mt-4">
+                  <div className="text-center mt-2">
                     <p className="text-black font-bold text-lg">
                       {selectedStudentData.firstName}{" "}
                       {selectedStudentData.lastName}
@@ -554,28 +585,31 @@ export const StudentCardGenerator = () => {
                   </div>
 
                   {/* Informations de l'étudiant */}
-                  <div className="mt-4 mx-7 text-black text-[11px] space-y-1">
-                    <p className="mb-0">
+                  <div className="mt-4 mx-10 font-semibold text-black text-[14px] space-y-1 leading-3 mb-4">
+                    <p className="mb-0 ">
                       <strong>Code: </strong> {selectedStudentData.studentId}
                     </p>
-                    <p className="mb-0">
-                      <strong>Email:</strong> {selectedStudentData.email}
+                    <p className="mb-0 leading-3">
+                      <strong>CIN/NIF:</strong> {selectedStudentData.cin}
                     </p>
-                    <p className="mb-0">
+                    <p className="mb-0 leading-3">
                       <strong>Tel:</strong> {selectedStudentData.phone}
                     </p>
-                    <p className="mb-0">
-                      <strong>G.S:</strong> A+
+                    <p className="mb-0 leading-3">
+                      <strong>G.S:</strong>{" "}
+                      {selectedStudentData.bloodGroup || "A+"}
                     </p>
-                    <p className="mb-0">
-                      <strong>Niveau:</strong> {selectedStudentData.level}
+                    <p className="mb-16 leading-3">
+                      <strong>Niveau:</strong>{" "}
+                      {getLevelText(getStudentLevel(selectedStudentData))}
                     </p>
-
-                    {/* Signature après le niveau */}
-                    <div className="mt-2 pt-2 border-t border-gray-300">
-                      <div className="w-16 h-0.5 bg-black mb-1 mx-auto"></div>
-                      <p className="text-xs text-center">Signature</p>
-                    </div>
+                  </div>
+                  {/* Signature après le niveau */}
+                  <div className="mt-4 ml-8 mr-16 pt-2">
+                    <img src="../../public/signature.png" alt="Signature" />
+                    <p className="text-xs text-center border-t  border-gray-300">
+                      Signature autorisée
+                    </p>
                   </div>
 
                   {/* QR Code en bas à droite */}
@@ -592,13 +626,13 @@ export const StudentCardGenerator = () => {
                 {/* Carte arrière */}
                 <div
                   ref={backCardRef}
-                  className="w-[300px] h-[477px] rounded-2xl shadow-2xl overflow-hidden relative bg-gradient-to-b from-slate-800 to-slate-900 text-white p-6 export-card"
+                  className="w-[300px] h-[477px] rounded-2xl shadow-2xl overflow-hidden relative bg-gradient-to-b from-slate-800 to-slate-900 text-white p-4 export-card"
                 >
                   <h4 className="font-bold text-center mb-4 text-sm uppercase tracking-wider border-b border-white/20 pb-2">
                     Informations Complémentaires
                   </h4>
 
-                  <div className="flex h-64">
+                  <div className="flex h-64 mb-0">
                     {/* Informations principales */}
                     <div className="flex-1 space-y-2 text-xs">
                       <div className="flex items-center gap-2">
@@ -626,20 +660,35 @@ export const StudentCardGenerator = () => {
                           ).toLocaleDateString("fr-FR")}
                         </span>
                       </div>
-                    </div>
-
-                    {/* Informations verticales (signature) */}
-                    <div className="w-px bg-white/20 mx-0"></div>
-
-                    <div className="flex flex-col items-center justify-center text-center w-24 space-y-4">
-                      <div className="rotate-90 transform origin-center whitespace-nowrap">
-                        <div className="w-16 h-0.5 bg-white/50 mb-1 mx-auto"></div>
-                        <p className="text-xs">Signature</p>
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="h-3 w-3" />
+                        <span>
+                          Faculté: {getStudentFaculty(selectedStudentData)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="h-3 w-3" />
+                        <span>
+                          Niveau:{" "}
+                          {getLevelText(getStudentLevel(selectedStudentData))}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-3 w-3" />
+                        <span>
+                          Année Académique:{" "}
+                          {getStudentAcademicYear(selectedStudentData)}
+                        </span>
                       </div>
                     </div>
                   </div>
-
-                  <div className="mt-4 p-3 bg-black/20 rounded-lg">
+                  <div className=" ml-8 mr-8">
+                    <img src="../../public/signature.png" alt="Signature" />
+                    <p className="text-xs text-center border-t  border-gray-300">
+                      Signature autorisée
+                    </p>
+                  </div>
+                  <div className="mt-2 pr-3 pt-4 pl-3 bg-black/20 rounded-lg">
                     <p className="text-xs text-center">
                       Cette carte est la propriété de l'Université Jérusalem de
                       Pignon d'Haïti. Toute falsification est passible de
@@ -648,7 +697,7 @@ export const StudentCardGenerator = () => {
                   </div>
 
                   <div className="flex justify-between items-center mt-4 text-xs opacity-70">
-                    <span>© 2024 UJEPH</span>
+                    <span>© 2025 UJEPH</span>
                     <span>ID: {selectedStudentData.studentId}</span>
                   </div>
                 </div>
@@ -690,7 +739,7 @@ export const StudentCardGenerator = () => {
                     <div
                       className={cn(
                         "w-10 h-10 rounded-full flex items-center justify-center text-white",
-                        getFacultyColor(student.faculty)
+                        getFacultyColor(student)
                       )}
                     >
                       <span className="font-bold text-xs">
@@ -703,7 +752,11 @@ export const StudentCardGenerator = () => {
                         {student.firstName} {student.lastName}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {student.studentId} • {student.faculty}
+                        {student.studentId} • {getStudentFaculty(student)} •
+                        Niveau {getStudentLevel(student)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Année: {getStudentAcademicYear(student)}
                       </p>
                     </div>
                   </div>

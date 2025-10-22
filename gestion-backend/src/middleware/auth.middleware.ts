@@ -2,8 +2,9 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../controllers/auth.Controllers";
 
+// 🔥 SUPPRIMER AuthenticatedRequest et utiliser Request standard
 export const authenticateToken = async (
-  req: Request,
+  req: Request, // 🔥 Utiliser Request standard
   res: Response,
   next: NextFunction
 ) => {
@@ -17,18 +18,25 @@ export const authenticateToken = async (
     const user = await verifyToken(token);
 
     // Ajouter l'utilisateur à la requête
-    (req as any).user = user;
-    (req as any).userId = user.id;
+    req.user = user; // 🔥 Maintenant compatible avec l'interface étendue
+    (req as any).userId = user.id; // Pour compatibilité
+
+    console.log("✅ Authentification réussie pour:", {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
 
     next();
   } catch (error: any) {
-    res.status(401).json({ message: error.message });
+    console.error("❌ Erreur authentification:", error.message);
+    return res.status(401).json({ message: error.message });
   }
 };
 
 export const requireRole = (roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    const user = (req as any).user;
+    const user = req.user;
 
     if (!user || !roles.includes(user.role)) {
       return res.status(403).json({ message: "Accès non autorisé" });

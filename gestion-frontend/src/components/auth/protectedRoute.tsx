@@ -9,43 +9,39 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { isAuthenticated, loading, getCurrentUser } = useAuthStore();
-  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
+  const { isAuthenticated, loading, checkAuth, initialized } = useAuthStore();
+  const [isChecking, setIsChecking] = useState(true);
   const location = useLocation();
 
   useEffect(() => {
-    let isMounted = true;
-
-    const checkAuth = async () => {
-      // Éviter les vérifications inutiles
-      if (isAuthenticated || loading) return;
-
-      const token = localStorage.getItem("token");
-      if (token && !isAuthenticated) {
-        try {
-          await getCurrentUser();
-        } catch (error) {
-          console.error("Erreur de vérification auth:", error);
-        }
+    const verifyAuth = async () => {
+      // Si déjà initialisé ET authentifié, on peut passer directement
+      if (initialized && isAuthenticated) {
+        setIsChecking(false);
+        return;
       }
 
-      if (isMounted) {
-        setHasCheckedAuth(true);
+      // Si déjà initialisé MAIS non authentifié, on peut aussi passer
+      if (initialized && !isAuthenticated) {
+        setIsChecking(false);
+        return;
+      }
+
+      // Sinon, on vérifie l'authentification
+      try {
+        await checkAuth();
+      } catch (error) {
+        console.error("Auth verification failed:", error);
+      } finally {
+        setIsChecking(false);
       }
     };
 
-    checkAuth();
+    verifyAuth();
+  }, [checkAuth, initialized, isAuthenticated]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [isAuthenticated, loading, getCurrentUser]); // Dépendances correctes
-
-  // Afficher un loader pendant la vérification initiale
-  if (
-    loading ||
-    (!isAuthenticated && localStorage.getItem("token") && !hasCheckedAuth)
-  ) {
+  // Afficher un loader pendant la vérification
+  if (isChecking || (!initialized && loading)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -56,8 +52,8 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
-  // Rediriger vers la page de login si non authentifié
-  if (!isAuthenticated) {
+  // Si non authentifié ET initialisé, rediriger vers le login
+  if (!isAuthenticated && initialized) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

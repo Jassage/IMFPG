@@ -53,62 +53,48 @@ import {
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useAuthStore } from "@/store/authStore";
 
 // Schéma de validation avec Zod
-const userSchema = z
-  .object({
-    firstName: z
-      .string()
-      .min(2, { message: "Le prénom doit contenir au moins 2 caractères" })
-      .max(50, { message: "Le prénom ne peut pas dépasser 50 caractères" })
-      .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, {
-        message: "Le prénom contient des caractères invalides",
-      }),
-    lastName: z
-      .string()
-      .min(2, { message: "Le nom doit contenir au moins 2 caractères" })
-      .max(50, { message: "Le nom ne peut pas dépasser 50 caractères" })
-      .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, {
-        message: "Le nom contient des caractères invalides",
-      }),
-    email: z.string().email({ message: "Adresse email invalide" }),
-    phone: z
-      .string()
-      .regex(/^(\+\d{1,3})?[\s-]?\(?\d{1,4}\)?[\s-]?\d{1,4}[\s-]?\d{1,9}$/, {
-        message: "Numéro de téléphone invalide",
-      })
-      .optional()
-      .or(z.literal("")),
-    role: z.enum(["Admin", "Professeur", "Secrétaire", "Directeur"]),
-    status: z.enum(["Actif", "Inactif"]),
-    password: z
-      .string()
-      .min(8, {
-        message: "Le mot de passe doit contenir au moins 8 caractères",
-      })
-      .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-        message:
-          "Le mot de passe doit contenir au moins une majuscule, une minuscule et un chiffre",
-      })
-      .optional()
-      .or(z.literal("")),
-  })
-  .refine(
-    (data) => {
-      // Pour la création, le mot de passe est requis
-      if (!data.password && !selectedUser) return false;
-      return true;
-    },
-    {
-      message: "Le mot de passe est requis pour créer un utilisateur",
-      path: ["password"],
-    }
-  );
+const userSchema = z.object({
+  firstName: z
+    .string()
+    .min(2, { message: "Le prénom doit contenir au moins 2 caractères" })
+    .max(50, { message: "Le prénom ne peut pas dépasser 50 caractères" })
+    .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, {
+      message: "Le prénom contient des caractères invalides",
+    }),
+  lastName: z
+    .string()
+    .min(2, { message: "Le nom doit contenir au moins 2 caractères" })
+    .max(50, { message: "Le nom ne peut pas dépasser 50 caractères" })
+    .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, {
+      message: "Le nom contient des caractères invalides",
+    }),
+  email: z.string().email({ message: "Adresse email invalide" }),
+  phone: z
+    .string()
+    .regex(/^(\+\d{1,3})?[\s-]?\(?\d{1,4}\)?[\s-]?\d{1,4}[\s-]?\d{1,9}$/, {
+      message: "Numéro de téléphone invalide",
+    })
+    .optional()
+    .or(z.literal("")),
+  role: z.enum(["Admin", "Professeur", "Secrétaire", "Directeur", "Doyen"]),
+  status: z.enum(["Actif", "Inactif"]),
+  password: z
+    .string()
+    .min(8, {
+      message: "Le mot de passe doit contenir au moins 8 caractères",
+    })
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+      message:
+        "Le mot de passe doit contenir au moins une majuscule, une minuscule et un chiffre",
+    })
+    .optional()
+    .or(z.literal("")),
+});
 
 type UserFormData = z.infer<typeof userSchema>;
-
-// Variable pour suivre l'utilisateur sélectionné (hors du composant)
-let selectedUser: User | null = null;
 
 export const UsersManager = () => {
   const {
@@ -120,6 +106,7 @@ export const UsersManager = () => {
     loading,
     error,
   } = useUserStore();
+  const { user: currentUser } = useAuthStore();
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -128,6 +115,7 @@ export const UsersManager = () => {
     key: keyof User;
     direction: "asc" | "desc";
   } | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
 
   // Initialisation du formulaire avec react-hook-form et zod
   const {
@@ -155,9 +143,26 @@ export const UsersManager = () => {
     fetchUsers();
   }, [fetchUsers]);
 
+  const getAvailableRoles = () => {
+    // Cast to any to avoid TypeScript error when "Doyen" is not part of the declared role union
+    if ((currentUser?.role as any) === "Doyen") {
+      return ["Professeur", "Secrétaire"]; // Les doyens ne peuvent créer que ces rôles
+    }
+    return ["Admin", "Professeur", "Secrétaire", "Directeur", "Doyen"];
+  };
+
+  // Cacher le bouton de suppression pour certains rôles
+  const canDeleteUser = (targetUser: User) => {
+    if (currentUser?.role === "Doyen") {
+      // Les doyens ne peuvent pas supprimer d'admins ou d'autres doyens
+      return !["Admin", "Doyen"].includes(targetUser.role);
+    }
+    return true;
+  };
+
   // Fonction pour ouvrir le formulaire d'édition
   const handleEdit = (user: User) => {
-    selectedUser = user;
+    setEditingUser(user);
     setValue("firstName", user.firstName);
     setValue("lastName", user.lastName);
     setValue("email", user.email);
@@ -170,7 +175,7 @@ export const UsersManager = () => {
 
   // Fonction pour réinitialiser le formulaire
   const resetForm = () => {
-    selectedUser = null;
+    setEditingUser(null);
     reset({
       firstName: "",
       lastName: "",
@@ -185,9 +190,9 @@ export const UsersManager = () => {
   // Soumission du formulaire
   const onSubmit = async (data: UserFormData) => {
     try {
-      if (selectedUser) {
+      if (editingUser) {
         // Mise à jour d'un utilisateur existant
-        await updateUser(selectedUser.id, {
+        await updateUser(editingUser.id, {
           firstName: data.firstName,
           lastName: data.lastName,
           email: data.email,
@@ -261,8 +266,13 @@ export const UsersManager = () => {
       )
     ) {
       try {
+        // Utilisez directement les données de l'utilisateur
         await updateUser(user.id, {
-          ...user,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone || "",
+          role: user.role,
           status: newStatus,
         });
 
@@ -395,7 +405,7 @@ export const UsersManager = () => {
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>
-                {selectedUser
+                {editingUser
                   ? "Modifier Utilisateur"
                   : "Ajouter un utilisateur"}
               </DialogTitle>
@@ -452,7 +462,7 @@ export const UsersManager = () => {
                   <p className="text-sm text-red-500">{errors.phone.message}</p>
                 )}
               </div>
-              {!selectedUser && (
+              {!editingUser && (
                 <div className="space-y-2">
                   <Label htmlFor="password">Mot de passe *</Label>
                   <Input
@@ -480,10 +490,11 @@ export const UsersManager = () => {
                     <SelectValue placeholder="Rôle" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="Professeur">Professeur</SelectItem>
-                    <SelectItem value="Secrétaire">Secrétaire</SelectItem>
-                    <SelectItem value="Directeur">Directeur</SelectItem>
+                    {getAvailableRoles().map((role) => (
+                      <SelectItem key={role} value={role}>
+                        {role}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -512,7 +523,7 @@ export const UsersManager = () => {
                 >
                   {isSubmitting
                     ? "Traitement..."
-                    : selectedUser
+                    : editingUser
                     ? "Modifier"
                     : "Ajouter"}
                 </Button>
@@ -685,18 +696,21 @@ export const UsersManager = () => {
                               </>
                             )}
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              handleDelete(
-                                user.id,
-                                `${user.firstName} ${user.lastName}`
-                              )
-                            }
-                            className="text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Supprimer
-                          </DropdownMenuItem>
+                          // Dans les actions du dropdown
+                          {canDeleteUser(user) && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleDelete(
+                                  user.id,
+                                  `${user.firstName} ${user.lastName}`
+                                )
+                              }
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Supprimer
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

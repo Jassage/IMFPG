@@ -12,23 +12,11 @@ import {
   Users,
   Calendar,
   UserCheck,
-  Target,
   BarChart3,
   Sparkles,
-  ChevronDown,
-  ChevronUp,
   RotateCcw,
-  Download,
-  Upload,
-  MoreHorizontal,
-  Eye,
-  Bookmark,
-  Clock,
-  Award,
-  CheckCircle,
-  XCircle,
-  ArrowLeft,
-  BookOpenCheck,
+  FileText,
+  Copy,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import {
@@ -37,7 +25,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter,
 } from "./ui/card";
 import { Badge } from "./ui/badge";
 import {
@@ -76,19 +63,130 @@ import { useEnrollmentStore } from "@/store/enrollmentStore";
 import { useInitialData } from "@/hooks/useInitialData";
 import { Progress } from "./ui/progress";
 import { Separator } from "./ui/separator";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { AssignmentCopyWizard } from "./AssignmentCopyWizard";
+
+const CourseListItem = ({
+  ue,
+  session,
+  onEdit,
+  onDelete,
+  onAssign,
+}: {
+  ue: any;
+  session: "S1" | "S2";
+  onEdit: (ue: any) => void;
+  onDelete: (assignmentId: string) => void;
+  onAssign: (ue: any) => void;
+}) => {
+  const handleEditClick = () => {
+    console.log("🟢 EDIT CLICKED:", ue);
+    onEdit(ue);
+  };
+
+  const handleDeleteClick = () => {
+    console.log("🔴 DELETE CLICKED:", ue.assignmentId);
+    if (ue.assignmentId) {
+      onDelete(ue.assignmentId);
+    }
+  };
+
+  const handleAssignClick = () => {
+    console.log("🔵 ASSIGN CLICKED:", ue);
+    onAssign(ue);
+  };
+
+  return (
+    <div className="flex items-center justify-between p-4 border rounded-lg bg-card hover:shadow-md transition-all">
+      <div className="flex items-center gap-4 flex-1">
+        <div
+          className={cn(
+            "p-2 rounded-lg",
+            ue.professor
+              ? "bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400"
+              : "bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400"
+          )}
+        >
+          <BookOpen className="h-5 w-5" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 mb-1">
+            <h3 className="font-semibold text-lg truncate">{ue.title}</h3>
+            <Badge variant="outline" className="font-mono">
+              {ue.code}
+            </Badge>
+          </div>
+
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <FileText className="h-3 w-3" />
+              {ue.credits} crédits
+            </span>
+            <span>•</span>
+            <Badge
+              variant={ue.type === "Obligatoire" ? "default" : "secondary"}
+            >
+              {ue.type}
+            </Badge>
+            <span>•</span>
+            <Badge variant="outline">
+              {session === "S1" ? "Session I" : "Session II"}
+            </Badge>
+          </div>
+
+          {ue.professor && (
+            <div className="flex items-center gap-2 mt-2">
+              <UserCheck className="h-3 w-3 text-green-600" />
+              <span className="text-sm text-green-600 font-medium">
+                {ue.professor.firstName} {ue.professor.lastName}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {ue.professor ? (
+          <>
+            <Badge className="bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-300">
+              Affecté
+            </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleEditClick}
+              className="gap-2"
+            >
+              <Edit className="h-4 w-4" />
+              Modifier
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDeleteClick}
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </>
+        ) : (
+          <>
+            <Badge variant="secondary">Non affecté</Badge>
+            <Button size="sm" onClick={handleAssignClick} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Affecter
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const CourseAssignmentManager = () => {
   useInitialData();
+
   const {
     assignments,
     loading,
@@ -96,6 +194,7 @@ export const CourseAssignmentManager = () => {
     fetchAssignmentsByFaculty,
     fetchUeByFacultyAndLevel,
     addAssignment,
+    updateAssignment,
     deleteAssignment,
   } = useCourseAssignmentStore();
 
@@ -136,14 +235,17 @@ export const CourseAssignmentManager = () => {
   );
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<
-    Record<string, boolean>
-  >({
-    S1: true,
-    S2: true,
-  });
+  const [isCopyWizardOpen, setIsCopyWizardOpen] = useState(false);
 
-  // Déterminer les valeurs par défaut une fois les données chargées
+  // Initialisation
+  useEffect(() => {
+    // console.log("🚀 Initialisation du composant");
+    fetchFaculties();
+    fetchAcademicYears();
+    fetchProfessors();
+    fetchUEs();
+  }, []);
+
   useEffect(() => {
     if (faculties.length > 0 && academicYears.length > 0 && !isInitialized) {
       const currentAcademicYear =
@@ -152,19 +254,22 @@ export const CourseAssignmentManager = () => {
         faculties.find((f) => f.status === "Active") || faculties[0];
 
       if (defaultFaculty && currentAcademicYear) {
+        // console.log(
+        //   "🎯 Initialisation des filtres:",
+        //   defaultFaculty.name,
+        //   currentAcademicYear.year
+        // );
         setFilters((prev) => ({
           ...prev,
           facultyId: defaultFaculty.id,
           academicYearId: currentAcademicYear.id,
         }));
-
         setSelectedFaculty(defaultFaculty);
         setIsInitialized(true);
       }
     }
   }, [faculties, academicYears, isInitialized]);
 
-  // Recharger les données quand les filtres changent
   useEffect(() => {
     if (
       isInitialized &&
@@ -172,46 +277,82 @@ export const CourseAssignmentManager = () => {
       filters.level &&
       filters.academicYearId
     ) {
-      fetchAssignmentsByFaculty(
-        filters.facultyId,
-        filters.level,
-        filters.academicYearId,
-        filters.semester
-      );
+      loadAssignmentsData();
       fetchUeData();
-      fetchEnrollments();
-      loadSessionAssignments();
     }
-  }, [filters, isInitialized, fetchAssignmentsByFaculty]);
+  }, [filters, isInitialized]);
 
-  const loadSessionAssignments = async () => {
+  const loadAssignmentsData = async (forceRefresh = false) => {
     if (filters.facultyId && filters.level && filters.academicYearId) {
       setLoadingSessions(true);
       try {
-        const s1Assignments = await fetchAssignmentsByFaculty(
-          filters.facultyId,
-          filters.level,
-          filters.academicYearId,
-          "S1"
-        );
-
-        const s2Assignments = await fetchAssignmentsByFaculty(
-          filters.facultyId,
-          filters.level,
-          filters.academicYearId,
-          "S2"
-        );
+        const [s1Assignments, s2Assignments] = await Promise.all([
+          fetchAssignmentsByFaculty(
+            filters.facultyId,
+            filters.level,
+            filters.academicYearId,
+            "S1"
+            // forceRefresh
+          ),
+          fetchAssignmentsByFaculty(
+            filters.facultyId,
+            filters.level,
+            filters.academicYearId,
+            "S2"
+            // forceRefresh
+          ),
+        ]);
 
         setSessionAssignments({
           S1: s1Assignments || [],
           S2: s2Assignments || [],
         });
       } catch (error) {
-        console.error("Erreur chargement sessions:", error);
+        console.error("❌ Erreur chargement sessions:", error);
       } finally {
         setLoadingSessions(false);
       }
     }
+  };
+
+  const fetchUeData = async (forceRefresh = false) => {
+    if (filters.facultyId && filters.level) {
+      // console.log("📚 Chargement des UEs...");
+      const uesData = await fetchUeByFacultyAndLevel(
+        filters.facultyId,
+        filters.level
+        // forceRefresh
+      );
+      // console.log("✅ UEs chargées:", uesData?.length);
+      setUes(uesData || []);
+    }
+  };
+
+  const handleFacultyChange = (facultyId: string) => {
+    const faculty = faculties.find((f) => f.id === facultyId);
+    setSelectedFaculty(faculty);
+    setFilters((prev) => ({ ...prev, facultyId }));
+  };
+
+  // FONCTIONS PRINCIPALES - version corrigée
+  const handleOpenAssignmentForm = (ue: any) => {
+    setSelectedUe(ue);
+
+    const existingAssignment = assignments.find(
+      (a) => a.ueId === ue.id && a.semester === filters.semester
+    );
+
+    setFormData({
+      ueId: ue.id,
+      professorId: existingAssignment?.professeurId || "",
+      academicYearId:
+        existingAssignment?.academicYearId || filters.academicYearId,
+      semester: existingAssignment?.semester || filters.semester,
+      facultyId: existingAssignment?.facultyId || filters.facultyId,
+      level: existingAssignment?.level || filters.level,
+    });
+
+    setIsFormOpen(true);
   };
 
   const confirmDeleteAssignment = (assignmentId: string) => {
@@ -224,25 +365,14 @@ export const CourseAssignmentManager = () => {
 
     try {
       await deleteAssignment(assignmentToDelete);
-
       toast({
-        title: "Succès",
+        title: "✅ Affectation supprimée",
         description: "L'affectation a été supprimée avec succès",
-        variant: "default",
       });
-
-      if (filters.facultyId && filters.academicYearId) {
-        fetchAssignmentsByFaculty(
-          filters.facultyId,
-          filters.level,
-          filters.academicYearId,
-          filters.semester
-        );
-        loadSessionAssignments();
-      }
+      await loadAssignmentsData();
     } catch (error: any) {
       toast({
-        title: "Erreur",
+        title: "❌ Erreur",
         description: error.message || "Erreur lors de la suppression",
         variant: "destructive",
       });
@@ -250,60 +380,6 @@ export const CourseAssignmentManager = () => {
       setIsDeleteDialogOpen(false);
       setAssignmentToDelete(null);
     }
-  };
-
-  const getUesForSession = (session: "S1" | "S2") => {
-    return sessionAssignments[session].map((assignment: any) => ({
-      ...assignment.ue,
-      professor: assignment.professeur,
-      assignmentId: assignment.id,
-      assignmentData: assignment,
-    }));
-  };
-
-  const isUeAssigned = (ueId: string, session: "S1" | "S2") => {
-    return sessionAssignments[session].some(
-      (assignment: any) => assignment.ueId === ueId
-    );
-  };
-
-  const fetchUeData = async () => {
-    if (filters.facultyId && filters.level) {
-      const uesData = await fetchUeByFacultyAndLevel(
-        filters.facultyId,
-        filters.level
-      );
-      setUes(uesData);
-    }
-  };
-
-  const handleFacultyChange = (facultyId: string) => {
-    const faculty = faculties.find((f) => f.id === facultyId);
-    setSelectedFaculty(faculty);
-    setFilters((prev) => ({ ...prev, facultyId }));
-    if (filters.academicYearId) {
-      fetchAssignmentsByFaculty(
-        facultyId,
-        filters.level,
-        filters.academicYearId,
-        filters.semester
-      );
-      fetchUeData();
-      loadSessionAssignments();
-    }
-  };
-
-  const handleOpenAssignmentForm = (ue: any) => {
-    setSelectedUe(ue);
-    setFormData({
-      ueId: ue.id,
-      professorId: "",
-      academicYearId: filters.academicYearId,
-      semester: filters.semester,
-      facultyId: filters.facultyId,
-      level: filters.level,
-    });
-    setIsFormOpen(true);
   };
 
   const handleOpenNewAssignmentForm = () => {
@@ -315,39 +391,97 @@ export const CourseAssignmentManager = () => {
       professorId: "",
       academicYearId: defaultAcademicYear?.id || "",
       semester: "S1",
-      facultyId: "",
-      level: "1",
+      facultyId: filters.facultyId,
+      level: filters.level,
     });
+    setSelectedUe(null);
     setIsNewAssignmentOpen(true);
   };
 
-  const handleCreateAssignment = async (e: React.FormEvent) => {
+  const handleSubmitAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
+
     try {
-      await addAssignment({
-        facultyId: formData.facultyId,
-        level: formData.level,
-        status: "Active",
-        ueId: formData.ueId,
-        professeurId: formData.professorId,
-        academicYearId: formData.academicYearId,
-        semester: formData.semester,
-      });
+      // Vérifier si c'est une modification ou une création
+      const existingAssignment = assignments.find(
+        (a) => a.ueId === formData.ueId && a.semester === formData.semester
+      );
+
+      if (existingAssignment) {
+        // 🎯 MODIFICATION de l'affectation existante
+        console.log(
+          "📝 Modification de l'affectation existante:",
+          existingAssignment.id
+        );
+        await updateAssignment(existingAssignment.id, {
+          professeurId: formData.professorId,
+          academicYearId: formData.academicYearId,
+          semester: formData.semester,
+          // On peut aussi modifier d'autres champs si besoin
+        });
+
+        toast({
+          title: "✅ Affectation modifiée",
+          description: "L'affectation a été modifiée avec succès",
+        });
+      } else {
+        // 🆕 CRÉATION d'une nouvelle affectation
+        console.log("🆕 Création d'une nouvelle affectation");
+        await addAssignment({
+          facultyId: formData.facultyId,
+          level: formData.level,
+          status: "Active",
+          ueId: formData.ueId,
+          professeurId: formData.professorId,
+          academicYearId: formData.academicYearId,
+          semester: formData.semester,
+        });
+
+        toast({
+          title: "✅ Affectation créée",
+          description: "L'affectation a été créée avec succès",
+        });
+      }
+
       setIsFormOpen(false);
       setIsNewAssignmentOpen(false);
-
-      if (filters.facultyId && filters.academicYearId) {
-        fetchAssignmentsByFaculty(
-          filters.facultyId,
-          filters.level,
-          filters.academicYearId,
-          filters.semester
-        );
-      }
-    } catch (error) {
-      console.error("Erreur:", error);
+      await loadAssignmentsData();
+    } catch (error: any) {
+      console.error("❌ Erreur:", error);
+      toast({
+        title: "❌ Erreur",
+        description: error.message || "Erreur lors de l'opération",
+        variant: "destructive",
+      });
     }
   };
+
+  const getUesForSession = (session: "S1" | "S2") => {
+    const sessionAssignmentsList = sessionAssignments[session] || [];
+
+    return sessionAssignmentsList.map((assignment: any) => {
+      const ueData = {
+        ...assignment.ue,
+        professor: assignment.professeur,
+        assignmentId: assignment.id,
+        assignmentData: assignment,
+        // Assurer que les propriétés de base existent
+        id: assignment.ue?.id || assignment.ueId,
+        title: assignment.ue?.title || "Titre inconnu",
+        code: assignment.ue?.code || "Code inconnu",
+        credits: assignment.ue?.credits || 0,
+        type: assignment.ue?.type || "Obligatoire",
+      };
+
+      // console.log("📋 UE data:", ueData);
+      return ueData;
+    });
+  };
+  const filteredUes = allUes.filter(
+    (ue) =>
+      ue.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ue.code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const getLevelLabel = (level: string) => {
     const levels: { [key: string]: string } = {
@@ -360,122 +494,41 @@ export const CourseAssignmentManager = () => {
     return levels[level] || `${level}ème année`;
   };
 
-  const filteredUes = allUes.filter(
-    (ue) =>
-      ue.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ue.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const toggleSection = (session: string) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [session]: !prev[session],
-    }));
-  };
-
-  const handleExportData = () => {
-    toast({
-      title: "Export réussi",
-      description: "Les données d'affectation ont été exportées",
-    });
-  };
-
-  const handleImportData = () => {
-    toast({
-      title: "Import à venir",
-      description: "La fonctionnalité d'import sera disponible prochainement",
-    });
-  };
-
-  const handleRefreshData = () => {
-    loadSessionAssignments();
-    toast({
-      title: "Données actualisées",
-      description: "Les affectations ont été mises à jour",
-    });
-  };
-
-  // Calculer les statistiques
+  // Calcul des statistiques
   const totalAssigned =
     sessionAssignments.S1.length + sessionAssignments.S2.length;
   const totalUes = ues.length;
   const assignmentRate =
     totalUes > 0 ? (totalAssigned / (totalUes * 2)) * 100 : 0;
 
-  if (loading)
+  if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <RotateCcw className="h-8 w-8 animate-spin mx-auto text-primary mb-4" />
           <p className="text-muted-foreground">
             Chargement des affectations...
           </p>
         </div>
       </div>
     );
+  }
 
-  if (error)
+  if (error) {
     return (
       <div className="text-center py-12">
         <div className="text-destructive mb-4">Erreur: {error}</div>
-        <Button onClick={loadSessionAssignments} variant="outline">
+        <Button onClick={() => loadAssignmentsData(true)} variant="outline">
           Réessayer
         </Button>
-      </div>
-    );
-
-  if (
-    (faculties.length === 0 || academicYears.length === 0) &&
-    !isInitialized
-  ) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        <span className="ml-3">Chargement des données...</span>
-      </div>
-    );
-  }
-
-  if (faculties.length === 0) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="p-12 text-center">
-            <School className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">
-              Aucune faculté disponible
-            </h3>
-            <p className="text-muted-foreground">
-              Veuillez d'abord créer des facultés dans le système
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (academicYears.length === 0) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="p-12 text-center">
-            <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">
-              Aucune année académique disponible
-            </h3>
-            <p className="text-muted-foreground">
-              Veuillez d'abord configurer les années académiques
-            </p>
-          </CardContent>
-        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 pb-12">
+    <div className="min-h-screen bg-background pb-12">
       <div className="container mx-auto px-4 py-6 space-y-6">
-        {/* Header avec navigation */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
@@ -487,120 +540,24 @@ export const CourseAssignmentManager = () => {
             </p>
           </div>
 
-          <div className="flex gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <MoreHorizontal className="h-4 w-4" />
-                  Actions
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions groupées</DropdownMenuLabel>
-                <DropdownMenuItem onClick={handleExportData} className="gap-2">
-                  <Download className="h-4 w-4" />
-                  Exporter les données
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleImportData} className="gap-2">
-                  <Upload className="h-4 w-4" />
-                  Importer des affectations
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleRefreshData} className="gap-2">
-                  <RotateCcw className="h-4 w-4" />
-                  Actualiser les données
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              onClick={handleOpenNewAssignmentForm}
-              className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600"
-            >
-              <Plus className="h-4 w-4" />
-              Nouvelle affectation
-            </Button>
-          </div>
-        </div>
-
-        {/* Cartes de statistiques */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-blue-700">Total UE</p>
-                  <p className="text-3xl font-bold text-blue-900">{totalUes}</p>
-                </div>
-                <div className="p-3 rounded-full bg-blue-200">
-                  <BookOpen className="h-6 w-6 text-blue-700" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-green-700">
-                    UE Affectées
-                  </p>
-                  <p className="text-3xl font-bold text-green-900">
-                    {totalAssigned}
-                  </p>
-                </div>
-                <div className="p-3 rounded-full bg-green-200">
-                  <UserCheck className="h-6 w-6 text-green-700" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-amber-700">
-                    Taux d'Affectation
-                  </p>
-                  <p className="text-3xl font-bold text-amber-900">
-                    {assignmentRate.toFixed(1)}%
-                  </p>
-                </div>
-                <div className="p-3 rounded-full bg-amber-200">
-                  <BarChart3 className="h-6 w-6 text-amber-700" />
-                </div>
-              </div>
-              <Progress value={assignmentRate} className="h-2 mt-4" />
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-purple-700">
-                    Professeurs
-                  </p>
-                  <p className="text-3xl font-bold text-purple-900">
-                    {professors.length}
-                  </p>
-                </div>
-                <div className="p-3 rounded-full bg-purple-200">
-                  <Users className="h-6 w-6 text-purple-700" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <Button onClick={handleOpenNewAssignmentForm} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Nouvelle affectation
+          </Button>
+          <Button
+            onClick={() => setIsCopyWizardOpen(true)}
+            variant="outline"
+            className="gap-2"
+          >
+            <Copy className="h-4 w-4" />
+            Copier les affectations
+          </Button>
         </div>
 
         {/* Filtres */}
-        <Card className="bg-gradient-to-br from-white to-slate-50/80 border-slate-200">
+        <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5 text-primary" />
-              <CardTitle>Filtres de Recherche</CardTitle>
-            </div>
+            <CardTitle>Filtres de Recherche</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -610,7 +567,7 @@ export const CourseAssignmentManager = () => {
                   value={filters.facultyId}
                   onValueChange={handleFacultyChange}
                 >
-                  <SelectTrigger id="faculty" className="bg-white">
+                  <SelectTrigger id="faculty">
                     <SelectValue placeholder="Sélectionner une faculté" />
                   </SelectTrigger>
                   <SelectContent>
@@ -631,7 +588,7 @@ export const CourseAssignmentManager = () => {
                     setFilters((prev) => ({ ...prev, level: value }))
                   }
                 >
-                  <SelectTrigger id="level" className="bg-white">
+                  <SelectTrigger id="level">
                     <SelectValue placeholder="Sélectionner un niveau" />
                   </SelectTrigger>
                   <SelectContent>
@@ -652,7 +609,7 @@ export const CourseAssignmentManager = () => {
                     setFilters((prev) => ({ ...prev, academicYearId: value }))
                   }
                 >
-                  <SelectTrigger id="academicYear" className="bg-white">
+                  <SelectTrigger id="academicYear">
                     <SelectValue placeholder="Sélectionner une année" />
                   </SelectTrigger>
                   <SelectContent>
@@ -674,7 +631,7 @@ export const CourseAssignmentManager = () => {
                     setFilters((prev) => ({ ...prev, semester: value }))
                   }
                 >
-                  <SelectTrigger id="semester" className="bg-white">
+                  <SelectTrigger id="semester">
                     <SelectValue placeholder="Sélectionner un semestre" />
                   </SelectTrigger>
                   <SelectContent>
@@ -690,14 +647,11 @@ export const CourseAssignmentManager = () => {
         {/* Contenu principal */}
         {selectedFaculty && (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Sidebar autres facultés */}
-            <div className="lg:col-span-1">
+            {/* Sidebar */}
+            <div className="lg:col-span-1 space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <School className="h-5 w-5" />
-                    Autres Facultés
-                  </CardTitle>
+                  <CardTitle>Autres Facultés</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {faculties
@@ -706,142 +660,52 @@ export const CourseAssignmentManager = () => {
                       <button
                         key={faculty.id}
                         onClick={() => handleFacultyChange(faculty.id)}
-                        className="w-full text-left p-3 rounded-lg border hover:bg-slate-50 transition-colors flex items-center gap-3"
+                        className="w-full text-left p-3 rounded-lg border hover:bg-accent transition-colors"
                       >
-                        <div className="w-3 h-3 rounded-full bg-primary"></div>
-                        <span className="font-medium">{faculty.name}</span>
+                        {faculty.name}
                       </button>
                     ))}
                 </CardContent>
               </Card>
-
-              {/* Informations sur la faculté sélectionnée */}
-              <Card className="mt-6">
-                <CardHeader>
-                  <CardTitle>Informations</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Niveau
-                    </span>
-                    <Badge variant="secondary">
-                      {getLevelLabel(filters.level)}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Année</span>
-                    <span className="font-medium">
-                      {academicYears.find(
-                        (ay) => ay.id === filters.academicYearId
-                      )?.year || "N/A"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      UE Total
-                    </span>
-                    <span className="font-medium">{ues.length}</span>
-                  </div>
-                  <Separator />
-                  <div className="text-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-2"
-                    >
-                      <Eye className="h-4 w-4" />
-                      Voir les détails
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
-            {/* Bloc catalogue */}
+            {/* Contenu des cours */}
             <div className="lg:col-span-3">
-              <Card className="border-0 shadow-lg">
+              <Card>
                 <CardContent className="p-6">
-                  {/* En-tête faculté */}
-                  <div className="flex flex-col gap-4 mb-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Badge
-                          variant="outline"
-                          className="mb-2 bg-primary/10 text-primary"
-                        >
-                          LICENCE
-                        </Badge>
-                        <h2 className="text-2xl font-bold text-foreground">
-                          {selectedFaculty.name}
-                        </h2>
-                        <p className="text-muted-foreground mt-1">
-                          {selectedFaculty.description ||
-                            "Gestion des unités d'enseignement"}
-                        </p>
-                      </div>
-                      <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-3 rounded-lg">
-                        <div className="text-2xl font-bold text-primary">
-                          {totalAssigned}/{ues.length * 2}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          UE affectées
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="text-center p-3 bg-slate-100 rounded-lg">
-                        <div className="text-sm text-muted-foreground">
-                          Session
-                        </div>
-                        <div className="font-semibold">2023-2024</div>
-                      </div>
-                      <div className="text-center p-3 bg-slate-100 rounded-lg">
-                        <div className="text-sm text-muted-foreground">
-                          Niveau
-                        </div>
-                        <div className="font-semibold">
-                          {getLevelLabel(filters.level)}
-                        </div>
-                      </div>
-                      <div className="text-center p-3 bg-slate-100 rounded-lg">
-                        <div className="text-sm text-muted-foreground">
-                          Statut
-                        </div>
-                        <div className="font-semibold text-green-600">
-                          Actif
-                        </div>
-                      </div>
-                    </div>
+                  <div className="mb-6">
+                    <h2 className="text-2xl font-bold">
+                      {selectedFaculty.name}
+                    </h2>
+                    <p className="text-muted-foreground">
+                      {getLevelLabel(filters.level)} -{" "}
+                      {
+                        academicYears.find(
+                          (ay) => ay.id === filters.academicYearId
+                        )?.year
+                      }
+                    </p>
                   </div>
 
-                  {/* Tabs sessions avec design amélioré */}
                   <Tabs defaultValue="S1" className="w-full">
-                    <TabsList className="grid grid-cols-2 mb-6 bg-slate-100 p-1">
+                    <TabsList className="grid grid-cols-2 mb-6">
                       <TabsTrigger
                         value="S1"
-                        className="data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                        className="flex items-center gap-2"
                       >
-                        <div className="flex items-center gap-2">
-                          <Bookmark className="h-4 w-4" />
-                          Session I (S1)
-                          <Badge variant="secondary" className="ml-2">
-                            {sessionAssignments.S1.length}
-                          </Badge>
-                        </div>
+                        Session I (S1)
+                        <Badge variant="secondary" className="ml-2">
+                          {sessionAssignments.S1.length}
+                        </Badge>
                       </TabsTrigger>
                       <TabsTrigger
                         value="S2"
-                        className="data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                        className="flex items-center gap-2"
                       >
-                        <div className="flex items-center gap-2">
-                          <Bookmark className="h-4 w-4" />
-                          Session II (S2)
-                          <Badge variant="secondary" className="ml-2">
-                            {sessionAssignments.S2.length}
-                          </Badge>
-                        </div>
+                        Session II (S2)
+                        <Badge variant="secondary" className="ml-2">
+                          {sessionAssignments.S2.length}
+                        </Badge>
                       </TabsTrigger>
                     </TabsList>
 
@@ -849,189 +713,38 @@ export const CourseAssignmentManager = () => {
                       <TabsContent
                         key={session}
                         value={session}
-                        className="mt-4 space-y-4"
+                        className="space-y-3"
                       >
-                        <div
-                          className="flex items-center justify-between p-4 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors"
-                          onClick={() => toggleSection(session)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`p-2 rounded-full ${
-                                session === "S1"
-                                  ? "bg-blue-100 text-blue-600"
-                                  : "bg-green-100 text-green-600"
-                              }`}
-                            >
-                              {session === "S1" ? (
-                                <Clock className="h-5 w-5" />
-                              ) : (
-                                <Award className="h-5 w-5" />
-                              )}
-                            </div>
-                            <div>
-                              <h3 className="font-semibold">
-                                Session {session}
-                              </h3>
-                              <p className="text-sm text-muted-foreground">
-                                {
-                                  sessionAssignments[session as "S1" | "S2"]
-                                    .length
-                                }{" "}
-                                UE affectées
-                              </p>
-                            </div>
-                          </div>
-                          <Button variant="ghost" size="sm">
-                            {expandedSections[session] ? (
-                              <ChevronUp className="h-4 w-4" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4" />
+                        {getUesForSession(session as "S1" | "S2").length > 0 ? (
+                          <div className="space-y-3">
+                            {getUesForSession(session as "S1" | "S2").map(
+                              (ue) => (
+                                <CourseListItem
+                                  key={ue.assignmentId || ue.id}
+                                  ue={ue}
+                                  session={session as "S1" | "S2"}
+                                  onEdit={handleOpenAssignmentForm}
+                                  onDelete={confirmDeleteAssignment}
+                                  onAssign={handleOpenAssignmentForm}
+                                />
+                              )
                             )}
-                          </Button>
-                        </div>
-
-                        <AnimatePresence>
-                          {expandedSections[session] && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.3 }}
-                              className="space-y-3"
+                          </div>
+                        ) : (
+                          <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                            <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                            <h3 className="text-lg font-medium text-muted-foreground mb-2">
+                              Aucune matière affectée
+                            </h3>
+                            <Button
+                              onClick={handleOpenNewAssignmentForm}
+                              className="gap-2"
                             >
-                              {getUesForSession(session as "S1" | "S2").length >
-                              0 ? (
-                                getUesForSession(session as "S1" | "S2").map(
-                                  (ue) => (
-                                    <motion.div
-                                      key={ue.assignmentId || ue.id}
-                                      initial={{ opacity: 0, y: 10 }}
-                                      animate={{ opacity: 1, y: 0 }}
-                                      transition={{ duration: 0.2 }}
-                                      className="p-4 border rounded-lg hover:shadow-md transition-all bg-white group"
-                                    >
-                                      <div className="flex justify-between items-start">
-                                        <div className="flex-1">
-                                          <div className="flex items-start gap-3">
-                                            <div className="bg-primary/10 p-2 rounded-lg mt-1">
-                                              <BookOpen className="h-5 w-5 text-primary" />
-                                            </div>
-                                            <div className="flex-1">
-                                              <h3 className="font-semibold text-lg group-hover:text-primary transition-colors">
-                                                {ue.title}
-                                              </h3>
-                                              <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
-                                                <Badge variant="outline">
-                                                  {ue.code}
-                                                </Badge>
-                                                <span>•</span>
-                                                <span>
-                                                  {ue.credits} crédits
-                                                </span>
-                                              </div>
-                                              {ue.professor && (
-                                                <div className="mt-3 p-3 bg-slate-50 rounded-lg">
-                                                  <div className="flex items-center gap-2 text-sm">
-                                                    <UserCheck className="h-4 w-4 text-blue-600" />
-                                                    <span className="font-medium">
-                                                      Professeur:
-                                                    </span>
-                                                    <span>
-                                                      {ue.professor.firstName}{" "}
-                                                      {ue.professor.lastName}
-                                                    </span>
-                                                  </div>
-                                                  {ue.assignmentData && (
-                                                    <div className="text-xs text-gray-500 mt-2">
-                                                      Affecté le:{" "}
-                                                      {new Date(
-                                                        ue.assignmentData.createdAt
-                                                      ).toLocaleDateString()}
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                          {ue.professor ? (
-                                            <div className="flex items-center gap-2">
-                                              <Badge className="bg-green-100 text-green-800 border-green-200">
-                                                <CheckCircle className="h-3 w-3 mr-1" />
-                                                Affecté
-                                              </Badge>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() =>
-                                                  handleOpenAssignmentForm(ue)
-                                                }
-                                                className="h-9"
-                                              >
-                                                <Edit className="h-4 w-4" />
-                                              </Button>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() =>
-                                                  confirmDeleteAssignment(
-                                                    ue.assignmentId
-                                                  )
-                                                }
-                                                className="h-9 text-destructive hover:bg-destructive/10"
-                                              >
-                                                <Trash2 className="h-4 w-4" />
-                                              </Button>
-                                            </div>
-                                          ) : (
-                                            <Button
-                                              size="sm"
-                                              onClick={() =>
-                                                handleOpenAssignmentForm(ue)
-                                              }
-                                              className="gap-2"
-                                            >
-                                              <Plus className="h-4 w-4" />
-                                              Affecter
-                                            </Button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </motion.div>
-                                  )
-                                )
-                              ) : (
-                                <motion.div
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  transition={{ duration: 0.3 }}
-                                  className="text-center py-12 border-2 border-dashed rounded-lg"
-                                >
-                                  <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                                  <h3 className="text-lg font-medium text-muted-foreground mb-2">
-                                    Aucune matière affectée
-                                  </h3>
-                                  <p className="text-muted-foreground mb-4">
-                                    Aucune unité d'enseignement n'a été affectée
-                                    pour cette session.
-                                  </p>
-                                  <Button
-                                    variant="outline"
-                                    onClick={() =>
-                                      handleOpenNewAssignmentForm()
-                                    }
-                                    className="gap-2"
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                    Ajouter une affectation
-                                  </Button>
-                                </motion.div>
-                              )}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+                              <Plus className="h-4 w-4" />
+                              Ajouter une affectation
+                            </Button>
+                          </div>
+                        )}
                       </TabsContent>
                     ))}
                   </Tabs>
@@ -1041,36 +754,31 @@ export const CourseAssignmentManager = () => {
           </div>
         )}
 
-        {/* Dialogues modaux (restent inchangés mais avec design amélioré) */}
+        {/* Dialogues modaux */}
         <AlertDialog
           open={isDeleteDialogOpen}
           onOpenChange={setIsDeleteDialogOpen}
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-                <Trash2 className="h-5 w-5" />
-                Confirmer la suppression
-              </AlertDialogTitle>
+              <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
               <AlertDialogDescription>
                 Cette action supprimera définitivement cette affectation de
-                cours. Cette action ne peut pas être annulée.
+                cours.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Annuler</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDeleteAssignment}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className="bg-destructive"
               >
-                Supprimer définitivement
+                Supprimer
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Dialogues pour les formulaires d'affectation */}
-        {/* ... (le code des dialogues reste similaire mais avec un design amélioré) ... */}
         {/* Dialog nouvelle affectation */}
         <Dialog
           open={isNewAssignmentOpen}
@@ -1084,8 +792,7 @@ export const CourseAssignmentManager = () => {
               </DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleCreateAssignment} className="space-y-6">
-              {/* Recherche de cours */}
+            <form onSubmit={handleSubmitAssignment} className="space-y-6">
               <div className="space-y-4">
                 <Label>Rechercher un cours</Label>
                 <div className="relative">
@@ -1104,7 +811,7 @@ export const CourseAssignmentManager = () => {
                       filteredUes.map((ue) => (
                         <div
                           key={ue.id}
-                          className="flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer"
+                          className="flex items-center justify-between p-2 hover:bg-accent rounded cursor-pointer transition-colors"
                           onClick={() => {
                             setFormData((prev) => ({
                               ...prev,
@@ -1118,7 +825,7 @@ export const CourseAssignmentManager = () => {
                           <div>
                             <div className="font-medium">{ue.title}</div>
                             <div className="text-sm text-muted-foreground">
-                              {ue.code} • {ue.credits} crédits •{" "}
+                              {ue.code} • {ue.credits} crédits
                             </div>
                           </div>
                           {formData.ueId === ue.id && (
@@ -1212,15 +919,13 @@ export const CourseAssignmentManager = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="academicYear">Année académique</Label>
+                      <Label htmlFor="academicYear">Année académique *</Label>
                       <Select
-                        value={filters.academicYearId} // Utilisez academicYearId
+                        value={formData.academicYearId}
                         onValueChange={(value) =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            academicYearId: value,
-                          }))
+                          setFormData({ ...formData, academicYearId: value })
                         }
+                        required
                       >
                         <SelectTrigger id="academicYear">
                           <SelectValue placeholder="Sélectionner une année" />
@@ -1228,9 +933,8 @@ export const CourseAssignmentManager = () => {
                         <SelectContent>
                           {academicYears.map((year) => (
                             <SelectItem key={year.id} value={year.id}>
-                              {" "}
-                              {/* Utilisez year.id */}
-                              {year.year} {/* Affichez year.year */}
+                              {year.year}
+                              {year.isCurrent && " (En cours)"}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1283,6 +987,120 @@ export const CourseAssignmentManager = () => {
             </form>
           </DialogContent>
         </Dialog>
+
+        {/* Dialog modification affectation */}
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>
+                {selectedUe
+                  ? `Modifier l'affectation - ${selectedUe.title}`
+                  : "Modifier l'affectation"}
+              </DialogTitle>
+              <DialogDescription>
+                Modifier le professeur assigné à ce cours
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleSubmitAssignment} className="space-y-6">
+              {selectedUe && (
+                <div className="p-4 bg-muted rounded-lg">
+                  <div className="font-medium">{selectedUe.title}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {selectedUe.code} • {selectedUe.credits} crédits
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="professor">Professeur *</Label>
+                <Select
+                  value={formData.professorId}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, professorId: value })
+                  }
+                  required
+                >
+                  <SelectTrigger id="professor">
+                    <SelectValue placeholder="Sélectionner un professeur" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {professors
+                      .filter((p) => p.status === "Actif")
+                      .map((professor) => (
+                        <SelectItem key={professor.id} value={professor.id}>
+                          {professor.firstName} {professor.lastName}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="semester">Semestre *</Label>
+                  <Select
+                    value={formData.semester}
+                    onValueChange={(value: "S1" | "S2") =>
+                      setFormData({ ...formData, semester: value })
+                    }
+                    required
+                  >
+                    <SelectTrigger id="semester">
+                      <SelectValue placeholder="Sélectionner un semestre" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="S1">Semestre 1</SelectItem>
+                      <SelectItem value="S2">Semestre 2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="academicYear">Année académique *</Label>
+                  <Select
+                    value={formData.academicYearId}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, academicYearId: value })
+                    }
+                    required
+                  >
+                    <SelectTrigger id="academicYear">
+                      <SelectValue placeholder="Sélectionner une année" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {academicYears.map((year) => (
+                        <SelectItem key={year.id} value={year.id}>
+                          {year.year}
+                          {year.isCurrent && " (En cours)"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsFormOpen(false)}
+                >
+                  Annuler
+                </Button>
+                <Button type="submit" disabled={!formData.professorId}>
+                  Modifier l'affectation
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <AssignmentCopyWizard
+          isOpen={isCopyWizardOpen}
+          onClose={() => setIsCopyWizardOpen(false)}
+          currentFilters={filters}
+        />
       </div>
     </div>
   );

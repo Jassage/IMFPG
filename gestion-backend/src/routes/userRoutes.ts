@@ -1,3 +1,4 @@
+// src/routes/userRoutes.ts
 import express from "express";
 import {
   registerUser,
@@ -8,8 +9,13 @@ import {
   deleteUser,
   changePassword,
   getCurrentUser,
+  getPotentialDeans,
 } from "../controllers/userController";
-import { authenticateToken, requireRole } from "../middleware/auth.middleware";
+import { authenticateToken } from "../middleware/auth.middleware";
+import {
+  deanPermissions,
+  checkDeanAccess,
+} from "../middleware/deanPermissions";
 
 const router = express.Router();
 
@@ -17,22 +23,15 @@ const router = express.Router();
 router.post("/register", registerUser);
 // router.post("/login", loginUser);
 
-// Protected routes
-router.get("/me", authenticateToken, getCurrentUser);
-router.get("/", getUsers);
-router.get(
-  "/:id",
-  authenticateToken,
-  requireRole(["Admin", "Directeur"]),
-  getUserById
-);
-router.put(
-  "/:id",
-  authenticateToken,
-  requireRole(["Admin", "Directeur"]),
-  updateUser
-);
-router.delete("/:id", authenticateToken, requireRole(["Admin"]), deleteUser);
-router.patch("/:id/password", authenticateToken, changePassword);
+// Appliquer l'authentification et les permissions doyen aux routes protégées
+router.use(authenticateToken, deanPermissions);
 
+// Routes protégées avec permissions
+router.get("/me", getCurrentUser);
+router.get("/", getUsers);
+router.get("/:id", checkDeanAccess("user"), getUserById);
+router.put("/:id", checkDeanAccess("user"), updateUser);
+router.delete("/:id", checkDeanAccess("user"), deleteUser);
+router.patch("/:id/password", checkDeanAccess("user"), changePassword);
+router.get("/potential/deans", checkDeanAccess("user"), getPotentialDeans);
 export default router;

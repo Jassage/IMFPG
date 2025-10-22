@@ -11,17 +11,13 @@ interface AuthState {
   error: string | null;
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
-  login: (email: string, password: string) => Promise<void>;
   register: (
     userData: Omit<User, "id" | "createdAt"> & { password: string }
   ) => Promise<void>;
   logout: () => void;
   getCurrentUser: () => Promise<void>;
   updateProfile: (userData: Partial<User>) => Promise<void>;
-  changePassword: (
-    currentPassword: string,
-    newPassword: string
-  ) => Promise<void>;
+  fetchPotentialDeans: () => Promise<User[]>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -38,23 +34,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.removeItem("token");
     }
     set({ token, isAuthenticated: !!token });
-  },
-
-  login: async (email, password) => {
-    set({ loading: true, error: null });
-    try {
-      const response = await api.post("/login", { email, password });
-      const { token, user } = response.data;
-
-      localStorage.setItem("token", token);
-      set({ user, token, isAuthenticated: true, loading: false });
-    } catch (error: any) {
-      set({
-        error: error.response?.data?.message || "Erreur de connexion",
-        loading: false,
-      });
-      throw error;
-    }
   },
 
   register: async (userData) => {
@@ -110,19 +89,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  changePassword: async (currentPassword, newPassword) => {
-    set({ loading: true });
+  fetchPotentialDeans: async () => {
     try {
-      await api.patch(`/users/${get().user?.id}/password`, {
-        currentPassword,
-        newPassword,
-      });
-      set({ loading: false });
+      const response = await api.get("/users/potential/deans");
+      return response.data;
     } catch (error: any) {
-      set({
-        error: error.response?.data?.message || "Erreur de modification",
-        loading: false,
-      });
+      console.error("Erreur récupération doyens:", error);
       throw error;
     }
   },
@@ -160,7 +132,15 @@ export const useUserStore = create<UserManagementState>((set, get) => ({
       throw error;
     }
   },
-
+  fetchPotentialDeans: async () => {
+    try {
+      const response = await api.get("/users/potential/deans");
+      return response.data;
+    } catch (error: any) {
+      console.error("Erreur récupération doyens:", error);
+      throw error;
+    }
+  },
   fetchUserById: async (id: string) => {
     set({ loading: true });
     try {
@@ -232,6 +212,34 @@ export const useUserStore = create<UserManagementState>((set, get) => ({
     } catch (error: any) {
       set({
         error: error.response?.data?.message || "Erreur de suppression",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  changePassword: async (id, newPassword) => {
+    set({ loading: true });
+    try {
+      await api.patch(`/users/${id}/password`, { newPassword });
+      set({ loading: false });
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur de modification",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  resetPassword: async (email) => {
+    set({ loading: true });
+    try {
+      await api.post(`/auth/reset-password`, { email });
+      set({ loading: false });
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur de modification",
         loading: false,
       });
       throw error;

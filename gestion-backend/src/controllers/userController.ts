@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient, UserRole } from "../../generated/prisma";
+
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import prisma from "../prisma";
+import { createAuditLog } from "./auditController";
 
 // Étendre l'interface Request pour inclure 'user'
 declare global {
@@ -16,64 +18,146 @@ declare global {
   }
 }
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || "votre_secret_jwt";
 
-export const registerUser = async (userData: {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  role: string;
-  password: string;
-  status: string;
-}) => {
-  // Valider que le rôle est une valeur valide de l'enum
-  const validRoles = Object.values(UserRole);
-  if (!validRoles.includes(userData.role as UserRole)) {
-    throw new Error(
-      `Rôle invalide. Valeurs acceptées: ${validRoles.join(", ")}`
-    );
+enum UserRole {
+  Admin = "Admin",
+  Professeur = "Professeur",
+  Secretaire = "Secretaire",
+  Directeur = "Directeur",
+  Doyen = "Doyen",
+}
+
+// Ou utiliser un type literal
+type UserRoleType =
+  | "Admin"
+  | "Professeur"
+  | "Secretaire"
+  | "Directeur"
+  | "Doyen";
+
+const validRoles: UserRoleType[] = [
+  "Admin",
+  "Professeur",
+  "Secretaire",
+  "Directeur",
+  "Doyen",
+];
+
+const validateUserRole = (role: string): UserRoleType => {
+  console.log("🔍 Rôle reçu pour validation:", role);
+
+  if (!role) {
+    throw new Error("Le rôle est requis");
   }
 
-  // Vérifier si l'utilisateur existe déjà
-  const existingUser = await prisma.user.findUnique({
-    where: { email: userData.email },
-  });
-
-  if (existingUser) {
-    throw new Error("Un utilisateur avec cet email existe déjà");
+  if (validRoles.includes(role as UserRoleType)) {
+    return role as UserRoleType;
   }
 
-  // Hasher le mot de passe
-  const hashedPassword = await bcrypt.hash(userData.password, 12);
-
-  // Créer l'utilisateur
-  const user = await prisma.user.create({
-    data: {
-      firstName: userData.firstName,
-      lastName: userData.lastName,
-      email: userData.email,
-      phone: userData.phone || null,
-      role: userData.role as UserRole,
-      password: hashedPassword,
-      status: "Actif",
-    },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      phone: true,
-      role: true,
-      status: true,
-      createdAt: true,
-    },
-  });
-
-  return user;
+  throw new Error(
+    `Rôle invalide: "${role}". Valeurs acceptées: ${validRoles.join(", ")}`
+  );
 };
 
+export const registerUser = async (req: Request, res: Response) => {
+  try {
+    const { email, password, role, firstName, lastName, phone } = req.body;
+
+    console.log("📨 Données reçues:", { email, role, firstName, lastName });
+
+    // Validation des données requises
+    if (!email || !password || !role || !firstName || !lastName) {
+      return res.status(400).json({
+        message: "Tous les champs obligatoires doivent être remplis",
+        required: ["email", "password", "role", "firstName", "lastName"],
+        received: {
+          email: !!email,
+          password: !!password,
+          role: !!role,
+          firstName: !!firstName,
+          lastName: !!lastName,
+        },
+      });
+    }
+
+    // Valider que le rôle est acceptable
+    const validatedRole = validateUserRole(role);
+    console.log("✅ Rôle validé:", validatedRole);
+
+    // Vérifier si l'utilisateur existe déjà
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "Un utilisateur avec cet email existe déjà",
+      });
+    }
+
+    // Hasher le mot de passe
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    // Créer l'utilisateur avec tous les champs requis
+    const user = await prisma.user.create({
+      data: {
+        firstName,
+        lastName,
+        email,
+        phone: phone || null,
+        role: validatedRole,
+        password: hashedPassword,
+        status: "Actif",
+        createdAt: new Date(), // Ajout explicite
+        updatedAt: new Date(), // Ajout explicite
+        // Ajoutez d'autres champs requis par votre schéma si nécessaire
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true, // Inclure updatedAt dans la sélection
+      },
+    });
+
+    console.log("✅ Utilisateur créé:", user.id);
+
+    res.status(201).json({
+      message: "Utilisateur créé avec succès",
+      user,
+    });
+  } catch (error: any) {
+    console.error("❌ Registration error:", error);
+    console.error("❌ Stack:", error.stack);
+
+    // Log plus détaillé pour comprendre l'erreur Prisma
+    if (error.code) {
+      console.error("❌ Prisma error code:", error.code);
+    }
+    if (error.meta) {
+      console.error("❌ Prisma error meta:", error.meta);
+    }
+
+    res.status(400).json({
+      message: error.message,
+      error:
+        process.env.NODE_ENV === "development"
+          ? {
+              stack: error.stack,
+              receivedRole: req.body?.role,
+              prismaError: error.code || error.meta,
+            }
+          : undefined,
+    });
+  }
+};
 export const loginUser = async (email: string, password: string) => {
   // Trouver l'utilisateur
   const user = await prisma.user.findUnique({
@@ -130,26 +214,106 @@ export const loginUser = async (email: string, password: string) => {
   };
 };
 
+// export const getUsers = async (req: Request, res: Response) => {
+//   try {
+//     const { role, status, search } = req.query;
+
+//     const where: any = {};
+
+//     if (role && role !== "all") {
+//       where.role = role;
+//     }
+
+//     if (status && status !== "all") {
+//       where.status = status;
+//     }
+
+//     if (search) {
+//       where.OR = [
+//         { firstName: { contains: search as string, mode: "insensitive" } },
+//         { lastName: { contains: search as string, mode: "insensitive" } },
+//         { email: { contains: search as string, mode: "insensitive" } },
+//       ];
+//     }
+
+//     const users = await prisma.user.findMany({
+//       where,
+//       select: {
+//         id: true,
+//         firstName: true,
+//         lastName: true,
+//         email: true,
+//         phone: true,
+//         role: true,
+//         status: true,
+//         lastLogin: true,
+//         createdAt: true,
+//         avatar: true,
+//       },
+//       orderBy: {
+//         createdAt: "desc",
+//       },
+//     });
+
+//     res.json(users);
+//   } catch (error) {
+//     console.error("Erreur récupération utilisateurs:", error);
+//     res.status(500).json({
+//       message: "Erreur interne du serveur",
+//     });
+//   }
+// };
+
 export const getUsers = async (req: Request, res: Response) => {
   try {
     const { role, status, search } = req.query;
+    const user = (req as any).user;
+    const facultyId = (req as any).facultyId;
 
     const where: any = {};
 
-    if (role && role !== "all") {
-      where.role = role;
-    }
-
-    if (status && status !== "all") {
-      where.status = status;
-    }
-
-    if (search) {
+    // Si c'est un doyen, limiter aux utilisateurs de sa faculté
+    if (user?.role === "Doyen" && facultyId) {
       where.OR = [
-        { firstName: { contains: search as string, mode: "insensitive" } },
-        { lastName: { contains: search as string, mode: "insensitive" } },
-        { email: { contains: search as string, mode: "insensitive" } },
+        {
+          student: {
+            enrollments: {
+              some: {
+                facultyId: facultyId,
+                status: "Active",
+              },
+            },
+          },
+        },
+        {
+          professeur: {
+            assignments: {
+              some: {
+                facultyId: facultyId,
+              },
+            },
+          },
+        },
+        // Le doyen lui-même
+        { id: user.id },
       ];
+    } else {
+      // Pour les autres rôles, appliquer les filtres normaux
+      if (role && role !== "all") {
+        where.role = role;
+      }
+
+      if (status && status !== "all") {
+        where.status = status;
+      }
+
+      if (search) {
+        where.OR = [
+          { firstName: { contains: search as string, mode: "insensitive" } },
+          { lastName: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
     }
 
     const users = await prisma.user.findMany({
@@ -398,4 +562,87 @@ export const getCurrentUser = async (userId: string) => {
   }
 
   return user;
+};
+// Dans votre controller userController.ts
+export const getPotentialDeans = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).user?.id || (req as any).userId || null,
+  };
+
+  try {
+    // Récupérer tous les utilisateurs avec le rôle "Doyen"
+    const deans = await prisma.user.findMany({
+      where: {
+        role: "Doyen",
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        avatar: true,
+        role: true,
+        status: true,
+        deanOf: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+      },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    });
+
+    // Formater la réponse
+    const formattedDeans = deans.map((dean) => ({
+      id: dean.id,
+      firstName: dean.firstName,
+      lastName: dean.lastName,
+      email: dean.email,
+      avatar: dean.avatar,
+      role: dean.role,
+      status: dean.status,
+      fullName: `${dean.firstName} ${dean.lastName}`,
+      currentFaculty: dean.deanOf
+        ? {
+            id: dean.deanOf.id,
+            name: dean.deanOf.name,
+            code: dean.deanOf.code,
+          }
+        : null,
+      isAvailable: !dean.deanOf, // Disponible si pas déjà doyen d'une faculté
+    }));
+
+    // Log de consultation
+    await createAuditLog({
+      ...auditData,
+      action: "GET_POTENTIAL_DEANS",
+      entity: "User",
+      description: `Consultation des utilisateurs pouvant être doyens - ${formattedDeans.length} trouvé(s)`,
+      status: "SUCCESS",
+    });
+
+    res.json(formattedDeans);
+  } catch (error: any) {
+    console.error("Erreur récupération des doyens:", error);
+
+    // Log d'erreur
+    await createAuditLog({
+      ...auditData,
+      action: "GET_POTENTIAL_DEANS_ERROR",
+      entity: "User",
+      description:
+        "Erreur lors de la récupération des utilisateurs pouvant être doyens",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    res.status(500).json({
+      message: "Erreur lors de la récupération des doyens",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
 };

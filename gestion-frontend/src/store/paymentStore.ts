@@ -75,7 +75,6 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
         academicYearId: payment.academicYearId,
       };
 
-      console.log("Adding payment with data:", payload);
       await api.post("/payments", payload);
       await get().fetchPayments(); // Recharge les données
     } catch (err) {
@@ -103,7 +102,7 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
         academicYearId: payment.academicYearId,
       };
 
-      console.log("Updating payment with data:", cleanData);
+      // console.log("Updating payment with data:", cleanData);
 
       await api.put(`/payments/${id}`, cleanData);
       await get().fetchPayments();

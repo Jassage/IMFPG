@@ -12,3 +12,18 @@ declare global {
     }
   }
 }
+
+declare global {
+  namespace Express {
+    interface User {
+      id: string;
+      email: string;
+      // autres propriétés de votre user
+    }
+
+    interface Request {
+      logout(callback: (err?: any) => void): void;
+      user?: User;
+    }
+  }
+}

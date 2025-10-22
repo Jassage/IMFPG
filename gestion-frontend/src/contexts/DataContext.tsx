@@ -1,25 +1,50 @@
-// Contexte pour gérer l'état global des données et la synchronisation
-import React, { createContext, useContext, ReactNode } from 'react';
-import { useDataSync } from '../hooks/useDataSync';
+// src/contexts/DataContext.tsx
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { useAuthStore } from "@/store/authStore";
 
 interface DataContextType {
   isLoading: boolean;
   error: string | null;
-  loadInitialData: () => Promise<void>;
-  syncWithMongoDB: () => Promise<void>;
+  refreshData: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-interface DataProviderProps {
-  children: ReactNode;
-}
+export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { isAuthenticated } = useAuthStore();
 
-export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
-  const dataSync = useDataSync();
+  const refreshData = async () => {
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Ici vous pouvez charger des données globales si nécessaire
+      // Par exemple, des statistiques, des configurations, etc.
+
+      await new Promise((resolve) => setTimeout(resolve, 500)); // Simuler un chargement
+    } catch (err: any) {
+      console.error("Erreur chargement données:", err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshData();
+  }, [isAuthenticated]);
 
   return (
-    <DataContext.Provider value={dataSync}>
+    <DataContext.Provider value={{ isLoading, error, refreshData }}>
       {children}
     </DataContext.Provider>
   );
@@ -28,7 +53,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
 export const useDataContext = () => {
   const context = useContext(DataContext);
   if (context === undefined) {
-    throw new Error('useDataContext must be used within a DataProvider');
+    throw new Error("useDataContext must be used within a DataProvider");
   }
   return context;
 };
