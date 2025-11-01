@@ -55,6 +55,23 @@ interface GradeStore {
     academicYearId: string,
     semester: string
   ) => Promise<Grade[]>;
+  importGradesFromExcel: (file: File) => Promise<ImportResult>;
+  downloadGradeTemplate: () => Promise<void>;
+}
+
+interface ImportResult {
+  success: boolean;
+  message: string;
+  summary: {
+    total: number;
+    created: number;
+    failed: number;
+    successRate: string;
+  };
+  details: {
+    reussites: any[];
+    erreurs: any[];
+  };
 }
 
 interface GradeFilters {
@@ -602,6 +619,90 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
 
       set({ error: storeError.message, loading: false });
       throw storeError;
+    }
+  },
+
+  importGradesFromExcel: async (file: File): Promise<ImportResult> => {
+    set({ loading: true, error: null });
+
+    try {
+      console.log("📤 Store: Début importation notes Excel");
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await api.post("/grades/import/excel", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      console.log("📨 Store: Réponse importation", response.data);
+
+      const result = response.data;
+
+      // Recharger les notes si l'import a réussi
+      if (result.success && result.summary?.created > 0) {
+        await get().fetchGrades();
+      }
+
+      set({ loading: false });
+      return result;
+    } catch (error: any) {
+      console.error("❌ Store: Erreur importation notes", error);
+
+      const errorMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.message ||
+        "Erreur lors de l'importation des notes";
+
+      set({
+        loading: false,
+        error: errorMessage,
+      });
+
+      throw new Error(errorMessage);
+    }
+  },
+
+  downloadGradeTemplate: async (): Promise<void> => {
+    set({ loading: true, error: null });
+
+    try {
+      console.log("📥 Store: Téléchargement template notes");
+
+      const response = await api.get("/grades/import/template", {
+        responseType: "blob",
+      });
+
+      // Créer un blob et télécharger le fichier
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "template_notes.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      set({ loading: false });
+    } catch (error: any) {
+      console.error("❌ Store: Erreur téléchargement template", error);
+
+      const errorMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.message ||
+        "Erreur lors du téléchargement du template";
+
+      set({
+        loading: false,
+        error: errorMessage,
+      });
+
+      throw new Error(errorMessage);
     }
   },
 }));

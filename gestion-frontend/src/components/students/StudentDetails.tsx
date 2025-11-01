@@ -1,4 +1,3 @@
-// src/components/students/StudentDetails.tsx
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +43,15 @@ import {
   Filter,
   ScrollText,
   User2,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  TrendingUp,
+  Clock,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
 } from "lucide-react";
 import { Student, Enrollment, GradeWithDetails } from "../../types/academic";
 import { useAcademicStore } from "../../store/studentStore";
@@ -66,12 +74,34 @@ import {
   SelectValue,
 } from "../ui/select";
 import { useAuthStore } from "@/store/authStore";
+import { Input } from "../ui/input";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible";
+import { useUEStore } from "@/store/courseStore";
 
 interface StudentDetailsProps {
   student: Student;
   onClose: () => void;
   onEdit?: (student: Student) => void;
   onDelete?: (studentId: string) => void;
+}
+
+// Types pour le regroupement des notes
+interface AcademicYearGrades {
+  academicYear: string;
+  academicYearId: string;
+  enrollment: Enrollment;
+  grades: GradeWithDetails[];
+  average: number;
+  successRate: number;
+  validatedCount: number;
+  failedCount: number;
+  retakeCount: number;
+  totalCredits: number;
+  obtainedCredits: number;
 }
 
 export const StudentDetails = ({
@@ -87,11 +117,10 @@ export const StudentDetails = ({
     getStudentGuardians,
     getStudentRetakes,
     fetchGrades,
-    fetchUEs,
-    ues,
   } = useAcademicStore();
 
-  // CORRECTION: Utiliser le store des notes directement
+  const { ues, getAllUEs } = useUEStore();
+
   const { grades: allGrades, fetchGrades: fetchAllGrades } = useGradeStore();
   const { enrollments, getEnrollmentsByStudent } = useEnrollmentStore();
   const { payments, getPaymentsByStudent, getTotalAmount, getPaidAmount } =
@@ -99,6 +128,13 @@ export const StudentDetails = ({
 
   const [activeTab, setActiveTab] = useState("info");
   const [grades, setGrades] = useState<GradeWithDetails[]>([]);
+  const [groupedGrades, setGroupedGrades] = useState<AcademicYearGrades[]>([]);
+  const [selectedAcademicYear, setSelectedAcademicYear] =
+    useState<string>("all");
+  const [expandedYears, setExpandedYears] = useState<Set<string>>(new Set());
+  const [showOnlyRetakes, setShowOnlyRetakes] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+
   const guardians = getStudentGuardians(student.id);
   const retakes = getStudentRetakes(student.id);
   const studentEnrollments = getEnrollmentsByStudent(student.id);
@@ -122,21 +158,22 @@ export const StudentDetails = ({
     enrollment: null,
   });
 
+  // Charger les notes de l'étudiant
   useEffect(() => {
     const loadStudentGrades = async () => {
       if (student.id) {
         setLoadingGrades(true);
         try {
-          // Option 1: Utiliser le store académique si disponible
+          // Essayer de récupérer les notes depuis le store académique
           const studentGrades = getStudentGrades(student.id);
           if (studentGrades && studentGrades.length > 0) {
             setGrades(studentGrades);
           } else {
-            // Option 2: Filtrer depuis le store des notes
+            // Sinon, filtrer depuis le store des notes
             const filteredGrades = allGrades.filter(
               (grade) => grade.studentId === student.id
-            );
-            setGrades(filteredGrades as GradeWithDetails[]);
+            ) as GradeWithDetails[];
+            setGrades(filteredGrades);
 
             // Si toujours pas de notes, essayer de les charger
             if (filteredGrades.length === 0) {
@@ -156,6 +193,212 @@ export const StudentDetails = ({
     }
   }, [student.id, activeTab, allGrades, getStudentGrades, fetchAllGrades]);
 
+  // Grouper les notes par année académique
+  useEffect(() => {
+    const groupGradesByAcademicYear = () => {
+      const grouped: AcademicYearGrades[] = [];
+
+      studentEnrollments.forEach((enrollment) => {
+        const enrollmentGrades = grades.filter(
+          (grade) =>
+            grade.studentId === enrollment.studentId &&
+            grade.academicYearId === enrollment.academicYearId
+        );
+
+        if (enrollmentGrades.length > 0) {
+          const validatedGrades = enrollmentGrades.filter(
+            (g) => g.status === "Valid_"
+          );
+          const failedGrades = enrollmentGrades.filter(
+            (g) =>
+              g.status === "Non_valid_" || g.status === "Echec" || g.grade < 10
+          );
+          const retakeGrades = enrollmentGrades.filter(
+            (g) => g.session === "Reprise" || g.status === "Reprise"
+          );
+
+          const totalGrade = enrollmentGrades.reduce(
+            (sum, grade) => sum + (grade.grade || 0),
+            0
+          );
+          const average =
+            enrollmentGrades.length > 0
+              ? totalGrade / enrollmentGrades.length
+              : 0;
+          const successRate =
+            enrollmentGrades.length > 0
+              ? (validatedGrades.length / enrollmentGrades.length) * 100
+              : 0;
+
+          const totalCredits = enrollmentGrades.reduce(
+            (sum, grade) => sum + (grade.ue?.credits || 0),
+            0
+          );
+          const obtainedCredits = validatedGrades.reduce(
+            (sum, grade) => sum + (grade.ue?.credits || 0),
+            0
+          );
+
+          grouped.push({
+            academicYear: enrollment.academicYear,
+            academicYearId: enrollment.academicYearId,
+            enrollment,
+            grades: enrollmentGrades,
+            average: Math.round(average * 100) / 100,
+            successRate: Math.round(successRate * 100) / 100,
+            validatedCount: validatedGrades.length,
+            failedCount: failedGrades.length,
+            retakeCount: retakeGrades.length,
+            totalCredits,
+            obtainedCredits,
+          });
+        }
+      });
+
+      // Trier par année académique (du plus récent au plus ancien)
+      grouped.sort((a, b) => b.academicYear.localeCompare(a.academicYear));
+      setGroupedGrades(grouped);
+
+      // Développer automatiquement la première année
+      if (grouped.length > 0 && expandedYears.size === 0) {
+        setExpandedYears(new Set([grouped[0].academicYearId]));
+      }
+    };
+
+    if (grades.length > 0) {
+      groupGradesByAcademicYear();
+    }
+  }, [grades, studentEnrollments, expandedYears]);
+
+  // Filtrer les années académiques
+  const filteredGroupedGrades = groupedGrades.filter(
+    (group) =>
+      selectedAcademicYear === "all" ||
+      group.academicYearId === selectedAcademicYear
+  );
+
+  // Toggle l'expansion d'une année
+  const toggleYearExpansion = (academicYearId: string) => {
+    setExpandedYears((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(academicYearId)) {
+        newSet.delete(academicYearId);
+      } else {
+        newSet.add(academicYearId);
+      }
+      return newSet;
+    });
+  };
+
+  // Obtenir les statistiques globales
+  const getGlobalStats = () => {
+    const allGradesList = filteredGroupedGrades.flatMap(
+      (group) => group.grades
+    );
+    const validatedGrades = allGradesList.filter((g) => g.status === "Valid_");
+    const failedGrades = allGradesList.filter(
+      (g) => g.status === "Non_valid_" || g.status === "Echec" || g.grade < 10
+    );
+    const retakeGrades = allGradesList.filter(
+      (g) => g.session === "Reprise" || g.status === "Reprise"
+    );
+
+    const totalAverage =
+      allGradesList.length > 0
+        ? allGradesList.reduce((sum, grade) => sum + (grade.grade || 0), 0) /
+          allGradesList.length
+        : 0;
+
+    const totalCredits = allGradesList.reduce(
+      (sum, grade) => sum + (grade.ue?.credits || 0),
+      0
+    );
+    const obtainedCredits = validatedGrades.reduce(
+      (sum, grade) => sum + (grade.ue?.credits || 0),
+      0
+    );
+
+    return {
+      totalGrades: allGradesList.length,
+      validatedCount: validatedGrades.length,
+      failedCount: failedGrades.length,
+      retakeCount: retakeGrades.length,
+      average: Math.round(totalAverage * 100) / 100,
+      successRate:
+        allGradesList.length > 0
+          ? Math.round((validatedGrades.length / allGradesList.length) * 100)
+          : 0,
+      totalCredits,
+      obtainedCredits,
+      creditProgress:
+        totalCredits > 0 ? (obtainedCredits / totalCredits) * 100 : 0,
+    };
+  };
+
+  const globalStats = getGlobalStats();
+  const calculateGPA = () => {
+    if (grades.length === 0) return 0;
+    const total = grades.reduce((sum, grade) => sum + grade.grade, 0);
+    return Math.round((total / grades.length) * 100) / 100;
+  };
+
+  const getSuccessRate = () => {
+    if (grades.length === 0) return 0;
+    const validatedGrades = grades.filter((g) => g.status === "Valid_").length;
+    return Math.round((validatedGrades / grades.length) * 100);
+  };
+  // Fonction pour obtenir le badge de statut d'une note
+  const getGradeStatusBadge = (grade: GradeWithDetails) => {
+    const isRetake = grade.session === "Reprise" || grade.status === "Reprise";
+    const isValid = grade.status === "Valid_" || grade.grade >= 10;
+    const isFailed =
+      grade.status === "Non_valid_" ||
+      grade.status === "Echec" ||
+      grade.grade < 10;
+
+    if (isRetake) {
+      return (
+        <Badge variant="destructive" className="flex items-center gap-1">
+          <RefreshCw className="h-3 w-3" />
+          Rattrapage
+        </Badge>
+      );
+    }
+
+    if (isValid) {
+      return (
+        <Badge
+          variant="default"
+          className="flex items-center gap-1 bg-green-100 text-green-800 hover:bg-green-100"
+        >
+          <CheckCircle className="h-3 w-3" />
+          Validé
+        </Badge>
+      );
+    }
+
+    if (isFailed) {
+      return (
+        <Badge variant="destructive" className="flex items-center gap-1">
+          <XCircle className="h-3 w-3" />
+          Échec
+        </Badge>
+      );
+    }
+
+    return <Badge variant="outline">{grade.status}</Badge>;
+  };
+
+  // Fonction pour obtenir la couleur en fonction de la note
+  const getGradeColor = (grade: number) => {
+    if (grade >= 16) return "text-green-600 font-bold";
+    if (grade >= 14) return "text-blue-600 font-semibold";
+    if (grade >= 12) return "text-indigo-600";
+    if (grade >= 10) return "text-yellow-600";
+    return "text-red-600 font-semibold";
+  };
+
+  // Fonctions existantes...
   const loadStudentFeeData = async () => {
     try {
       await getStudentFees(student.id);
@@ -170,21 +413,14 @@ export const StudentDetails = ({
       console.error("Error loading fee data:", error);
     }
   };
-  // CORRECTION: Fonction pour obtenir les notes d'une inscription spécifique
-  const getGradesForEnrollment = (
-    enrollment: Enrollment
-  ): GradeWithDetails[] => {
-    return grades.filter(
+
+  const handleViewGrades = (enrollment: Enrollment) => {
+    setSelectedEnrollment(enrollment);
+    const enrollmentGrades = grades.filter(
       (grade) =>
         grade.studentId === enrollment.studentId &&
         grade.academicYearId === enrollment.academicYearId
     );
-  };
-
-  // CORRECTION: Fonction pour ouvrir le modal des notes
-  const handleViewGrades = (enrollment: Enrollment) => {
-    setSelectedEnrollment(enrollment);
-    const enrollmentGrades = getGradesForEnrollment(enrollment);
     console.log("Notes pour l'inscription:", {
       enrollment,
       gradesCount: enrollmentGrades.length,
@@ -192,13 +428,7 @@ export const StudentDetails = ({
     });
     setShowGradesModal(true);
   };
-  // Fonction pour ouvrir le modal des notes
-  // const handleViewGrades = (enrollment: Enrollment) => {
-  //   setSelectedEnrollment(enrollment);
-  //   setShowGradesModal(true);
-  // };
 
-  // Fonctions pour ouvrir les modaux
   const openDocumentModal = (type: DocumentTypeI, enrollment: Enrollment) => {
     setDocumentModal({
       isOpen: true,
@@ -207,39 +437,34 @@ export const StudentDetails = ({
     });
   };
 
-  // Fonction pour fermer le modal
   const handleCloseGradesModal = () => {
     setShowGradesModal(false);
     setSelectedEnrollment(null);
   };
 
-  // Fonction pour générer le bulletin
   const handleGenerateReport = (session?: string) => {
     console.log("Générer bulletin pour:", {
       student: `${student.firstName} ${student.lastName}`,
       enrollment: selectedEnrollment,
       session: session || "toutes sessions",
     });
-    // Implémentez ici la logique de génération du bulletin
   };
 
   useEffect(() => {
-    // Charger les données supplémentaires si nécessaire
     if (activeTab === "payments" && studentPayments.length === 0) {
-      // Potentiellement charger les paiements ici
+      // Charger les paiements si nécessaire
     }
     if (activeTab === "enrollments" && studentEnrollments.length === 0) {
-      // Potentiellement charger les inscriptions ici
+      // Charger les inscriptions si nécessaire
     }
     if (grades.length === 0) {
       fetchGrades();
     }
     if (ues.length === 0) {
-      fetchUEs();
+      getAllUEs();
     }
   }, [activeTab]);
 
-  // Trouver l'inscription active
   const currentEnrollment =
     studentEnrollments.find((e) => e.status === "Active") ||
     studentEnrollments[studentEnrollments.length - 1];
@@ -256,19 +481,6 @@ export const StudentDetails = ({
     return <Badge variant={variant}>{label}</Badge>;
   };
 
-  const calculateGPA = () => {
-    if (grades.length === 0) return 0;
-    const total = grades.reduce((sum, grade) => sum + grade.grade, 0);
-    return Math.round((total / grades.length) * 100) / 100;
-  };
-
-  const getSuccessRate = () => {
-    if (grades.length === 0) return 0;
-    const validatedGrades = grades.filter((g) => g.status === "Valid_").length;
-    return Math.round((validatedGrades / grades.length) * 100);
-  };
-
-  // Convertir le niveau en format texte
   const getLevelText = (level: string) => {
     const levelNum = parseInt(level);
     if (isNaN(levelNum)) return level;
@@ -276,7 +488,6 @@ export const StudentDetails = ({
     return `${levelNum}ème année`;
   };
 
-  // Formater la date
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("fr-FR", {
       year: "numeric",
@@ -284,6 +495,21 @@ export const StudentDetails = ({
       day: "numeric",
     });
   };
+
+  const currentYearFees = studentFees.filter(
+    (fee: any) => fee.academicYearId === currentEnrollment?.academicYearId
+  );
+
+  const totalDue = currentYearFees.reduce(
+    (sum: number, fee: any) => sum + fee.totalAmount,
+    0
+  );
+  const totalPaid = currentYearFees.reduce(
+    (sum: number, fee: any) => sum + fee.paidAmount,
+    0
+  );
+  const totalRemaining = totalDue - totalPaid;
+  const paymentProgress = totalDue > 0 ? (totalPaid / totalDue) * 100 : 0;
 
   return (
     <div className="space-y-6 max-h-[90vh] overflow-auto animate-fade-in">
@@ -331,8 +557,8 @@ export const StudentDetails = ({
                 >
                   <HoverCard>
                     <HoverCardTrigger>
-                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
-                        <div className="text-2xl font-bold text-primary animate-scale-in">
+                      <div className="text-center p-2 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
+                        <div className="text-xl font-bold text-primary animate-scale-in">
                           {calculateGPA()}
                         </div>
                         <div className="text-sm text-muted-foreground">
@@ -352,8 +578,8 @@ export const StudentDetails = ({
 
                   <HoverCard>
                     <HoverCardTrigger>
-                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
-                        <div className="text-2xl font-bold text-green-600 animate-scale-in">
+                      <div className="text-center p-2 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
+                        <div className="text-xl font-bold text-green-600 animate-scale-in">
                           {getSuccessRate()}%
                         </div>
                         <div className="text-sm text-muted-foreground">
@@ -375,38 +601,8 @@ export const StudentDetails = ({
                   <HoverCard>
                     <HoverCardTrigger>
                       <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
-                        <div className="text-2xl font-bold text-yellow-600 animate-scale-in">
-                          {retakes.length}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Rattrapages
-                        </div>
-                      </div>
-                    </HoverCardTrigger>
-                    <HoverCardContent>
-                      <div className="space-y-2">
-                        <h4 className="font-semibold">Rattrapages</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {
-                            retakes.filter((r) => r.status === "Programmé")
-                              .length
-                          }{" "}
-                          programmés,{" "}
-                          {retakes.filter((r) => r.status === "Terminé").length}{" "}
-                          terminés
-                        </p>
-                      </div>
-                    </HoverCardContent>
-                  </HoverCard>
-
-                  <HoverCard>
-                    <HoverCardTrigger>
-                      <div className="text-center p-3 rounded-lg bg-background/50 border cursor-pointer hover:bg-background/80 hover-scale transition-all duration-300 hover:shadow-lg">
-                        <div className="text-2xl font-bold text-blue-600 animate-scale-in">
-                          {getPaidAmount({
-                            studentId: student.id,
-                          }).toLocaleString()}{" "}
-                          HTG
+                        <div className="text-xl font-bold text-blue-600 animate-scale-in">
+                          {totalPaid} HTG
                         </div>
                         <div className="text-sm text-muted-foreground">
                           Payés
@@ -417,23 +613,11 @@ export const StudentDetails = ({
                       <div className="space-y-2">
                         <h4 className="font-semibold">Paiements</h4>
                         <p className="text-sm text-muted-foreground">
-                          {getPaidAmount({
-                            studentId: student.id,
-                          }).toLocaleString()}{" "}
-                          HTG sur{" "}
-                          {getTotalAmount({
-                            studentId: student.id,
-                          }).toLocaleString()}{" "}
-                          HTG
+                          {totalPaid} HTG sur {totalDue} HTG
                         </p>
                         <Progress
                           value={
-                            (getPaidAmount({ studentId: student.id }) /
-                              Math.max(
-                                getTotalAmount({ studentId: student.id }),
-                                1
-                              )) *
-                            100
+                            (paymentProgress > 100 ? 100 : paymentProgress) || 0
                           }
                           className="w-full"
                         />
@@ -511,7 +695,7 @@ export const StudentDetails = ({
         style={{ animationDelay: "0.3s" }}
         onValueChange={setActiveTab}
       >
-        <TabsList className="grid w-full grid-cols-6 h-12 p-1 bg-muted/50 hover:shadow-md transition-shadow duration-300">
+        <TabsList className="grid w-full grid-cols-5 h-12 p-1 bg-muted/50 hover:shadow-md transition-shadow duration-300">
           <TabsTrigger
             value="info"
             className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200"
@@ -528,21 +712,9 @@ export const StudentDetails = ({
           </TabsTrigger>
           <TabsTrigger value="fees" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
-            <span>Frais</span>
-            <Badge variant="secondary">
-              {currentStudentFee ? "Défini" : "Non défini"}
-            </Badge>
+            <span>Frais Scolarite</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="payments"
-            className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200"
-          >
-            <CreditCard className="h-4 w-4" />
-            <span className="hidden sm:inline">Paiements</span>
-            <Badge variant="secondary" className="ml-1 text-xs">
-              {studentPayments.length}
-            </Badge>
-          </TabsTrigger>
+
           <TabsTrigger
             value="enrollments"
             className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200"
@@ -558,7 +730,7 @@ export const StudentDetails = ({
             className="flex items-center gap-2 data-[state=active]:bg-background hover-scale transition-all duration-200"
           >
             <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">Tuteurs</span>
+            <span className="hidden sm:inline">Personne Responsable</span>
             <Badge variant="secondary" className="ml-1 text-xs">
               {guardians.length}
             </Badge>
@@ -744,117 +916,387 @@ export const StudentDetails = ({
           </div>
         </TabsContent>
 
-        <TabsContent value="academic" className="mt-6">
-          <div className="space-y-6">
-            {/* Statistiques académiques */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="text-center p-4 hover:shadow-md transition-shadow">
-                <div className="text-3xl font-bold text-green-600 mb-1">
-                  {grades.filter((g) => g.status === "Valid_").length}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Cours Validées
-                </div>
-                <Progress
-                  value={
-                    (grades.filter((g) => g.status === "Valid_").length /
-                      Math.max(grades.length, 1)) *
-                    100
-                  }
-                  className="mt-2"
-                />
-              </Card>
-              <Card className="text-center p-4 hover:shadow-md transition-shadow">
-                <div className="text-3xl font-bold text-yellow-600 mb-1">
-                  {retakes.length}
-                </div>
-                <div className="text-sm text-muted-foreground">Rattrapages</div>
-              </Card>
-              <Card className="text-center p-4 hover:shadow-md transition-shadow">
-                <div className="text-3xl font-bold text-primary mb-1">
-                  {calculateGPA()}
-                </div>
-                <div className="text-sm text-muted-foreground">Moyenne</div>
-                <Progress
-                  value={(calculateGPA() / 20) * 100}
-                  className="mt-2"
-                />
-              </Card>
-            </div>
+        {/* NOUVEAU CONTENU ACADÉMIQUE AMÉLIORÉ */}
+        <TabsContent value="academic" className="mt-6 space-y-6">
+          {/* Filtres et statistiques globales */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Performance Académique
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <Card className="text-center p-4 hover:shadow-md transition-shadow bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                  <div className="text-2xl font-bold text-green-600 mb-1">
+                    {globalStats.average}
+                  </div>
+                  <div className="text-sm text-green-700">Moyenne Générale</div>
+                  <Progress
+                    value={(globalStats.average / 20) * 100}
+                    className="mt-2 bg-green-200"
+                  />
+                </Card>
 
-            {/* Détails des notes */}
-            <Card>
+                <Card className="text-center p-4 hover:shadow-md transition-shadow bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                  <div className="text-2xl font-bold text-blue-600 mb-1">
+                    {globalStats.successRate}%
+                  </div>
+                  <div className="text-sm text-blue-700">Taux de Réussite</div>
+                  <Progress
+                    value={globalStats.successRate}
+                    className="mt-2 bg-blue-200"
+                  />
+                </Card>
+
+                <Card className="text-center p-4 hover:shadow-md transition-shadow bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                  <div className="text-2xl font-bold text-purple-600 mb-1">
+                    {globalStats.obtainedCredits}/{globalStats.totalCredits}
+                  </div>
+                  <div className="text-sm text-purple-700">Crédits Obtenus</div>
+                  <Progress
+                    value={globalStats.creditProgress}
+                    className="mt-2 bg-purple-200"
+                  />
+                </Card>
+
+                <Card className="text-center p-4 hover:shadow-md transition-shadow bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
+                  <div className="text-2xl font-bold text-amber-600 mb-1">
+                    {globalStats.retakeCount}
+                  </div>
+                  <div className="text-sm text-amber-700">Rattrapages</div>
+                  <div className="text-xs text-amber-600 mt-1">
+                    {globalStats.failedCount} échec(s)
+                  </div>
+                </Card>
+              </div>
+
+              {/* Filtres */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-6 p-4 bg-slate-50 rounded-lg">
+                <div className="flex-1">
+                  <label className="text-sm font-medium mb-2 block">
+                    Filtrer par année académique
+                  </label>
+                  <Select
+                    value={selectedAcademicYear}
+                    onValueChange={setSelectedAcademicYear}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Toutes les années" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        Toutes les années académiques
+                      </SelectItem>
+                      {groupedGrades.map((group) => (
+                        <SelectItem
+                          key={group.academicYearId}
+                          value={group.academicYearId}
+                        >
+                          {group.academicYear} - {group.enrollment.faculty}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-retakes"
+                    checked={showOnlyRetakes}
+                    onCheckedChange={(checked) =>
+                      setShowOnlyRetakes(checked as boolean)
+                    }
+                  />
+                  <label
+                    htmlFor="show-retakes"
+                    className="text-sm font-medium cursor-pointer"
+                  >
+                    Afficher uniquement les rattrapages
+                  </label>
+                </div>
+
+                <div className="flex-1">
+                  <label className="text-sm font-medium mb-2 block">
+                    Rechercher une matière
+                  </label>
+                  <Input
+                    placeholder="Nom de la matière..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              {/* Liste des années académiques avec notes */}
+              {loadingGrades ? (
+                <div className="text-center py-12">
+                  <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+                  <p className="text-muted-foreground">
+                    Chargement des notes...
+                  </p>
+                </div>
+              ) : filteredGroupedGrades.length > 0 ? (
+                <div className="space-y-4">
+                  {filteredGroupedGrades.map((group) => {
+                    const filteredGrades = group.grades.filter((grade) => {
+                      const matchesSearch =
+                        searchTerm === "" ||
+                        grade.ue.title
+                          .toLowerCase()
+                          .includes(searchTerm.toLowerCase());
+                      const matchesRetakeFilter =
+                        !showOnlyRetakes ||
+                        grade.session === "Reprise" ||
+                        grade.status === "Reprise";
+                      return matchesSearch && matchesRetakeFilter;
+                    });
+
+                    const isExpanded = expandedYears.has(group.academicYearId);
+
+                    return (
+                      <Card
+                        key={group.academicYearId}
+                        className="overflow-hidden"
+                      >
+                        <CardHeader className="pb-3 bg-gradient-to-r from-slate-50 to-slate-100 border-b">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              {/* CORRECTION : Utilisation correcte de Collapsible */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  toggleYearExpansion(group.academicYearId)
+                                }
+                                className="p-0 h-8 w-8"
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
+                              </Button>
+
+                              <div>
+                                <CardTitle className="text-lg flex items-center gap-2">
+                                  {group.academicYear}
+                                  <Badge variant="outline" className="ml-2">
+                                    {group.enrollment.faculty}
+                                  </Badge>
+                                  <Badge variant="secondary">
+                                    {getLevelText(group.enrollment.level)}
+                                  </Badge>
+                                </CardTitle>
+                                <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <TrendingUp className="h-3 w-3" />
+                                    Moyenne:{" "}
+                                    <strong
+                                      className={getGradeColor(group.average)}
+                                    >
+                                      {group.average}/20
+                                    </strong>
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <CheckCircle className="h-3 w-3 text-green-600" />
+                                    {group.validatedCount} validé(s)
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <XCircle className="h-3 w-3 text-red-600" />
+                                    {group.failedCount} échec(s)
+                                  </span>
+                                  {group.retakeCount > 0 && (
+                                    <span className="flex items-center gap-1">
+                                      <RefreshCw className="h-3 w-3 text-amber-600" />
+                                      {group.retakeCount} rattrapage(s)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <div className="text-2xl font-bold text-primary">
+                                {group.successRate}%
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Taux de réussite
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
+
+                        {/* CORRECTION : Affichage conditionnel sans CollapsibleContent */}
+                        {isExpanded && (
+                          <CardContent className="pt-4">
+                            {filteredGrades.length > 0 ? (
+                              <div className="grid gap-3">
+                                {filteredGrades.map((grade) => (
+                                  <div
+                                    key={grade.id}
+                                    className="flex items-center justify-between p-3 border rounded-lg hover:shadow-md transition-all duration-200 hover:border-primary/50 bg-white"
+                                  >
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-3 mb-2">
+                                        <h4 className="font-semibold text-sm">
+                                          {grade.ue.title}
+                                        </h4>
+                                        {getGradeStatusBadge(grade)}
+                                        {grade.ue.credits && (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-xs"
+                                          >
+                                            {grade.ue.credits} crédits
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                        <span>Semestre {grade.semester}</span>
+                                        <span>Session: {grade.session}</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="text-right">
+                                      <div
+                                        className={`text-xl font-bold ${getGradeColor(
+                                          grade.grade
+                                        )}`}
+                                      >
+                                        {grade.grade > 0
+                                          ? grade.grade.toFixed(2)
+                                          : "-"}
+                                        /20
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {grade.ue.credits || 0} crédits
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                                <p>
+                                  Aucune note trouvée pour les filtres
+                                  sélectionnés
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Actions pour cette année académique */}
+                            <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  handleViewGrades(group.enrollment)
+                                }
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                Voir détails
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  openDocumentModal(
+                                    DocumentTypeI.BULLETIN,
+                                    group.enrollment
+                                  )
+                                }
+                              >
+                                <Download className="h-4 w-4 mr-2" />
+                                Bulletin
+                              </Button>
+                            </div>
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">
+                    {grades.length === 0
+                      ? "Aucune note enregistrée pour cet étudiant"
+                      : "Aucune note ne correspond aux filtres sélectionnés"}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Section Rattrapages */}
+          {globalStats.retakeCount > 0 && (
+            <Card className="border-amber-200 bg-amber-50">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Notes et Résultats
+                <CardTitle className="flex items-center gap-2 text-amber-800">
+                  <RefreshCw className="h-5 w-5" />
+                  Matières en Rattrapage ({globalStats.retakeCount})
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {grades.length > 0 ? (
-                  <div className="space-y-4">
-                    {grades.map((grade) => (
+                <div className="grid gap-3">
+                  {groupedGrades
+                    .flatMap((group) =>
+                      group.grades.filter(
+                        (grade) =>
+                          grade.session === "Reprise" ||
+                          grade.status === "Reprise"
+                      )
+                    )
+                    .map((grade) => (
                       <div
                         key={grade.id}
-                        className="group p-4 border rounded-lg hover:shadow-md transition-all duration-200 hover:border-primary/50"
+                        className="flex items-center justify-between p-3 border border-amber-200 rounded-lg bg-white"
                       >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h4 className="font-semibold">
-                                {grade.ue.title}
-                              </h4>
-                              <Badge
-                                variant={
-                                  grade.status === "Valid_"
-                                    ? ("default" as const)
-                                    : grade.status === "Non_valid_"
-                                    ? ("secondary" as const)
-                                    : ("destructive" as const)
-                                }
-                              >
-                                {grade.status}
-                              </Badge>
-                              <Badge
-                                variant={
-                                  grade.session === "Normale"
-                                    ? ("secondary" as const)
-                                    : grade.session === "Reprise"
-                                    ? ("destructive" as const)
-                                    : ("default" as const)
-                                }
-                              >
-                                {grade.session}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground mb-1">
-                              Semestre {grade.semester} •{" "}
-                              {grade.academicYear.year}
-                            </p>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-1">
+                            <h4 className="font-semibold text-sm">
+                              {grade.ue.title}
+                            </h4>
+                            <Badge
+                              variant="destructive"
+                              className="flex items-center gap-1"
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                              Rattrapage
+                            </Badge>
                           </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-primary">
-                              {grade.grade > 0 ? grade.grade : "-"}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Coefficient: {100}
-                            </div>
+                          <div className="text-xs text-muted-foreground">
+                            {
+                              groupedGrades.find(
+                                (g) => g.academicYearId === grade.academicYearId
+                              )?.academicYear
+                            }{" "}
+                            • Semestre {grade.semester}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div
+                            className={`text-lg font-bold ${getGradeColor(
+                              grade.grade
+                            )}`}
+                          >
+                            {grade.grade.toFixed(2)}/20
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Note initiale
                           </div>
                         </div>
                       </div>
                     ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">
-                      Aucune note enregistrée
-                    </p>
-                  </div>
-                )}
+                </div>
               </CardContent>
             </Card>
-          </div>
+          )}
         </TabsContent>
 
         <TabsContent value="fees" className="mt-6">
@@ -868,106 +1310,6 @@ export const StudentDetails = ({
                 />
               </div>
             )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="payments" className="mt-6">
-          <div className="space-y-6">
-            {/* Résumé financier */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="text-center p-4 hover:shadow-md transition-shadow">
-                <div className="text-2xl font-bold text-primary mb-1">
-                  {getTotalAmount({ studentId: student.id }).toLocaleString()}{" "}
-                  HTG
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Total Facturé
-                </div>
-              </Card>
-              <Card className="text-center p-4 hover:shadow-md transition-shadow">
-                <div className="text-2xl font-bold text-green-600 mb-1">
-                  {getPaidAmount({ studentId: student.id }).toLocaleString()}{" "}
-                  HTG
-                </div>
-                <div className="text-sm text-muted-foreground">Payé</div>
-              </Card>
-              <Card className="text-center p-4 hover:shadow-md transition-shadow">
-                <div className="text-2xl font-bold text-destructive mb-1">
-                  {(
-                    getTotalAmount({ studentId: student.id }) -
-                    getPaidAmount({ studentId: student.id })
-                  ).toLocaleString()}{" "}
-                  HTG
-                </div>
-                <div className="text-sm text-muted-foreground">Solde</div>
-              </Card>
-            </div>
-
-            {/* Historique des paiements */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5" />
-                  Historique des Paiements
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {studentPayments.length > 0 ? (
-                  <div className="space-y-3">
-                    {studentPayments.map((payment) => (
-                      <div
-                        key={payment.id}
-                        className="group p-4 border rounded-lg hover:shadow-md transition-all duration-200 hover:border-primary/50"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h4 className="font-semibold">{payment.type}</h4>
-                              <Badge
-                                variant={
-                                  payment.status === "Payé"
-                                    ? "default"
-                                    : payment.status === "En attente"
-                                    ? "secondary"
-                                    : "destructive"
-                                }
-                              >
-                                {payment.status}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground mb-1">
-                              {payment.description}
-                            </p>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              {payment.paidDate && (
-                                <span>
-                                  Payé le: {formatDate(payment.paidDate)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xl font-bold text-primary">
-                              {payment.amount.toLocaleString()} HTG
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {payment.academicYear}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <CreditCard className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">
-                      Aucun paiement enregistré
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
         </TabsContent>
 

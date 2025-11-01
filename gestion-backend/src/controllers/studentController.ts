@@ -1,20 +1,11 @@
 import { Request, Response } from "express";
-// import { PrismaClient } from "@prisma/client";
 import * as XLSX from "xlsx";
 import fs from "fs";
 import path from "path";
-import { promisify } from "util";
 import { z } from "zod";
 import prisma from "../prisma";
-import {
-  prepareStudentData,
-  toPrismaBloodGroup,
-  toPrismaSexe,
-  toPrismaStatus,
-} from "../utils/prismaUtils";
 import { createAuditLog } from "./auditController";
-
-// const prisma = new PrismaClient();
+import { BloodGroup, StudentSexe, StudentStatus } from "../../generated/prisma";
 
 // Fonction utilitaire pour gérer les erreurs unknown
 const getErrorMessage = (error: unknown): string => {
@@ -29,12 +20,102 @@ const getErrorMessage = (error: unknown): string => {
   }
 };
 
-const getErrorName = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.name;
-  } else {
-    return "UnknownError";
+// Fonction pour convertir les dates Excel en format ISO
+const convertExcelDate = (excelDate: number): string => {
+  const excelEpoch = new Date(1900, 0, 1);
+  const date = new Date(
+    excelEpoch.getTime() + (excelDate - 2) * 24 * 60 * 60 * 1000
+  );
+  return date.toISOString().split("T")[0];
+};
+
+// Fonction pour nettoyer et valider les numéros de téléphone
+const cleanPhoneNumber = (phone: string): string => {
+  if (!phone) return phone;
+
+  let cleaned = phone
+    .replace(/[()\s+]/g, "")
+    .replace(/^33/, "0")
+    .replace(/^0033/, "0");
+
+  if (cleaned.startsWith("33") && cleaned.length === 11) {
+    cleaned = "0" + cleaned.slice(2);
   }
+
+  return cleaned;
+};
+
+// Fonction pour nettoyer le CIN (supprimer les guillemets)
+const cleanCin = (cin: string): string => {
+  if (!cin) return cin;
+  return cin.replace(/["']/g, "");
+};
+
+// Fonction pour normaliser le groupe sanguin
+const normalizeBloodGroup = (bloodGroup: string): BloodGroup | null => {
+  if (!bloodGroup) return null;
+
+  const groupMap: { [key: string]: BloodGroup } = {
+    "A+": "A_POSITIVE",
+    "A-": "A_NEGATIVE",
+    "B+": "B_POSITIVE",
+    "B-": "B_NEGATIVE",
+    "AB+": "AB_POSITIVE",
+    "AB-": "AB_NEGATIVE",
+    "O+": "O_POSITIVE",
+    "O-": "O_NEGATIVE",
+    A_POSITIVE: "A_POSITIVE",
+    A_NEGATIVE: "A_NEGATIVE",
+    B_POSITIVE: "B_POSITIVE",
+    B_NEGATIVE: "B_NEGATIVE",
+    AB_POSITIVE: "AB_POSITIVE",
+    AB_NEGATIVE: "AB_NEGATIVE",
+    O_POSITIVE: "O_POSITIVE",
+    O_NEGATIVE: "O_NEGATIVE",
+    "A POSITIVE": "A_POSITIVE",
+    "A NEGATIVE": "A_NEGATIVE",
+    "B POSITIVE": "B_POSITIVE",
+    "B NEGATIVE": "B_NEGATIVE",
+    "AB POSITIVE": "AB_POSITIVE",
+    "AB NEGATIVE": "AB_NEGATIVE",
+    "O POSITIVE": "O_POSITIVE",
+    "O NEGATIVE": "O_NEGATIVE",
+  };
+
+  return groupMap[bloodGroup.toUpperCase().trim()] || null;
+};
+
+// Fonction pour normaliser le statut
+const normalizeStatus = (status: string): StudentStatus => {
+  const statusMap: { [key: string]: StudentStatus } = {
+    ACTIVE: "Active",
+    INACTIVE: "Inactive",
+    GRADUATED: "Graduated",
+    SUSPENDED: "Suspended",
+    ACTIF: "Active",
+    INACTIF: "Inactive",
+    DIPLÔMÉ: "Graduated",
+    DIPLOME: "Graduated",
+    SUSPENDU: "Suspended",
+  };
+
+  return statusMap[status.toUpperCase().trim()] || "Active";
+};
+
+// Fonction pour normaliser le sexe
+const normalizeSexe = (sexe: string): StudentSexe => {
+  const sexeMap: { [key: string]: StudentSexe } = {
+    M: "Masculin",
+    F: "Feminin",
+    A: "Autre",
+    MALE: "Masculin",
+    FEMALE: "Feminin",
+    OTHER: "Autre",
+    HOMME: "Masculin",
+    FEMME: "Feminin",
+  };
+
+  return sexeMap[sexe.toUpperCase().trim()] || "Masculin";
 };
 
 // Schémas de validation avec Zod
@@ -50,8 +131,9 @@ const GuardianSchema = z.object({
   relationship: z.string().min(1, "La relation est requise").max(50),
   phone: z
     .string()
-    .min(8, "Le téléphone doit contenir au moins 8 caractères")
-    .max(20),
+    .min(10, "Le téléphone doit contenir au moins 10 chiffres")
+    .max(15)
+    .regex(/^[0-9]+$/, "Le téléphone ne doit contenir que des chiffres"),
   email: z.string().email("Email invalide").optional().or(z.literal("")),
   address: z.string().max(500).optional(),
   isPrimary: z.boolean().default(false),
@@ -68,25 +150,24 @@ const StudentCreateSchema = z.object({
     .max(100),
   studentId: z.string().min(1, "L'ID étudiant est requis").max(50),
   email: z.string().email("Email invalide").max(255),
-  phone: z.string().max(20).optional(),
-  dateOfBirth: z.string().datetime("Date de naissance invalide").optional(),
+  phone: z
+    .string()
+    .min(10, "Le téléphone doit contenir au moins 10 chiffres")
+    .max(15)
+    .regex(/^[0-9]+$/, "Le téléphone ne doit contenir que des chiffres")
+    .optional(),
+  dateOfBirth: z.string().optional(),
   placeOfBirth: z.string().max(100).optional(),
   address: z.string().max(500).optional(),
-  bloodGroup: z
-    .enum([
-      "A_POSITIVE",
-      "A_NEGATIVE",
-      "B_POSITIVE",
-      "B_NEGATIVE",
-      "AB_POSITIVE",
-      "AB_NEGATIVE",
-      "O_POSITIVE",
-      "O_NEGATIVE",
-    ])
-    .optional(),
+  bloodGroup: z.string().optional(),
   allergies: z.string().max(500).optional(),
   disabilities: z.string().max(500).optional(),
-  cin: z.string().max(20).optional(),
+  cin: z
+    .string()
+    .min(8, "Le CIN doit contenir au moins 8 caractères")
+    .max(20)
+    .regex(/^[0-9]+$/, "Le CIN ne doit contenir que des chiffres")
+    .optional(),
   sexe: z.enum(["Masculin", "Feminin", "Autre"]).optional(),
   status: z
     .enum(["Active", "Inactive", "Graduated", "Suspended"])
@@ -103,7 +184,7 @@ interface ImportStudentData {
   studentId: string;
   email: string;
   phone?: string;
-  dateOfBirth?: string;
+  dateOfBirth?: string | number;
   placeOfBirth?: string;
   address?: string;
   bloodGroup?: string;
@@ -111,7 +192,7 @@ interface ImportStudentData {
   cin?: string;
   sexe?: string;
   disabilities?: string;
-  status?: "Active" | "Inactive";
+  status?: string;
   guardianFirstName: string;
   guardianLastName: string;
   guardianRelationship: string;
@@ -142,7 +223,7 @@ const validateUploadedFile = (file: Express.Multer.File): void => {
     "application/json",
   ];
 
-  const maxSize = 10 * 1024 * 1024; // 10MB
+  const maxSize = 10 * 1024 * 1024;
 
   if (!allowedMimeTypes.includes(file.mimetype)) {
     throw new Error("Type de fichier non autorisé");
@@ -153,14 +234,12 @@ const validateUploadedFile = (file: Express.Multer.File): void => {
   }
 };
 
-// Middleware de validation - CORRIGÉ
+// Middleware de validation
 const validateStudentData = (schema: z.ZodSchema) => {
   return (req: Request, res: Response, next: any) => {
     try {
       let body = req.body;
-      console.log(body);
 
-      // Parser le body si c'est une string JSON
       if (typeof req.body === "string") {
         try {
           body = JSON.parse(req.body);
@@ -171,13 +250,26 @@ const validateStudentData = (schema: z.ZodSchema) => {
         }
       }
 
-      // Valider les données - CORRECTION ICI
+      if (body.phone) {
+        body.phone = cleanPhoneNumber(body.phone);
+      }
+      if (body.cin) {
+        body.cin = cleanCin(body.cin);
+      }
+      if (body.guardians && Array.isArray(body.guardians)) {
+        body.guardians = body.guardians.map((guardian: any) => ({
+          ...guardian,
+          phone: guardian.phone
+            ? cleanPhoneNumber(guardian.phone)
+            : guardian.phone,
+        }));
+      }
+
       const validatedData = schema.parse(body);
       req.body = validatedData;
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
-        // CORRECTION : Utiliser error.issues au lieu de error.errors
         return res.status(400).json({
           message: "Données de validation invalides",
           errors: error.issues.map((issue) => ({
@@ -191,7 +283,76 @@ const validateStudentData = (schema: z.ZodSchema) => {
   };
 };
 
-// Dans studentController.ts - CORRECTION
+// Fonction pour créer les données étudiantes avec typage correct
+const createStudentData = (studentData: any) => {
+  const baseData: any = {
+    firstName: studentData.firstName,
+    lastName: studentData.lastName,
+    studentId: studentData.studentId,
+    email: studentData.email,
+    phone: studentData.phone || null,
+    dateOfBirth: studentData.dateOfBirth
+      ? new Date(studentData.dateOfBirth)
+      : null,
+    placeOfBirth: studentData.placeOfBirth || null,
+    address: studentData.address || null,
+    allergies: studentData.allergies || null,
+    disabilities: studentData.disabilities || null,
+    cin: studentData.cin || null,
+    updatedAt: new Date(),
+  };
+
+  // Gestion des champs enum avec conversion
+  if (studentData.bloodGroup) {
+    const bloodGroup = normalizeBloodGroup(studentData.bloodGroup);
+    if (bloodGroup) {
+      baseData.bloodGroup = bloodGroup;
+    }
+  }
+
+  if (studentData.status) {
+    baseData.status = normalizeStatus(studentData.status);
+  } else {
+    baseData.status = "Active";
+  }
+
+  if (studentData.sexe) {
+    baseData.sexe = normalizeSexe(studentData.sexe);
+  }
+
+  return baseData;
+};
+
+// Fonction pour traiter les données d'importation
+const processImportData = (studentData: ImportStudentData) => {
+  if (studentData.phone) {
+    studentData.phone = cleanPhoneNumber(studentData.phone);
+  }
+
+  if (studentData.cin) {
+    studentData.cin = cleanCin(studentData.cin);
+  }
+
+  if (studentData.guardianPhone) {
+    studentData.guardianPhone = cleanPhoneNumber(studentData.guardianPhone);
+  }
+
+  let processedDateOfBirth: string | null = null;
+  if (studentData.dateOfBirth) {
+    if (typeof studentData.dateOfBirth === "number") {
+      processedDateOfBirth = convertExcelDate(studentData.dateOfBirth);
+    } else {
+      processedDateOfBirth = studentData.dateOfBirth;
+    }
+  }
+
+  return {
+    ...studentData,
+    dateOfBirth: processedDateOfBirth,
+  };
+};
+
+// Création d'étudiant
 export const createStudent = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -202,19 +363,13 @@ export const createStudent = async (req: Request, res: Response) => {
   let fileCleanupRequired = false;
 
   try {
-    // console.log("📥 Requête reçue - Body:", req.body);
-    // console.log("📥 Fichier:", req.file);
-
     let body = req.body;
 
-    // Gérer le format avec studentData
     if (body.studentData && typeof body.studentData === "string") {
       try {
         body = JSON.parse(body.studentData);
-        console.log("📦 Données parsées depuis studentData:", body);
       } catch (parseError) {
         console.error("❌ Erreur parsing studentData:", parseError);
-
         await createAuditLog({
           ...auditData,
           action: "CREATE_STUDENT_ATTEMPT",
@@ -224,11 +379,19 @@ export const createStudent = async (req: Request, res: Response) => {
           status: "ERROR",
           errorMessage: "Format de données invalide",
         });
-
-        return res.status(400).json({
-          message: "Format de données invalide",
-        });
+        return res.status(400).json({ message: "Format de données invalide" });
       }
+    }
+
+    if (body.phone) body.phone = cleanPhoneNumber(body.phone);
+    if (body.cin) body.cin = cleanCin(body.cin);
+    if (body.guardians && Array.isArray(body.guardians)) {
+      body.guardians = body.guardians.map((guardian: any) => ({
+        ...guardian,
+        phone: guardian.phone
+          ? cleanPhoneNumber(guardian.phone)
+          : guardian.phone,
+      }));
     }
 
     const {
@@ -249,21 +412,11 @@ export const createStudent = async (req: Request, res: Response) => {
       guardians = [],
     } = body;
 
-    console.log("🔍 Données extraites:", {
-      firstName,
-      lastName,
-      studentId,
-      email,
-      guardians: guardians,
-    });
-
-    // Valider les données avec Zod
     try {
       StudentCreateSchema.parse(body);
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
         console.error("❌ Erreur validation Zod:", validationError.issues);
-
         await createAuditLog({
           ...auditData,
           action: "CREATE_STUDENT_ATTEMPT",
@@ -279,7 +432,6 @@ export const createStudent = async (req: Request, res: Response) => {
             })),
           },
         });
-
         return res.status(400).json({
           message: "Données de validation invalides",
           errors: validationError.issues.map((issue) => ({
@@ -291,13 +443,11 @@ export const createStudent = async (req: Request, res: Response) => {
       throw validationError;
     }
 
-    // Marquer le fichier pour nettoyage si nécessaire
     if (req.file) {
       fileCleanupRequired = true;
       validateUploadedFile(req.file);
     }
 
-    // Vérifier les doublons
     const existingStudent = await prisma.student.findUnique({
       where: { studentId },
     });
@@ -305,16 +455,8 @@ export const createStudent = async (req: Request, res: Response) => {
       where: { email },
     });
     const existingCin = cin
-      ? await prisma.student.findUnique({
-          where: { cin },
-        })
+      ? await prisma.student.findUnique({ where: { cin } })
       : null;
-
-    console.log("🔍 Vérification doublons:", {
-      existingStudent: !!existingStudent,
-      existingEmail: !!existingEmail,
-      existingCin: !!existingCin,
-    });
 
     if (existingStudent) {
       await createAuditLog({
@@ -326,7 +468,6 @@ export const createStudent = async (req: Request, res: Response) => {
         status: "ERROR",
         metadata: { studentId },
       });
-
       throw new Error("Un étudiant avec ce matricule existe déjà");
     }
     if (existingEmail) {
@@ -338,7 +479,6 @@ export const createStudent = async (req: Request, res: Response) => {
         status: "ERROR",
         metadata: { email },
       });
-
       throw new Error("Un étudiant avec cet email existe déjà");
     }
     if (existingCin) {
@@ -350,48 +490,36 @@ export const createStudent = async (req: Request, res: Response) => {
         status: "ERROR",
         metadata: { cin },
       });
-
       throw new Error("Un étudiant avec ce CIN existe déjà");
     }
 
-    // CORRECTION : Préparer les données SANS photo d'abord
-    const studentData: any = {
+    const studentCreateData = createStudentData({
       firstName,
       lastName,
       studentId,
       email,
-      phone: phone || null,
-      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-      placeOfBirth: placeOfBirth || null,
-      address: address || null,
-      bloodGroup: bloodGroup || null,
-      allergies: allergies || null,
-      disabilities: disabilities || null,
-      cin: cin || null,
-      sexe: sexe || null,
-      status: status || "Active",
-      updatedAt: new Date(),
-    };
+      phone,
+      dateOfBirth,
+      placeOfBirth,
+      address,
+      bloodGroup,
+      allergies,
+      disabilities,
+      cin,
+      sexe,
+      status,
+    });
 
-    // CORRECTION : Ajouter la photo seulement si elle existe
     if (req.file) {
-      studentData.photo = `uploads/profiles/${req.file.filename}`;
+      studentCreateData.photo = `uploads/profiles/${req.file.filename}`;
     }
 
-    console.log("📦 Données pour création étudiant:", studentData);
-
-    // Créer l'étudiant avec transaction
     const student = await prisma.$transaction(async (tx) => {
       const newStudent = await tx.student.create({
-        data: studentData,
+        data: studentCreateData,
       });
 
-      console.log("✅ Étudiant créé:", newStudent.id);
-
-      // Créer les gardiens
       if (guardians && guardians.length > 0) {
-        console.log("👥 Création des gardiens:", guardians);
-
         const guardiansToCreate = guardians.map((guardian: any) => ({
           firstName: guardian.firstName,
           lastName: guardian.lastName,
@@ -408,20 +536,14 @@ export const createStudent = async (req: Request, res: Response) => {
         await tx.guardian.createMany({
           data: guardiansToCreate,
         });
-
-        console.log("✅ Gardiens créés:", guardiansToCreate.length);
       }
 
-      // Retourner l'étudiant complet
       return await tx.student.findUnique({
         where: { id: newStudent.id },
         include: { guardians: true },
       });
     });
 
-    console.log("🎉 Création terminée:", student?.id);
-
-    // Log de succès
     await createAuditLog({
       ...auditData,
       action: "CREATE_STUDENT_SUCCESS",
@@ -446,14 +568,12 @@ export const createStudent = async (req: Request, res: Response) => {
   } catch (error: unknown) {
     console.error("❌ Erreur création étudiant:", error);
 
-    // Nettoyer le fichier en cas d'erreur
     if (fileCleanupRequired && req.file?.path) {
       await safeDeleteFile(req.file.path);
     }
 
     const errorMessage = getErrorMessage(error);
 
-    // Log d'erreur
     await createAuditLog({
       ...auditData,
       action: "CREATE_STUDENT_ERROR",
@@ -470,7 +590,7 @@ export const createStudent = async (req: Request, res: Response) => {
   }
 };
 
-// Dans studentController.ts - CORRECTION updateStudent
+// Mise à jour d'étudiant
 export const updateStudent = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -482,21 +602,13 @@ export const updateStudent = async (req: Request, res: Response) => {
 
   try {
     const { id } = req.params;
-
-    console.log("📥 Requête mise à jour reçue - Body:", req.body);
-    console.log("📥 Fichier:", req.file);
-    console.log("📥 ID étudiant:", id);
-
     let body = req.body;
 
-    // Gérer le format avec studentData
     if (body.studentData && typeof body.studentData === "string") {
       try {
         body = JSON.parse(body.studentData);
-        console.log("📦 Données parsées depuis studentData:", body);
       } catch (parseError) {
         console.error("❌ Erreur parsing studentData:", parseError);
-
         await createAuditLog({
           ...auditData,
           action: "UPDATE_STUDENT_ATTEMPT",
@@ -507,11 +619,19 @@ export const updateStudent = async (req: Request, res: Response) => {
           status: "ERROR",
           errorMessage: "Format de données invalide",
         });
-
-        return res.status(400).json({
-          message: "Format de données invalide",
-        });
+        return res.status(400).json({ message: "Format de données invalide" });
       }
+    }
+
+    if (body.phone) body.phone = cleanPhoneNumber(body.phone);
+    if (body.cin) body.cin = cleanCin(body.cin);
+    if (body.guardians && Array.isArray(body.guardians)) {
+      body.guardians = body.guardians.map((guardian: any) => ({
+        ...guardian,
+        phone: guardian.phone
+          ? cleanPhoneNumber(guardian.phone)
+          : guardian.phone,
+      }));
     }
 
     const {
@@ -532,21 +652,11 @@ export const updateStudent = async (req: Request, res: Response) => {
       guardians,
     } = body;
 
-    console.log("🔍 Données extraites pour mise à jour:", {
-      firstName,
-      lastName,
-      studentId,
-      email,
-      guardians: guardians,
-    });
-
-    // Valider les données avec Zod
     try {
       StudentUpdateSchema.parse(body);
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
         console.error("❌ Erreur validation Zod:", validationError.issues);
-
         await createAuditLog({
           ...auditData,
           action: "UPDATE_STUDENT_ATTEMPT",
@@ -563,7 +673,6 @@ export const updateStudent = async (req: Request, res: Response) => {
             })),
           },
         });
-
         return res.status(400).json({
           message: "Données de validation invalides",
           errors: validationError.issues.map((issue) => ({
@@ -575,7 +684,6 @@ export const updateStudent = async (req: Request, res: Response) => {
       throw validationError;
     }
 
-    // Vérifier si l'étudiant existe
     const existingStudent = await prisma.student.findUnique({
       where: { id },
       include: { guardians: true },
@@ -591,13 +699,9 @@ export const updateStudent = async (req: Request, res: Response) => {
           "Tentative de mise à jour d'étudiant - étudiant non trouvé",
         status: "ERROR",
       });
-
-      return res.status(404).json({
-        message: "Étudiant non trouvé",
-      });
+      return res.status(404).json({ message: "Étudiant non trouvé" });
     }
 
-    // Vérifier les conflits
     if (studentId && studentId !== existingStudent.studentId) {
       const existingStudentId = await prisma.student.findUnique({
         where: { studentId },
@@ -613,7 +717,6 @@ export const updateStudent = async (req: Request, res: Response) => {
           status: "ERROR",
           metadata: { studentId },
         });
-
         throw new Error("Un étudiant avec ce matricule existe déjà");
       }
     }
@@ -633,15 +736,12 @@ export const updateStudent = async (req: Request, res: Response) => {
           status: "ERROR",
           metadata: { email },
         });
-
         throw new Error("Un étudiant avec cet email existe déjà");
       }
     }
 
     if (cin && cin !== existingStudent.cin) {
-      const existingCin = await prisma.student.findUnique({
-        where: { cin },
-      });
+      const existingCin = await prisma.student.findUnique({ where: { cin } });
       if (existingCin) {
         await createAuditLog({
           ...auditData,
@@ -653,21 +753,17 @@ export const updateStudent = async (req: Request, res: Response) => {
           status: "ERROR",
           metadata: { cin },
         });
-
         throw new Error("Un étudiant avec ce CIN existe déjà");
       }
     }
 
-    // Marquer le fichier pour nettoyage si nécessaire
     if (req.file) {
       fileCleanupRequired = true;
       validateUploadedFile(req.file);
     }
 
-    // Gestion de la photo
     let photoPath = existingStudent.photo;
     if (req.file) {
-      // Supprimer l'ancienne photo si elle existe
       if (existingStudent.photo) {
         const oldPhotoPath = path.join(
           __dirname,
@@ -680,7 +776,6 @@ export const updateStudent = async (req: Request, res: Response) => {
       photoPath = `/uploads/profiles/${req.file.filename}`;
     }
 
-    // Gestion de la date de naissance
     let dobDate = existingStudent.dateOfBirth;
     if (dateOfBirth) {
       dobDate = new Date(dateOfBirth);
@@ -689,7 +784,6 @@ export const updateStudent = async (req: Request, res: Response) => {
       }
     }
 
-    // Préparer les données de mise à jour
     const updateData: any = {
       firstName: firstName ?? existingStudent.firstName,
       lastName: lastName ?? existingStudent.lastName,
@@ -699,37 +793,43 @@ export const updateStudent = async (req: Request, res: Response) => {
       dateOfBirth: dobDate,
       placeOfBirth: placeOfBirth ?? existingStudent.placeOfBirth,
       address: address ?? existingStudent.address,
-      bloodGroup: bloodGroup ?? existingStudent.bloodGroup,
       allergies: allergies ?? existingStudent.allergies,
       disabilities: disabilities ?? existingStudent.disabilities,
       cin: cin ?? existingStudent.cin,
-      sexe: sexe ?? existingStudent.sexe,
-      status: status ?? existingStudent.status,
       photo: photoPath,
     };
 
-    console.log("📦 Données pour mise à jour étudiant:", updateData);
+    // Gestion des champs enum
+    if (bloodGroup) {
+      const normalizedBloodGroup = normalizeBloodGroup(bloodGroup);
+      if (normalizedBloodGroup) {
+        updateData.bloodGroup = normalizedBloodGroup;
+      }
+    } else {
+      updateData.bloodGroup = existingStudent.bloodGroup;
+    }
 
-    // Mise à jour en transaction
+    if (status) {
+      updateData.status = normalizeStatus(status);
+    } else {
+      updateData.status = existingStudent.status;
+    }
+
+    if (sexe) {
+      updateData.sexe = normalizeSexe(sexe);
+    } else {
+      updateData.sexe = existingStudent.sexe;
+    }
+
     const student = await prisma.$transaction(async (tx) => {
-      // Mettre à jour l'étudiant
       const updatedStudent = await tx.student.update({
         where: { id },
         data: updateData,
       });
 
-      console.log("✅ Étudiant mis à jour:", updatedStudent.id);
-
-      // Gestion des gardiens si fournis
       if (guardians && Array.isArray(guardians)) {
-        console.log("👥 Mise à jour des gardiens:", guardians);
+        await tx.guardian.deleteMany({ where: { studentId: id } });
 
-        // Supprimer les anciens gardiens
-        await tx.guardian.deleteMany({
-          where: { studentId: id },
-        });
-
-        // Créer les nouveaux gardiens
         if (guardians.length > 0) {
           await tx.guardian.createMany({
             data: guardians.map((guardian: any) => ({
@@ -748,16 +848,12 @@ export const updateStudent = async (req: Request, res: Response) => {
         }
       }
 
-      // Retourner l'étudiant mis à jour avec ses gardiens
       return await tx.student.findUnique({
         where: { id },
         include: { guardians: true },
       });
     });
 
-    console.log("🎉 Mise à jour terminée:", student?.id);
-
-    // Log de succès
     await createAuditLog({
       ...auditData,
       action: "UPDATE_STUDENT_SUCCESS",
@@ -782,14 +878,12 @@ export const updateStudent = async (req: Request, res: Response) => {
   } catch (error: unknown) {
     console.error("❌ Erreur modification étudiant:", error);
 
-    // Nettoyer le fichier en cas d'erreur
     if (fileCleanupRequired && req.file?.path) {
       await safeDeleteFile(req.file.path);
     }
 
     const errorMessage = getErrorMessage(error);
 
-    // Log d'erreur
     await createAuditLog({
       ...auditData,
       action: "UPDATE_STUDENT_ERROR",
@@ -807,6 +901,7 @@ export const updateStudent = async (req: Request, res: Response) => {
   }
 };
 
+// Importation d'étudiants
 export const importStudents = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -822,10 +917,7 @@ export const importStudents = async (req: Request, res: Response) => {
       description: "Tentative d'importation d'étudiants - aucun fichier fourni",
       status: "ERROR",
     });
-
-    return res.status(400).json({
-      message: "Aucun fichier fourni",
-    });
+    return res.status(400).json({ message: "Aucun fichier fourni" });
   }
 
   try {
@@ -833,7 +925,6 @@ export const importStudents = async (req: Request, res: Response) => {
     const filePath = req.file.path;
     let studentsData: any[] = [];
 
-    // Log de début d'importation
     await createAuditLog({
       ...auditData,
       action: "IMPORT_STUDENTS_START",
@@ -847,7 +938,6 @@ export const importStudents = async (req: Request, res: Response) => {
       },
     });
 
-    // Lire le fichier (votre code existant)
     if (
       req.file.mimetype.includes("excel") ||
       req.file.mimetype.includes("spreadsheet") ||
@@ -864,7 +954,6 @@ export const importStudents = async (req: Request, res: Response) => {
       studentsData = JSON.parse(fileContent);
     } else {
       await safeDeleteFile(filePath);
-
       await createAuditLog({
         ...auditData,
         action: "IMPORT_STUDENTS_ERROR",
@@ -873,7 +962,6 @@ export const importStudents = async (req: Request, res: Response) => {
         status: "ERROR",
         metadata: { mimeType: req.file.mimetype },
       });
-
       return res.status(400).json({
         message:
           "Format de fichier non supporté. Utilisez Excel (.xlsx, .xls) ou JSON",
@@ -888,10 +976,10 @@ export const importStudents = async (req: Request, res: Response) => {
       details: [] as any[],
     };
 
-    // Traiter chaque étudiant
-    for (const [index, studentData] of studentsData.entries()) {
+    for (const [index, rawStudentData] of studentsData.entries()) {
       try {
-        // Validation des données obligatoires
+        const studentData = processImportData(rawStudentData);
+
         if (
           !studentData.firstName ||
           !studentData.lastName ||
@@ -905,7 +993,6 @@ export const importStudents = async (req: Request, res: Response) => {
           throw new Error("Données obligatoires manquantes");
         }
 
-        // Vérifier les doublons
         const [existingStudent, existingEmail] = await Promise.all([
           prisma.student.findUnique({
             where: { studentId: studentData.studentId },
@@ -913,50 +1000,25 @@ export const importStudents = async (req: Request, res: Response) => {
           prisma.student.findUnique({ where: { email: studentData.email } }),
         ]);
 
-        if (existingStudent) {
-          throw new Error("Matricule déjà existant");
+        if (existingStudent) throw new Error("Matricule déjà existant");
+        if (existingEmail) throw new Error("Email déjà existant");
+
+        if (
+          studentData.bloodGroup &&
+          !normalizeBloodGroup(studentData.bloodGroup)
+        ) {
+          throw new Error(
+            `Groupe sanguin invalide: ${studentData.bloodGroup}. Utilisez A+, A-, B+, B-, AB+, AB-, O+, O-`
+          );
         }
-        if (existingEmail) {
-          throw new Error("Email déjà existant");
-        }
 
-        // CORRECTION : Appliquer la même logique que createStudent
-        const studentCreateData = {
-          firstName: studentData.firstName,
-          lastName: studentData.lastName,
-          studentId: studentData.studentId,
-          email: studentData.email,
-          phone: studentData.phone || null,
-          dateOfBirth: studentData.dateOfBirth
-            ? new Date(studentData.dateOfBirth)
-            : null,
-          placeOfBirth: studentData.placeOfBirth || null,
-          address: studentData.address || null,
-          bloodGroup: studentData.bloodGroup || null,
-          allergies: studentData.allergies || null,
-          disabilities: studentData.disabilities || null,
-          status: studentData.status || "Active",
-          cin: studentData.cin || null,
-          sexe: studentData.sexe || null,
-          updatedAt: new Date(),
-        };
+        const studentCreateData = createStudentData(studentData);
 
-        console.log(
-          `📦 Import étudiant ${index + 1}:`,
-          studentCreateData.firstName,
-          studentCreateData.lastName
-        );
-
-        // CORRECTION : Utiliser la même transaction que createStudent
         await prisma.$transaction(async (tx) => {
-          // 1. Créer l'étudiant
           const newStudent = await tx.student.create({
             data: studentCreateData,
           });
 
-          console.log("✅ Étudiant importé créé:", newStudent.id);
-
-          // 2. Créer le gardien (même logique que createStudent)
           const guardianData = {
             firstName: studentData.guardianFirstName,
             lastName: studentData.guardianLastName,
@@ -970,11 +1032,7 @@ export const importStudents = async (req: Request, res: Response) => {
             updatedAt: new Date(),
           };
 
-          await tx.guardian.create({
-            data: guardianData,
-          });
-
-          console.log("✅ Gardien importé créé pour:", newStudent.id);
+          await tx.guardian.create({ data: guardianData });
         });
 
         results.success++;
@@ -990,15 +1048,14 @@ export const importStudents = async (req: Request, res: Response) => {
         results.errors++;
         results.details.push({
           index: index + 1,
-          studentId: studentData.studentId,
+          studentId: rawStudentData.studentId,
           status: "error",
           message: errorMessage,
-          data: studentData,
+          data: rawStudentData,
         });
       }
     }
 
-    // Supprimer le fichier après traitement
     await safeDeleteFile(filePath);
 
     console.log(
@@ -1009,7 +1066,6 @@ export const importStudents = async (req: Request, res: Response) => {
       "erreurs"
     );
 
-    // Log de fin d'importation
     await createAuditLog({
       ...auditData,
       action: "IMPORT_STUDENTS_COMPLETE",
@@ -1036,14 +1092,12 @@ export const importStudents = async (req: Request, res: Response) => {
   } catch (error: unknown) {
     console.error("❌ Erreur import étudiants:", error);
 
-    // Nettoyer le fichier en cas d'erreur
     if (req.file?.path) {
       await safeDeleteFile(req.file.path);
     }
 
     const errorMessage = getErrorMessage(error);
 
-    // Log d'erreur d'importation
     await createAuditLog({
       ...auditData,
       action: "IMPORT_STUDENTS_ERROR",
@@ -1058,7 +1112,6 @@ export const importStudents = async (req: Request, res: Response) => {
     });
   }
 };
-
 export const updateStudentPhoto = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -1503,30 +1556,53 @@ export const downloadImportTemplate = async (req: Request, res: Response) => {
       {
         firstName: "Jean",
         lastName: "Dupont",
-        studentId: "STU20240001",
+        studentId: "ETU20240001",
         email: "jean.dupont@example.com",
-        phone: "1234567890",
-        dateOfBirth: "2000-01-01",
-        placeOfBirth: "Port-au-Prince",
-        address: "123 Rue Principale",
-        bloodGroup: "O_POSITIVE",
+        phone: "0612345678",
+        dateOfBirth: "2005-03-15",
+        placeOfBirth: "Paris",
+        address: "123 Avenue des Champs, Paris",
+        bloodGroup: "A+", // FORMAT SIMPLIFIÉ
         allergies: "Aucune",
         disabilities: "Aucune",
-        cin: "1234567890123",
+        cin: "123456789012",
         sexe: "Masculin",
         status: "Active",
-        guardianFirstName: "Marie",
+        guardianFirstName: "Pierre",
         guardianLastName: "Dupont",
-        guardianRelationship: "Mère",
-        guardianPhone: "0987654321",
-        guardianEmail: "marie.dupont@example.com",
-        guardianAddress: "123 Rue Principale",
+        guardianRelationship: "Père",
+        guardianPhone: "0612345679",
+        guardianEmail: "pierre.dupont@example.com",
+        guardianAddress: "123 Avenue des Champs, Paris",
       },
     ];
 
     const worksheet = XLSX.utils.json_to_sheet(templateData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Étudiants");
+
+    // Ajouter une feuille d'instructions
+    const instructions = [
+      {
+        Champ: "bloodGroup",
+        Format: "A+, A-, B+, B-, AB+, AB-, O+, O-",
+        Exemple: "A+",
+      },
+      {
+        Champ: "sexe",
+        Format: "Masculin, Feminin, Autre",
+        Exemple: "Masculin",
+      },
+      {
+        Champ: "status",
+        Format: "Active, Inactive, Graduated, Suspended",
+        Exemple: "Active",
+      },
+      { Champ: "dateOfBirth", Format: "YYYY-MM-DD", Exemple: "2005-03-15" },
+    ];
+
+    const instructionSheet = XLSX.utils.json_to_sheet(instructions);
+    XLSX.utils.book_append_sheet(workbook, instructionSheet, "Instructions");
 
     const buffer = XLSX.write(workbook, {
       type: "buffer",

@@ -2,12 +2,14 @@
 import { create } from "zustand";
 import api from "../services/api";
 import { CreateUEData, UE, UpdateUEData } from "../types/academic";
+import { toast } from "@/hooks/use-toast";
 
 interface UEFilters {
   type?: string;
   search?: string;
   facultyId?: string;
   level?: string;
+  inCatalog?: boolean;
 }
 
 interface Pagination {
@@ -19,27 +21,43 @@ interface Pagination {
 
 interface UEState {
   ues: UE[];
+  allUEs: UE[];
   currentUE: UE | null;
   loading: boolean;
   error: string | null;
   pagination: Pagination;
-  fetchUEs: (
-    filters?: UEFilters,
-    page?: number,
-    limit?: number
-  ) => Promise<void>;
+  filters: UEFilters;
+
+  // Actions
+  fetchUEs: (filters?: UEFilters) => Promise<void>;
   fetchUEById: (id: string) => Promise<void>;
-  createUE: (ueData: CreateUEData) => Promise<UE>; // ← Utiliser CreateUEData
-  updateUE: (id: string, ueData: UpdateUEData) => Promise<void>; // ← Utiliser UpdateUEData
+  createUE: (ueData: CreateUEData) => Promise<UE>;
+  updateUE: (id: string, ueData: UpdateUEData) => Promise<void>;
   deleteUE: (id: string) => Promise<void>;
+
+  // Gestion des prérequis
   addPrerequisite: (ueId: string, prerequisiteId: string) => Promise<void>;
   removePrerequisite: (ueId: string, prerequisiteId: string) => Promise<void>;
+
+  // Recherche et statistiques
   searchUEs: (query: string) => Promise<UE[]>;
   getUEStats: (ueId: string) => Promise<any>;
+  getAllUEs: (filters?: UEFilters) => Promise<void>;
+  exportUEs: () => Promise<void>;
+  importUEs: (file: File, createdById: string) => Promise<any>;
+  downloadTemplate: () => Promise<void>;
+  // Pagination frontend
+  setPage: (page: number) => void;
+  setItemsPerPage: (limit: number) => void;
+  setFilters: (filters: UEFilters) => void;
+  clearFilters: () => void;
+  applySearch: (searchTerm: string) => void;
+  refreshUEs: () => Promise<void>;
 }
 
 export const useUEStore = create<UEState>((set, get) => ({
   ues: [],
+  allUEs: [],
   currentUE: null,
   loading: false,
   error: null,
@@ -49,33 +67,41 @@ export const useUEStore = create<UEState>((set, get) => ({
     total: 0,
     pages: 0,
   },
+  filters: {},
 
-  fetchUEs: async (filters = {}, page = 1, limit = 10) => {
+  fetchUEs: async (filters = {}) => {
     set({ loading: true, error: null });
     try {
       const params = new URLSearchParams();
-      params.append("page", page.toString());
-      params.append("limit", limit.toString());
 
       Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== "") {
+        if (value !== undefined && value !== "" && value !== null) {
           params.append(key, value.toString());
         }
       });
 
-      console.log(`🔄 Fetching UEs: /ues?${params.toString()}`);
+      // console.log(`🔄 Fetching all UEs: /ues?${params.toString()}`);
 
       const response = await api.get(`/ues?${params}`);
+      const allUEs = response.data || [];
+
+      const state = get();
+      const { page, limit } = state.pagination;
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedUEs = allUEs.slice(startIndex, endIndex);
 
       set({
-        ues: response.data.ues || [],
-        pagination: response.data.pagination || {
-          page: 1,
-          limit: 10,
-          total: 0,
-          pages: 0,
+        allUEs,
+        ues: paginatedUEs,
+        pagination: {
+          ...state.pagination,
+          total: allUEs.length,
+          pages: Math.ceil(allUEs.length / limit),
         },
+        filters,
         loading: false,
+        error: null,
       });
     } catch (error: any) {
       console.error("❌ Erreur fetchUEs:", error);
@@ -101,11 +127,30 @@ export const useUEStore = create<UEState>((set, get) => ({
     }
   },
 
-  createUE: async (ueData: CreateUEData) => {
-    // ← Type correct
+  getAllUEs: async (filters = {}) => {
     set({ loading: true });
     try {
-      // Préparer le payload correctement
+      const params = new URLSearchParams();
+      const response = await api.get("/ues?limit=1000");
+      const allUEs = response.data || [];
+      set({
+        ues: allUEs,
+        filters,
+        loading: false,
+        error: null,
+      });
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur de chargement de l'UE",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  createUE: async (ueData: CreateUEData) => {
+    set({ loading: true });
+    try {
       const payload = {
         code: ueData.code,
         title: ueData.title,
@@ -115,18 +160,18 @@ export const useUEStore = create<UEState>((set, get) => ({
         description: ueData.description || "",
         objectives: ueData.objectives || "",
         createdById: ueData.createdById,
-        prerequisites: ueData.prerequisites || [], // ← Ce sont des strings
+        prerequisites: ueData.prerequisites || [],
       };
 
       console.log("📤 Payload création UE:", payload);
 
       const response = await api.post("/ues", payload);
 
-      set((state) => ({
-        ues: [...state.ues, response.data],
-        loading: false,
-      }));
+      // Recharger les données
+      const state = get();
+      await state.fetchUEs(state.filters);
 
+      set({ loading: false });
       return response.data;
     } catch (error: any) {
       const errorMessage =
@@ -141,15 +186,14 @@ export const useUEStore = create<UEState>((set, get) => ({
   },
 
   updateUE: async (id: string, ueData: UpdateUEData) => {
-    // ← Type correct
     set({ loading: true });
     try {
       const response = await api.put(`/ues/${id}`, ueData);
-      set((state) => ({
-        ues: state.ues.map((ue) => (ue.id === id ? response.data : ue)),
-        currentUE: state.currentUE?.id === id ? response.data : state.currentUE,
-        loading: false,
-      }));
+
+      const state = get();
+      await state.fetchUEs(state.filters);
+
+      set({ loading: false });
     } catch (error: any) {
       set({
         error:
@@ -164,11 +208,11 @@ export const useUEStore = create<UEState>((set, get) => ({
     set({ loading: true });
     try {
       await api.delete(`/ues/${id}`);
-      set((state) => ({
-        ues: state.ues.filter((ue) => ue.id !== id),
-        currentUE: state.currentUE?.id === id ? null : state.currentUE,
-        loading: false,
-      }));
+
+      const state = get();
+      await state.fetchUEs(state.filters);
+
+      set({ loading: false });
     } catch (error: any) {
       set({
         error: error.response?.data?.message || "Erreur de suppression de l'UE",
@@ -181,22 +225,14 @@ export const useUEStore = create<UEState>((set, get) => ({
   addPrerequisite: async (ueId: string, prerequisiteId: string) => {
     set({ loading: true });
     try {
-      const response = await api.post(`/ues/${ueId}/prerequisites`, {
+      await api.post(`/ues/${ueId}/prerequisites`, {
         prerequisiteId,
       });
-      set((state) => ({
-        currentUE:
-          state.currentUE?.id === ueId
-            ? {
-                ...state.currentUE,
-                prerequisites: [
-                  ...(state.currentUE.prerequisites || []),
-                  response.data,
-                ],
-              }
-            : state.currentUE,
-        loading: false,
-      }));
+
+      const state = get();
+      await state.fetchUEs(state.filters);
+
+      set({ loading: false });
     } catch (error: any) {
       set({
         error: error.response?.data?.message || "Erreur d'ajout de prérequis",
@@ -210,18 +246,11 @@ export const useUEStore = create<UEState>((set, get) => ({
     set({ loading: true });
     try {
       await api.delete(`/ues/${ueId}/prerequisites/${prerequisiteId}`);
-      set((state) => ({
-        currentUE:
-          state.currentUE?.id === ueId
-            ? {
-                ...state.currentUE,
-                prerequisites: (state.currentUE.prerequisites || []).filter(
-                  (p: any) => p.prerequisiteId !== prerequisiteId
-                ),
-              }
-            : state.currentUE,
-        loading: false,
-      }));
+
+      const state = get();
+      await state.fetchUEs(state.filters);
+
+      set({ loading: false });
     } catch (error: any) {
       set({
         error:
@@ -248,6 +277,129 @@ export const useUEStore = create<UEState>((set, get) => ({
       throw error;
     }
   },
+  exportUEs: async () => {
+    set({ loading: true, error: null });
+    try {
+      console.log("📤 Export UEs...");
+
+      const response = await api.get("/ues/export", {
+        responseType: "blob",
+      });
+
+      // Créer et télécharger le fichier
+      const blob = new Blob([response.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `export_ues_${
+        new Date().toISOString().split("T")[0]
+      }.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      set({ loading: false });
+
+      toast({
+        title: "✅ Export réussi",
+        description: "Le fichier Excel a été téléchargé",
+      });
+    } catch (error: any) {
+      console.error("❌ Erreur export UEs:", error);
+      set({
+        error: error.response?.data?.message || "Erreur lors de l'export",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  importUEs: async (file: File, createdById: string) => {
+    set({ loading: true, error: null });
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("createdById", createdById);
+
+      console.log("📤 Import UEs depuis fichier:", file.name);
+
+      const response = await api.post("/ues/import", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      // Recharger les données après import
+      const state = get();
+      await state.fetchUEs(state.filters);
+
+      set({ loading: false });
+
+      toast({
+        title: "✅ Import réussi",
+        description: `${response.data.summary.success} UEs importées avec succès`,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Erreur import UEs:", error);
+      const errorMessage =
+        error.response?.data?.message || "Erreur lors de l'import";
+      set({
+        error: errorMessage,
+        loading: false,
+      });
+
+      toast({
+        title: "❌ Erreur d'import",
+        description: errorMessage,
+        variant: "destructive",
+      });
+
+      throw error;
+    }
+  },
+
+  downloadTemplate: async () => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.get("/ues/template", {
+        responseType: "blob",
+      });
+
+      // Créer et télécharger le template
+      const blob = new Blob([response.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "template-import-ues.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      set({ loading: false });
+
+      toast({
+        title: "📥 Template téléchargé",
+        description: "Le template d'import a été téléchargé",
+      });
+    } catch (error: any) {
+      console.error("❌ Erreur téléchargement template:", error);
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur lors du téléchargement du template",
+        loading: false,
+      });
+      throw error;
+    }
+  },
 
   getUEStats: async (ueId: string) => {
     set({ loading: true });
@@ -264,5 +416,60 @@ export const useUEStore = create<UEState>((set, get) => ({
       });
       throw error;
     }
+  },
+
+  setPage: (page: number) => {
+    const state = get();
+    const { allUEs, pagination } = state;
+    const startIndex = (page - 1) * pagination.limit;
+    const endIndex = startIndex + pagination.limit;
+    const paginatedUEs = allUEs.slice(startIndex, endIndex);
+
+    set({
+      ues: paginatedUEs,
+      pagination: {
+        ...pagination,
+        page,
+      },
+    });
+  },
+
+  setItemsPerPage: (limit: number) => {
+    const state = get();
+    const { allUEs } = state;
+    const startIndex = 0;
+    const endIndex = startIndex + limit;
+    const paginatedUEs = allUEs.slice(startIndex, endIndex);
+
+    set({
+      ues: paginatedUEs,
+      pagination: {
+        page: 1,
+        limit,
+        total: allUEs.length,
+        pages: Math.ceil(allUEs.length / limit),
+      },
+    });
+  },
+
+  setFilters: (filters: UEFilters) => {
+    const state = get();
+    state.fetchUEs({ ...state.filters, ...filters });
+  },
+
+  clearFilters: () => {
+    const state = get();
+    state.fetchUEs({});
+  },
+
+  applySearch: (searchTerm: string) => {
+    const state = get();
+    const filters = { ...state.filters, search: searchTerm };
+    state.fetchUEs(filters);
+  },
+
+  refreshUEs: async () => {
+    const state = get();
+    await state.fetchUEs(state.filters);
   },
 }));

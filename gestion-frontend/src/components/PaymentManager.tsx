@@ -128,8 +128,8 @@ export const PaymentManager = () => {
     studentFees,
     getStudentFees,
     recordPayment,
-    updateStudentFee,
-    deleteStudenFeePayment,
+    updateFeePayment,
+    deleteFeePayment,
     getPaymentHistory,
     getAllStudentFees,
     loading,
@@ -153,6 +153,7 @@ export const PaymentManager = () => {
     null
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: addDays(new Date(), -30),
     to: new Date(),
@@ -163,7 +164,7 @@ export const PaymentManager = () => {
   const [formData, setFormData] = useState({
     studentFeeId: "",
     amount: 0,
-    paymentMethod: "cash" as const,
+    paymentMethod: "cash" as "cash" | "transfer" | "card" | "check",
     reference: "",
     paymentDate: new Date().toISOString().split("T")[0],
     description: "",
@@ -175,11 +176,15 @@ export const PaymentManager = () => {
   }, [fetchStudents, fetchAcademicYears]);
 
   useEffect(() => {
-    if (selectedStudent && selectedStudent !== "ALL_STUDENTS") {
-      loadStudentFees(selectedStudent);
-    } else {
-      getAllStudentFees();
-    }
+    const loadData = async () => {
+      if (selectedStudent && selectedStudent !== "ALL_STUDENTS") {
+        await loadStudentFees(selectedStudent);
+      } else {
+        await getAllStudentFees();
+      }
+    };
+
+    loadData();
   }, [selectedStudent, selectedAcademicYear]);
 
   const loadStudentFees = async (studentId: string) => {
@@ -196,6 +201,7 @@ export const PaymentManager = () => {
   };
 
   const loadPaymentHistory = async (feeId: string) => {
+    setHistoryLoading(true);
     try {
       const history = await getPaymentHistory(feeId);
       setPaymentHistory(history);
@@ -207,6 +213,8 @@ export const PaymentManager = () => {
         description: "Impossible de charger l'historique des paiements",
         variant: "destructive",
       });
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -221,15 +229,111 @@ export const PaymentManager = () => {
 
   const validateForm = (): boolean => {
     const errors: string[] = [];
+
     if (!formData.studentFeeId)
       errors.push("Les frais doivent être sélectionnés");
+
     if (!formData.amount || formData.amount <= 0)
       errors.push("Le montant doit être positif");
+
     if (formData.amount > 1000000) errors.push("Le montant semble trop élevé");
+
     if (!formData.description.trim())
       errors.push("La description est obligatoire");
+
+    if (!formData.paymentDate)
+      errors.push("La date de paiement est obligatoire");
+
+    // Validation du montant vs solde restant (uniquement pour les nouveaux paiements)
+    if (formData.studentFeeId && !editingPayment) {
+      const fee = studentFees.find((f) => f.id === formData.studentFeeId);
+      if (fee && formData.amount > fee.totalAmount - fee.paidAmount) {
+        errors.push("Le montant ne peut pas dépasser le solde restant");
+      }
+    }
+
     setFormErrors(errors);
     return errors.length === 0;
+  };
+
+  const formatDateForInput = (isoDate: string): string => {
+    return isoDate ? isoDate.split("T")[0] : "";
+  };
+
+  const formatDateForAPI = (inputDate: string): string => {
+    return inputDate ? new Date(inputDate).toISOString() : "";
+  };
+
+  const handleEditPayment = (payment: FeePayment) => {
+    console.log("🔄 Ouverture modal d'édition pour:", payment);
+
+    const fee = studentFees.find((f) => f.id === payment.studentFeeId);
+
+    if (!fee) {
+      console.error("❌ Frais étudiant non trouvé");
+      toast({
+        title: "Erreur",
+        description: "Impossible de trouver les frais associés",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setFormData({
+      studentFeeId: payment.studentFeeId,
+      amount: payment.amount,
+      paymentMethod: payment.paymentMethod as
+        | "cash"
+        | "transfer"
+        | "card"
+        | "check",
+      reference: payment.reference || "",
+      paymentDate: formatDateForInput(payment.paymentDate),
+      description: payment.description || "",
+    });
+
+    setEditingPayment(payment);
+    setShowForm(true);
+  };
+
+  const handleDeletePayment = async () => {
+    if (!deletingPayment) return;
+
+    setIsSubmitting(true);
+    try {
+      await deleteFeePayment(deletingPayment.id);
+
+      toast({
+        title: "Succès",
+        description: "Paiement supprimé avec succès",
+      });
+
+      // Recharger les données
+      if (selectedStudent && selectedStudent !== "ALL_STUDENTS") {
+        await loadStudentFees(selectedStudent);
+      } else {
+        await getAllStudentFees();
+      }
+
+      // Recharger l'historique si ouvert
+      if (showHistory && deletingPayment) {
+        const history = await getPaymentHistory(deletingPayment.studentFeeId);
+        setPaymentHistory(history);
+      }
+
+      setDeletingPayment(null);
+    } catch (error: any) {
+      console.error("Error deleting payment:", error);
+      const errorMessage =
+        error.response?.data?.message || "Impossible de supprimer le paiement";
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -238,28 +342,30 @@ export const PaymentManager = () => {
 
     setIsSubmitting(true);
     try {
+      const apiPayload: any = {
+        amount: Number(formData.amount),
+        paymentMethod: formData.paymentMethod,
+        description: formData.description,
+      };
+
+      apiPayload.reference = formData.reference || null;
+
+      if (formData.paymentDate) {
+        apiPayload.paymentDate = formatDateForAPI(formData.paymentDate);
+      }
+
+      console.log("📤 Payload API:", apiPayload);
+
       if (editingPayment) {
-        // Mise à jour d'un paiement existant
-        const updatePayload: any = {
-          amount: formData.amount,
-          paymentMethod: formData.paymentMethod,
-          reference: formData.reference,
-          paymentDate: formData.paymentDate,
-          description: formData.description,
-        };
-        await updateStudentFee(editingPayment.id, updatePayload);
+        await updateFeePayment(editingPayment.id, apiPayload);
         toast({
           title: "Succès",
           description: "Paiement mis à jour avec succès",
         });
       } else {
-        // Création d'un nouveau paiement
         await recordPayment(formData.studentFeeId, {
-          amount: formData.amount,
-          paymentMethod: formData.paymentMethod,
-          reference: formData.reference,
-          paymentDate: formData.paymentDate,
-          description: formData.description,
+          ...apiPayload,
+          studentFeeId: formData.studentFeeId,
         });
         toast({
           title: "Succès",
@@ -274,65 +380,17 @@ export const PaymentManager = () => {
       // Recharger les données
       if (selectedStudent && selectedStudent !== "ALL_STUDENTS") {
         await loadStudentFees(selectedStudent);
+      } else {
+        await getAllStudentFees();
       }
-    } catch (error) {
-      console.error("Error recording payment:", error);
+    } catch (error: any) {
+      console.error("Error processing payment:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        "Une erreur s'est produite lors de l'opération";
       toast({
         title: "Erreur",
-        description: "Une erreur s'est produite lors de l'enregistrement",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleEditPayment = (payment: FeePayment) => {
-    // Trouver les frais étudiants associés à ce paiement
-    const fee = studentFees.find((f) => f.id === payment.studentFeeId);
-    if (fee) {
-      setSelectedStudent(fee.studentId);
-      setFormData({
-        studentFeeId: payment.studentFeeId,
-        amount: payment.amount,
-        paymentMethod: payment.paymentMethod as any,
-        reference: payment.reference || "",
-        paymentDate: payment.paymentDate.split("T")[0],
-        description: payment.description,
-      });
-      setEditingPayment(payment);
-      setShowForm(true);
-    }
-  };
-
-  const handleDeletePayment = async () => {
-    if (!deletingPayment) return;
-
-    setIsSubmitting(true);
-    try {
-      await deleteStudenFeePayment(deletingPayment.id);
-      toast({
-        title: "Succès",
-        description: "Paiement supprimé avec succès",
-      });
-
-      // Recharger les données
-      if (selectedStudent && selectedStudent !== "ALL_STUDENTS") {
-        await loadStudentFees(selectedStudent);
-      }
-
-      // Recharger l'historique si ouvert
-      if (showHistory) {
-        const history = await getPaymentHistory(deletingPayment.studentFeeId);
-        setPaymentHistory(history);
-      }
-
-      setDeletingPayment(null);
-    } catch (error) {
-      console.error("Error deleting payment:", error);
-      toast({
-        title: "Erreur",
-        description: "Impossible de supprimer le paiement",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -351,6 +409,17 @@ export const PaymentManager = () => {
     });
     setFormErrors([]);
     setEditingPayment(null);
+  };
+
+  const resetFilters = () => {
+    setDateRange({
+      from: addDays(new Date(), -30),
+      to: new Date(),
+    });
+    setSelectedStudent("ALL_STUDENTS");
+    setSelectedAcademicYear("ALL_YEARS");
+    setSearchTerm("");
+    setCurrentPage(1);
   };
 
   const getStudentName = (studentId: string) => {
@@ -707,13 +776,7 @@ export const PaymentManager = () => {
                 variant="outline"
                 size="sm"
                 className="flex items-center gap-1 w-full"
-                onClick={() => {
-                  // Réinitialiser les filtres
-                  setDateRange(undefined);
-                  setSelectedStudent("ALL_STUDENTS");
-                  setSelectedAcademicYear("ALL_YEARS");
-                  setSearchTerm("");
-                }}
+                onClick={resetFilters}
               >
                 <RefreshCw className="h-4 w-4" />
                 Réinitialiser
@@ -1155,17 +1218,25 @@ export const PaymentManager = () => {
                       <SelectValue placeholder="Sélectionner les frais" />
                     </SelectTrigger>
                     <SelectContent>
-                      {studentFees
-                        .filter((fee) => fee.studentId === selectedStudent)
-                        .map((fee) => (
-                          <SelectItem key={fee.id} value={fee.id}>
-                            {fee.feeStructure.name} - Restant:{" "}
-                            {(
-                              fee.totalAmount - fee.paidAmount
-                            ).toLocaleString()}{" "}
-                            HTG
-                          </SelectItem>
-                        ))}
+                      {studentFees.filter(
+                        (fee) => fee.studentId === selectedStudent
+                      ).length === 0 ? (
+                        <SelectItem value="no-fees" disabled>
+                          Aucun frais trouvé pour cet étudiant
+                        </SelectItem>
+                      ) : (
+                        studentFees
+                          .filter((fee) => fee.studentId === selectedStudent)
+                          .map((fee) => (
+                            <SelectItem key={fee.id} value={fee.id}>
+                              {fee.feeStructure.name} - Restant:{" "}
+                              {(
+                                fee.totalAmount - fee.paidAmount
+                              ).toLocaleString()}{" "}
+                              HTG
+                            </SelectItem>
+                          ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1291,7 +1362,12 @@ export const PaymentManager = () => {
             </DialogDescription>
           </DialogHeader>
 
-          {paymentHistory.length === 0 ? (
+          {historyLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <span className="ml-2">Chargement de l'historique...</span>
+            </div>
+          ) : paymentHistory.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>Aucun historique de paiement trouvé</p>

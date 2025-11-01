@@ -52,7 +52,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// Fonction pour vérifier si l'étudiant a au moins 16 ans
+// Fonction pour vérifier si l'étudiant a au moins 18 ans
 const isAtLeast16YearsOld = (dateString: string): boolean => {
   if (!dateString) return true;
 
@@ -65,10 +65,10 @@ const isAtLeast16YearsOld = (dateString: string): boolean => {
     monthDiff < 0 ||
     (monthDiff === 0 && today.getDate() < birthDate.getDate())
   ) {
-    return age - 1 >= 16;
+    return age - 1 >= 18;
   }
 
-  return age >= 16;
+  return age >= 18;
 };
 
 // Schémas de validation avec Zod - CORRIGÉ
@@ -179,11 +179,10 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
   const generateStudentId = (): string => {
     const year = new Date().getFullYear();
 
-    // Générer un ID basé sur le timestamp pour éviter les doublons
-    const timestamp = Date.now().toString().slice(-4);
-    const random = Math.floor(1000 + Math.random() * 9000);
+    const random = Math.floor(100 + Math.random() * 900);
+    const random1 = Math.floor(100000 + Math.random() * 900000);
 
-    return `STU${year}${timestamp}${random}`.slice(0, 15); // Limiter à 15 caractères
+    return `${random}-${random1}`; // Limiter à 15 caractères
   };
 
   // CORRECTION : Génération automatique de l'ID étudiant

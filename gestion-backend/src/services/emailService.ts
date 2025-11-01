@@ -20,7 +20,7 @@ interface EmailOptions {
 export const sendEmail = async (options: EmailOptions) => {
   try {
     const mailOptions = {
-      from: process.env.SMTP_FROM || "jslnoccius@gmail.com",
+      from: process.env.SMTP_FROM || "no_reply@ujeph.com",
       to: options.to,
       subject: options.subject,
       html: options.html,

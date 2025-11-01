@@ -415,14 +415,6 @@ export const verifyPassword = async (req: Request, res: Response) => {
       token === "null" ||
       token === "undefined"
     ) {
-      await createAuditLog({
-        ...auditData,
-        action: "PASSWORD_VERIFICATION_ATTEMPT",
-        entity: "Auth",
-        description: "Tentative de vérification de mot de passe sans token",
-        status: "ERROR",
-      });
-
       return res.status(401).json({
         message: "Token d'authentification manquant ou invalide",
         code: "MISSING_TOKEN",
@@ -434,15 +426,6 @@ export const verifyPassword = async (req: Request, res: Response) => {
       typeof password !== "string" ||
       password.trim().length === 0
     ) {
-      await createAuditLog({
-        ...auditData,
-        action: "PASSWORD_VERIFICATION_ATTEMPT",
-        entity: "Auth",
-        description:
-          "Tentative de vérification de mot de passe sans mot de passe",
-        status: "ERROR",
-      });
-
       return res.status(400).json({
         message: "Un mot de passe valide est requis",
         code: "PASSWORD_REQUIRED",
@@ -475,6 +458,7 @@ export const verifyPassword = async (req: Request, res: Response) => {
         status: "ERROR",
         errorMessage: errorMessage,
         metadata: { errorType: errorName },
+        userId: null,
       });
 
       return res.status(401).json({
@@ -495,6 +479,7 @@ export const verifyPassword = async (req: Request, res: Response) => {
       description: "Erreur interne lors de la vérification de mot de passe",
       status: "ERROR",
       errorMessage: error.message,
+      userId: null,
     });
 
     res.status(500).json({
@@ -532,6 +517,7 @@ export const register = async (req: Request, res: Response) => {
             lastName: !lastName,
           },
         },
+        userId: null,
       });
 
       return res.status(400).json({
@@ -564,6 +550,7 @@ export const register = async (req: Request, res: Response) => {
         description: "Tentative d'inscription avec email déjà existant",
         status: "ERROR",
         metadata: { email },
+        userId: null,
       });
 
       return res.status(400).json({
@@ -630,6 +617,7 @@ export const register = async (req: Request, res: Response) => {
       metadata: {
         stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
       },
+      userId: null,
     });
 
     res.status(400).json({
@@ -655,6 +643,7 @@ export const getMe = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Tentative d'accès au profil sans userId",
         status: "ERROR",
+        userId: null,
       });
 
       return res.status(401).json({ message: "Non autorisé" });
@@ -684,6 +673,7 @@ export const getMe = async (req: Request, res: Response) => {
         description: "Utilisateur non trouvé lors de la récupération du profil",
         status: "ERROR",
         metadata: { userId },
+        userId: null,
       });
 
       return res.status(404).json({ message: "Utilisateur non trouvé" });
@@ -710,6 +700,7 @@ export const getMe = async (req: Request, res: Response) => {
       description: "Erreur lors de la récupération du profil",
       status: "ERROR",
       errorMessage: error.message,
+      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
@@ -732,6 +723,7 @@ export const verify = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Tentative de vérification de token sans token",
         status: "ERROR",
+        userId: null,
       });
 
       return res.status(401).json({ message: "Token manquant" });
@@ -758,6 +750,7 @@ export const verify = async (req: Request, res: Response) => {
       description: "Échec de la vérification du token",
       status: "ERROR",
       errorMessage: error.message,
+      userId: null,
     });
 
     res.status(401).json({ valid: false, message: error.message });
@@ -780,6 +773,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Demande de réinitialisation de mot de passe sans email",
         status: "ERROR",
+        userId: null,
       });
 
       return res.status(400).json({
@@ -800,8 +794,9 @@ export const forgotPassword = async (req: Request, res: Response) => {
         entity: "Auth",
         description:
           "Demande de réinitialisation de mot de passe pour email non trouvé",
-        status: "WARNING",
+        status: "SUCCESS",
         metadata: { email },
+        userId: null,
       });
 
       return res.json({
@@ -887,6 +882,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
         "Erreur lors de la demande de réinitialisation de mot de passe",
       status: "ERROR",
       errorMessage: error.message,
+      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
@@ -911,6 +907,7 @@ export const resetPassword = async (req: Request, res: Response) => {
           "Tentative de réinitialisation de mot de passe avec données manquantes",
         status: "ERROR",
         metadata: { missing: { token: !token, password: !password } },
+        userId: null,
       });
 
       return res.status(400).json({
@@ -927,6 +924,7 @@ export const resetPassword = async (req: Request, res: Response) => {
           "Tentative de réinitialisation avec mot de passe trop court",
         status: "ERROR",
         metadata: { passwordLength: password.length },
+        userId: null,
       });
 
       return res.status(400).json({
@@ -953,6 +951,7 @@ export const resetPassword = async (req: Request, res: Response) => {
           "Tentative de réinitialisation avec token invalide ou expiré",
         status: "ERROR",
         metadata: { token },
+        userId: null,
       });
 
       return res.status(400).json({
@@ -996,6 +995,7 @@ export const resetPassword = async (req: Request, res: Response) => {
       description: "Erreur lors de la réinitialisation du mot de passe",
       status: "ERROR",
       errorMessage: error.message,
+      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
@@ -1018,6 +1018,7 @@ export const verifyResetToken = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Tentative de vérification de token sans token",
         status: "ERROR",
+        userId: null,
       });
 
       return res.status(400).json({
@@ -1047,6 +1048,7 @@ export const verifyResetToken = async (req: Request, res: Response) => {
         description: "Token de réinitialisation invalide ou expiré",
         status: "ERROR",
         metadata: { token },
+        userId: null,
       });
 
       return res.status(400).json({
@@ -1080,6 +1082,7 @@ export const verifyResetToken = async (req: Request, res: Response) => {
         "Erreur lors de la vérification du token de réinitialisation",
       status: "ERROR",
       errorMessage: error.message,
+      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
@@ -1103,6 +1106,7 @@ export const getResetPasswordPage = async (req: Request, res: Response) => {
         description:
           "Tentative d'accès à la page de réinitialisation sans token",
         status: "ERROR",
+        userId: null,
       });
 
       return res.status(400).json({
@@ -1133,6 +1137,7 @@ export const getResetPasswordPage = async (req: Request, res: Response) => {
         description: "Token invalide pour accès à la page de réinitialisation",
         status: "ERROR",
         metadata: { token },
+        userId: null,
       });
 
       return res.status(400).json({
@@ -1169,6 +1174,7 @@ export const getResetPasswordPage = async (req: Request, res: Response) => {
       description: "Erreur lors de l'accès à la page de réinitialisation",
       status: "ERROR",
       errorMessage: error.message,
+      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
@@ -1192,6 +1198,7 @@ export const updateProfile = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Tentative de mise à jour de profil sans userId",
         status: "ERROR",
+        userId: null,
       });
 
       return res.status(401).json({ message: "Non autorisé" });
@@ -1249,6 +1256,7 @@ export const updateProfile = async (req: Request, res: Response) => {
       description: "Erreur lors de la mise à jour du profil",
       status: "ERROR",
       errorMessage: error.message,
+      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
@@ -1272,6 +1280,7 @@ export const changePassword = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Tentative de changement de mot de passe sans userId",
         status: "ERROR",
+        userId: null,
       });
 
       return res.status(401).json({ message: "Non autorisé" });
@@ -1331,6 +1340,7 @@ export const changePassword = async (req: Request, res: Response) => {
           "Utilisateur non trouvé lors du changement de mot de passe",
         status: "ERROR",
         metadata: { userId },
+        userId: null,
       });
 
       return res.status(404).json({ message: "Utilisateur non trouvé" });
@@ -1393,6 +1403,7 @@ export const changePassword = async (req: Request, res: Response) => {
       description: "Erreur lors du changement de mot de passe",
       status: "ERROR",
       errorMessage: error.message,
+      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });

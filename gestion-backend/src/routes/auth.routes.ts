@@ -14,7 +14,7 @@ import {
   verifyPassword, // ← Ajoutez cette fonction
 } from "../controllers/auth.Controllers";
 import { authenticateToken } from "../middleware/auth.middleware";
-import { deanPermissions } from "../middleware/deanPermissions";
+// import { deanPermissions } from "../middleware/deanPermissions";
 
 const router = express.Router();
 // router.use(setUserContext as express.RequestHandler);

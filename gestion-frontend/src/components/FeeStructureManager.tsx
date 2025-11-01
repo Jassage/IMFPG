@@ -28,9 +28,9 @@ import {
   MoreVertical,
   Calendar,
   RefreshCw,
+  DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useFacultyStore } from "@/store/facultyStore";
 import {
   Dialog,
   DialogContent,
@@ -63,17 +63,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 
 interface FeeFormData {
   academicYear: string;
   name: string;
-  faculty: string;
-  level: string;
-  tuitionFee: number;
-  tshirtFee: number;
-  cardIdFee: number;
+  amount: number;
+  description?: string;
   isActive: boolean;
 }
 
@@ -88,7 +85,6 @@ export const FeeStructureManager: React.FC = () => {
   } = useFeeStructureStore();
 
   const { academicYears, fetchAcademicYears } = useAcademicYearStore();
-  const { faculties, fetchFaculties } = useFacultyStore();
 
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
@@ -96,7 +92,6 @@ export const FeeStructureManager: React.FC = () => {
   const [feeToDelete, setFeeToDelete] = useState<FeeStructure | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [selectedFaculty, setSelectedFaculty] = useState<string>("all");
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -105,11 +100,8 @@ export const FeeStructureManager: React.FC = () => {
   const [formData, setFormData] = useState<FeeFormData>({
     academicYear: "",
     name: "",
-    faculty: "",
-    level: "",
-    tuitionFee: 0,
-    tshirtFee: 0,
-    cardIdFee: 0,
+    amount: 0,
+    description: "",
     isActive: true,
   });
 
@@ -117,11 +109,7 @@ export const FeeStructureManager: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        await Promise.all([
-          fetchAcademicYears(),
-          fetchFaculties(),
-          getFeeStructures(),
-        ]);
+        await Promise.all([fetchAcademicYears(), getFeeStructures()]);
       } catch (error) {
         console.error("Erreur lors du chargement des données:", error);
         toast.error("Erreur lors du chargement des données");
@@ -136,11 +124,8 @@ export const FeeStructureManager: React.FC = () => {
       setFormData({
         academicYear: editingFee.academicYear,
         name: editingFee.name,
-        faculty: editingFee.faculty,
-        level: editingFee.level,
-        tuitionFee: (editingFee as any).tuitionFee ?? 0,
-        tshirtFee: (editingFee as any).tshirtFee ?? 0,
-        cardIdFee: (editingFee as any).cardIdFee ?? 0,
+        amount: editingFee.amount,
+        description: editingFee.description || "",
         isActive: editingFee.isActive,
       });
     }
@@ -156,25 +141,13 @@ export const FeeStructureManager: React.FC = () => {
     if (!formData.name?.trim()) errors.push("Le nom est obligatoire");
     if (!formData.academicYear)
       errors.push("L'année académique est obligatoire");
-    if (!formData.faculty) errors.push("La faculté est obligatoire");
-    if (!formData.level) errors.push("Le niveau est obligatoire");
-    if (formData.tuitionFee < 0)
-      errors.push("Les frais de scolarité doivent être positifs");
-    if (formData.tshirtFee < 0)
-      errors.push("Les frais de maillot doivent être positifs");
-    if (formData.cardIdFee < 0)
-      errors.push("Les frais de badge doivent être positifs");
+    if (formData.amount <= 0) errors.push("Le montant doit être supérieur à 0");
 
     return {
       isValid: errors.length === 0,
       errors,
     };
   }, [formData]);
-
-  // Calcul du total
-  const calculateTotal = useCallback((): number => {
-    return formData.tuitionFee + formData.tshirtFee + formData.cardIdFee;
-  }, [formData.tuitionFee, formData.tshirtFee, formData.cardIdFee]);
 
   // Soumission du formulaire
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
@@ -193,9 +166,8 @@ export const FeeStructureManager: React.FC = () => {
       const feeData = {
         name: formData.name.trim(),
         academicYear: formData.academicYear,
-        faculty: formData.faculty,
-        level: formData.level,
-        amount: calculateTotal(),
+        amount: formData.amount,
+        description: formData.description || undefined,
         isActive: formData.isActive,
       };
 
@@ -260,11 +232,8 @@ export const FeeStructureManager: React.FC = () => {
     setFormData({
       academicYear: "",
       name: "",
-      faculty: "",
-      level: "",
-      tuitionFee: 0,
-      tshirtFee: 0,
-      cardIdFee: 0,
+      amount: 0,
+      description: "",
       isActive: true,
     });
     setEditingFee(null);
@@ -287,22 +256,24 @@ export const FeeStructureManager: React.FC = () => {
     return feeStructures.filter((fee) => {
       const matchesSearch =
         fee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        fee.faculty.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesFaculty =
-        selectedFaculty === "all" || fee.faculty === selectedFaculty;
+        fee.academicYear.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (fee.description &&
+          fee.description.toLowerCase().includes(searchTerm.toLowerCase()));
+
       const matchesYear =
         selectedYear === "all" || fee.academicYear === selectedYear;
 
-      return matchesSearch && matchesFaculty && matchesYear;
+      return matchesSearch && matchesYear;
     });
-  }, [feeStructures, searchTerm, selectedFaculty, selectedYear]);
+  }, [feeStructures, searchTerm, selectedYear]);
 
   // Statistiques
   const statistics = useMemo(
     () => ({
       total: feeStructures.length,
       active: feeStructures.filter((f) => f.isActive).length,
-      faculties: new Set(feeStructures.map((f) => f.faculty)).size,
+      years: new Set(feeStructures.map((f) => f.academicYear)).size,
+      totalAmount: feeStructures.reduce((sum, f) => sum + f.amount, 0),
       average:
         feeStructures.length > 0
           ? Math.round(
@@ -323,33 +294,10 @@ export const FeeStructureManager: React.FC = () => {
     [academicYears]
   );
 
-  const getFacultyName = useCallback(
-    (facultyId: string): string => {
-      const faculty = faculties.find((f) => f.id === facultyId);
-      return faculty ? faculty.name : facultyId;
-    },
-    [faculties]
-  );
-
-  const getLevelDisplay = useCallback((level: string): string => {
-    const levels: { [key: string]: string } = {
-      "1": "1ère Année",
-      "2": "2ème Année",
-      "3": "3ème Année",
-      "4": "4ème Année",
-      "5": "5ème Année",
-    };
-    return levels[level] || level;
-  }, []);
-
   // Rechargement des données
   const handleRefresh = async (): Promise<void> => {
     try {
-      await Promise.all([
-        fetchAcademicYears(),
-        fetchFaculties(),
-        getFeeStructures(),
-      ]);
+      await Promise.all([fetchAcademicYears(), getFeeStructures()]);
       toast.success("Données actualisées");
     } catch (error) {
       toast.error("Erreur lors de l'actualisation");
@@ -359,29 +307,32 @@ export const FeeStructureManager: React.FC = () => {
   // Réinitialisation des filtres
   const resetFilters = useCallback((): void => {
     setSearchTerm("");
-    setSelectedFaculty("all");
     setSelectedYear("all");
+  }, []);
+
+  // Formatage de la date
+  const formatDate = useCallback((dateString: string | null): string => {
+    if (!dateString) return "Non définie";
+    return new Date(dateString).toLocaleDateString("fr-FR");
   }, []);
 
   // Composant pour les données vides
   const NoDataMessage = useCallback(
     () => (
       <div className="text-center py-12 text-muted-foreground">
-        <Calendar className="h-16 w-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+        <DollarSign className="h-16 w-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
         <p className="text-lg font-medium dark:text-gray-300">
-          {searchTerm || selectedFaculty !== "all" || selectedYear !== "all"
+          {searchTerm || selectedYear !== "all"
             ? "Aucun résultat trouvé"
             : "Aucune structure de frais"}
         </p>
         <p className="text-sm mb-4 dark:text-gray-400">
-          {searchTerm || selectedFaculty !== "all" || selectedYear !== "all"
+          {searchTerm || selectedYear !== "all"
             ? "Essayez de modifier vos critères de recherche"
             : "Commencez par créer votre première structure de frais"}
         </p>
         <div className="flex flex-col sm:flex-row gap-2 justify-center">
-          {(searchTerm ||
-            selectedFaculty !== "all" ||
-            selectedYear !== "all") && (
+          {(searchTerm || selectedYear !== "all") && (
             <Button variant="outline" onClick={resetFilters}>
               Réinitialiser les filtres
             </Button>
@@ -393,7 +344,7 @@ export const FeeStructureManager: React.FC = () => {
         </div>
       </div>
     ),
-    [searchTerm, selectedFaculty, selectedYear, resetFilters]
+    [searchTerm, selectedYear, resetFilters]
   );
 
   return (
@@ -402,10 +353,10 @@ export const FeeStructureManager: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent break-words">
-            Gestion des Frais
+            Gestion des Frais Académiques
           </h1>
           <p className="text-muted-foreground mt-2 text-sm sm:text-base">
-            Configurez et gérez les structures de frais académiques
+            Configurez et gérez les structures de frais par année académique
           </p>
         </div>
 
@@ -441,7 +392,7 @@ export const FeeStructureManager: React.FC = () => {
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                 <Input
-                  placeholder="Rechercher une structure..."
+                  placeholder="Rechercher par nom, année ou description..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 dark:bg-gray-700 dark:border-gray-600"
@@ -449,31 +400,14 @@ export const FeeStructureManager: React.FC = () => {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
-                <Select
-                  value={selectedFaculty}
-                  onValueChange={setSelectedFaculty}
-                >
-                  <SelectTrigger className="w-full sm:w-[160px] dark:bg-gray-700 dark:border-gray-600">
-                    <SelectValue placeholder="Faculté" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Toutes facultés</SelectItem>
-                    {faculties.map((faculty) => (
-                      <SelectItem key={faculty.id} value={faculty.id}>
-                        {faculty.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
                 <Select value={selectedYear} onValueChange={setSelectedYear}>
-                  <SelectTrigger className="w-full sm:w-[160px] dark:bg-gray-700 dark:border-gray-600">
-                    <SelectValue placeholder="Année" />
+                  <SelectTrigger className="w-full sm:w-[180px] dark:bg-gray-700 dark:border-gray-600">
+                    <SelectValue placeholder="Année académique" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Toutes années</SelectItem>
+                    <SelectItem value="all">Toutes les années</SelectItem>
                     {academicYears.map((year) => (
-                      <SelectItem key={year.id} value={year.id}>
+                      <SelectItem key={year.id} value={year.year}>
                         {year.year}
                       </SelectItem>
                     ))}
@@ -561,9 +495,9 @@ export const FeeStructureManager: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-purple-600 dark:text-purple-400">
-                  Facultés
+                  Années Académiques
                 </p>
-                <p className="text-2xl font-bold">{statistics.faculties}</p>
+                <p className="text-2xl font-bold">{statistics.years}</p>
               </div>
               <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
                 <Filter className="h-6 w-6 text-purple-600 dark:text-purple-400" />
@@ -584,7 +518,7 @@ export const FeeStructureManager: React.FC = () => {
                 </p>
               </div>
               <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-                <Save className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+                <DollarSign className="h-6 w-6 text-orange-600 dark:text-orange-400" />
               </div>
             </div>
           </CardContent>
@@ -596,7 +530,7 @@ export const FeeStructureManager: React.FC = () => {
         <Card className="border-0 shadow-lg">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg sm:text-xl">
-              Structures de Frais
+              Structures de Frais par Année Académique
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 sm:p-6">
@@ -604,13 +538,9 @@ export const FeeStructureManager: React.FC = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50 dark:bg-muted/20">
-                    <TableHead className="min-w-[150px]">Nom</TableHead>
-                    <TableHead className="hidden sm:table-cell">
-                      Faculté
-                    </TableHead>
-                    <TableHead className="min-w-[100px]">Niveau</TableHead>
-                    <TableHead className="hidden lg:table-cell">
-                      Année
+                    <TableHead className="min-w-[200px]">Nom</TableHead>
+                    <TableHead className="min-w-[120px]">
+                      Année Académique
                     </TableHead>
                     <TableHead className="min-w-[120px]">Montant</TableHead>
                     <TableHead className="min-w-[100px]">Statut</TableHead>
@@ -625,17 +555,14 @@ export const FeeStructureManager: React.FC = () => {
                       <TableCell className="font-medium">
                         <div>
                           <div className="font-semibold">{fee.name}</div>
-                          <div className="text-sm text-muted-foreground sm:hidden">
-                            {getFacultyName(fee.faculty)} •{" "}
-                            {getLevelDisplay(fee.level)}
-                          </div>
+                          {fee.description && (
+                            <div className="text-sm text-muted-foreground truncate max-w-[200px]">
+                              {fee.description}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        {getFacultyName(fee.faculty)}
-                      </TableCell>
-                      <TableCell>{getLevelDisplay(fee.level)}</TableCell>
-                      <TableCell className="hidden lg:table-cell">
+                      <TableCell>
                         <Badge
                           variant="outline"
                           className="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
@@ -646,6 +573,7 @@ export const FeeStructureManager: React.FC = () => {
                       <TableCell className="font-semibold">
                         {fee.amount?.toLocaleString()} HTG
                       </TableCell>
+
                       <TableCell>
                         <Badge
                           variant={fee.isActive ? "default" : "secondary"}
@@ -707,31 +635,24 @@ export const FeeStructureManager: React.FC = () => {
                     {fee.isActive ? "Actif" : "Inactif"}
                   </Badge>
                 </div>
-                <p className="text-sm text-muted-foreground truncate">
-                  {getFacultyName(fee.faculty)} • {getLevelDisplay(fee.level)}
+                <p className="text-sm text-muted-foreground">
+                  {getAcademicYearDisplay(fee.academicYear)}
                 </p>
+                {fee.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {fee.description}
+                  </p>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground text-sm">
-                      Année:
-                    </span>
-                    <Badge
-                      variant="outline"
-                      className="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs"
-                    >
-                      {getAcademicYearDisplay(fee.academicYear)}
-                    </Badge>
-                  </div>
-
                   <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 p-3 sm:p-4 rounded-lg">
                     <div className="text-center">
                       <p className="text-xl sm:text-2xl font-bold text-purple-600 dark:text-purple-400">
                         {fee.amount?.toLocaleString()} HTG
                       </p>
                       <p className="text-xs sm:text-sm text-purple-500 dark:text-purple-300">
-                        Total des frais
+                        Montant total
                       </p>
                     </div>
                   </div>
@@ -773,19 +694,19 @@ export const FeeStructureManager: React.FC = () => {
               {editingFee ? (
                 <>
                   <Edit className="h-5 w-5" />
-                  Modifier la Structure
+                  Modifier la Structure de Frais
                 </>
               ) : (
                 <>
                   <Plus className="h-5 w-5" />
-                  Nouvelle Structure
+                  Nouvelle Structure de Frais
                 </>
               )}
             </DialogTitle>
             <DialogDescription>
               {editingFee
                 ? "Modifiez les informations de la structure de frais"
-                : "Créez une nouvelle structure de frais académiques"}
+                : "Créez une nouvelle structure de frais pour une année académique"}
             </DialogDescription>
           </DialogHeader>
 
@@ -808,7 +729,7 @@ export const FeeStructureManager: React.FC = () => {
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
-                  placeholder="ex: Frais Licence 1 Informatique"
+                  placeholder="ex: Frais de scolarité 2024-2025"
                   required
                   className="dark:bg-gray-700 dark:border-gray-600"
                 />
@@ -828,7 +749,7 @@ export const FeeStructureManager: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     {academicYears.map((year) => (
-                      <SelectItem key={year.id} value={year.id}>
+                      <SelectItem key={year.id} value={year.year}>
                         {year.year}
                       </SelectItem>
                     ))}
@@ -836,88 +757,33 @@ export const FeeStructureManager: React.FC = () => {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="faculty">Faculté *</Label>
-                <Select
-                  value={formData.faculty}
-                  onValueChange={(value) => handleInputChange("faculty", value)}
-                  required
-                >
-                  <SelectTrigger className="dark:bg-gray-700 dark:border-gray-600">
-                    <SelectValue placeholder="Sélectionner une faculté" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {faculties.map((faculty) => (
-                      <SelectItem key={faculty.id} value={faculty.id}>
-                        {faculty.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="level">Niveau *</Label>
-                <Select
-                  value={formData.level}
-                  onValueChange={(value) => handleInputChange("level", value)}
-                  required
-                >
-                  <SelectTrigger className="dark:bg-gray-700 dark:border-gray-600">
-                    <SelectValue placeholder="Sélectionner un niveau" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1ère Année</SelectItem>
-                    <SelectItem value="2">2ème Année</SelectItem>
-                    <SelectItem value="3">3ème Année</SelectItem>
-                    <SelectItem value="4">4ème Année</SelectItem>
-                    <SelectItem value="5">5ème Année</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tuitionFee">Frais de Scolarité (HTG) *</Label>
+              <div className="md:col-span-2 space-y-2">
+                <Label htmlFor="amount">Montant Total (HTG) *</Label>
                 <Input
-                  id="tuitionFee"
+                  id="amount"
                   type="number"
-                  value={formData.tuitionFee}
+                  value={formData.amount}
                   onChange={(e) =>
-                    handleInputChange("tuitionFee", Number(e.target.value))
+                    handleInputChange("amount", Number(e.target.value))
                   }
                   required
                   min="0"
                   step="100"
+                  placeholder="0"
                   className="dark:bg-gray-700 dark:border-gray-600"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="tshirtFee">Frais Maillot (HTG)</Label>
-                <Input
-                  id="tshirtFee"
-                  type="number"
-                  value={formData.tshirtFee}
+              <div className="md:col-span-2 space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
                   onChange={(e) =>
-                    handleInputChange("tshirtFee", Number(e.target.value))
+                    handleInputChange("description", e.target.value)
                   }
-                  min="0"
-                  step="100"
-                  className="dark:bg-gray-700 dark:border-gray-600"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cardIdFee">Frais Badge (HTG)</Label>
-                <Input
-                  id="cardIdFee"
-                  type="number"
-                  value={formData.cardIdFee}
-                  onChange={(e) =>
-                    handleInputChange("cardIdFee", Number(e.target.value))
-                  }
-                  min="0"
-                  step="100"
+                  placeholder="Description optionnelle de la structure de frais..."
+                  rows={3}
                   className="dark:bg-gray-700 dark:border-gray-600"
                 />
               </div>
@@ -943,16 +809,19 @@ export const FeeStructureManager: React.FC = () => {
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <p className="font-semibold dark:text-gray-200">
-                    Total des Frais
+                    Résumé de la Structure
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Montant qui sera enregistré
+                    {formData.academicYear
+                      ? `Pour l'année ${formData.academicYear}`
+                      : "Sélectionnez une année académique"}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="text-2xl sm:text-3xl font-bold text-purple-600 dark:text-purple-400">
-                    {calculateTotal().toLocaleString()} HTG
+                    {formData.amount.toLocaleString()} HTG
                   </p>
+                  <p className="text-sm text-muted-foreground">Montant total</p>
                 </div>
               </div>
             </div>
@@ -998,8 +867,9 @@ export const FeeStructureManager: React.FC = () => {
             <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
             <AlertDialogDescription>
               Êtes-vous sûr de vouloir supprimer la structure de frais "
-              {feeToDelete?.name}" ? Cette action est irréversible et affectera
-              tous les étudiants associés.
+              {feeToDelete?.name}" pour l'année{" "}
+              {getAcademicYearDisplay(feeToDelete?.academicYear)} ? Cette action
+              est irréversible et affectera tous les étudiants associés.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

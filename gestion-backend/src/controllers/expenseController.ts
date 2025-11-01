@@ -108,7 +108,7 @@ export const createExpense = async (req: Request, res: Response) => {
     const expense = await prisma.expense.create({
       data: {
         ...expenseData,
-        status: "Pending",
+        status: "Approved",
       },
       include: {
         creator: {

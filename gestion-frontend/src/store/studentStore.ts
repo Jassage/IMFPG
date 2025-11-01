@@ -549,9 +549,6 @@ export const useAcademicStore = create<AcademicStore>()(
       }
     },
 
-    // Les autres méthodes (deleteStudent, importStudents, etc.) restent similaires
-    // mais devraient inclure les mêmes validations
-
     deleteStudent: async (id) => {
       set({ loading: true, error: null });
 

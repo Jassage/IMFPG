@@ -10,13 +10,10 @@ const profileStorage = multer.diskStorage({
     // Utiliser un chemin ABSOLU
     const uploadDir = path.resolve(process.cwd(), "uploads", "profiles");
 
-    console.log("📁 Destination profile:", uploadDir);
-
     // Créer le dossier récursivement s'il n'existe pas
     try {
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
-        console.log("✅ Dossier profiles créé:", uploadDir);
       }
       cb(null, uploadDir);
     } catch (error) {
@@ -28,7 +25,7 @@ const profileStorage = multer.diskStorage({
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const filename =
       "profile-" + uniqueSuffix + path.extname(file.originalname);
-    console.log("📸 Fichier profile généré:", filename);
+
     cb(null, filename);
   },
 });
@@ -39,13 +36,10 @@ const importStorage = multer.diskStorage({
     // Utiliser un chemin ABSOLU
     const uploadDir = path.resolve(process.cwd(), "uploads", "imports");
 
-    console.log("📁 Destination import:", uploadDir);
-
     // Créer le dossier récursivement s'il n'existe pas
     try {
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
-        console.log("✅ Dossier imports créé:", uploadDir);
       }
       cb(null, uploadDir);
     } catch (error) {
@@ -61,7 +55,7 @@ const importStorage = multer.diskStorage({
 
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const filename = baseName + "-" + uniqueSuffix + extension;
-    console.log("📄 Fichier import généré:", filename);
+
     cb(null, filename);
   },
 });
@@ -85,10 +79,8 @@ const fileFilter = (
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
-    console.log("✅ Type accepté");
     cb(null, true);
   } else {
-    console.log("❌ Type refusé:", file.mimetype);
     cb(new Error("Type de fichier non supporté: " + file.mimetype));
   }
 };
@@ -111,10 +103,12 @@ export const uploadImport = multer({
 
 // Middleware de debug pour voir les fichiers uploadés
 export const logUpload = (req: Request, res: Response, next: NextFunction) => {
-  console.log("=== UPLOAD DEBUG ===");
-  console.log("Body:", req.body);
-  console.log("File:", req.file);
-  console.log("Files:", req.files);
-  console.log("====================");
+  console.log("🔄 === MIDDLEWARE MULTER DEBUG ===");
+  console.log("📦 Headers:", req.headers);
+  console.log("📋 Content-Type:", req.headers["content-type"]);
+  console.log("📁 Fichiers dans req.files:", req.files);
+  console.log("📄 Fichier dans req.file:", req.file);
+  console.log("📝 Corps de la requête:", req.body);
+  console.log("================================");
   next();
 };

@@ -17,6 +17,7 @@ import {
   RotateCcw,
   FileText,
   Copy,
+  Upload, // AJOUT
 } from "lucide-react";
 import { Button } from "./ui/button";
 import {
@@ -65,6 +66,7 @@ import { Progress } from "./ui/progress";
 import { Separator } from "./ui/separator";
 import { cn } from "@/lib/utils";
 import { AssignmentCopyWizard } from "./AssignmentCopyWizard";
+import { AssignmentImportWizard } from "./AssignmentImportWizard"; // AJOUT
 
 const CourseListItem = ({
   ue,
@@ -97,7 +99,7 @@ const CourseListItem = ({
   };
 
   return (
-    <div className="flex items-center justify-between p-4 border rounded-lg bg-card hover:shadow-md transition-all">
+    <div className="flex items-center justify-between p-2 border rounded-lg bg-card hover:shadow-md transition-all">
       <div className="flex items-center gap-4 flex-1">
         <div
           className={cn(
@@ -118,7 +120,7 @@ const CourseListItem = ({
             </Badge>
           </div>
 
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          {/* <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <FileText className="h-3 w-3" />
               {ue.credits} crédits
@@ -133,16 +135,16 @@ const CourseListItem = ({
             <Badge variant="outline">
               {session === "S1" ? "Session I" : "Session II"}
             </Badge>
-          </div>
+          </div> */}
 
-          {ue.professor && (
+          {/* {ue.professor && (
             <div className="flex items-center gap-2 mt-2">
               <UserCheck className="h-3 w-3 text-green-600" />
               <span className="text-sm text-green-600 font-medium">
                 {ue.professor.firstName} {ue.professor.lastName}
               </span>
             </div>
-          )}
+          )} */}
         </div>
       </div>
 
@@ -201,7 +203,7 @@ export const CourseAssignmentManager = () => {
   const { faculties, fetchFaculties } = useFacultyStore();
   const { academicYears, fetchAcademicYears } = useAcademicYearStore();
   const { professors, fetchProfessors } = useProfessorStore();
-  const { ues: allUes, fetchUEs } = useUEStore();
+  const { ues: allUes, fetchUEs, getAllUEs } = useUEStore();
   const { fetchEnrollments } = useEnrollmentStore();
 
   const [filters, setFilters] = useState({
@@ -236,15 +238,33 @@ export const CourseAssignmentManager = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isCopyWizardOpen, setIsCopyWizardOpen] = useState(false);
+  const [availableUes, setAvailableUes] = useState<any[]>([]);
 
-  // Initialisation
+  // AJOUT: États pour l'importation Excel
+  const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
+
+  // Initialisation - CORRIGÉ
   useEffect(() => {
-    // console.log("🚀 Initialisation du composant");
-    fetchFaculties();
-    fetchAcademicYears();
-    fetchProfessors();
-    fetchUEs();
-  }, []);
+    console.log("🚀 Initialisation du composant");
+    const initializeData = async () => {
+      try {
+        await Promise.all([
+          fetchFaculties(),
+          fetchAcademicYears(),
+          fetchProfessors(),
+        ]);
+
+        // Utilisez getAllUEs au lieu de fetchUEs
+        const allUEsData = await getAllUEs();
+        setAvailableUes(allUEsData || []);
+        console.log("✅ Toutes les UEs chargées:", allUEsData?.length);
+      } catch (error) {
+        console.error("❌ Erreur lors de l'initialisation:", error);
+      }
+    };
+
+    initializeData();
+  }, [fetchFaculties, fetchAcademicYears, fetchProfessors, fetchUEs]);
 
   useEffect(() => {
     if (faculties.length > 0 && academicYears.length > 0 && !isInitialized) {
@@ -254,11 +274,11 @@ export const CourseAssignmentManager = () => {
         faculties.find((f) => f.status === "Active") || faculties[0];
 
       if (defaultFaculty && currentAcademicYear) {
-        // console.log(
-        //   "🎯 Initialisation des filtres:",
-        //   defaultFaculty.name,
-        //   currentAcademicYear.year
-        // );
+        console.log(
+          "🎯 Initialisation des filtres:",
+          defaultFaculty.name,
+          currentAcademicYear.year
+        );
         setFilters((prev) => ({
           ...prev,
           facultyId: defaultFaculty.id,
@@ -292,14 +312,12 @@ export const CourseAssignmentManager = () => {
             filters.level,
             filters.academicYearId,
             "S1"
-            // forceRefresh
           ),
           fetchAssignmentsByFaculty(
             filters.facultyId,
             filters.level,
             filters.academicYearId,
             "S2"
-            // forceRefresh
           ),
         ]);
 
@@ -317,13 +335,12 @@ export const CourseAssignmentManager = () => {
 
   const fetchUeData = async (forceRefresh = false) => {
     if (filters.facultyId && filters.level) {
-      // console.log("📚 Chargement des UEs...");
+      console.log("📚 Chargement des UEs...");
       const uesData = await fetchUeByFacultyAndLevel(
         filters.facultyId,
         filters.level
-        // forceRefresh
       );
-      // console.log("✅ UEs chargées:", uesData?.length);
+      console.log("✅ UEs chargées:", uesData?.length);
       setUes(uesData || []);
     }
   };
@@ -417,7 +434,6 @@ export const CourseAssignmentManager = () => {
           professeurId: formData.professorId,
           academicYearId: formData.academicYearId,
           semester: formData.semester,
-          // On peut aussi modifier d'autres champs si besoin
         });
 
         toast({
@@ -465,7 +481,6 @@ export const CourseAssignmentManager = () => {
         professor: assignment.professeur,
         assignmentId: assignment.id,
         assignmentData: assignment,
-        // Assurer que les propriétés de base existent
         id: assignment.ue?.id || assignment.ueId,
         title: assignment.ue?.title || "Titre inconnu",
         code: assignment.ue?.code || "Code inconnu",
@@ -473,11 +488,12 @@ export const CourseAssignmentManager = () => {
         type: assignment.ue?.type || "Obligatoire",
       };
 
-      // console.log("📋 UE data:", ueData);
       return ueData;
     });
   };
-  const filteredUes = allUes.filter(
+
+  // CORRECTION: Utilisez availableUes au lieu de allUes
+  const filteredUes = availableUes.filter(
     (ue) =>
       ue.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ue.code.toLowerCase().includes(searchTerm.toLowerCase())
@@ -540,18 +556,29 @@ export const CourseAssignmentManager = () => {
             </p>
           </div>
 
-          <Button onClick={handleOpenNewAssignmentForm} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Nouvelle affectation
-          </Button>
-          <Button
-            onClick={() => setIsCopyWizardOpen(true)}
-            variant="outline"
-            className="gap-2"
-          >
-            <Copy className="h-4 w-4" />
-            Copier les affectations
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={handleOpenNewAssignmentForm} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Nouvelle affectation
+            </Button>
+            <Button
+              onClick={() => setIsCopyWizardOpen(true)}
+              variant="outline"
+              className="gap-2"
+            >
+              <Copy className="h-4 w-4" />
+              Copier les affectations
+            </Button>
+            {/* AJOUT: Bouton d'importation Excel */}
+            <Button
+              onClick={() => setIsImportWizardOpen(true)}
+              variant="outline"
+              className="gap-2"
+            >
+              <Upload className="h-4 w-4" />
+              Importer Excel
+            </Button>
+          </div>
         </div>
 
         {/* Filtres */}
@@ -1096,10 +1123,17 @@ export const CourseAssignmentManager = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Wizards */}
         <AssignmentCopyWizard
           isOpen={isCopyWizardOpen}
           onClose={() => setIsCopyWizardOpen(false)}
           currentFilters={filters}
+        />
+
+        {/* AJOUT: Wizard d'importation Excel */}
+        <AssignmentImportWizard
+          isOpen={isImportWizardOpen}
+          onClose={() => setIsImportWizardOpen(false)}
         />
       </div>
     </div>

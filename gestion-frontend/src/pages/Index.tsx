@@ -29,8 +29,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { SearchResults } from "../components/SearchResults";
-import { NotificationPanel } from "../components/NotificationPanel";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useLocation } from "react-router-dom";
 import { SettingsPage } from "./SettingsPage";
@@ -38,19 +36,12 @@ import { SettingsPage } from "./SettingsPage";
 import { StudentsManager } from "../components/StudentsManager";
 import { CoursesManager } from "../components/CoursesManager";
 import { GradesBulkEditor } from "../components/grades/GradesBulkEditor";
-import { RetakesManager } from "../components/RetakesManager";
-import { RetakeScheduler } from "../components/RetakeScheduler";
 import { UsersManager } from "../components/UsersManager";
 import { FacultiesManager } from "../components/FacultiesManager";
 import { GuardiansManager } from "../components/GuardiansManager";
 import { Dashboard } from "../components/Dashboard";
-import { ScheduleManager } from "../components/ScheduleManager";
 import { AttendanceManager } from "../components/AttendanceManager";
 import { PaymentManager } from "../components/PaymentManager";
-import { LibraryManager } from "../components/LibraryManager";
-import { MessagingSystem } from "../components/MessagingSystem";
-import { EventManager } from "../components/EventManager";
-import { AnnouncementSystem } from "../components/AnnouncementSystem";
 import { AnalyticsDashboard } from "../components/AnalyticsDashboard";
 import { StudentCardGenerator } from "../components/StudentCardGenerator";
 import { TranscriptGenerator } from "../components/TranscriptGenerator";
@@ -69,6 +60,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { DeanGradesView } from "@/components/GradesManager";
+import { SearchResults } from "@/components/SearchResults";
 // import { AdminGradesManager } from "@/components/GradesManager";
 
 type ActiveTab =
@@ -79,22 +71,13 @@ type ActiveTab =
   | "professeurs"
   | "grades"
   | "bulk-grades"
-  | "retakes"
-  | "scheduler"
   | "users"
+  | "retakes"
   | "faculties"
   | "guardians"
-  | "schedules"
-  | "attendance"
   | "payments"
   | "expenses"
-  | "library"
-  | "messaging"
-  | "events"
-  | "announcements"
   | "analytics"
-  | "scholarships"
-  | "rooms"
   | "student-cards"
   | "transcripts"
   | "login"
@@ -344,18 +327,7 @@ const Index = () => {
         ) : (
           <UnauthorizedView />
         );
-      case "schedules":
-        return hasPermission("view_schedules") ? (
-          <ScheduleManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "attendance":
-        return hasPermission("manage_attendance") ? (
-          <AttendanceManager />
-        ) : (
-          <UnauthorizedView />
-        );
+
       case "payments":
         return hasPermission("view_payments") ? (
           <PaymentManager />
@@ -365,36 +337,6 @@ const Index = () => {
       case "expenses":
         return hasPermission("view_expenses") ? (
           <ExpenseManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "library":
-        return hasPermission("view_library") ? (
-          <LibraryManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "messaging":
-        return hasPermission("use_messaging") ? (
-          <MessagingSystem />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "events":
-        return hasPermission("manage_events") ? (
-          <EventManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "announcements":
-        return hasPermission("manage_announcements") ? (
-          <AnnouncementSystem />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "analytics":
-        return hasPermission("view_analytics") ? (
-          <AnalyticsDashboard />
         ) : (
           <UnauthorizedView />
         );
@@ -413,32 +355,6 @@ const Index = () => {
       case "fees":
         return hasPermission("manage_fees") ? (
           <FeeStructureManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "scholarships":
-        return hasPermission("manage_scholarships") ? (
-          <div className="p-4 md:p-6">
-            <h1 className="text-2xl font-bold text-foreground mb-4">
-              Gestion des Bourses
-            </h1>
-            <p className="text-muted-foreground">
-              Module de gestion des bourses en développement...
-            </p>
-          </div>
-        ) : (
-          <UnauthorizedView />
-        );
-      case "rooms":
-        return hasPermission("manage_rooms") ? (
-          <div className="p-4 md:p-6">
-            <h1 className="text-2xl font-bold text-foreground mb-4">
-              Gestion des Salles
-            </h1>
-            <p className="text-muted-foreground">
-              Module de gestion des salles en développement...
-            </p>
-          </div>
         ) : (
           <UnauthorizedView />
         );
@@ -695,7 +611,7 @@ const Index = () => {
           {/* Actions côté droit - version desktop */}
           <div className="hidden md:flex items-center gap-2">
             {/* Notifications */}
-            {hasPermission("view_notifications") && (
+            {/* {hasPermission("view_notifications") && (
               <div className="relative" ref={notificationRef}>
                 <Button
                   variant="ghost"
@@ -711,12 +627,8 @@ const Index = () => {
                     3
                   </Badge>
                 </Button>
-                <NotificationPanel
-                  isOpen={showNotifications}
-                  onClose={() => setShowNotifications(false)}
-                />
               </div>
-            )}
+            )} */}
 
             {/* Thème */}
             <Button
@@ -881,13 +793,6 @@ const Index = () => {
           {renderContent()}
         </main>
       </div>
-
-      {/* Modal components */}
-      <RetakeScheduler
-        isOpen={isSchedulerOpen}
-        onClose={handleCloseScheduler}
-        selectedStudentId={selectedStudentId}
-      />
     </div>
   );
 };

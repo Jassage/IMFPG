@@ -1,9 +1,8 @@
-// src/controllers/uEController.ts
 import { Request, Response } from "express";
-import prisma from "../prisma"; // Assurez-vous que ce chemin est correct
+import prisma from "../prisma";
 import { createAuditLog } from "./auditController";
+import * as fs from "fs";
 
-// Fonction utilitaire pour gérer les erreurs unknown
 const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message;
@@ -16,6 +15,7 @@ const getErrorMessage = (error: unknown): string => {
   }
 };
 
+// src/controllers/uEController.ts
 export const getUEs = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -24,128 +24,128 @@ export const getUEs = async (req: Request, res: Response) => {
   };
 
   try {
-    const { type, search, page = "1", limit = "10" } = req.query;
+    const { type, search, inCatalog } = req.query;
 
     console.log("🔍 Récupération UEs avec params:", {
       type,
       search,
-      page,
-      limit,
+      inCatalog,
     });
 
     const where: any = {};
-    const skip = (Number(page) - 1) * Number(limit);
-    const take = Number(limit);
 
+    // Filtre par type
     if (type && type !== "all") {
       where.type = type;
     }
 
-    if (search) {
+    // Filtre par catalogue
+    if (inCatalog !== undefined) {
+      where.inCatalog = inCatalog === "true";
+    }
+
+    // Filtre de recherche - CORRECTION : Enlever le mode
+    if (search && search !== "") {
       where.OR = [
-        { code: { contains: search as string, mode: "insensitive" } },
-        { title: { contains: search as string, mode: "insensitive" } },
-        { description: { contains: search as string, mode: "insensitive" } },
+        { code: { contains: search as string } },
+        { title: { contains: search as string } },
+        { description: { contains: search as string } },
       ];
     }
 
-    console.log("📋 Filtre WHERE:", where);
+    console.log("📋 Filtre WHERE:", JSON.stringify(where, null, 2));
 
-    const [ues, total] = await Promise.all([
-      prisma.ue.findMany({
-        where,
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
+    const ues = await prisma.ue.findMany({
+      where,
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
           },
-          prerequisites: {
-            include: {
-              prerequisite: {
-                select: {
-                  id: true,
-                  code: true,
-                  title: true,
-                },
-              },
-            },
-          },
-          requiredFor: {
-            include: {
-              ue: {
-                select: {
-                  id: true,
-                  code: true,
-                  title: true,
-                },
-              },
-            },
-          },
-          assignments: {
-            include: {
-              professeur: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                },
-              },
-              faculty: {
-                select: {
-                  id: true,
-                  name: true,
-                  code: true,
-                },
+        },
+        prerequisites: {
+          include: {
+            prerequisite: {
+              select: {
+                id: true,
+                code: true,
+                title: true,
               },
             },
           },
         },
-        orderBy: {
-          code: "asc",
+        requiredFor: {
+          include: {
+            ue: {
+              select: {
+                id: true,
+                code: true,
+                title: true,
+              },
+            },
+          },
         },
-        skip,
-        take,
-      }),
-      prisma.ue.count({ where }),
-    ]);
+        assignments: {
+          include: {
+            professeur: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            faculty: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        code: "asc",
+      },
+    });
 
-    console.log(`✅ ${ues.length} cours récupérées sur ${total} total`);
+    console.log(`✅ ${ues.length} cours récupérées`);
 
-    // Log de consultation réussie
     await createAuditLog({
       ...auditData,
       action: "GET_UES_LIST",
       entity: "UE",
-      description: `Consultation de la liste des cours - ${ues.length} cours trouvées sur ${total}`,
+      description: `Consultation de la liste des cours - ${ues.length} cours trouvées`,
       status: "SUCCESS",
     });
 
-    res.json({
-      ues,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / Number(limit)),
-      },
-    });
+    res.json(ues);
   } catch (error: any) {
     console.error("❌ Erreur récupération UEs:", error);
-    console.error("❌ Stack:", error.stack);
 
-    // Log d'erreur
-    await createAuditLog({
-      ...auditData,
-      action: "GET_UES_LIST_ERROR",
-      entity: "UE",
-      description: "Erreur lors de la récupération de la liste des cours",
-      status: "ERROR",
-      errorMessage: error.message,
-    });
+    // CORRECTION : Limiter la longueur du message d'erreur
+    const errorMessage = getErrorMessage(error);
+    const truncatedErrorMessage =
+      errorMessage.length > 500
+        ? errorMessage.substring(0, 497) + "..."
+        : errorMessage;
+
+    // Log d'erreur avec message tronqué
+    try {
+      await createAuditLog({
+        ...auditData,
+        action: "GET_UES_LIST_ERROR",
+        entity: "UE",
+        description: "Erreur lors de la récupération de la liste des cours",
+        status: "ERROR",
+        errorMessage: truncatedErrorMessage,
+      });
+    } catch (auditError) {
+      console.error("❌ Erreur création audit log:", auditError);
+    }
 
     res.status(500).json({
       message: "Erreur lors de la récupération des cours",
@@ -153,7 +153,6 @@ export const getUEs = async (req: Request, res: Response) => {
     });
   }
 };
-
 export const createUE = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -1179,5 +1178,638 @@ export const searchUEs = async (req: Request, res: Response) => {
       message: "Erreur interne du serveur",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
+  }
+};
+
+// src/controllers/uEController.ts
+import * as XLSX from "xlsx";
+
+// ==================== IMPORTATION DES UEs ====================
+export const importUEs = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).user?.id || "unknown",
+  };
+
+  console.log(
+    "🔄 Début importation UEs - Fichier reçu:",
+    req.file?.originalname
+  );
+
+  if (!req.file) {
+    console.log("❌ Aucun fichier fourni");
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_UES_ATTEMPT",
+      entity: "UE",
+      description: "Tentative d'importation des UEs - aucun fichier fourni",
+      status: "ERROR",
+    });
+
+    return res.status(400).json({
+      message: "Aucun fichier fourni",
+    });
+  }
+
+  let filePath: string | null = req.file.path;
+
+  try {
+    const { createdById } = req.body;
+
+    if (!createdById) {
+      return res.status(400).json({
+        message: "L'ID de l'utilisateur créateur est requis",
+      });
+    }
+
+    // Vérifier que l'utilisateur existe
+    const user = await prisma.user.findUnique({
+      where: { id: createdById },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message: "Utilisateur non trouvé",
+      });
+    }
+
+    let uesData: any[] = [];
+
+    console.log("📊 Lecture du fichier UEs...", {
+      name: req.file.originalname,
+      type: req.file.mimetype,
+      size: req.file.size,
+    });
+
+    // Log de début d'importation
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_UES_START",
+      entity: "UE",
+      description: "Début de l'importation des UEs",
+      status: "SUCCESS",
+      metadata: {
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+      },
+    });
+
+    // Lire le fichier
+    if (
+      req.file.mimetype.includes("excel") ||
+      req.file.mimetype.includes("spreadsheet") ||
+      req.file.originalname.match(/\.(xlsx|xls)$/i)
+    ) {
+      console.log("📗 Fichier Excel détecté");
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      console.log("📋 Feuille trouvée:", sheetName);
+
+      const worksheet = workbook.Sheets[sheetName];
+      uesData = XLSX.utils.sheet_to_json(worksheet);
+      console.log("📊 Données brutes extraites:", uesData.length, "lignes");
+
+      // Afficher les premières lignes pour debug
+      if (uesData.length > 0) {
+        console.log("📝 Première ligne:", uesData[0]);
+        console.log("📝 En-têtes:", Object.keys(uesData[0]));
+      }
+    } else if (
+      req.file.mimetype.includes("json") ||
+      req.file.originalname.match(/\.json$/i)
+    ) {
+      console.log("📘 Fichier JSON détecté");
+      const fileContent = await fs.promises.readFile(filePath, "utf-8");
+      uesData = JSON.parse(fileContent);
+    } else {
+      await safeDeleteFile(filePath);
+      console.log("❌ Format non supporté:", req.file.mimetype);
+
+      await createAuditLog({
+        ...auditData,
+        action: "IMPORT_UES_ERROR",
+        entity: "UE",
+        description: "Format de fichier non supporté pour l'importation",
+        status: "ERROR",
+        metadata: { mimeType: req.file.mimetype },
+      });
+
+      return res.status(400).json({
+        message:
+          "Format de fichier non supporté. Utilisez Excel (.xlsx, .xls) ou JSON",
+      });
+    }
+
+    // VÉRIFICATION CRITIQUE : Structure des données
+    console.log("🔍 Vérification structure données UEs...");
+    if (uesData.length === 0) {
+      throw new Error("Aucune donnée trouvée dans le fichier");
+    }
+
+    const firstRow = uesData[0];
+    const availableColumns = Object.keys(firstRow);
+    console.log("📝 Colonnes disponibles:", availableColumns);
+
+    // Vérifier la présence des colonnes requises
+    const requiredFields = [
+      "code",
+      "intitule",
+      "credits",
+      "type",
+      "notePassage",
+    ];
+    const missingFields = requiredFields.filter((field) => !firstRow[field]);
+
+    if (missingFields.length > 0) {
+      console.log("❌ Champs manquants:", missingFields);
+      throw new Error(
+        `Champs obligatoires manquants: ${missingFields.join(", ")}. Colonnes disponibles: ${availableColumns.join(", ")}`
+      );
+    }
+
+    console.log("✅ Structure des données validée");
+
+    const results = {
+      success: 0,
+      errors: 0,
+      details: [] as any[],
+    };
+
+    // Vérifier les codes existants
+    const existingCodes = await prisma.ue.findMany({
+      where: {
+        code: {
+          in: uesData.map((ue: any) => ue.code).filter(Boolean),
+        },
+      },
+      select: {
+        id: true,
+        code: true,
+        title: true,
+      },
+    });
+
+    const existingCodesMap = new Map(existingCodes.map((ue) => [ue.code, ue]));
+
+    console.log(
+      "📊 Codes existants trouvés:",
+      Array.from(existingCodesMap.keys())
+    );
+
+    // Traiter chaque UE
+    for (const [index, ueData] of uesData.entries()) {
+      try {
+        console.log(`\n--- Traitement UE ligne ${index + 1} ---`);
+
+        // Nettoyer et valider les données
+        const processedData = {
+          code: String(ueData.code).trim().toUpperCase(),
+          intitule: String(ueData.intitule).trim(),
+          credits: Number(ueData.credits),
+          type: String(ueData.type).trim(),
+          notePassage: ueData.notePassage ? Number(ueData.notePassage) : 60,
+          description: ueData.description
+            ? String(ueData.description).trim()
+            : null,
+        };
+
+        // Validation des données
+        const errors: string[] = [];
+
+        if (!processedData.code || processedData.code.length < 2) {
+          errors.push("Code UE invalide (min 2 caractères)");
+        }
+
+        if (!processedData.intitule || processedData.intitule.length < 5) {
+          errors.push("Intitulé invalide (min 5 caractères)");
+        }
+
+        if (
+          !processedData.credits ||
+          processedData.credits < 1 ||
+          processedData.credits > 30
+        ) {
+          errors.push("Crédits invalides (1-30)");
+        }
+
+        if (!["Obligatoire", "Optionnelle"].includes(processedData.type)) {
+          errors.push("Type invalide (Obligatoire ou Optionnelle)");
+        }
+
+        if (processedData.notePassage < 0 || processedData.notePassage > 100) {
+          errors.push("Note de passage invalide (0-100)");
+        }
+
+        if (errors.length > 0) {
+          throw new Error(errors.join(", "));
+        }
+
+        // Vérifier si l'UE existe déjà
+        const existingUE = existingCodesMap.get(processedData.code);
+        if (existingUE) {
+          throw new Error(
+            `UE avec le code "${processedData.code}" existe déjà`
+          );
+        }
+
+        console.log(
+          `➕ Création UE: ${processedData.code} - ${processedData.intitule}`
+        );
+
+        // Créer l'UE
+        const newUE = await prisma.ue.create({
+          data: {
+            code: processedData.code,
+            title: processedData.intitule,
+            credits: processedData.credits,
+            type: processedData.type as "Obligatoire" | "Optionnelle",
+            passingGrade: processedData.notePassage,
+            description: processedData.description,
+            createdById: createdById,
+          },
+        });
+
+        console.log("✅ UE créée avec ID:", newUE.id);
+
+        results.success++;
+        results.details.push({
+          index: index + 1,
+          code: processedData.code,
+          intitule: processedData.intitule,
+          status: "success",
+          message: "UE créée avec succès",
+          ueId: newUE.id,
+        });
+      } catch (error: unknown) {
+        const errorMessage = getErrorMessage(error);
+        console.error(`❌ Erreur ligne ${index + 1}:`, errorMessage);
+        results.errors++;
+        results.details.push({
+          index: index + 1,
+          code: ueData.code || "N/A",
+          intitule: ueData.intitule || "N/A",
+          status: "error",
+          message: errorMessage,
+          data: ueData,
+        });
+      }
+    }
+
+    // Supprimer le fichier après traitement
+    if (filePath) {
+      await safeDeleteFile(filePath);
+      filePath = null;
+    }
+
+    console.log(
+      "🎉 Import UEs terminé:",
+      results.success,
+      "succès,",
+      results.errors,
+      "erreurs"
+    );
+
+    // Log de fin d'importation
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_UES_COMPLETE",
+      entity: "UE",
+      description: "Importation des UEs terminée",
+      status: "SUCCESS",
+      metadata: {
+        total: uesData.length,
+        success: results.success,
+        errors: results.errors,
+        successRate: `${((results.success / uesData.length) * 100).toFixed(2)}%`,
+      },
+    });
+
+    res.json({
+      message: `Import terminé: ${results.success} succès, ${results.errors} erreurs`,
+      summary: {
+        total: uesData.length,
+        success: results.success,
+        errors: results.errors,
+        successRate: `${((results.success / uesData.length) * 100).toFixed(2)}%`,
+      },
+      results: results.details,
+    });
+  } catch (error: unknown) {
+    console.error("❌ ERREUR DÉTAILLÉE importation UEs:", error);
+
+    // Nettoyer le fichier en cas d'erreur
+    if (filePath) {
+      await safeDeleteFile(filePath);
+    }
+
+    const errorMessage = getErrorMessage(error);
+
+    // Log d'erreur d'importation
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_UES_ERROR",
+      entity: "UE",
+      description: "Erreur lors de l'importation des UEs",
+      status: "ERROR",
+      errorMessage: errorMessage,
+      metadata: {
+        fileName: req.file?.originalname,
+        fileSize: req.file?.size,
+      },
+    });
+
+    res.status(400).json({
+      message: "Erreur lors de l'importation",
+      error: errorMessage,
+      details:
+        process.env.NODE_ENV === "development"
+          ? {
+              stack: error instanceof Error ? error.stack : undefined,
+              file: req.file
+                ? {
+                    name: req.file.originalname,
+                    size: req.file.size,
+                    type: req.file.mimetype,
+                  }
+                : undefined,
+            }
+          : undefined,
+    });
+  }
+};
+
+// ==================== EXPORTATION DES UEs ====================
+export const exportUEs = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).user?.id || "unknown",
+  };
+
+  try {
+    // Récupérer toutes les UEs
+    const ues = await prisma.ue.findMany({
+      include: {
+        createdBy: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+      orderBy: {
+        code: "asc",
+      },
+    });
+
+    // Préparer les données pour l'exportation
+    const exportData = ues.map((ue) => ({
+      code: ue.code,
+      intitule: ue.title,
+      credits: ue.credits,
+      type: ue.type,
+      notePassage: ue.passingGrade,
+      description: ue.description || "",
+    }));
+
+    // Log de début d'exportation
+    await createAuditLog({
+      ...auditData,
+      action: "EXPORT_UES_START",
+      entity: "UE",
+      description: "Début de l'exportation des UEs",
+      status: "SUCCESS",
+      metadata: {
+        uesCount: ues.length,
+      },
+    });
+
+    // Créer le fichier Excel
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "UEs");
+
+    // Ajouter une feuille d'instructions
+    const instructions = [
+      {
+        Champ: "code",
+        Description: "Code unique de l'UE (obligatoire)",
+        Exemple: "INFO101",
+      },
+      {
+        Champ: "intitule",
+        Description: "Intitulé complet de l'UE (obligatoire)",
+        Exemple: "Introduction à la Programmation",
+      },
+      {
+        Champ: "credits",
+        Description: "Nombre de crédits ECTS (obligatoire)",
+        Exemple: "6",
+      },
+      {
+        Champ: "type",
+        Description: "Type: Obligatoire ou Optionnelle (obligatoire)",
+        Exemple: "Obligatoire",
+      },
+      {
+        Champ: "notePassage",
+        Description: "Note de passage (0-100, défaut: 60)",
+        Exemple: "60",
+      },
+      {
+        Champ: "description",
+        Description: "Description de l'UE (optionnel)",
+        Exemple: "Cours d'introduction aux concepts de base",
+      },
+    ];
+
+    const instructionSheet = XLSX.utils.json_to_sheet(instructions);
+    XLSX.utils.book_append_sheet(workbook, instructionSheet, "Instructions");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    // Log d'exportation réussie
+    await createAuditLog({
+      ...auditData,
+      action: "EXPORT_UES_SUCCESS",
+      entity: "UE",
+      description: "Exportation des UEs terminée avec succès",
+      status: "SUCCESS",
+      metadata: {
+        uesExported: ues.length,
+        fileFormat: "Excel",
+      },
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=ues-export-${new Date().toISOString().split("T")[0]}.xlsx`
+    );
+
+    res.send(buffer);
+  } catch (error: unknown) {
+    console.error("❌ Erreur export UEs:", error);
+
+    const errorMessage = getErrorMessage(error);
+
+    // Log d'erreur d'exportation
+    await createAuditLog({
+      ...auditData,
+      action: "EXPORT_UES_ERROR",
+      entity: "UE",
+      description: "Erreur lors de l'exportation des UEs",
+      status: "ERROR",
+      errorMessage: errorMessage,
+    });
+
+    res.status(500).json({
+      message: "Erreur lors de l'exportation: " + errorMessage,
+    });
+  }
+};
+
+// ==================== TEMPLATE D'IMPORTATION ====================
+export const downloadUEImportTemplate = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).user?.id || "unknown",
+  };
+
+  try {
+    const templateData = [
+      {
+        code: "INFO101",
+        intitule: "Introduction à la Programmation",
+        credits: 6,
+        type: "Obligatoire",
+        notePassage: 60,
+        description:
+          "Cours d'introduction aux concepts de base de la programmation",
+      },
+      {
+        code: "MATH202",
+        intitule: "Mathématiques Avancées",
+        credits: 4,
+        type: "Optionnelle",
+        notePassage: 70,
+        description: "Cours de mathématiques pour l'informatique",
+      },
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "UEs");
+
+    // Ajouter une feuille d'instructions
+    const instructions = [
+      {
+        Champ: "code",
+        Description: "Code unique de l'UE",
+        Format: "Texte",
+        Obligatoire: "Oui",
+      },
+      {
+        Champ: "intitule",
+        Description: "Intitulé complet de l'UE",
+        Format: "Texte",
+        Obligatoire: "Oui",
+      },
+      {
+        Champ: "credits",
+        Description: "Nombre de crédits ECTS",
+        Format: "Nombre",
+        Obligatoire: "Oui",
+      },
+      {
+        Champ: "type",
+        Description: "Type de l'UE",
+        Format: "Obligatoire/Optionnelle",
+        Obligatoire: "Oui",
+      },
+      {
+        Champ: "notePassage",
+        Description: "Note minimale pour valider",
+        Format: "Nombre (0-100)",
+        Obligatoire: "Non",
+      },
+      {
+        Champ: "description",
+        Description: "Description de l'UE",
+        Format: "Texte",
+        Obligatoire: "Non",
+      },
+    ];
+
+    const instructionSheet = XLSX.utils.json_to_sheet(instructions);
+    XLSX.utils.book_append_sheet(workbook, instructionSheet, "Instructions");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    // Log de téléchargement du template
+    await createAuditLog({
+      ...auditData,
+      action: "DOWNLOAD_UE_TEMPLATE",
+      entity: "UE",
+      description: "Téléchargement du template d'importation des UEs",
+      status: "SUCCESS",
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=template-import-ues.xlsx"
+    );
+
+    res.send(buffer);
+  } catch (error: unknown) {
+    console.error("Erreur génération template UEs:", error);
+
+    const errorMessage = getErrorMessage(error);
+
+    // Log d'erreur
+    await createAuditLog({
+      ...auditData,
+      action: "DOWNLOAD_UE_TEMPLATE_ERROR",
+      entity: "UE",
+      description:
+        "Erreur lors de la génération du template d'importation des UEs",
+      status: "ERROR",
+      errorMessage: errorMessage,
+    });
+
+    res.status(500).json({
+      message: "Erreur lors de la génération du template",
+      error: process.env.NODE_ENV === "development" ? errorMessage : undefined,
+    });
+  }
+};
+
+// ==================== FONCTIONS UTILITAIRES ====================
+const safeDeleteFile = async (filePath: string | null) => {
+  if (!filePath) return;
+
+  try {
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+      console.log("🗑️ Fichier temporaire supprimé:", filePath);
+    }
+  } catch (error) {
+    console.error("❌ Erreur suppression fichier temporaire:", error);
   }
 };

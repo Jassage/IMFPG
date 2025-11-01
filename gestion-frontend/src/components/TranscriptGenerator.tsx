@@ -61,6 +61,8 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { DocumentConfig, DocumentData, DocumentType } from "@/types/academic";
 import { toast } from "sonner";
+import { useEnrollmentStore } from "@/store/enrollmentStore";
+import { se } from "date-fns/locale";
 
 // Configuration des documents disponibles
 const DOCUMENT_CONFIGS: Record<DocumentType, DocumentConfig> = {
@@ -71,13 +73,13 @@ const DOCUMENT_CONFIGS: Record<DocumentType, DocumentConfig> = {
     icon: <FileText className="h-5 w-5" />,
     requiredFields: ["grades", "academicYear", "faculty"],
   },
-  "grade-report": {
-    type: "grade-report",
-    title: "Relevé de Notes",
-    description: "Relevé officiel des notes obtenues",
-    icon: <BarChart3 className="h-5 w-5" />,
-    requiredFields: ["grades", "academicYear"],
-  },
+  // "grade-report": {
+  //   type: "grade-report",
+  //   title: "Relevé de Notes",
+  //   description: "Relevé officiel des notes obtenues",
+  //   icon: <BarChart3 className="h-5 w-5" />,
+  //   requiredFields: ["grades", "academicYear"],
+  // },
   "level-certificate": {
     type: "level-certificate",
     title: "Attestation de Niveau",
@@ -92,14 +94,16 @@ const DOCUMENT_CONFIGS: Record<DocumentType, DocumentConfig> = {
     icon: <GraduationCap className="h-5 w-5" />,
     requiredFields: ["grades", "level", "academicYear"],
   },
-  "diploma-certificate": {
-    type: "diploma-certificate",
-    title: "Certificat de Diplôme",
-    description: "Certificat officiel de délivrance du diplôme",
-    icon: <Award className="h-5 w-5" />,
-    requiredFields: ["grades", "level", "academicYear"],
-  },
+  // "diploma-certificate": {
+  //   type: "diploma-certificate",
+  //   title: "Certificat de Diplôme",
+  //   description: "Certificat officiel de délivrance du diplôme",
+  //   icon: <Award className="h-5 w-5" />,
+  //   requiredFields: ["grades", "level", "academicYear"],
+  // },
 };
+
+// Configuration des responsables par faculté
 
 // Interface pour les données de résumé
 interface SummaryData {
@@ -112,9 +116,16 @@ interface SummaryData {
 export const TranscriptGenerator = () => {
   const { students, fetchStudents } = useAcademicStore();
   const { grades, fetchGrades } = useGradeStore();
-  const { ues, fetchUEs } = useUEStore();
+  const { ues, getAllUEs } = useUEStore();
   const { academicYears, fetchAcademicYears } = useAcademicYearStore();
   const { faculties, fetchFaculties } = useFacultyStore();
+  const {
+    enrollmentDates,
+    datesLoading,
+    error,
+    calculateEnrollmentDates,
+    clearEnrollmentDates,
+  } = useEnrollmentStore();
 
   // États principaux
   const [selectedStudent, setSelectedStudent] = useState<string>("");
@@ -152,7 +163,7 @@ export const TranscriptGenerator = () => {
         await Promise.all([
           fetchStudents(),
           fetchGrades(),
-          fetchUEs(),
+          getAllUEs(),
           fetchAcademicYears(),
           fetchFaculties(),
         ]);
@@ -166,7 +177,16 @@ export const TranscriptGenerator = () => {
     };
     loadData();
   }, []);
+  useEffect(() => {
+    if (selectedStudent) {
+      calculateEnrollmentDates(selectedStudent);
+    }
 
+    // Nettoyer les dates quand le composant est démonté
+    return () => {
+      clearEnrollmentDates();
+    };
+  }, [selectedStudent, calculateEnrollmentDates, clearEnrollmentDates]);
   // Filtrage des étudiants
   const filteredStudents = useMemo(() => {
     if (!students || students.length === 0) return [];
@@ -398,13 +418,13 @@ export const TranscriptGenerator = () => {
       red: [255, 0, 0] as [number, number, number],
       white: [255, 255, 255] as [number, number, number],
       lightGray: [240, 240, 240] as [number, number, number],
-      watermark: [200, 200, 200] as [number, number, number],
+      watermark: [100, 100, 100] as [number, number, number],
     },
     margins: {
       left: 10,
       right: 10,
-      top: 20,
-      bottom: 30,
+      top: 15,
+      bottom: 20,
     },
     font: {
       family: "Times New Roman",
@@ -418,10 +438,27 @@ export const TranscriptGenerator = () => {
       },
     },
     page: {
-      width: 210,
-      height: 297,
-      footerStart: 280,
+      width: 215,
+      height: 279.4,
+      footerStart: 260,
     },
+  };
+
+  // Fonction pour calculer les dates d'inscription
+  const calculateEnrollmentDates1 = async (studentId: string) => {
+    try {
+      // En attendant l'implémentation réelle, retourner des valeurs par défaut
+      return {
+        startDate: "janvier 2020",
+        endDate: "octobre 2025",
+      };
+    } catch (error) {
+      console.error("Erreur calcul dates inscription:", error);
+      return {
+        startDate: "janvier 2021",
+        endDate: "octobre 2025",
+      };
+    }
   };
 
   // Fonctions utilitaires
@@ -451,7 +488,7 @@ export const TranscriptGenerator = () => {
       await Promise.all([
         fetchStudents(),
         fetchGrades(),
-        fetchUEs(),
+        getAllUEs(),
         fetchAcademicYears(),
         fetchFaculties(),
       ]);
@@ -464,7 +501,7 @@ export const TranscriptGenerator = () => {
   }, [
     fetchStudents,
     fetchGrades,
-    fetchUEs,
+    getAllUEs,
     fetchAcademicYears,
     fetchFaculties,
   ]);
@@ -541,6 +578,9 @@ export const TranscriptGenerator = () => {
     doc.setLineWidth(0.5);
     doc.line(10, 36, 200, 36);
 
+    // IMPORTANT : Remettre la couleur du texte à noir pour le contenu suivant
+    doc.setTextColor(...colors.text);
+
     return 45;
   };
 
@@ -562,25 +602,25 @@ export const TranscriptGenerator = () => {
 
     // Encadré informations étudiant
     doc.setFillColor(...colors.lightGray);
-    doc.rect(15, startY + 7, 180, 25, "F");
+    doc.rect(15, startY + 7, 180, 21, "F");
     doc.setDrawColor(...colors.text);
-    doc.rect(15, startY + 7, 180, 25, "S");
+    doc.rect(15, startY + 7, 180, 21, "S");
 
-    doc.setFontSize(font.sizes.small);
-    doc.setFont(font.family, "normal");
+    doc.setFontSize(font.sizes.medium);
+    doc.setFont(font.family, "bold");
 
     // Informations gauche
     doc.text(
       `Étudiant: ${selectedStudentData?.firstName} ${selectedStudentData?.lastName}`,
       20,
-      startY + 15
+      startY + 12
     );
-    doc.text(`Matricule: ${selectedStudentData?.studentId}`, 20, startY + 20);
-    doc.text(`Faculté: ${facultyName}`, 20, startY + 25);
+    doc.text(`Matricule: ${selectedStudentData?.studentId}`, 20, startY + 17);
+    doc.text(`Faculté: ${facultyName}`, 20, startY + 23);
 
     // Informations droite
-    doc.text(`Niveau: ${filters.level}`, 110, startY + 15);
-    doc.text(`Année: ${academicYear}`, 110, startY + 20);
+    doc.text(`Niveau: ${filters.level}`, 110, startY + 12);
+    doc.text(`Année: ${academicYear}`, 110, startY + 17);
     doc.text(
       `Semestre: ${
         filters.semester === "S1"
@@ -590,10 +630,10 @@ export const TranscriptGenerator = () => {
           : "1 et 2"
       }`,
       110,
-      startY + 25
+      startY + 23
     );
 
-    return startY + 35;
+    return startY + 30;
   };
 
   const getOldGrade = useCallback(
@@ -611,39 +651,34 @@ export const TranscriptGenerator = () => {
     [grades]
   );
 
-  const prepareTableData = (grades: any[]): any[] => {
+  const prepareTableData = (grades: any[], fontSize: number = 8): any[] => {
     const { colors } = PDF_CONFIG;
 
     return grades.map((grade, index) => {
       const ue = getUEDetails(grade.ueId);
-      const noteColor =
-        grade.grade < (ue?.passingGrade || 70) ? colors.red : colors.text;
 
-      // Ajouter "R" pour les reprises et afficher l'ancienne note
-      let noteDisplay = grade.grade.toFixed(2);
+      // Formater la note sans zéros inutiles après la virgule
+      const formatGrade = (gradeValue: number): string => {
+        if (gradeValue % 1 === 0) {
+          return gradeValue.toFixed(0);
+        } else {
+          return gradeValue.toFixed(2).replace(/\.?0+$/, "");
+        }
+      };
+
+      let noteDisplay = formatGrade(grade.grade);
       if (grade.session === "Reprise") {
-        const oldGrade = getOldGrade(
-          grade.studentId,
-          grade.ueId,
-          grade.semester
-        );
-        noteDisplay = oldGrade
-          ? `${grade.grade.toFixed(2)} R (${oldGrade.toFixed(2)})`
-          : `${grade.grade.toFixed(2)} R`;
+        noteDisplay = `${formatGrade(grade.grade)} R`; // Juste "R" pour reprise
       }
 
-      return [
-        (index + 1).toString(),
-        ue?.title || "Matière inconnue",
-        {
-          content: noteDisplay,
-          styles: {
-            textColor: noteColor as any,
-            fontStyle: "bold" as any,
-          },
-        },
-        "100",
-      ];
+      // Tronquer les noms de matières si nécessaire
+      let subjectName = ue?.title || "Matière inconnue";
+      const maxLength = fontSize <= 7 ? 45 : 50;
+      if (subjectName.length > maxLength) {
+        subjectName = subjectName.substring(0, maxLength - 3) + "...";
+      }
+
+      return [(index + 1).toString(), subjectName, noteDisplay];
     });
   };
 
@@ -663,125 +698,365 @@ export const TranscriptGenerator = () => {
     const { colors, font } = PDF_CONFIG;
     let currentY = startY;
 
-    currentY = checkPageBreak(doc, currentY, 100);
+    // Calculer le nombre total de matières
+    let totalSubjects = 0;
+    if (filters.semester === "all") {
+      totalSubjects = session1Grades.length + session2Grades.length;
+    } else {
+      totalSubjects = studentGrades.filter(
+        (grade) => grade.semester === filters.semester
+      ).length;
+    }
+
+    // Ajuster la configuration de police selon le nombre de matières
+    const getFontSizeConfig = (subjectCount: number) => {
+      if (subjectCount <= 12) {
+        return {
+          head: 12,
+          body: 11,
+          minCellHeight: 7,
+          cellPadding: 2,
+          lineWidth: 0.5,
+        };
+      } else if (subjectCount <= 20) {
+        return {
+          head: 11,
+          body: 10,
+          minCellHeight: 6,
+          cellPadding: 1.5,
+          lineWidth: 0.5,
+        };
+      } else {
+        return {
+          head: 9,
+          body: 9,
+          minCellHeight: 5,
+          cellPadding: 1.1,
+          lineWidth: 0.5,
+        };
+      }
+    };
+
+    const fontSizeConfig = getFontSizeConfig(totalSubjects);
+    currentY = checkPageBreak(doc, currentY, 120);
+
+    // Fonction pour formater les moyennes sans zéros inutiles
+    const formatAverage = (average: number): string => {
+      if (average % 1 === 0) {
+        return average.toFixed(0);
+      } else {
+        return average.toFixed(2).replace(/\.?0+$/, "");
+      }
+    };
 
     if (filters.semester === "all") {
-      const session1Data = prepareTableData(session1Grades);
-      const session2Data = prepareTableData(session2Grades);
+      const session1Data = prepareTableData(
+        session1Grades,
+        fontSizeConfig.body
+      );
+      const session2Data = prepareTableData(
+        session2Grades,
+        fontSizeConfig.body
+      );
 
-      // Titre Semestre 1
-      doc.setFontSize(font.sizes.medium);
+      // === SEMESTRE 1 - Tableau plus compact ===
+      doc.setFontSize(font.sizes.small);
       doc.setFont(font.family, "bold");
-      doc.text("SEMESTRE 1", 55, currentY + 2, { align: "center" });
+      doc.text("1er SEMESTRE", 55, currentY + 2, { align: "center" });
 
-      // Tableau Semestre 1
       autoTable(doc, {
-        startY: currentY + 5,
-        head: [["No", "Matières", "Notes", "Coefficient"]],
+        startY: currentY + 4,
+        head: [["No", "Matières", "Notes"]],
         body: session1Data,
         theme: "grid",
         headStyles: {
           fillColor: colors.primary,
           textColor: colors.white,
           fontStyle: "bold",
-          fontSize: 9,
+          fontSize: fontSizeConfig.head,
         },
-        bodyStyles: { fontSize: 8 },
+        bodyStyles: {
+          fontSize: fontSizeConfig.body,
+          minCellHeight: fontSizeConfig.minCellHeight,
+        },
         styles: {
-          fontSize: 8,
-          cellPadding: 2,
+          fontSize: fontSizeConfig.body,
+          cellPadding: fontSizeConfig.cellPadding,
           overflow: "linebreak",
+          lineWidth: fontSizeConfig.lineWidth,
         },
-        margin: { left: 10 },
-        tableWidth: 85,
+        margin: { left: 15 },
+        tableWidth: 95,
         columnStyles: {
-          0: { cellWidth: 10 },
-          1: { cellWidth: 40 },
-          2: { cellWidth: 15 },
-          3: { cellWidth: 20 },
+          0: { cellWidth: 8 },
+          1: { cellWidth: 62 },
+          2: {
+            cellWidth: 15,
+            fontStyle: "bold",
+          },
+        },
+        willDrawCell: (data: any) => {
+          if (data.section === "body" && data.column.index === 2) {
+            const rowIndex = data.row.index;
+            const grade = session1Grades[rowIndex];
+            const ue = getUEDetails(grade.ueId);
+
+            if (grade.grade < (ue?.passingGrade || 70)) {
+              doc.setTextColor(colors.red[0], colors.red[1], colors.red[2]);
+            } else {
+              doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+            }
+          }
+        },
+        didDrawCell: (data: any) => {
+          doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
         },
       });
 
-      const sem1FinalY = (doc as any).lastAutoTable.finalY;
+      let sem1FinalY = (doc as any).lastAutoTable.finalY;
 
-      // Titre Semestre 2
-      doc.setFontSize(font.sizes.medium);
+      // === SEMESTRE 2 - Tableau plus compact ===
+      doc.setFontSize(font.sizes.small);
       doc.setFont(font.family, "bold");
-      doc.text("SEMESTRE 2", 155, currentY + 2, { align: "center" });
+      doc.text("2e SEMESTRE", 155, currentY + 2, { align: "center" });
 
-      // Tableau Semestre 2
       autoTable(doc, {
-        startY: currentY + 5,
-        head: [["No", "Matières", "Notes", "Coefficient"]],
+        startY: currentY + 3,
+        head: [["No", "Matières", "Notes"]],
         body: session2Data,
         theme: "grid",
         headStyles: {
           fillColor: colors.primary,
           textColor: colors.white,
           fontStyle: "bold",
-          fontSize: 9,
+          fontSize: fontSizeConfig.head,
         },
-        bodyStyles: { fontSize: 8 },
+        bodyStyles: {
+          fontSize: fontSizeConfig.body,
+          minCellHeight: fontSizeConfig.minCellHeight,
+        },
         styles: {
-          fontSize: 8,
-          cellPadding: 2,
+          fontSize: fontSizeConfig.body,
+          cellPadding: fontSizeConfig.cellPadding,
           overflow: "linebreak",
+          lineWidth: fontSizeConfig.lineWidth,
         },
         margin: { left: 110 },
-        tableWidth: 85,
+        tableWidth: 95,
         columnStyles: {
-          0: { cellWidth: 10 },
-          1: { cellWidth: 40 },
-          2: { cellWidth: 15 },
-          3: { cellWidth: 20 },
+          0: { cellWidth: 8 },
+          1: { cellWidth: 62 },
+          2: {
+            cellWidth: 15,
+            fontStyle: "bold",
+          },
+        },
+        willDrawCell: (data: any) => {
+          if (data.section === "body" && data.column.index === 2) {
+            const rowIndex = data.row.index;
+            const grade = session2Grades[rowIndex];
+            const ue = getUEDetails(grade.ueId);
+
+            if (grade.grade < (ue?.passingGrade || 70)) {
+              doc.setTextColor(colors.red[0], colors.red[1], colors.red[2]);
+            } else {
+              doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+            }
+          }
+        },
+        didDrawCell: (data: any) => {
+          doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
         },
       });
 
-      const sem2FinalY = (doc as any).lastAutoTable.finalY;
-      currentY = Math.max(sem1FinalY, sem2FinalY) + 10;
+      let sem2FinalY = (doc as any).lastAutoTable.finalY;
+
+      // === TOTAUX COMPACTS ===
+      const totalsStartY = Math.max(sem1FinalY, sem2FinalY) + 8;
+
+      // Calculs des statistiques
+      const session1Stats = calculateSummaryData(session1Grades);
+      const session2Stats = calculateSummaryData(session2Grades);
+      const totalStats = calculateSummaryData(studentGrades);
+
+      // Ligne de séparation
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.2);
+      doc.line(15, totalsStartY, 195, totalsStartY);
+
+      // Totaux sur une seule ligne pour économiser l'espace
+      const totalY = totalsStartY + 8;
+
+      const legendsY = totalsStartY + 3;
+      doc.setFont(font.family, "bold");
+      doc.setFontSize(font.sizes.xsmall - 1);
+      // Légende pour "R" à gauche
+      doc.text("R: Repris", 20, legendsY);
+
+      // Légende pour la note de passage au centre
+      doc.text("Moyenne Acceptable: 70% ", 60, legendsY, { align: "center" });
+      doc.text("S1 :1er Semestre", 105, legendsY, { align: "center" });
+      doc.text("S2: 2e Semestre", 140, legendsY, { align: "center" });
+      doc.text("Pts : Points", 170, legendsY, { align: "center" });
+
+      doc.setFontSize(font.sizes.small);
+
+      // Semestre 1 - Format compact
+      doc.setFont(font.family, "bold");
+      doc.text("S1:", 20, totalY);
+      doc.setFont(font.family, "normal");
+
+      doc.text(`Pts:${formatAverage(session1Stats.totalNotes)}`, 30, totalY);
+      doc.text(`Moy:${formatAverage(session1Stats.moyenne)}%`, 50, totalY);
+
+      // Semestre 2 - Format compact
+      doc.setFont(font.family, "bold");
+      doc.text("S2:", 80, totalY);
+      doc.setFont(font.family, "normal");
+      doc.text(`Pts:${formatAverage(session2Stats.totalNotes)}`, 90, totalY);
+      doc.text(`Moy:${formatAverage(session2Stats.moyenne)}%`, 110, totalY);
+
+      // Total Annuel - Format compact
+      doc.setFont(font.family, "bold");
+
+      doc.setFont(font.family, "normal");
+      doc.text(
+        `TOTAL Pts:${formatAverage(totalStats.totalNotes)}`,
+        140,
+        totalY
+      );
+      doc.text(`Moy:${formatAverage(annualGPA)}%`, 175, totalY);
+
+      const signatureY = totalY + 20;
+
+      doc.text("___________________________________", 105, signatureY, {
+        align: "center",
+      });
+
+      doc.text("Vice recteur aux affaires academiques", 105, signatureY + 4, {
+        align: "center",
+      });
+
+      currentY = totalY + 12;
     } else {
+      // Un seul semestre - Optimisé pour l'espace
       const semesterGrades = studentGrades.filter(
         (grade) => grade.semester === filters.semester
       );
-      const tableData = prepareTableData(semesterGrades);
+      const tableData = prepareTableData(semesterGrades, fontSizeConfig.body);
 
       const semesterTitle =
         filters.semester === "S1" ? "SEMESTRE 1" : "SEMESTRE 2";
-      doc.setFontSize(font.sizes.medium);
+      doc.setFontSize(font.sizes.small);
       doc.setFont(font.family, "bold");
       doc.text(semesterTitle, 105, currentY + 2, { align: "center" });
 
+      // Ajuster la largeur des colonnes pour optimiser l'espace
+      const columnWidths =
+        totalSubjects > 20
+          ? { no: 12, matieres: 148, notes: 20 }
+          : { no: 15, matieres: 145, notes: 20 };
+
       autoTable(doc, {
-        startY: currentY + 5,
-        head: [["No", "Matières", "Notes", "Coefficient"]],
+        startY: currentY + 4,
+        head: [["No", "Matières", "Notes"]],
         body: tableData,
         theme: "grid",
         headStyles: {
           fillColor: colors.primary,
           textColor: colors.white,
           fontStyle: "bold",
-          fontSize: 10,
+          fontSize: fontSizeConfig.head,
         },
-        bodyStyles: { fontSize: 9 },
+        bodyStyles: {
+          fontSize: fontSizeConfig.body,
+          minCellHeight: fontSizeConfig.minCellHeight,
+        },
         styles: {
-          fontSize: 9,
-          cellPadding: 3,
+          fontSize: fontSizeConfig.body,
+          cellPadding: fontSizeConfig.cellPadding,
+          lineWidth: fontSizeConfig.lineWidth,
         },
-        margin: { left: 10, right: 10 },
+        margin: { left: 15, right: 10 },
+        tableWidth: 190,
         columnStyles: {
-          0: { cellWidth: 15 },
-          1: { cellWidth: 110 },
-          2: { cellWidth: 25 },
-          3: { cellWidth: 40 },
+          0: { cellWidth: columnWidths.no },
+          1: { cellWidth: columnWidths.matieres },
+          2: {
+            cellWidth: columnWidths.notes,
+            fontStyle: "bold",
+          },
+        },
+        willDrawCell: (data: any) => {
+          if (data.section === "body" && data.column.index === 2) {
+            const rowIndex = data.row.index;
+            const grade = semesterGrades[rowIndex];
+            const ue = getUEDetails(grade.ueId);
+
+            if (grade.grade < (ue?.passingGrade || 70)) {
+              doc.setTextColor(colors.red[0], colors.red[1], colors.red[2]);
+            } else {
+              doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+            }
+          }
+        },
+        didDrawCell: (data: any) => {
+          doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
         },
       });
 
-      currentY = (doc as any).lastAutoTable.finalY + 10;
+      let semesterFinalY = (doc as any).lastAutoTable.finalY;
+
+      // === TOTAUX COMPACTS POUR UN SEUL SEMESTRE ===
+      const totalsStartY = semesterFinalY + 6;
+      const semesterStats = calculateSummaryData(semesterGrades);
+
+      // Ligne de séparation
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.2);
+      doc.line(15, totalsStartY, 195, totalsStartY);
+      doc.setFontSize(font.sizes.xsmall);
+      doc.setFont(font.family, "bold");
+      doc.text("R: Repris", 80, totalsStartY + 3, { align: "center" });
+
+      // Légende pour la note de passage au centre
+      doc.text("  Moyenne Acceptable: 70%", 125, totalsStartY + 3, {
+        align: "center",
+      });
+
+      // Totaux sur une ligne
+      const totalY = totalsStartY + 10;
+
+      doc.setFontSize(font.sizes.medium);
+      doc.setFont(font.family, "bold");
+
+      doc.setFont(font.family, "normal");
+      doc.text(
+        `TOTAL Points: ${formatAverage(semesterStats.totalNotes)}`,
+        110,
+        totalY
+      );
+      doc.text(
+        `Moyenne: ${formatAverage(semesterStats.moyenne)}%`,
+        150,
+        totalY
+      );
+
+      const signatureY = totalY + 20;
+
+      doc.text("___________________________________", 105, signatureY, {
+        align: "center",
+      });
+
+      doc.text("Vice recteur aux affaires academiques", 105, signatureY + 4, {
+        align: "center",
+      });
+
+      currentY = totalY + 10;
     }
 
     return currentY;
   };
-
   const calculateSummaryData = (grades: any[]): SummaryData => {
     const totalSubjects = grades.length;
     const totalCoefficients = totalSubjects * 100;
@@ -791,176 +1066,106 @@ export const TranscriptGenerator = () => {
     return { totalCoefficients, totalNotes, moyenne, totalSubjects };
   };
 
-  const createSummarySection = (doc: jsPDF, startY: number): number => {
-    const { colors, font } = PDF_CONFIG;
-    let currentY = startY;
-
-    currentY = checkPageBreak(doc, currentY, 60);
-
-    let summaryData: SummaryData;
-
-    if (filters.semester === "all") {
-      const session1Data = calculateSummaryData(session1Grades);
-      const session2Data = calculateSummaryData(session2Grades);
-
-      doc.setFillColor(...colors.lightGray);
-      doc.rect(10, currentY, 190, 50, "F");
-      doc.setDrawColor(...colors.text);
-      doc.rect(10, currentY, 190, 50, "S");
-
-      doc.setFontSize(font.sizes.small);
-      doc.setFont(font.family, "bold");
-      doc.text("RÉSUMÉ ACADÉMIQUE", 105, currentY + 7, { align: "center" });
-
-      doc.line(10, currentY + 12, 200, currentY + 12);
-
-      doc.setFontSize(font.sizes.xsmall);
-      doc.text(
-        `Moyenne S1: ${session1Data.moyenne.toFixed(2)}/100`,
-        20,
-        currentY + 20
-      );
-      doc.text(
-        `Moyenne S2: ${session2Data.moyenne.toFixed(2)}/100`,
-        20,
-        currentY + 27
-      );
-      doc.text(
-        `Moyenne Annuelle: ${annualGPA.toFixed(2)}/100`,
-        20,
-        currentY + 34
-      );
-
-      doc.text(
-        `Total coefficients: ${
-          session1Data.totalCoefficients + session2Data.totalCoefficients
-        }`,
-        110,
-        currentY + 20
-      );
-      doc.text(
-        `Total Notes: ${(
-          session1Data.totalNotes + session2Data.totalNotes
-        ).toFixed(2)}`,
-        110,
-        currentY + 27
-      );
-      doc.text(
-        `Matières: ${session1Data.totalSubjects + session2Data.totalSubjects}`,
-        110,
-        currentY + 34
-      );
-
-      currentY += 60;
-    } else {
-      const semesterGrades = studentGrades.filter(
-        (grade) => grade.semester === filters.semester
-      );
-      const semesterData = calculateSummaryData(semesterGrades);
-
-      doc.setFillColor(...colors.lightGray);
-      doc.rect(10, currentY, 190, 40, "F");
-      doc.setDrawColor(...colors.text);
-      doc.rect(10, currentY, 190, 40, "S");
-
-      doc.setFontSize(font.sizes.small);
-      doc.setFont(font.family, "bold");
-      doc.text("RÉSUMÉ DU SEMESTRE", 105, currentY + 7, { align: "center" });
-
-      doc.line(10, currentY + 12, 200, currentY + 12);
-
-      doc.setFontSize(font.sizes.xsmall);
-      doc.text(
-        `Moyenne: ${semesterData.moyenne.toFixed(2)}/100`,
-        20,
-        currentY + 20
-      );
-      doc.text(
-        `Total coefficients: ${
-          semesterData.totalCoefficients
-        }/${semesterData.totalNotes.toFixed(2)}`,
-        20,
-        currentY + 27
-      );
-      doc.text(
-        `Total Notes: ${semesterData.totalNotes.toFixed(2)}`,
-        110,
-        currentY + 20
-      );
-      doc.text(`Matières: ${semesterData.totalSubjects}`, 110, currentY + 27);
-
-      currentY += 50;
-    }
-
-    return currentY;
-  };
-
   const addWatermark = (doc: jsPDF) => {
     const { colors, font } = PDF_CONFIG;
 
-    doc.setFontSize(font.sizes.watermark);
-    doc.setTextColor(...colors.watermark);
-    doc.setFont(PDF_CONFIG.font.family, "normal");
-
     const pageCount = doc.getNumberOfPages();
+
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
-      doc.text("OFFICIEL", 105, 150, {
-        align: "center",
-        angle: 45,
-      });
+
+      // Essayer d'utiliser le logo en premier
+      try {
+        const logoImg = new Image();
+        logoImg.src = "/logo.png";
+
+        // Sauvegarder l'état actuel
+        doc.saveGraphicsState();
+
+        // Appliquer la transparence
+        doc.setGState(new (doc as any).GState({ opacity: 0.1 }));
+
+        // Ajouter le logo en filigrane (centré, plus grand)
+        doc.addImage(logoImg, "PNG", 18, 50, 172, 200);
+
+        // Restaurer l'état
+        doc.restoreGraphicsState();
+      } catch (error) {
+        // Si le logo n'est pas trouvé, utiliser du texte transparent
+        console.warn("Logo non trouvé, utilisation du texte en filigrane");
+
+        doc.saveGraphicsState();
+        doc.setGState(new (doc as any).GState({ opacity: 0.1 }));
+
+        doc.setFontSize(font.sizes.watermark);
+        doc.setTextColor(...colors.watermark);
+        doc.setFont(PDF_CONFIG.font.family, "bold");
+
+        doc.text("OFFICIEL", 105, 150, {
+          align: "center",
+          angle: 45,
+        });
+
+        doc.restoreGraphicsState();
+      }
     }
   };
 
-  const createFooterSection = (doc: jsPDF, startY: number): number => {
-    const { colors, font } = PDF_CONFIG;
-    let currentY = startY;
+  // Fonctions utilitaires pour le formatage
+  const formatLevel = (level: string): string => {
+    switch (level) {
+      case "1":
+        return "1ère";
+      case "2":
+        return "2e";
+      case "3":
+        return "3e";
+      case "4":
+        return "4e";
+      case "5":
+        return "5e";
+      default:
+        return level;
+    }
+  };
 
-    currentY = checkPageBreak(doc, currentY, 40);
+  const formatBirthDate = (dateString?: string): string => {
+    if (!dateString) return "3 Décembre 1994";
 
-    const mention =
-      annualGPA >= 70 ? "ADMIS(E)" : getMention(annualGPA).toUpperCase();
-
-    doc.setFontSize(font.sizes.small);
-    doc.setFont(font.family, "bold");
-    doc.text(`MENTION: ${mention}`, 105, currentY + 5, { align: "center" });
-
-    doc.setFontSize(font.sizes.medium);
-    doc.text(
-      `Fait à Pignon, le ${new Date().toLocaleDateString("fr-FR", {
-        day: "2-digit",
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("fr-FR", {
+        day: "numeric",
         month: "long",
         year: "numeric",
-      })}`,
-      30,
-      currentY + 20
-    );
-
-    doc.text("_________________________", 100, currentY + 35, {
-      align: "center",
-    });
-    doc.text("Le Directeur des Études", 105, currentY + 40, {
-      align: "center",
-    });
-
-    doc.setDrawColor(...colors.text);
-    doc.setLineWidth(0.3);
-    doc.line(10, currentY + 50, 200, currentY + 50);
-
-    doc.setFontSize(font.sizes.xsmall);
-    doc.setFont(font.family, "normal");
-    doc.text(
-      "Daniel 2:17 - C'est Dieu qui change les temps et les circonstances",
-      105,
-      currentY + 55,
-      { align: "center" }
-    );
-    doc.text("Document officiel - Ne pas jeter", 105, currentY + 60, {
-      align: "center",
-    });
-
-    return currentY + 70;
+      });
+    } catch (error) {
+      return "3 Décembre 1994";
+    }
   };
+
+  // const createFooterSection = (doc: jsPDF, startY: number): number => {
+  //   const { colors, font } = PDF_CONFIG;
+  //   let currentY = startY - 10;
+
+  //   currentY = checkPageBreak(doc, currentY, 25);
+
+  //   // Légendes compactes en bas de page
+  //   const legendsY = currentY;
+
+  //   // Signature compacte
+  //   const signatureY = legendsY;
+
+  //   doc.text("___________________________________", 105, signatureY, {
+  //     align: "center",
+  //   });
+
+  //   doc.text("Vice recteur aux affaires academiques", 105, signatureY + 4, {
+  //     align: "center",
+  //   });
+
+  //   return signatureY;
+  // };
 
   const generateFileName = (): string => {
     const timestamp = new Date().toISOString().split("T")[0];
@@ -985,8 +1190,7 @@ export const TranscriptGenerator = () => {
       currentY = createHeaderSection(doc);
       currentY = createStudentInfoSection(doc, currentY);
       currentY = createGradesTables(doc, currentY);
-      currentY = createSummarySection(doc, currentY);
-      currentY = createFooterSection(doc, currentY);
+      // currentY = createFooterSection(doc, currentY);
       addWatermark(doc);
 
       const fileName = generateFileName();
@@ -1024,8 +1228,7 @@ export const TranscriptGenerator = () => {
       currentY = createHeaderSection(doc);
       currentY = createStudentInfoSection(doc, currentY);
       currentY = createGradesTables(doc, currentY);
-      currentY = createSummarySection(doc, currentY);
-      createFooterSection(doc, currentY);
+      // createFooterSection(doc, currentY);
       addWatermark(doc);
 
       const pdfBlob = doc.output("blob");
@@ -1053,141 +1256,362 @@ export const TranscriptGenerator = () => {
   };
 
   // Fonction pour générer le relevé de notes
-  const generateGradeReport = (
-    doc: jsPDF,
-    documentData: DocumentData
-  ): number => {
-    const { colors, font } = PDF_CONFIG;
-    let currentY = PDF_CONFIG.margins.top;
+  // const generateGradeReport = (
+  //   doc: jsPDF,
+  //   documentData: DocumentData
+  // ): number => {
+  //   const { colors, font } = PDF_CONFIG;
 
-    // En-tête simplifié pour relevé de notes
-    doc.setFillColor(...colors.primary);
-    doc.rect(0, 0, 210, 30, "F");
+  //   // Utiliser createHeaderSection pour l'en-tête
+  //   let currentY = createHeaderSection(doc);
 
-    doc.setFontSize(font.sizes.large);
-    doc.setTextColor(...colors.white);
-    doc.text("RELEVÉ DE NOTES OFFICIEL", 105, 15, { align: "center" });
+  //   // Espace après l'en-tête
+  //   currentY += 10;
 
-    doc.setFontSize(font.sizes.medium);
-    doc.text("UNIVERSITÉ JÉRUSALEM DE PIGNON D'HAÏTI", 105, 22, {
-      align: "center",
-    });
+  //   // Titre du relevé de notes
+  //   doc.setFontSize(font.sizes.xlarge);
+  //   doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+  //   doc.setFont(font.family, "bold");
+  //   doc.text("RELEVÉ DE NOTES OFFICIEL", 105, currentY, { align: "center" });
 
-    currentY = 40;
+  //   currentY += 15;
 
-    // Informations étudiant
-    doc.setFontSize(font.sizes.medium);
-    doc.setTextColor(...colors.text);
-    doc.text(
-      `Relevé de notes de: ${documentData.student.firstName} ${documentData.student.lastName}`,
-      20,
-      currentY
-    );
-    doc.text(`Matricule: ${documentData.student.studentId}`, 20, currentY + 8);
-    doc.text(`Niveau: ${documentData.academicInfo.level}`, 20, currentY + 16);
-    doc.text(
-      `Année: ${documentData.academicInfo.academicYear}`,
-      20,
-      currentY + 24
-    );
+  //   // Informations étudiant dans un encadré
+  //   doc.setFillColor(
+  //     colors.lightGray[0],
+  //     colors.lightGray[1],
+  //     colors.lightGray[2]
+  //   );
+  //   doc.rect(15, currentY, 180, 30, "F");
+  //   doc.setDrawColor(colors.text[0], colors.text[1], colors.text[2]);
+  //   doc.rect(15, currentY, 180, 30, "S");
 
-    currentY += 40;
+  //   doc.setFontSize(font.sizes.small);
+  //   doc.setFont(font.family, "normal");
 
-    // Tableau des notes
-    if (documentData.grades && documentData.grades.length > 0) {
-      const tableData = documentData.grades.map((grade, index) => {
-        const ue = getUEDetails(grade.ueId);
-        return [
-          (index + 1).toString(),
-          ue?.title || "UE inconnue",
-          grade.grade.toFixed(2),
-          grade.status,
-        ];
-      });
+  //   // Informations gauche
+  //   doc.text(
+  //     `Étudiant: ${documentData.student.firstName} ${documentData.student.lastName}`,
+  //     20,
+  //     currentY + 8
+  //   );
+  //   doc.text(`Matricule: ${documentData.student.studentId}`, 20, currentY + 16);
+  //   doc.text(
+  //     `Niveau: ${formatLevel(documentData.academicInfo.level)}`,
+  //     20,
+  //     currentY + 24
+  //   );
 
-      autoTable(doc, {
-        startY: currentY,
-        head: [["No", "Unité d'Enseignement", "Note/100", "Statut"]],
-        body: tableData,
-        headStyles: {
-          fillColor: colors.primary,
-          textColor: colors.white,
-          fontStyle: "bold",
-        },
-        styles: { fontSize: 10 },
-        margin: { left: 20, right: 20 },
-      });
+  //   // Informations droite
+  //   doc.text(
+  //     `Faculté: ${documentData.academicInfo.faculty}`,
+  //     110,
+  //     currentY + 8
+  //   );
+  //   doc.text(
+  //     `Année: ${documentData.academicInfo.academicYear}`,
+  //     110,
+  //     currentY + 16
+  //   );
+  //   doc.text(
+  //     `Semestre: ${
+  //       filters.semester === "S1"
+  //         ? "1"
+  //         : filters.semester === "S2"
+  //         ? "2"
+  //         : "1 et 2"
+  //     }`,
+  //     110,
+  //     currentY + 24
+  //   );
 
-      currentY = (doc as any).lastAutoTable.finalY + 10;
-    }
+  //   currentY += 40;
 
-    return currentY;
-  };
+  //   // Tableau des notes avec pagination
+  //   if (documentData.grades && documentData.grades.length > 0) {
+  //     const gradesPerPage = 25; // Maximum 25 matières par page
+  //     const totalPages = Math.ceil(documentData.grades.length / gradesPerPage);
 
+  //     for (let page = 0; page < totalPages; page++) {
+  //       if (page > 0) {
+  //         doc.addPage();
+  //         currentY = PDF_CONFIG.margins.top;
+
+  //         // Ajouter l'en-tête sur les pages suivantes
+  //         currentY = createHeaderSection(doc);
+  //         currentY += 10;
+
+  //         // Titre continu
+  //         doc.setFontSize(font.sizes.large);
+  //         doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+  //         doc.setFont(font.family, "bold");
+  //         doc.text("RELEVÉ DE NOTES OFFICIEL (suite)", 105, currentY, {
+  //           align: "center",
+  //         });
+  //         currentY += 15;
+  //       }
+
+  //       const startIndex = page * gradesPerPage;
+  //       const endIndex = Math.min(
+  //         startIndex + gradesPerPage,
+  //         documentData.grades.length
+  //       );
+  //       const pageGrades = documentData.grades.slice(startIndex, endIndex);
+
+  //       // Préparer les données du tableau sans styles complexes
+  //       const tableData = pageGrades.map((grade, index) => {
+  //         const ue = getUEDetails(grade.ueId);
+  //         const globalIndex = startIndex + index + 1;
+
+  //         return [
+  //           globalIndex.toString(),
+  //           ue?.title || "UE inconnue",
+  //           ue?.code || "-",
+  //           ue?.credits?.toString() || "0",
+  //           grade.grade.toFixed(2),
+  //           grade.status === "Valid_" ? "Validé" : "Non validé",
+  //         ];
+  //       });
+
+  //       // Vérifier s'il y a assez d'espace pour le tableau
+  //       currentY = checkPageBreak(doc, currentY, 100);
+
+  //       autoTable(doc, {
+  //         startY: currentY,
+  //         head: [["No", "Matière", "Code UE", "Crédits", "Note/100", "Statut"]],
+  //         body: tableData,
+  //         theme: "grid",
+  //         headStyles: {
+  //           fillColor: [
+  //             colors.primary[0],
+  //             colors.primary[1],
+  //             colors.primary[2],
+  //           ],
+  //           textColor: [colors.white[0], colors.white[1], colors.white[2]],
+  //           fontStyle: "bold",
+  //           fontSize: 9,
+  //         },
+  //         bodyStyles: {
+  //           fontSize: 8,
+  //           textColor: [colors.text[0], colors.text[1], colors.text[2]],
+  //         },
+  //         styles: {
+  //           fontSize: 8,
+  //           cellPadding: 2,
+  //           overflow: "linebreak",
+  //         },
+  //         margin: { left: 10, right: 10 },
+  //         columnStyles: {
+  //           0: { cellWidth: 10 }, // No
+  //           1: { cellWidth: 70 }, // Matière
+  //           2: { cellWidth: 25 }, // Code UE
+  //           3: { cellWidth: 15 }, // Crédits
+  //           4: {
+  //             cellWidth: 20, // Note/100
+  //             fontStyle: "bold",
+  //           },
+  //           5: { cellWidth: 25 }, // Statut
+  //         },
+  //         // Appliquer les couleurs aux notes avec willDrawCell
+  //         willDrawCell: (data: any) => {
+  //           if (data.section === "body" && data.column.index === 4) {
+  //             const rowIndex = data.row.index;
+  //             const grade = pageGrades[rowIndex];
+  //             const ue = getUEDetails(grade.ueId);
+
+  //             if (grade.grade < (ue?.passingGrade || 70)) {
+  //               doc.setTextColor(colors.red[0], colors.red[1], colors.red[2]);
+  //             } else {
+  //               doc.setTextColor(
+  //                 colors.text[0],
+  //                 colors.text[1],
+  //                 colors.text[2]
+  //               );
+  //             }
+  //           }
+  //         },
+  //         didDrawCell: (data: any) => {
+  //           // Réinitialiser la couleur après chaque cellule
+  //           doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+  //         },
+  //       });
+
+  //       currentY = (doc as any).lastAutoTable.finalY + 10;
+
+  //       // Calculer les statistiques pour la page courante
+  //       const pageStats = calculateSummaryData(pageGrades);
+
+  //       // Afficher les points et moyenne à droite sous le tableau
+  //       doc.setFontSize(font.sizes.small);
+  //       doc.setFont(font.family, "bold");
+
+  //       // Positionner à droite avec une marge
+  //       const rightMargin = 180;
+
+  //       doc.text(
+  //         `Total Points: ${pageStats.totalNotes.toFixed(2)}`,
+  //         rightMargin,
+  //         currentY,
+  //         { align: "right" }
+  //       );
+  //       currentY += 6;
+  //       doc.text(
+  //         `Moyenne: ${pageStats.moyenne.toFixed(2)}/100`,
+  //         rightMargin,
+  //         currentY,
+  //         { align: "right" }
+  //       );
+  //       currentY += 6;
+  //       // doc.text(
+  //       //   `Matières: ${pageStats.totalSubjects}`,
+  //       //   rightMargin,
+  //       //   currentY,
+  //       //   { align: "right" }
+  //       // );
+
+  //       currentY += 15;
+
+  //       // Ajouter le numéro de page
+  //       // doc.setFontSize(font.sizes.xsmall);
+  //       // doc.setFont(font.family, "normal");
+  //       // doc.text(`Page ${page + 1}/${totalPages}`, 105, currentY, {
+  //       //   align: "center",
+  //       // });
+
+  //       currentY += 10;
+
+  //       // Ajouter les signatures uniquement sur la dernière page
+  //       if (page === totalPages - 1) {
+  //         currentY = checkPageBreak(doc, currentY, 40);
+
+  //         const signatureY = currentY;
+
+  //         //LIGNE DE SIGNATURES
+
+  //         doc.text("___________________", 150, signatureY, {
+  //           align: "center",
+  //         });
+  //         doc.text("Doyen", 60, signatureY + 6, { align: "center" });
+
+  //         doc.text("____________________", 60, signatureY, {
+  //           align: "center",
+  //         });
+  //         doc.text("Secrétaire général", 150, signatureY + 6, {
+  //           align: "center",
+  //         });
+
+  //         currentY += 30;
+  //       }
+  //     }
+  //   } else {
+  //     // Aucune note disponible
+  //     doc.setFontSize(font.sizes.medium);
+  //     doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+  //     doc.text("Aucune note disponible pour ce relevé", 105, currentY, {
+  //       align: "center",
+  //     });
+  //     currentY += 20;
+  //   }
+
+  //   return currentY;
+  // };
   // Fonction pour générer l'attestation de niveau
   const generateLevelCertificate = (
     doc: jsPDF,
     documentData: DocumentData
   ): number => {
     const { colors, font } = PDF_CONFIG;
-    let currentY = PDF_CONFIG.margins.top;
 
-    // En-tête officiel
-    doc.setFillColor(...colors.primary);
-    doc.rect(0, 0, 210, 40, "F");
+    let currentY = createHeaderSection(doc);
+    currentY += 10;
 
+    // Titre du document
     doc.setFontSize(font.sizes.xlarge);
-    doc.setTextColor(...colors.white);
-    doc.text("ATTESTATION DE NIVEAU", 105, 20, { align: "center" });
-
-    doc.setFontSize(font.sizes.medium);
-    doc.text("UNIVERSITÉ JÉRUSALEM DE PIGNON D'HAÏTI", 105, 28, {
+    doc.setTextColor(...colors.text);
+    doc.setFont(font.family, "bold");
+    doc.text("ATTESTATION DE NIVEAU", 105, currentY, { align: "center" });
+    doc.text("__________________________", 105, currentY + 1, {
       align: "center",
     });
 
-    currentY = 60;
-
-    // Contenu de l'attestation
-    doc.setFontSize(font.sizes.large);
-    doc.setTextColor(...colors.text);
-    doc.text("ATTESTATION", 105, currentY, { align: "center" });
-
     currentY += 20;
 
+    // Décanat
     doc.setFontSize(font.sizes.medium);
-    const text = [
-      `Je soussigné, le Directeur des Études de l'Université Jérusalem de Pignon d'Haïti,`,
-      `atteste que :`,
-      ``,
-      `Monsieur/Madame ${documentData.student.firstName} ${documentData.student.lastName}`,
-      `Numéro de matricule : ${documentData.student.studentId}`,
-      ``,
-      `est régulièrement inscrit(e) en ${documentData.academicInfo.level} année`,
-      `pour l'année académique ${documentData.academicInfo.academicYear}.`,
-      ``,
-      `En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.`,
-    ];
+    doc.setFont(font.family, "normal");
 
-    text.forEach((line) => {
-      if (line) {
-        doc.text(line, 105, currentY, { align: "center" });
-      }
-      currentY += 8;
-    });
+    const decanatText = `Le Décanat de la faculté des ${documentData.academicInfo.faculty} de l'Université Jérusalem de Pignon, Haïti (UJEPH), atteste par la présente, que:`;
+    const decanatLines = doc.splitTextToSize(decanatText, 170);
+    doc.text(decanatLines, 20, currentY);
+    currentY += decanatLines.length * 6 + 10;
 
-    currentY += 20;
-
-    // Signature
+    // Nom étudiant
+    doc.setFontSize(font.sizes.large);
+    doc.setFont(font.family, "bold");
     doc.text(
-      "Fait à Pignon, le " + documentData.issueDate.toLocaleDateString("fr-FR"),
+      `${documentData.student.lastName?.toUpperCase()} ${
+        documentData.student.firstName
+      }`,
       105,
       currentY,
       { align: "center" }
     );
-    currentY += 20;
-    doc.text("_________________________", 105, currentY, { align: "center" });
+
     currentY += 10;
-    doc.text("Le Directeur des Études", 105, currentY, { align: "center" });
+
+    // Informations étudiant
+    doc.setFont(font.family, "normal");
+    doc.setFontSize(font.sizes.medium);
+    const studentInfoText = `Identifié au NIN : ${
+      documentData.student.cin
+    }, Né le ${formatBirthDate(documentData.student.dateOfBirth)}, à ${
+      documentData.student.placeOfBirth || "Petite Rivière de Nippes"
+    }, est régulièrement inscrit(e) en ${formatLevel(
+      documentData.academicInfo.level
+    )} année du programme de licence en ${
+      documentData.academicInfo.faculty
+    } pour l'année académique ${documentData.academicInfo.academicYear}.`;
+
+    const studentInfoLines = doc.splitTextToSize(studentInfoText, 170);
+    doc.text(studentInfoLines, 20, currentY);
+    currentY += studentInfoLines.length * 6 + 15;
+
+    // Texte final
+    const finalText =
+      "En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.";
+    const finalLines = doc.splitTextToSize(finalText, 170);
+    doc.text(finalLines, 20, currentY);
+    currentY += finalLines.length * 6 + 20;
+
+    // Date
+    doc.setFont(font.family, "bold");
+    doc.text(
+      `Fait à Pignon, le ${documentData.issueDate.toLocaleDateString("fr-FR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      })}.`,
+      20,
+      currentY,
+      { align: "left" }
+    );
+
+    currentY += 40;
+
+    // Signatures variables
+
+    const signatureY = currentY;
+
+    //ligne de signatures
+    doc.text("____________________", 60, signatureY, {
+      align: "center",
+    });
+    doc.text("Doyen", 60, signatureY + 6, { align: "center" });
+
+    doc.text("____________________", 150, signatureY, {
+      align: "center",
+    });
+    doc.text("Secrétaire général", 150, signatureY + 6, { align: "center" });
 
     return currentY + 30;
   };
@@ -1198,138 +1622,178 @@ export const TranscriptGenerator = () => {
     documentData: DocumentData
   ): number => {
     const { colors, font } = PDF_CONFIG;
-    let currentY = PDF_CONFIG.margins.top;
 
-    // En-tête prestigieux
-    doc.setFillColor(...colors.primary);
-    doc.rect(0, 0, 210, 50, "F");
+    let currentY = createHeaderSection(doc);
+    currentY += 10;
 
+    // Titre du document
     doc.setFontSize(font.sizes.xlarge);
-    doc.setTextColor(...colors.white);
-    doc.text("ATTESTATION DE FIN D'ÉTUDES", 105, 25, { align: "center" });
-
-    doc.setFontSize(font.sizes.large);
-    doc.text("UNIVERSITÉ JÉRUSALEM DE PIGNON D'HAÏTI", 105, 35, {
-      align: "center",
-    });
-
-    currentY = 70;
-
-    // Contenu solennel
-    doc.setFontSize(font.sizes.large);
     doc.setTextColor(...colors.text);
-    doc.text("HONNEUR ET MÉRITE", 105, currentY, { align: "center" });
+    doc.setFont(font.family, "bold");
+    doc.text("ATTESTATION DE FIN D'ÉTUDES", 105, currentY, { align: "center" });
 
     currentY += 20;
 
+    // Décanat
     doc.setFontSize(font.sizes.medium);
-    const text = [
-      `L'Université Jérusalem de Pignon d'Haïti a l'honneur de certifier que`,
-      ``,
-      `Monsieur/Madame ${documentData.student.firstName} ${documentData.student.lastName}`,
-      `Numéro de matricule : ${documentData.student.studentId}`,
-      ``,
-      `a suivi avec assiduité et a achevé avec succès le programme de`,
-      `${documentData.academicInfo.level} année pour l'année académique ${documentData.academicInfo.academicYear}.`,
-      ``,
-      `Moyenne générale : ${documentData.summary?.gpa.toFixed(2)}/100`,
-      `Mention : ${documentData.summary?.mention}`,
-      ``,
-      `La présente attestation lui est délivrée en témoignage de sa réussite.`,
-    ];
+    doc.setFont(font.family, "normal");
 
-    text.forEach((line) => {
-      if (line) {
-        doc.text(line, 105, currentY, { align: "center" });
-      }
-      currentY += 8;
-    });
+    const decanatText = `Le Décanat de la faculté des ${documentData.academicInfo.faculty} de l'Université Jérusalem de Pignon, Haïti (UJEPH), atteste par la présente, que`;
+    const decanatLines = doc.splitTextToSize(decanatText, 170);
+    doc.text(decanatLines, 20, currentY);
+    currentY += decanatLines.length * 6 + 10;
 
-    return currentY + 30;
-  };
-
-  // Fonction pour générer le certificat de diplôme
-  const generateDiplomaCertificate = (
-    doc: jsPDF,
-    documentData: DocumentData
-  ): number => {
-    const { colors, font } = PDF_CONFIG;
-    let currentY = PDF_CONFIG.margins.top;
-
-    // En-tête très officiel avec bordure
-    doc.setDrawColor(...colors.primary);
-    doc.setLineWidth(3);
-    doc.rect(10, 10, 190, 277);
-
-    doc.setFillColor(...colors.primary);
-    doc.rect(0, 0, 210, 60, "F");
-
-    doc.setFontSize(18);
-    doc.setTextColor(...colors.white);
-    doc.text("DIPLÔME D'ÉTUDES SUPÉRIEURES", 105, 30, { align: "center" });
-
-    doc.setFontSize(14);
-    doc.text("UNIVERSITÉ JÉRUSALEM DE PIGNON D'HAÏTI", 105, 45, {
-      align: "center",
-    });
-
-    currentY = 80;
-
-    // Contenu du diplôme
-    doc.setFontSize(16);
-    doc.setTextColor(...colors.text);
-    doc.text("DÉLIVRE À", 105, currentY, { align: "center" });
-
-    currentY += 20;
-
-    doc.setFontSize(20);
+    // Nom étudiant
+    doc.setFontSize(font.sizes.medium);
     doc.setFont(font.family, "bold");
     doc.text(
-      `${documentData.student.firstName} ${documentData.student.lastName}`,
+      `${documentData.student.lastName?.toUpperCase()} ${
+        documentData.student.firstName
+      }`,
       105,
       currentY,
       { align: "center" }
     );
 
-    currentY += 15;
-    doc.setFontSize(12);
+    currentY += 10;
+
+    // Informations étudiant avec dates calculées
     doc.setFont(font.family, "normal");
-    doc.text(`Matricule : ${documentData.student.studentId}`, 105, currentY, {
+
+    const studentInfoText = `Identifié au NIN : ${
+      documentData.student.cin
+    }, Né le ${formatBirthDate(documentData.student.dateOfBirth)}, à ${
+      documentData.student.placeOfBirth || "Petite Rivière de Nippes"
+    }, a parcouru avec succès les cinq années de cours du programme de licence en ${
+      documentData.academicInfo.faculty
+    }, de ${documentData.academicInfo.startDate} à ${
+      documentData.academicInfo.endDate
+    }. Il se réserve de présenter et soutenir son mémoire de sortie en vue de l'obtention de sa licence.`;
+    const studentInfoLines = doc.splitTextToSize(studentInfoText, 170);
+    doc.text(studentInfoLines, 20, currentY);
+    currentY += studentInfoLines.length * 6 + 15;
+
+    // Texte final
+    const finalText =
+      "En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.";
+    const finalLines = doc.splitTextToSize(finalText, 170);
+    doc.text(finalLines, 20, currentY);
+    currentY += finalLines.length * 6 + 20;
+
+    // Date
+    doc.text(
+      `Fait à Pignon, le ${documentData.issueDate.toLocaleDateString("fr-FR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      })}.`,
+      20,
+      currentY,
+      { align: "left" }
+    );
+
+    currentY += 40;
+
+    // Signatures variables
+
+    const signatureY = currentY;
+
+    //ligne de signatures
+    doc.text("______________________", 60, signatureY, {
       align: "center",
     });
+    doc.text("Doyen", 60, signatureY + 6, { align: "center" });
 
-    currentY += 20;
-    doc.setFontSize(14);
-
-    const text = [
-      `le présent Diplôme de Fin d'Études`,
-      `en reconnaissance de l'achèvement satisfaisant du programme de`,
-      `${documentData.academicInfo.level} année.`,
-      ``,
-      `Moyenne générale : ${documentData.summary?.gpa.toFixed(2)}/100`,
-      `Mention : ${documentData.summary?.mention}`,
-      `Crédits obtenus : ${documentData.summary?.creditsEarned}/${documentData.summary?.totalCredits}`,
-      ``,
-      `Fait à Pignon, le ${documentData.issueDate.toLocaleDateString("fr-FR")}`,
-    ];
-
-    text.forEach((line) => {
-      if (line) {
-        doc.text(line, 105, currentY, { align: "center" });
-      }
-      currentY += 8;
+    doc.text("______________________", 150, signatureY, {
+      align: "center",
     });
+    doc.text("Secrétaire général", 150, signatureY + 6, { align: "center" });
 
-    // Cachet et signatures
-    currentY += 20;
-    doc.setLineWidth(1);
-    doc.setDrawColor(200, 0, 0);
-    doc.circle(105, currentY, 20);
-    doc.text("CACHET", 105, currentY, { align: "center" });
-    doc.text("OFFICIEL", 105, currentY + 6, { align: "center" });
-
-    return currentY + 40;
+    return currentY + 30;
   };
+
+  // Fonction pour générer le certificat de diplôme
+  // const generateDiplomaCertificate = (
+  //   doc: jsPDF,
+  //   documentData: DocumentData
+  // ): number => {
+  //   const { colors, font } = PDF_CONFIG;
+  //   let currentY = PDF_CONFIG.margins.top;
+
+  //   // En-tête très officiel avec bordure
+  //   doc.setDrawColor(...colors.primary);
+  //   doc.setLineWidth(3);
+  //   doc.rect(10, 10, 190, 277);
+
+  //   doc.setFillColor(...colors.primary);
+  //   doc.rect(0, 0, 210, 60, "F");
+
+  //   doc.setFontSize(18);
+  //   doc.setTextColor(...colors.white);
+  //   doc.text("DIPLÔME D'ÉTUDES SUPÉRIEURES", 105, 30, { align: "center" });
+
+  //   doc.setFontSize(14);
+  //   doc.text("UNIVERSITÉ JÉRUSALEM DE PIGNON D'HAÏTI", 105, 45, {
+  //     align: "center",
+  //   });
+
+  //   currentY = 80;
+
+  //   // Contenu du diplôme
+  //   doc.setFontSize(16);
+  //   doc.setTextColor(...colors.text);
+  //   doc.text("DÉLIVRE À", 105, currentY, { align: "center" });
+
+  //   currentY += 20;
+
+  //   doc.setFontSize(20);
+  //   doc.setFont(font.family, "bold");
+  //   doc.text(
+  //     `${documentData.student.firstName} ${documentData.student.lastName}`,
+  //     105,
+  //     currentY,
+  //     { align: "center" }
+  //   );
+
+  //   currentY += 15;
+  //   doc.setFontSize(12);
+  //   doc.setFont(font.family, "normal");
+  //   doc.text(`Matricule : ${documentData.student.studentId}`, 105, currentY, {
+  //     align: "center",
+  //   });
+
+  //   currentY += 20;
+  //   doc.setFontSize(14);
+
+  //   const text = [
+  //     `le présent Diplôme de Fin d'Études`,
+  //     `en reconnaissance de l'achèvement satisfaisant du programme de`,
+  //     `${documentData.academicInfo.level} année.`,
+  //     ``,
+  //     `Moyenne générale : ${documentData.summary?.gpa.toFixed(2)}/100`,
+  //     `Mention : ${documentData.summary?.mention}`,
+  //     `Crédits obtenus : ${documentData.summary?.creditsEarned}/${documentData.summary?.totalCredits}`,
+  //     ``,
+  //     `Fait à Pignon, le ${documentData.issueDate.toLocaleDateString("fr-FR")}`,
+  //   ];
+
+  //   text.forEach((line) => {
+  //     if (line) {
+  //       doc.text(line, 105, currentY, { align: "center" });
+  //     }
+  //     currentY += 8;
+  //   });
+
+  //   // Cachet et signatures
+  //   currentY += 20;
+  //   doc.setLineWidth(1);
+  //   doc.setDrawColor(200, 0, 0);
+  //   doc.circle(105, currentY, 20);
+  //   doc.text("CACHET", 105, currentY, { align: "center" });
+  //   doc.text("OFFICIEL", 105, currentY + 6, { align: "center" });
+
+  //   return currentY + 40;
+  // };
 
   // Fonction principale pour générer n'importe quel document
   const generateDocument = async (
@@ -1354,18 +1818,25 @@ export const TranscriptGenerator = () => {
 
       showStatus(`Génération du ${config.title.toLowerCase()}...`, "info");
 
+      // CALCULER LES DATES BASÉES SUR LES INSCRIPTIONS
+      // const enrollmentDates = await calculateEnrollmentDates(
+      //   selectedStudentData.id
+      // );
+
       // Préparer les données du document
       const documentData: DocumentData = {
         student: selectedStudentData,
         academicInfo: {
           faculty:
             faculties.find((f) => f.id === filters.facultyId)?.name ||
-            "Non spécifié",
+            "Sciences Agronomiques",
           level: filters.level,
           academicYear:
             academicYears.find((y) => y.id === filters.academicYearId)?.year ||
             "Non spécifié",
-          program: "Programme académique", // À adapter selon vos besoins
+          program: "Programme académique",
+          startDate: enrollmentDates.startDate,
+          endDate: enrollmentDates.endDate,
         },
         grades: studentGrades,
         summary: {
@@ -1383,26 +1854,18 @@ export const TranscriptGenerator = () => {
 
       // Sélectionner la fonction de génération appropriée
       switch (documentType) {
-        case "grade-report":
-          generateGradeReport(doc, documentData);
-          break;
         case "level-certificate":
           generateLevelCertificate(doc, documentData);
           break;
         case "completion-certificate":
           generateCompletionCertificate(doc, documentData);
           break;
-        case "diploma-certificate":
-          generateDiplomaCertificate(doc, documentData);
-          break;
-        case "transcript":
+
         default:
-          // Utiliser la fonction existante pour le bulletin
           let currentY = createHeaderSection(doc);
           currentY = createStudentInfoSection(doc, currentY);
           currentY = createGradesTables(doc, currentY);
-          currentY = createSummarySection(doc, currentY);
-          createFooterSection(doc, currentY);
+          // createFooterSection(doc, currentY);
           break;
       }
 
@@ -2054,7 +2517,7 @@ export const TranscriptGenerator = () => {
               <CardTitle className="dark:text-gray-200">
                 {DOCUMENT_CONFIGS[selectedDocument].title} - Aperçu
               </CardTitle>
-              <div className="flex flex-col sm:flex-row gap-2">
+              {/* <div className="flex flex-col sm:flex-row gap-2">
                 <Button
                   onClick={previewPDF}
                   size="sm"
@@ -2083,7 +2546,7 @@ export const TranscriptGenerator = () => {
                   )}
                   {isGenerating ? "Génération..." : "Télécharger"}
                 </Button>
-              </div>
+              </div> */}
             </div>
           </CardHeader>
           <CardContent>
@@ -2441,6 +2904,7 @@ export const TranscriptGenerator = () => {
                                     </TableHead>
                                   </TableRow>
                                 </TableHeader>
+
                                 <TableBody>
                                   {session2Grades.map((grade) => {
                                     const ue = getUEDetails(grade.ueId);
@@ -2531,8 +2995,6 @@ export const TranscriptGenerator = () => {
     </div>
   );
 };
-
-// Composant pour afficher les détails d'une session
 const SessionDetails = ({
   grades,
   getUEDetails,
@@ -2543,20 +3005,33 @@ const SessionDetails = ({
 }: any) => {
   const getOldGrade = useCallback(
     (studentId: string, ueId: string, semester: string) => {
+      // CORRECTION : Vérifier si grades est défini et est un tableau
+      if (!Array.isArray(grades)) {
+        console.warn("Grades n'est pas un tableau valide:", grades);
+        return null;
+      }
+
       const oldGrade = grades.find(
         (grade) =>
+          grade &&
           grade.studentId === studentId &&
           grade.ueId === ueId &&
           grade.semester === semester &&
           grade.session === "normale" &&
           grade.isActive === false
       );
-      console.log(oldGrade.grade);
+
+      // CORRECTION : Ne pas logger oldGrade.grade si oldGrade est undefined
+      // console.log('Ancienne note trouvée:', oldGrade); // Débogage sécurisé
 
       return oldGrade?.grade || null;
     },
     [grades]
   );
+
+  // CORRECTION : Vérification de sécurité pour les grades
+  const safeGrades = Array.isArray(grades) ? grades : [];
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -2634,57 +3109,76 @@ const SessionDetails = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {grades.map((grade: any) => {
+            {safeGrades.map((grade: any) => {
+              // CORRECTION : Vérification de sécurité pour chaque grade
+              if (!grade || typeof grade !== "object") {
+                console.warn("Grade invalide trouvé:", grade);
+                return null;
+              }
+
               const ue = getUEDetails(grade.ueId);
+
+              // CORRECTION : Valeurs par défaut pour éviter les erreurs
+              const gradeValue = grade?.grade ?? 0;
+              const ueCode = ue?.code || "N/A";
+              const ueTitle = ue?.title || "Matière inconnue";
+              const ueCredits = ue?.credits || 0;
+              const passingGrade = ue?.passingGrade || 70;
+              const sessionType = grade?.session || "Normale";
+              const status = grade?.status || "Non_valid_";
+
               return (
-                <TableRow key={grade.id} className="dark:border-gray-700">
+                <TableRow
+                  key={grade.id || `grade-${Math.random()}`}
+                  className="dark:border-gray-700"
+                >
                   <TableCell className="font-medium dark:text-gray-300">
-                    {ue?.code}
+                    {ueCode}
                   </TableCell>
                   <TableCell className="dark:text-gray-300">
-                    {ue?.title}
+                    {ueTitle}
                   </TableCell>
                   <TableCell className="text-center dark:text-gray-300">
-                    {ue?.credits}
+                    {ueCredits}
                   </TableCell>
 
                   <TableCell className="text-center font-semibold">
                     <span
                       className={
-                        grade.grade >= (ue?.passingGrade || 70)
+                        gradeValue >= passingGrade
                           ? "text-green-600 dark:text-green-400"
                           : "text-red-600 dark:text-red-400"
                       }
                     >
-                      {grade.grade.toFixed(2)}
-                      {grade.session === "Reprise" && (
+                      {/* CORRECTION : Utilisation de gradeValue avec vérification */}
+                      {gradeValue.toFixed(2)}
+                      {sessionType === "Reprise" && (
                         <>
                           {" R"}
-                          {getOldGrade(
-                            grade.studentId,
-                            grade.ueId,
-                            grade.semester
-                          ) &&
-                            ` (${getOldGrade(
+                          {(() => {
+                            const oldGradeValue = getOldGrade(
                               grade.studentId,
                               grade.ueId,
                               grade.semester
-                            )?.toFixed(2)})`}
+                            );
+                            // CORRECTION : Vérification avant d'afficher l'ancienne note
+                            return oldGradeValue
+                              ? ` (${oldGradeValue.toFixed(2)})`
+                              : "";
+                          })()}
                         </>
                       )}
                     </span>
                   </TableCell>
                   <TableCell className="text-center dark:text-gray-300">
-                    {ue?.passingGrade || 70}
+                    {passingGrade}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge
-                      variant={
-                        grade.status === "Valid_" ? "default" : "destructive"
-                      }
+                      variant={status === "Valid_" ? "default" : "destructive"}
                       className="text-xs"
                     >
-                      {grade.status}
+                      {status}
                     </Badge>
                   </TableCell>
                 </TableRow>
@@ -2696,3 +3190,4 @@ const SessionDetails = ({
     </div>
   );
 };
+// Composant pour afficher les détails d'une session

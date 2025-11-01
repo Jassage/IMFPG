@@ -22,7 +22,7 @@ const FeePaymentCreateSchema = z.object({
   studentFeeId: z.string().min(1, "L'ID des frais étudiant est requis"),
   amount: z.number().min(0.01, "Le montant doit être supérieur à 0"),
   paymentMethod: z.string().min(1, "La méthode de paiement est requise"),
-  reference: z.string().optional(),
+  reference: z.string().optional().nullable(),
   paymentDate: z.string().datetime("Date de paiement invalide").optional(),
 });
 
@@ -34,13 +34,14 @@ export const getAllFeePayments = async (req: Request, res: Response) => {
     userAgent: req.get("User-Agent") || "unknown",
     userId: (req as any).userId || "unknown",
   };
-
+  console.log("userId:", auditData.userId);
+  console.log("user:", req.user);
   try {
     const { studentFeeId } = req.query;
 
-    console.log("📥 Consultation de tous les paiements - Filtre:", {
-      studentFeeId,
-    });
+    // console.log("📥 Consultation de tous les paiements - Filtre:", {
+    //   studentFeeId,
+    // });
 
     const whereClause: any = {};
     if (studentFeeId) whereClause.studentFeeId = studentFeeId as string;
@@ -488,60 +489,94 @@ export const updateFeePayment = async (req: Request, res: Response) => {
 
     console.log("📥 Mise à jour paiement - ID:", id, "Données:", data);
 
-    // Log de tentative de mise à jour
-    await createAuditLog({
-      ...auditData,
-      action: "UPDATE_FEE_PAYMENT_ATTEMPT",
-      entity: "FeePayment",
-      entityId: id,
-      description: "Tentative de mise à jour de paiement",
-      status: "SUCCESS",
-      metadata: {
-        updateFields: Object.keys(data),
-      },
-    });
-
-    // Valider les données avec Zod
+    // Valider les données
     try {
       FeePaymentUpdateSchema.parse(data);
     } catch (validationError) {
-      if (validationError instanceof z.ZodError) {
-        console.error("❌ Erreur validation Zod:", validationError.issues);
-
-        await createAuditLog({
-          ...auditData,
-          action: "UPDATE_FEE_PAYMENT_ATTEMPT",
-          entity: "FeePayment",
-          entityId: id,
-          description:
-            "Tentative de mise à jour de paiement - validation des données échouée",
-          status: "ERROR",
-          errorMessage: "Données de validation invalides",
-          metadata: {
-            errors: validationError.issues.map((issue) => ({
-              field: issue.path.join("."),
-              message: issue.message,
-            })),
-          },
-        });
-
-        return res.status(400).json({
-          error: "Données de validation invalides",
-          details: validationError.issues.map((issue) => ({
-            field: issue.path.join("."),
-            message: issue.message,
-          })),
-        });
-      }
-      throw validationError;
+      // ... gestion erreur validation ...
     }
 
-    // Récupérer l'ancien paiement pour calculer la différence
+    // Récupérer l'ancien paiement AVANT modification
     const oldPayment = await prisma.feePayment.findUnique({
       where: { id },
       include: {
         studentFee: {
           include: {
+            payments: true,
+          },
+        },
+      },
+    });
+
+    if (!oldPayment) {
+      return res.status(404).json({ error: "Paiement non trouvé" });
+    }
+
+    // Mise à jour en transaction pour garantir la cohérence
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Mettre à jour le paiement
+      const updatedPayment = await tx.feePayment.update({
+        where: { id },
+        data: {
+          amount: data.amount,
+          paymentMethod: data.paymentMethod,
+          reference: data.reference || null,
+          paymentDate: data.paymentDate
+            ? new Date(data.paymentDate)
+            : undefined,
+          description: data.description,
+        },
+      });
+
+      // 2. Recalculer le paidAmount total pour les frais étudiants
+      if (data.amount !== undefined && data.amount !== oldPayment.amount) {
+        const allPayments = await tx.feePayment.findMany({
+          where: { studentFeeId: oldPayment.studentFeeId },
+        });
+
+        const newPaidAmount = allPayments.reduce((sum, payment) => {
+          // Utiliser le nouveau montant pour le paiement modifié
+          if (payment.id === id) {
+            return sum + data.amount;
+          }
+          return sum + payment.amount;
+        }, 0);
+
+        // Déterminer le nouveau statut
+        let newStatus = "pending";
+        if (newPaidAmount >= oldPayment.studentFee.totalAmount) {
+          newStatus = "paid";
+        } else if (newPaidAmount > 0) {
+          newStatus = "partial";
+        }
+
+        // 3. Mettre à jour les frais étudiants
+        await tx.studentFee.update({
+          where: { id: oldPayment.studentFeeId },
+          data: {
+            paidAmount: newPaidAmount,
+            status: newStatus,
+          },
+        });
+
+        console.log("✅ Frais étudiants mis à jour:", {
+          studentFeeId: oldPayment.studentFeeId,
+          oldPaidAmount: oldPayment.studentFee.paidAmount,
+          newPaidAmount,
+          newStatus,
+        });
+      }
+
+      return updatedPayment;
+    });
+
+    // Récupérer les données fraîches pour la réponse
+    const freshPayment = await prisma.feePayment.findUnique({
+      where: { id },
+      include: {
+        studentFee: {
+          include: {
+            feeStructure: true,
             student: {
               select: {
                 firstName: true,
@@ -554,64 +589,7 @@ export const updateFeePayment = async (req: Request, res: Response) => {
       },
     });
 
-    if (!oldPayment) {
-      await createAuditLog({
-        ...auditData,
-        action: "UPDATE_FEE_PAYMENT_ATTEMPT",
-        entity: "FeePayment",
-        entityId: id,
-        description: "Tentative de mise à jour de paiement - non trouvé",
-        status: "ERROR",
-      });
-
-      return res.status(404).json({ error: "Paiement non trouvé" });
-    }
-
-    // Mise à jour en transaction
-    const result = await prisma.$transaction(async (tx) => {
-      const updatedFeePayment = await tx.feePayment.update({
-        where: { id },
-        data,
-      });
-
-      // Si le montant a changé, mettre à jour les frais étudiants
-      if (data.amount !== undefined && data.amount !== oldPayment.amount) {
-        const amountDifference = data.amount - oldPayment.amount;
-
-        const studentFee = await tx.studentFee.findUnique({
-          where: { id: oldPayment.studentFeeId },
-        });
-
-        if (studentFee) {
-          const newPaidAmount = studentFee.paidAmount + amountDifference;
-          let newStatus = studentFee.status;
-
-          if (newPaidAmount >= studentFee.totalAmount) {
-            newStatus = "paid";
-          } else if (newPaidAmount > 0) {
-            newStatus = "partial";
-          } else {
-            newStatus = "pending";
-          }
-
-          await tx.studentFee.update({
-            where: { id: oldPayment.studentFeeId },
-            data: {
-              paidAmount: newPaidAmount,
-              status: newStatus,
-            },
-          });
-
-          console.log(
-            "✅ Frais étudiant mis à jour après modification du paiement"
-          );
-        }
-      }
-
-      return updatedFeePayment;
-    });
-
-    console.log("✅ Paiement mis à jour:", id);
+    console.log("✅ Paiement et frais mis à jour avec succès");
 
     // Log de succès
     await createAuditLog({
@@ -624,19 +602,15 @@ export const updateFeePayment = async (req: Request, res: Response) => {
       metadata: {
         oldAmount: oldPayment.amount,
         newAmount: data.amount,
-        amountChanged: data.amount !== oldPayment.amount,
-        studentName: `${oldPayment.studentFee.student.firstName} ${oldPayment.studentFee.student.lastName}`,
-        studentId: oldPayment.studentFee.student.studentId,
+        studentFeeId: oldPayment.studentFeeId,
       },
     });
 
-    res.json(result);
+    res.json(freshPayment);
   } catch (error) {
     console.error("❌ Erreur mise à jour paiement:", error);
-
     const errorMessage = getErrorMessage(error);
 
-    // Log d'erreur
     await createAuditLog({
       ...auditData,
       action: "UPDATE_FEE_PAYMENT_ERROR",

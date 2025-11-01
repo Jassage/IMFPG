@@ -541,9 +541,6 @@ export interface CreateUEData {
   description?: string;
   objectives?: string;
   createdById: string;
-  inCatalog: boolean;
-  facultyId?: string;
-  level?: string;
   prerequisites: string[]; // Pour la création, on envoie juste les IDs
 }
 
@@ -555,9 +552,6 @@ export interface UpdateUEData {
   passingGrade?: number;
   description?: string;
   objectives?: string;
-  inCatalog?: boolean;
-  facultyId?: string;
-  level?: string;
   prerequisites?: string[]; // Pour la mise à jour aussi
 }
 
@@ -682,17 +676,11 @@ export interface FeeStructure {
   id: string;
   name: string;
   academicYear: string; // ex: "2023-2024"
-  faculty: string; // ID ou nom de la faculté
-  level: string; // ex: "1", "2", "3"
   amount: number; // ← Total des frais
+  description?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-
-  // Champs optionnels pour l'interface utilisateur seulement
-  tuitionFee?: number;
-  tshirtFee?: number;
-  cardIdFee?: number;
 }
 
 // Type pour la création (sans les champs optionnels)
@@ -702,6 +690,7 @@ export type FeeStructureCreate = Omit<
 >;
 
 export interface StudentFee {
+  payments: any;
   id: string;
   studentId: string;
   academicYearId: string;
@@ -790,10 +779,10 @@ export interface GeneratedDocument {
 // Types pour les différents documents
 export type DocumentType =
   | "transcript" // Bulletin de notes
-  | "grade-report" // Relevé de notes
   | "level-certificate" // Attestation de niveau
-  | "completion-certificate" // Attestation de fin d'études
-  | "diploma-certificate"; // Certificat de diplôme
+  | "completion-certificate"; // Attestation de fin d'études
+// | "grade-report" // Relevé de notes
+// | "diploma-certificate"; // Certificat de diplôme
 
 export interface DocumentConfig {
   type: DocumentType;
@@ -804,14 +793,24 @@ export interface DocumentConfig {
 }
 
 export interface DocumentData {
-  student: any;
+  student: {
+    firstName: string;
+    lastName: string;
+    studentId: string;
+    placeOfBirth?: string;
+    dateOfBirth?: string;
+    cin?: string;
+  };
   academicInfo: {
     faculty: string;
     level: string;
     academicYear: string;
-    program: string;
+    program?: string;
+    specialization?: string;
+    startDate: string; // Maintenant obligatoire
+    endDate: string; // Maintenant obligatoire
   };
-  grades?: any[];
+  grades: any[];
   summary?: {
     gpa: number;
     creditsEarned: number;
@@ -978,4 +977,43 @@ export interface GradeWithDetails {
   credits?: number;
   passingGrade?: number;
   createdAt: string;
+}
+
+// Dans vos types
+export interface ExcelAssignmentRow {
+  codeUE: string;
+  nomUE: string;
+  nomProfesseur: string;
+  nomFaculte: string;
+  niveau: string;
+  anneeAcademique: string;
+  semestre: "S1" | "S2";
+  credits?: number;
+}
+
+export interface ImportResult {
+  success: boolean;
+  message: string;
+  summary: {
+    total: number;
+    success: number;
+    errors: number;
+    skipped: number;
+  };
+  details: {
+    success: any[];
+    errors: {
+      row: number;
+      error: string;
+      data: any;
+    }[];
+    skipped: any[];
+  };
+}
+
+export interface ResolutionMap {
+  faculties: Map<string, string>; // nom → id
+  academicYears: Map<string, string>; // année → id
+  professors: Map<string, string>; // nom → id
+  ues: Map<string, string>; // code → id
 }

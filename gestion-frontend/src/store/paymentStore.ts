@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import api from "../services/api";
 import { Payment } from "../types/academic";
+import { log } from "console";
 
 type PaymentStore = {
   payments: Payment[];

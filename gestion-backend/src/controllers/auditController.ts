@@ -4,53 +4,45 @@ import prisma from "../prisma";
 // import { AuthenticatedRequest } from "../middleware/auth.middleware";
 
 // FONCTION CORRIGÉE : Fonction utilitaire pour créer des logs d'audit
+
+// src/controllers/auditController.ts
 export const createAuditLog = async (data: {
+  ipAddress: string;
+  userAgent: string;
+  userId: string | null;
   action: string;
   entity: string;
   entityId?: string;
-  userId?: string;
-  ipAddress: string;
-  userAgent: string;
   description: string;
-  status: "SUCCESS" | "ERROR" | "WARNING";
+  metadata?: Record<string, any>;
+  status: "SUCCESS" | "ERROR";
   errorMessage?: string;
-  metadata?: any;
 }) => {
   try {
-    // Vérifier si l'utilisateur existe
-    let userExists = false;
-    if (data.userId && data.userId !== "unknown") {
-      try {
-        const user = await prisma.user.findUnique({
-          where: { id: data.userId },
-          select: { id: true },
-        });
-        userExists = !!user;
-      } catch (userError) {
-        console.warn("⚠️ Erreur vérification utilisateur:", userError);
-        userExists = false;
-      }
-    }
+    // Tronquer les champs si nécessaire
+    const truncatedData = {
+      ipAddress: data.ipAddress.substring(0, 45),
+      userAgent: data.userAgent.substring(0, 500),
+      action: data.action.substring(0, 100),
+      entity: data.entity.substring(0, 50),
+      entityId: data.entityId ? data.entityId.substring(0, 50) : undefined,
+      description: data.description.substring(0, 1000),
+      errorMessage: data.errorMessage
+        ? data.errorMessage.substring(0, 500)
+        : undefined,
+      metadata: data.metadata ? data.metadata : undefined,
+      userId: data.userId ? data.userId : undefined,
+      status: data.status,
+    };
 
     await prisma.auditLog.create({
-      data: {
-        action: data.action,
-        entity: data.entity,
-        entityId: data.entityId,
-        userId: userExists ? data.userId : null,
-        ipAddress: data.ipAddress,
-        userAgent: data.userAgent,
-        description: data.description,
-        status: data.status,
-        errorMessage: data.errorMessage,
-        metadata: data.metadata,
-      },
+      data: truncatedData,
     });
   } catch (error) {
     console.error("❌ Erreur création audit log:", error);
+    // Ne pas throw l'erreur pour ne pas interrompre le flux principal
   }
 };
-
 export const getUserIdFromRequest = (
   req: Request // 🔥 Utiliser Request standard
 ): string | undefined => {

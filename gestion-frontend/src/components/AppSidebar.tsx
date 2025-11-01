@@ -54,16 +54,13 @@ const menuItems = [
   { id: "grades", label: "Notes", icon: FileText },
   { id: "retakes", label: "Catalogues", icon: RotateCcw },
   { id: "professeurs", label: "Professeurs", icon: Users },
-  { id: "guardians", label: "Tuteurs", icon: Users },
+  { id: "guardians", label: "Parent", icon: Users },
 ];
 
 const academicItems = [
-  { id: "schedules", label: "Emplois du temps", icon: Calendar },
-  { id: "attendance", label: "Présences", icon: UserCheck },
   { id: "payments", label: "Paiements", icon: DollarSign },
   { id: "expenses", label: "Dépenses", icon: DollarSign },
   { id: "fees", label: "Frais Scolarite", icon: DollarSign },
-  { id: "library", label: "Bibliothèque", icon: Book },
 ];
 
 const documentItems = [
@@ -71,17 +68,17 @@ const documentItems = [
   { id: "transcripts", label: "Bulletins", icon: ScrollText },
 ];
 
-const communicationItems = [
-  { id: "messaging", label: "Messagerie", icon: MessageSquare },
-  { id: "events", label: "Événements", icon: CalendarDays },
-  { id: "announcements", label: "Annonces", icon: Megaphone },
-];
+// const communicationItems = [
+//   { id: "messaging", label: "Messagerie", icon: MessageSquare },
+//   { id: "events", label: "Événements", icon: CalendarDays },
+//   { id: "announcements", label: "Annonces", icon: Megaphone },
+// ];
 
-const analyticsItems = [
-  { id: "analytics", label: "Analyses", icon: BarChart3 },
-  { id: "scholarships", label: "Bourses", icon: Award },
-  { id: "rooms", label: "Salles", icon: MapPin },
-];
+// const analyticsItems = [
+//   { id: "analytics", label: "Analyses", icon: BarChart3 },
+//   { id: "scholarships", label: "Bourses", icon: Award },
+//   { id: "rooms", label: "Salles", icon: MapPin },
+// ];
 
 const adminItems = [
   { id: "users", label: "Utilisateurs", icon: UserCog },
@@ -199,7 +196,7 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
+        {/* <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/70">
             Communication
           </SidebarGroupLabel>
@@ -224,9 +221,9 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
               })}
             </SidebarMenu>
           </SidebarGroupContent>
-        </SidebarGroup>
+        </SidebarGroup> */}
 
-        <SidebarGroup>
+        {/* <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/70">
             Analyses & Gestion
           </SidebarGroupLabel>
@@ -251,7 +248,7 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
               })}
             </SidebarMenu>
           </SidebarGroupContent>
-        </SidebarGroup>
+        </SidebarGroup> */}
 
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/70">

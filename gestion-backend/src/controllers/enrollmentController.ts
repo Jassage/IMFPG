@@ -1,8 +1,13 @@
-// controllers/enrollmentController.ts
+// controllers/enrollmentImportExportController.ts
 import { Request, Response } from "express";
-import prisma from "../prisma";
+import * as XLSX from "xlsx";
+import fs from "fs";
+import path from "path";
 import { z } from "zod";
+import prisma from "../prisma";
 import { createAuditLog } from "./auditController";
+import { EnrollmentStatus } from "../../generated/prisma";
+// import { EnrollmentStatus } from "@prisma/client";
 
 // Fonction utilitaire pour gérer les erreurs unknown
 const getErrorMessage = (error: unknown): string => {
@@ -17,23 +22,357 @@ const getErrorMessage = (error: unknown): string => {
   }
 };
 
-const getErrorName = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.name;
-  } else {
-    return "UnknownError";
+// Schéma de validation pour l'importation
+const EnrollmentImportSchema = z.object({
+  studentId: z.string().min(1, "L'ID étudiant est requis"),
+  facultyName: z.string().min(1, "Le nom de la faculté est requis"),
+  level: z.string().min(1, "Le niveau est requis"),
+  academicYear: z.string().min(1, "L'année académique est requise"),
+  status: z.enum(["Active", "Completed", "Suspended"]).default("Active"),
+  enrollmentDate: z.string().optional(),
+});
+
+// Interface pour les données d'importation
+interface ImportEnrollmentData {
+  studentId: string;
+  facultyName: string;
+  level: string;
+  academicYear: string;
+  status?: "Active" | "Completed" | "Suspended";
+  enrollmentDate?: string;
+}
+
+// Fonction pour normaliser le statut
+const normalizeStatus = (status: string): EnrollmentStatus => {
+  const statusMap: { [key: string]: EnrollmentStatus } = {
+    Active: "Active",
+    Completed: "Completed",
+    Suspended: "Suspended",
+  };
+
+  return statusMap[status.toUpperCase()] || "Active";
+};
+
+// Utilitaires de sécurité
+const safeDeleteFile = async (filePath: string): Promise<void> => {
+  try {
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+    }
+  } catch (error) {
+    console.error(`Erreur suppression fichier ${filePath}:`, error);
   }
 };
 
-// Fonction utilitaire pour créer des logs d'audit
+const validateUploadedFile = (file: Express.Multer.File): void => {
+  const allowedMimeTypes = [
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/json",
+  ];
 
+  const maxSize = 10 * 1024 * 1024; // 10MB
+
+  if (!allowedMimeTypes.includes(file.mimetype)) {
+    throw new Error("Type de fichier non autorisé");
+  }
+
+  if (file.size > maxSize) {
+    throw new Error("Fichier trop volumineux (max 10MB)");
+  }
+};
+// Fonction pour mapper les noms de colonnes
+const mapColumnNames = (rawData: any): any => {
+  const columnMapping: { [key: string]: string } = {
+    // ID Étudiant
+    ID_Etudiant: "studentId",
+    "ID Etudiant": "studentId",
+    "Student ID": "studentId",
+    studentId: "studentId",
+    ID: "studentId",
+    Matricule: "studentId",
+
+    // Faculté
+    Faculte: "facultyName",
+    Faculté: "facultyName",
+    Faculty: "facultyName",
+    facultyName: "facultyName",
+    Filiere: "facultyName",
+    Filière: "facultyName",
+
+    // Niveau
+    Niveau: "level",
+    Level: "level",
+    level: "level",
+    Classe: "level",
+    Grade: "level",
+
+    // Année Académique
+    Annee_Academique: "academicYear",
+    "Année Académique": "academicYear",
+    "Academic Year": "academicYear",
+    academicYear: "academicYear",
+    Annee: "academicYear",
+    Année: "academicYear",
+
+    // Statut
+    Statut: "status",
+    Status: "status",
+    status: "status",
+    État: "status",
+
+    // Date d'inscription
+    Date_Inscription: "enrollmentDate",
+    "Date Inscription": "enrollmentDate",
+    "Enrollment Date": "enrollmentDate",
+    enrollmentDate: "enrollmentDate",
+    Date: "enrollmentDate",
+  };
+
+  const mappedData: any = {};
+
+  for (const [key, value] of Object.entries(rawData)) {
+    const mappedKey = columnMapping[key] || key;
+    // Nettoyer la valeur
+    if (value !== null && value !== undefined) {
+      mappedData[mappedKey] = typeof value === "string" ? value.trim() : value;
+    } else {
+      mappedData[mappedKey] = "";
+    }
+  }
+
+  return mappedData;
+};
+/**
+ * Convertit un nombre de date Excel en Date JavaScript
+ * Excel date: nombre de jours depuis le 1er janvier 1900
+ */
+const convertExcelDate = (excelDate: number | string): Date => {
+  try {
+    // Si c'est déjà une date au format string, la parser
+    if (typeof excelDate === "string") {
+      // Essayer différents formats de date
+      const dateFormats = [
+        /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
+        /^\d{2}\/\d{2}\/\d{4}$/, // DD/MM/YYYY
+        /^\d{2}\/\d{2}\/\d{2}$/, // DD/MM/YY
+      ];
+
+      for (const format of dateFormats) {
+        if (format.test(excelDate)) {
+          return new Date(excelDate);
+        }
+      }
+    }
+
+    // Si c'est un nombre Excel (jours depuis 1900)
+    if (typeof excelDate === "number") {
+      // Excel a un bug: il considère 1900 comme année bissextile
+      // Donc on doit ajuster pour les dates après le 28 février 1900
+      const excelEpoch = new Date(1899, 11, 30); // 30 décembre 1899
+      const millisecondsPerDay = 24 * 60 * 60 * 1000;
+
+      // Ajustement pour le bug Excel du 29 février 1900
+      const adjustedDate = excelDate > 60 ? excelDate - 1 : excelDate;
+
+      const resultDate = new Date(
+        excelEpoch.getTime() + adjustedDate * millisecondsPerDay
+      );
+
+      console.log(
+        `📅 Conversion date Excel: ${excelDate} → ${resultDate.toISOString().split("T")[0]}`
+      );
+      return resultDate;
+    }
+
+    // Si aucune conversion n'a fonctionné, retourner la date actuelle
+    console.warn(
+      `⚠️  Date non reconnue: ${excelDate}, utilisation date actuelle`
+    );
+    return new Date();
+  } catch (error) {
+    console.error(`❌ Erreur conversion date ${excelDate}:`, error);
+    return new Date(); // Date actuelle par défaut
+  }
+};
+
+/**
+ * Valide et formate une date pour l'importation
+ */
+const validateAndFormatDate = (
+  dateValue: any
+): { isValid: boolean; date?: Date; error?: string } => {
+  try {
+    if (!dateValue) {
+      return { isValid: true, date: new Date() }; // Date actuelle par défaut
+    }
+
+    let date: Date;
+
+    // Si c'est un nombre (date Excel)
+    if (typeof dateValue === "number") {
+      date = convertExcelDate(dateValue);
+      return { isValid: true, date };
+    }
+
+    // Si c'est une string, essayer de la parser
+    if (typeof dateValue === "string") {
+      const trimmedValue = dateValue.trim();
+
+      // Format YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
+        date = new Date(trimmedValue);
+      }
+      // Format DD/MM/YYYY
+      else if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmedValue)) {
+        const [day, month, year] = trimmedValue.split("/").map(Number);
+        date = new Date(year, month - 1, day);
+      }
+      // Format DD/MM/YY
+      else if (/^\d{2}\/\d{2}\/\d{2}$/.test(trimmedValue)) {
+        const [day, month, year] = trimmedValue.split("/").map(Number);
+        const fullYear = year + 2000; // Supposer 20xx
+        date = new Date(fullYear, month - 1, day);
+      }
+      // Autres formats
+      else {
+        date = new Date(trimmedValue);
+      }
+
+      if (isNaN(date.getTime())) {
+        return {
+          isValid: false,
+          error: `Format de date invalide: "${dateValue}". Utilisez YYYY-MM-DD ou DD/MM/YYYY`,
+        };
+      }
+
+      return { isValid: true, date };
+    }
+
+    // Type non supporté
+    return {
+      isValid: false,
+      error: `Type de date non supporté: ${typeof dateValue}`,
+    };
+  } catch (error) {
+    return {
+      isValid: false,
+      error: `Erreur traitement date: ${error}`,
+    };
+  }
+};
+
+// Fonction pour traiter les données d'importation
+// Modifiez la fonction processImportEnrollmentData
+const processImportEnrollmentData = (
+  enrollmentData: any
+): ImportEnrollmentData => {
+  console.log("🔄 Données brutes reçues:", enrollmentData);
+
+  // Appliquer le mapping des colonnes d'abord
+  const mappedData = mapColumnNames(enrollmentData);
+  console.log("📊 Données après mapping:", mappedData);
+
+  // Traiter la date d'inscription
+  let enrollmentDate: string | undefined;
+  let dateError: string | null = null;
+
+  if (mappedData.enrollmentDate) {
+    const dateValidation = validateAndFormatDate(mappedData.enrollmentDate);
+
+    if (dateValidation.isValid && dateValidation.date) {
+      enrollmentDate = dateValidation.date.toISOString(); // Format YYYY-MM-DD
+      console.log(
+        `✅ Date convertie: ${mappedData.enrollmentDate} → ${enrollmentDate}`
+      );
+    } else {
+      dateError = dateValidation.error || "Erreur de date inconnue";
+      console.log(`❌ Erreur date: ${dateError}`);
+    }
+  }
+
+  // Nettoyer et valider les données
+  const processedData: ImportEnrollmentData = {
+    studentId: String(mappedData.studentId || "").trim(),
+    facultyName: String(mappedData.facultyName || "").trim(),
+    level: String(mappedData.level || "").trim(),
+    academicYear: String(mappedData.academicYear || "").trim(),
+    status: mappedData.status
+      ? (normalizeStatus(String(mappedData.status)) as
+          | "Active"
+          | "Completed"
+          | "Suspended")
+      : "Active",
+    enrollmentDate: enrollmentDate, // Utiliser la date convertie ou undefined
+  };
+
+  // Stocker l'erreur de date dans l'objet pour validation ultérieure
+  if (dateError) {
+    (processedData as any).dateError = dateError;
+  }
+
+  console.log("✅ Données après traitement:", processedData);
+  return processedData;
+};
+// Fonction pour valider une ligne de données
+const validateEnrollmentData = (
+  data: ImportEnrollmentData
+): { isValid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+
+  if (!data.studentId) {
+    errors.push("ID étudiant est requis");
+  }
+
+  if (!data.facultyName) {
+    errors.push("Nom de la faculté est requis");
+  }
+
+  if (!data.level) {
+    errors.push("Niveau est requis");
+  }
+
+  if (!data.academicYear) {
+    errors.push("Année académique est requise");
+  }
+
+  // Vérifier s'il y a une erreur de date spécifique
+  if ((data as any).dateError) {
+    errors.push((data as any).dateError);
+  }
+
+  // VALIDATION DE DATE MODIFIÉE : Accepter le format ISO
+  if (data.enrollmentDate) {
+    // Accepter les formats :
+    // - YYYY-MM-DD (2020-10-28)
+    // - YYYY-MM-DDTHH:mm:ss.sssZ (2020-10-28T04:49:00.000Z)
+    // - Toute string de date valide JavaScript
+    const date = new Date(data.enrollmentDate);
+    if (isNaN(date.getTime())) {
+      errors.push(`Date d'inscription invalide: ${data.enrollmentDate}`);
+    }
+
+    // Validation optionnelle: la date ne doit pas être dans le futur
+    const today = new Date();
+    if (date > today) {
+      errors.push(
+        `La date d'inscription ne peut pas être dans le futur: ${data.enrollmentDate}`
+      );
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  };
+};
 // Schémas de validation avec Zod
 const EnrollmentCreateSchema = z.object({
   studentId: z.string().min(1, "L'ID étudiant est requis"),
   faculty: z.string().min(1, "La faculté est requise"),
   level: z.string().min(1, "Le niveau est requis"), // Accepter string
   academicYearId: z.string().min(1, "L'ID de l'année académique est requis"), // Changer le nom
-  status: z.enum(["Active", "Completed", "Cancelled"]).default("Active"),
+  status: z.enum(["Active", "Completed", "Suspended"]).default("Active"),
   enrollmentDate: z.string().datetime("Date d'inscription invalide").optional(),
 });
 
@@ -261,7 +600,7 @@ export const createEnrollment = async (req: Request, res: Response) => {
     });
 
     console.log(
-      `Inscriptions précédentes actives trouvées: ${previousEnrollments.length}`
+      `Inscriptions précédentes Actives trouvées: ${previousEnrollments.length}`
     );
 
     // 7. Mettre à jour les inscriptions précédentes
@@ -684,21 +1023,21 @@ export const deleteEnrollment = async (req: Request, res: Response) => {
   }
 };
 
-// Fonction utilitaire pour s'assurer qu'un étudiant n'a qu'une seule inscription active
+// Fonction utilitaire pour s'assurer qu'un étudiant n'a qu'une seule inscription Active
 export const ensureSingleActiveEnrollment = async (
   studentId: string
 ): Promise<void> => {
-  const activeEnrollments = await prisma.enrollment.findMany({
+  const ActiveEnrollments = await prisma.enrollment.findMany({
     where: {
       studentId: studentId,
       status: "Active",
     },
   });
 
-  // S'il y a plus d'une inscription active, garder la plus récente
-  if (activeEnrollments.length > 1) {
+  // S'il y a plus d'une inscription Active, garder la plus récente
+  if (ActiveEnrollments.length > 1) {
     // Trier par date d'inscription (la plus récente en premier)
-    const sortedEnrollments = activeEnrollments.sort(
+    const sortedEnrollments = ActiveEnrollments.sort(
       (a, b) =>
         new Date(b.enrollmentDate).getTime() -
         new Date(a.enrollmentDate).getTime()
@@ -797,7 +1136,7 @@ export const fixEnrollmentStatuses = async (req: Request, res: Response) => {
       if (beforeCount !== afterCount) {
         fixedCount++;
         console.log(
-          `Corrigé étudiant ${student.firstName} ${student.lastName}: ${beforeCount} → ${afterCount} inscription(s) active(s)`
+          `Corrigé étudiant ${student.firstName} ${student.lastName}: ${beforeCount} → ${afterCount} inscription(s) Active(s)`
         );
       }
 
@@ -908,7 +1247,7 @@ export const fixStudentEnrollmentStatus = async (
         studentId: student.id,
         studentName: `${student.firstName} ${student.lastName}`,
         enrollmentsCount: updatedEnrollments.length,
-        activeEnrollments: updatedEnrollments.filter(
+        ActiveEnrollments: updatedEnrollments.filter(
           (e) => e.status === "Active"
         ).length,
       },
@@ -952,5 +1291,791 @@ export const fixStudentEnrollmentStatus = async (
       error: "Erreur serveur",
       details: error instanceof Error ? error.message : "Erreur inconnue",
     });
+  }
+};
+
+export const importEnrollments = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).userId || "unknown",
+  };
+
+  console.log("🔄 Début importation - Fichier reçu:", req.file?.originalname);
+
+  if (!req.file) {
+    console.log("❌ Aucun fichier fourni");
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_ENROLLMENTS_ATTEMPT",
+      entity: "Enrollment",
+      description:
+        "Tentative d'importation d'inscriptions - aucun fichier fourni",
+      status: "ERROR",
+    });
+
+    return res.status(400).json({
+      message: "Aucun fichier fourni",
+    });
+  }
+
+  let filePath: string | null = req.file.path;
+
+  try {
+    console.log("📁 Validation du fichier...");
+    validateUploadedFile(req.file);
+
+    let enrollmentsData: any[] = [];
+
+    console.log("📊 Lecture du fichier...", {
+      name: req.file.originalname,
+      type: req.file.mimetype,
+      size: req.file.size,
+    });
+
+    // Log de début d'importation
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_ENROLLMENTS_START",
+      entity: "Enrollment",
+      description: "Début de l'importation des inscriptions",
+      status: "SUCCESS",
+      metadata: {
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+      },
+    });
+
+    // Lire le fichier
+    if (
+      req.file.mimetype.includes("excel") ||
+      req.file.mimetype.includes("spreadsheet") ||
+      req.file.originalname.match(/\.(xlsx|xls)$/i)
+    ) {
+      console.log("📗 Fichier Excel détecté");
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      console.log("📋 Feuille trouvée:", sheetName);
+
+      const worksheet = workbook.Sheets[sheetName];
+      enrollmentsData = XLSX.utils.sheet_to_json(worksheet);
+      console.log(
+        "📊 Données brutes extraites:",
+        enrollmentsData.length,
+        "lignes"
+      );
+
+      // Afficher les premières lignes pour debug
+      if (enrollmentsData.length > 0) {
+        console.log("📝 Première ligne:", enrollmentsData[0]);
+        console.log("📝 En-têtes:", Object.keys(enrollmentsData[0]));
+      }
+    } else if (
+      req.file.mimetype.includes("json") ||
+      req.file.originalname.match(/\.json$/i)
+    ) {
+      console.log("📘 Fichier JSON détecté");
+      const fileContent = await fs.promises.readFile(filePath, "utf-8");
+      enrollmentsData = JSON.parse(fileContent);
+    } else {
+      await safeDeleteFile(filePath);
+      console.log("❌ Format non supporté:", req.file.mimetype);
+
+      await createAuditLog({
+        ...auditData,
+        action: "IMPORT_ENROLLMENTS_ERROR",
+        entity: "Enrollment",
+        description: "Format de fichier non supporté pour l'importation",
+        status: "ERROR",
+        metadata: { mimeType: req.file.mimetype },
+      });
+
+      return res.status(400).json({
+        message:
+          "Format de fichier non supporté. Utilisez Excel (.xlsx, .xls) ou JSON",
+      });
+    }
+
+    // VÉRIFICATION CRITIQUE : Structure des données
+    console.log("🔍 Vérification structure données...");
+    if (enrollmentsData.length === 0) {
+      throw new Error("Aucune donnée trouvée dans le fichier");
+    }
+
+    const firstRow = enrollmentsData[0];
+    const availableColumns = Object.keys(firstRow);
+    console.log("📝 Colonnes disponibles:", availableColumns);
+
+    // Vérifier la présence des colonnes requises (avec mapping)
+    const mappedFirstRow = mapColumnNames(firstRow);
+    const requiredFields = [
+      "studentId",
+      "facultyName",
+      "level",
+      "academicYear",
+    ];
+    const missingFields = requiredFields.filter(
+      (field) => !mappedFirstRow[field]
+    );
+
+    if (missingFields.length > 0) {
+      console.log("❌ Champs manquants après mapping:", missingFields);
+      console.log("📝 Champs mappés:", mappedFirstRow);
+      throw new Error(
+        `Champs obligatoires manquants ou non reconnus. Colonnes disponibles: ${availableColumns.join(", ")}`
+      );
+    }
+
+    console.log("✅ Structure des données validée");
+
+    const results = {
+      success: 0,
+      errors: 0,
+      details: [] as any[],
+    };
+
+    // Traiter chaque inscription
+    for (const [index, rawEnrollmentData] of enrollmentsData.entries()) {
+      try {
+        console.log(`\n--- Traitement ligne ${index + 1} ---`);
+
+        // Traiter et nettoyer les données d'importation
+        const enrollmentData = processImportEnrollmentData(rawEnrollmentData);
+
+        // Validation des données de base
+        const validation = validateEnrollmentData(enrollmentData);
+        if (!validation.isValid) {
+          throw new Error(validation.errors.join(", "));
+        }
+
+        console.log(`🔍 Recherche étudiant: ${enrollmentData.studentId}`);
+        // Vérifier que l'étudiant existe
+        const student = await prisma.student.findUnique({
+          where: { studentId: enrollmentData.studentId },
+        });
+
+        if (!student) {
+          throw new Error(
+            `Étudiant avec ID "${enrollmentData.studentId}" non trouvé`
+          );
+        }
+        console.log("✅ Étudiant trouvé:", student.firstName, student.lastName);
+
+        console.log(`🔍 Recherche faculté: ${enrollmentData.facultyName}`);
+        // Recherche de faculté
+        const faculty = await prisma.faculty.findFirst({
+          where: {
+            name: enrollmentData.facultyName,
+          },
+        });
+
+        if (!faculty) {
+          throw new Error(
+            `Faculté "${enrollmentData.facultyName}" non trouvée. Facultés disponibles: ${(await prisma.faculty.findMany()).map((f) => f.name).join(", ")}`
+          );
+        }
+        console.log("✅ Faculté trouvée:", faculty.name);
+
+        console.log(
+          `🔍 Recherche année académique: ${enrollmentData.academicYear}`
+        );
+        // Vérifier que l'année académique existe
+        const academicYear = await prisma.academicYear.findFirst({
+          where: {
+            year: enrollmentData.academicYear,
+          },
+        });
+
+        if (!academicYear) {
+          throw new Error(
+            `Année académique "${enrollmentData.academicYear}" non trouvée. Années disponibles: ${(await prisma.academicYear.findMany()).map((y) => y.year).join(", ")}`
+          );
+        }
+        console.log("✅ Année académique trouvée:", academicYear.year);
+
+        // Vérifier si l'inscription existe déjà
+        const existingEnrollment = await prisma.enrollment.findFirst({
+          where: {
+            studentId: student.id,
+            facultyId: faculty.id,
+            academicYearId: academicYear.id,
+            level: enrollmentData.level,
+          },
+        });
+
+        if (existingEnrollment) {
+          throw new Error(
+            "Inscription déjà existante pour cet étudiant, faculté, niveau et année académique"
+          );
+        }
+
+        // VALIDATION : Vérifier si l'étudiant est déjà inscrit dans un niveau différent pour la même année
+        const existingEnrollmentSameYear = await prisma.enrollment.findFirst({
+          where: {
+            studentId: student.id,
+            academicYearId: academicYear.id,
+            NOT: {
+              level: enrollmentData.level,
+            },
+          },
+          include: {
+            faculty: { select: { name: true } },
+          },
+        });
+
+        if (existingEnrollmentSameYear) {
+          throw new Error(
+            `L'étudiant est déjà inscrit en niveau ${existingEnrollmentSameYear.level} (${existingEnrollmentSameYear.faculty.name}) pour la même année académique`
+          );
+        }
+
+        // Si c'est une nouvelle inscription active, marquer les précédentes comme "Completed"
+        if (enrollmentData.status === "Active") {
+          const previousActiveEnrollments = await prisma.enrollment.findMany({
+            where: {
+              studentId: student.id,
+              status: "Active",
+            },
+          });
+
+          if (previousActiveEnrollments.length > 0) {
+            console.log(
+              `🔄 Mise à jour de ${previousActiveEnrollments.length} inscription(s) précédente(s) en statut "Completed"`
+            );
+            await prisma.enrollment.updateMany({
+              where: {
+                studentId: student.id,
+                status: "Active",
+              },
+              data: {
+                status: "Completed",
+              },
+            });
+          }
+        }
+
+        // Préparer la date d'inscription
+        let enrollmentDateValue = new Date();
+        if (enrollmentData.enrollmentDate) {
+          enrollmentDateValue = new Date(enrollmentData.enrollmentDate);
+          if (isNaN(enrollmentDateValue.getTime())) {
+            enrollmentDateValue = new Date();
+          }
+        }
+
+        // Créer l'inscription
+        console.log("💾 Création de l'inscription...");
+        const newEnrollment = await prisma.enrollment.create({
+          data: {
+            studentId: student.id,
+            facultyId: faculty.id,
+            level: enrollmentData.level,
+            academicYearId: academicYear.id,
+            status: enrollmentData.status as EnrollmentStatus,
+            enrollmentDate: enrollmentDateValue,
+          },
+        });
+
+        console.log("✅ Inscription créée avec ID:", newEnrollment.id);
+
+        results.success++;
+        results.details.push({
+          index: index + 1,
+          studentId: enrollmentData.studentId,
+          studentName: `${student.firstName} ${student.lastName}`,
+          faculty: faculty.name,
+          level: enrollmentData.level,
+          academicYear: academicYear.year,
+          status: "success",
+          message: "Inscription créée avec succès",
+          enrollmentId: newEnrollment.id,
+        });
+      } catch (error: unknown) {
+        const errorMessage = getErrorMessage(error);
+        console.error(`❌ Erreur ligne ${index + 1}:`, errorMessage);
+        results.errors++;
+        results.details.push({
+          index: index + 1,
+          studentId:
+            rawEnrollmentData.studentId ||
+            rawEnrollmentData.ID_Etudiant ||
+            "N/A",
+          status: "error",
+          message: errorMessage,
+          data: rawEnrollmentData,
+        });
+      }
+    }
+
+    // Supprimer le fichier après traitement
+    if (filePath) {
+      await safeDeleteFile(filePath);
+      filePath = null;
+    }
+
+    console.log(
+      "🎉 Import inscriptions terminé:",
+      results.success,
+      "succès,",
+      results.errors,
+      "erreurs"
+    );
+
+    // Log de fin d'importation
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_ENROLLMENTS_COMPLETE",
+      entity: "Enrollment",
+      description: "Importation des inscriptions terminée",
+      status: "SUCCESS",
+      metadata: {
+        total: enrollmentsData.length,
+        success: results.success,
+        errors: results.errors,
+        successRate: `${((results.success / enrollmentsData.length) * 100).toFixed(2)}%`,
+      },
+    });
+
+    res.json({
+      message: `Import terminé: ${results.success} succès, ${results.errors} erreurs`,
+      summary: {
+        total: enrollmentsData.length,
+        success: results.success,
+        errors: results.errors,
+        successRate: `${((results.success / enrollmentsData.length) * 100).toFixed(2)}%`,
+      },
+      results: results.details,
+    });
+  } catch (error: unknown) {
+    console.error("❌ ERREUR DÉTAILLÉE importation:", error);
+
+    // Nettoyer le fichier en cas d'erreur
+    if (filePath) {
+      await safeDeleteFile(filePath);
+    }
+
+    const errorMessage = getErrorMessage(error);
+
+    // Log d'erreur d'importation
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_ENROLLMENTS_ERROR",
+      entity: "Enrollment",
+      description: "Erreur lors de l'importation des inscriptions",
+      status: "ERROR",
+      errorMessage: errorMessage,
+      metadata: {
+        fileName: req.file?.originalname,
+        fileSize: req.file?.size,
+      },
+    });
+
+    res.status(400).json({
+      message: "Erreur lors de l'importation",
+      error: errorMessage,
+      details:
+        process.env.NODE_ENV === "development"
+          ? {
+              stack: error instanceof Error ? error.stack : undefined,
+              file: req.file
+                ? {
+                    name: req.file.originalname,
+                    size: req.file.size,
+                    type: req.file.mimetype,
+                  }
+                : undefined,
+            }
+          : undefined,
+    });
+  }
+};
+
+// Exportation des inscriptions
+export const exportEnrollments = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).userId || "unknown",
+  };
+
+  try {
+    // Récupérer toutes les inscriptions avec les relations
+    const enrollments = await prisma.enrollment.findMany({
+      include: {
+        student: {
+          select: {
+            studentId: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+        faculty: {
+          select: {
+            name: true,
+          },
+        },
+        academicYear: {
+          select: {
+            year: true,
+          },
+        },
+      },
+      orderBy: {
+        enrollmentDate: "desc",
+      },
+    });
+
+    // Fonction pour formater le statut pour l'export
+    const formatStatusForExport = (status: EnrollmentStatus): string => {
+      const statusMap: { [key: string]: string } = {
+        Active: "Active",
+        Completed: "Completed",
+        Suspended: "Suspended",
+      };
+      return statusMap[status] || status;
+    };
+
+    // Préparer les données pour l'exportation
+    const exportData = enrollments.map((enrollment) => ({
+      studentId: enrollment.student.studentId,
+      studentFirstName: enrollment.student.firstName,
+      studentLastName: enrollment.student.lastName,
+      studentEmail: enrollment.student.email,
+      facultyName: enrollment.faculty.name,
+      level: enrollment.level,
+      academicYear: enrollment.academicYear.year,
+      status: formatStatusForExport(enrollment.status),
+      enrollmentDate: enrollment.enrollmentDate.toISOString().split("T")[0],
+    }));
+
+    // Log de début d'exportation
+    await createAuditLog({
+      ...auditData,
+      action: "EXPORT_ENROLLMENTS_START",
+      entity: "Enrollment",
+      description: "Début de l'exportation des inscriptions",
+      status: "SUCCESS",
+      metadata: {
+        enrollmentsCount: enrollments.length,
+      },
+    });
+
+    // Créer le fichier Excel
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Inscriptions");
+
+    // Ajouter une feuille d'instructions
+    const instructions = [
+      {
+        Champ: "studentId",
+        Description: "ID unique de l'étudiant (obligatoire)",
+        Exemple: "ETU2024001",
+      },
+      {
+        Champ: "facultyName",
+        Description: "Nom de la faculté (obligatoire)",
+        Exemple: "Faculté des Sciences",
+      },
+      {
+        Champ: "level",
+        Description: "Niveau d'étude (obligatoire)",
+        Exemple: "1",
+      },
+      {
+        Champ: "academicYear",
+        Description: "Année académique (obligatoire)",
+        Exemple: "2024-2025",
+      },
+      {
+        Champ: "status",
+        Description: "Statut: Active, Completed, Suspended",
+        Exemple: "Active",
+      },
+      {
+        Champ: "enrollmentDate",
+        Description: "Date d'inscription (YYYY-MM-DD)",
+        Exemple: "2024-09-01",
+      },
+    ];
+
+    const instructionSheet = XLSX.utils.json_to_sheet(instructions);
+    XLSX.utils.book_append_sheet(workbook, instructionSheet, "Instructions");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    // Log d'exportation réussie
+    await createAuditLog({
+      ...auditData,
+      action: "EXPORT_ENROLLMENTS_SUCCESS",
+      entity: "Enrollment",
+      description: "Exportation des inscriptions terminée avec succès",
+      status: "SUCCESS",
+      metadata: {
+        enrollmentsExported: enrollments.length,
+        fileFormat: "Excel",
+      },
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=inscriptions-export-${new Date().toISOString().split("T")[0]}.xlsx`
+    );
+
+    res.send(buffer);
+  } catch (error: unknown) {
+    console.error("❌ Erreur export inscriptions:", error);
+
+    const errorMessage = getErrorMessage(error);
+
+    // Log d'erreur d'exportation
+    await createAuditLog({
+      ...auditData,
+      action: "EXPORT_ENROLLMENTS_ERROR",
+      entity: "Enrollment",
+      description: "Erreur lors de l'exportation des inscriptions",
+      status: "ERROR",
+      errorMessage: errorMessage,
+    });
+
+    res.status(500).json({
+      message: "Erreur lors de l'exportation: " + errorMessage,
+    });
+  }
+};
+
+// Téléchargement du template d'importation
+export const downloadEnrollmentImportTemplate = async (
+  req: Request,
+  res: Response
+) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).userId || "unknown",
+  };
+
+  try {
+    const templateData = [
+      {
+        studentId: "ETU2024001",
+        facultyName: "Faculté des Sciences",
+        level: "1",
+        academicYear: "2024-2025",
+        status: "Active",
+        enrollmentDate: "2024-09-01",
+      },
+      {
+        studentId: "ETU2024002",
+        facultyName: "Faculté de Médecine",
+        level: "2",
+        academicYear: "2024-2025",
+        status: "Active",
+        enrollmentDate: "2024-09-01",
+      },
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Inscriptions");
+
+    // Ajouter une feuille d'instructions
+    const instructions = [
+      {
+        Champ: "studentId",
+        Description: "ID unique de l'étudiant (doit exister)",
+        Format: "Texte",
+        Obligatoire: "Oui",
+      },
+      {
+        Champ: "facultyName",
+        Description: "Nom exact de la faculté",
+        Format: "Texte",
+        Obligatoire: "Oui",
+      },
+      {
+        Champ: "level",
+        Description: "Niveau d'étude (1, 2, 3, etc.)",
+        Format: "Texte",
+        Obligatoire: "Oui",
+      },
+      {
+        Champ: "academicYear",
+        Description: "Année académique",
+        Format: "Texte",
+        Obligatoire: "Oui",
+      },
+      {
+        Champ: "status",
+        Description: "Statut de l'inscription",
+        Format: "Active/Completed/Suspended",
+        Obligatoire: "Non",
+      },
+      {
+        Champ: "enrollmentDate",
+        Description: "Date d'inscription",
+        Format: "YYYY-MM-DD",
+        Obligatoire: "Non",
+      },
+    ];
+
+    const instructionSheet = XLSX.utils.json_to_sheet(instructions);
+    XLSX.utils.book_append_sheet(workbook, instructionSheet, "Instructions");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    // Log de téléchargement du template
+    await createAuditLog({
+      ...auditData,
+      action: "DOWNLOAD_ENROLLMENT_TEMPLATE",
+      entity: "Enrollment",
+      description: "Téléchargement du template d'importation d'inscriptions",
+      status: "SUCCESS",
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=template-import-inscriptions.xlsx"
+    );
+
+    res.send(buffer);
+  } catch (error: unknown) {
+    console.error("Erreur génération template inscriptions:", error);
+
+    const errorMessage = getErrorMessage(error);
+
+    // Log d'erreur
+    await createAuditLog({
+      ...auditData,
+      action: "DOWNLOAD_ENROLLMENT_TEMPLATE_ERROR",
+      entity: "Enrollment",
+      description:
+        "Erreur lors de la génération du template d'importation d'inscriptions",
+      status: "ERROR",
+      errorMessage: errorMessage,
+    });
+
+    res.status(500).json({
+      message: "Erreur lors de la génération du template",
+      error: process.env.NODE_ENV === "development" ? errorMessage : undefined,
+    });
+  }
+};
+
+// Nouvelle fonction pour obtenir les dates d'inscription (API endpoint)
+export const getEnrollmentDates = async (req: Request, res: Response) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId) {
+      return res.status(400).json({
+        error: "ID étudiant requis",
+      });
+    }
+
+    console.log(
+      `📅 Calcul des dates d'inscription pour l'étudiant: ${studentId}`
+    );
+
+    // Récupérer toutes les inscriptions de l'étudiant triées par date
+    const enrollments = await prisma.enrollment.findMany({
+      where: {
+        studentId: studentId,
+      },
+      include: {
+        academicYear: {
+          select: {
+            year: true,
+          },
+        },
+      },
+      orderBy: {
+        enrollmentDate: "asc",
+      },
+    });
+
+    if (enrollments.length === 0) {
+      // Aucune inscription trouvée
+      const result = {
+        startDate: "janvier 2021",
+        endDate: "octobre 2025",
+        hasData: false,
+      };
+
+      return res.json(result);
+    }
+
+    // Trouver la première et dernière inscription
+    const firstEnrollment = enrollments[0];
+    const lastEnrollment = enrollments[enrollments.length - 1];
+
+    const firstEnrollmentDate = new Date(firstEnrollment.enrollmentDate);
+    const lastEnrollmentDate = new Date(lastEnrollment.enrollmentDate);
+
+    const firstYear = firstEnrollmentDate.getFullYear();
+    const lastYear = lastEnrollmentDate.getFullYear();
+
+    // Map des mois en français
+    const months = [
+      "janvier",
+      "février",
+      "mars",
+      "avril",
+      "mai",
+      "juin",
+      "juillet",
+      "août",
+      "septembre",
+      "octobre",
+      "novembre",
+      "décembre",
+    ];
+
+    // StartDate: 1er mois (janvier) de l'année de la première inscription
+    // EndDate: 10e mois (octobre) de l'année de la dernière inscription
+    const startDate = `${months[0]} ${firstYear}`;
+    const endDate = `${months[9]} ${lastYear}`;
+
+    const result = {
+      startDate,
+      endDate,
+      hasData: true,
+      firstEnrollment: firstEnrollmentDate.toISOString(),
+      lastEnrollment: lastEnrollmentDate.toISOString(),
+      totalEnrollments: enrollments.length,
+    };
+
+    console.log(`✅ Dates calculées pour étudiant ${studentId}:`, result);
+
+    res.json(result);
+  } catch (error) {
+    console.error("❌ Erreur calcul dates inscription:", error);
+
+    const errorMessage = getErrorMessage(error);
+
+    const fallbackResult = {
+      startDate: "janvier 2021",
+      endDate: "octobre 2025",
+      hasData: false,
+      error: errorMessage,
+    };
+
+    res.status(500).json(fallbackResult);
   }
 };

@@ -59,6 +59,7 @@ import { useGradeStore } from "@/store/gradeStore";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { useInitialData } from "@/hooks/useInitialData";
+import { GradeImportWizard } from "../GradeImportWizard";
 
 // Types améliorés avec validation
 interface GradeEditModalProps {
@@ -432,6 +433,7 @@ export const GradesBulkEditor = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
   const selectedAcademicYear = useMemo(() => {
     return academicYears.find((ay) => ay.id === filters.academicYearId);
   }, [filters.academicYearId, academicYears]);
@@ -1119,43 +1121,11 @@ export const GradesBulkEditor = () => {
           />
 
           <Button
-            variant="outline"
-            size="sm"
-            onClick={downloadTemplate}
-            className="bg-white dark:bg-gray-700 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/50"
+            onClick={() => setIsImportWizardOpen(true)}
+            className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 dark:from-green-700 dark:to-teal-700"
           >
-            <DownloadCloud className="h-4 w-4 mr-1" />
-            Template
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleImportClick}
-            className="bg-white dark:bg-gray-700 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/50"
-          >
-            <UploadCloud className="h-4 w-4 mr-1" />
-            Importer
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportJSON}
-            className="bg-white dark:bg-gray-700 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/50"
-          >
-            <FileText className="h-4 w-4 mr-1" />
-            JSON
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportExcel}
-            className="bg-white dark:bg-gray-700 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/50"
-          >
-            <Table className="h-4 w-4 mr-1" />
-            Excel
+            <Upload className="h-4 w-4 mr-2" />
+            Importer Excel
           </Button>
         </div>
       </div>
@@ -1636,6 +1606,11 @@ export const GradesBulkEditor = () => {
           isLoading={isSaving}
         />
       )}
+
+      <GradeImportWizard
+        isOpen={isImportWizardOpen}
+        onClose={() => setIsImportWizardOpen(false)}
+      />
     </div>
   );
 };

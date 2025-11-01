@@ -72,6 +72,8 @@ import { DialogDescription } from "@radix-ui/react-dialog";
 import { StudentDetails } from "./students/StudentDetails";
 import { StudentForm } from "./students/StudentForm";
 import { useAuthStore } from "@/store/authStore";
+import { ImportStudents } from "./students/ImportStudents";
+import { ExportStudents } from "./students/ExportStudents";
 
 // Composant Carte Étudiant
 const StudentCard = ({
@@ -441,6 +443,8 @@ export const StudentsManager = () => {
   const { user } = useAuthStore();
 
   const academicYear = currentAcademicYear ? currentAcademicYear.year : "";
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Debounce search term
   useEffect(() => {
@@ -1010,25 +1014,18 @@ export const StudentsManager = () => {
           <Button
             variant="outline"
             className="gap-2"
-            onClick={() => document.getElementById("import-file")?.click()}
+            onClick={() => setShowImportModal(true)}
             disabled={loading}
           >
             <Upload className="h-4 w-4" />
             <span className="hidden sm:inline">Importer</span>
-            <input
-              id="import-file"
-              type="file"
-              accept=".xlsx,.xls,.csv,.json"
-              onChange={handleImport}
-              className="hidden"
-            />
           </Button>
 
           {/* Bouton Export */}
           <Button
             variant="outline"
             className="gap-2"
-            onClick={exportToExcel}
+            onClick={() => setShowExportModal(true)}
             disabled={filteredStudents.length === 0}
           >
             <Download className="h-4 w-4" />
@@ -1164,7 +1161,31 @@ export const StudentsManager = () => {
           />
         )}
       </Card>
-
+      <Dialog open={showImportModal} onOpenChange={setShowImportModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Importation des Étudiants</DialogTitle>
+            <DialogDescription>
+              Importez des étudiants en lot via un fichier Excel ou JSON
+            </DialogDescription>
+          </DialogHeader>
+          <ImportStudents />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Exportation des Étudiants</DialogTitle>
+            <DialogDescription>
+              Exportez les données des étudiants dans le format d'importation
+            </DialogDescription>
+          </DialogHeader>
+          <ExportStudents
+            students={filteredStudents}
+            onClose={() => setShowExportModal(false)}
+          />
+        </DialogContent>
+      </Dialog>
       {/* Modal de confirmation de suppression */}
       <ConfirmationModal
         isOpen={isModalOpen}

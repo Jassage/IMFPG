@@ -77,8 +77,6 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
     loading,
     getStudentFees,
     recordPayment,
-    updateStudentFee,
-    deleteStudenFeePayment,
     getPaymentHistory,
     getStudentFeeByYear,
   } = useFeeStructureStore();
@@ -137,58 +135,6 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
       }
     } catch (error) {
       toast.error("Erreur lors de l'enregistrement du paiement");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleUpdatePayment = async () => {
-    if (!editingPayment) return;
-
-    setIsSubmitting(true);
-    try {
-      const updatePayload: any = {
-        amount: paymentData.amount,
-        paymentMethod: paymentData.paymentMethod,
-        reference: paymentData.reference,
-        paymentDate: paymentData.paymentDate,
-      };
-      await updateStudentFee(editingPayment.id, updatePayload);
-      toast.success("Paiement modifié avec succès!");
-      setEditingPayment(null);
-      setPaymentData({
-        amount: 0,
-        paymentMethod: "cash",
-        reference: "",
-        paymentDate: new Date().toISOString().split("T")[0],
-      });
-      loadStudentFees();
-
-      if (selectedFee) {
-        loadPaymentHistory(selectedFee);
-      }
-    } catch (error) {
-      toast.error("Erreur lors de la modification du paiement");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDeletePayment = async () => {
-    if (!deletingPayment) return;
-
-    setIsSubmitting(true);
-    try {
-      await deleteStudenFeePayment(deletingPayment.id);
-      toast.success("Paiement supprimé avec succès!");
-      setDeletingPayment(null);
-      loadStudentFees();
-
-      if (selectedFee) {
-        loadPaymentHistory(selectedFee);
-      }
-    } catch (error) {
-      toast.error("Erreur lors de la suppression du paiement");
     } finally {
       setIsSubmitting(false);
     }
@@ -636,19 +582,6 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
             >
               Annuler
             </Button>
-            <Button
-              onClick={
-                editingPayment ? handleUpdatePayment : handleRecordPayment
-              }
-              disabled={!selectedFee || paymentData.amount <= 0 || isSubmitting}
-            >
-              {isSubmitting && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {editingPayment
-                ? "Modifier le paiement"
-                : "Enregistrer le paiement"}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -684,7 +617,6 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
                     <TableHead>Méthode</TableHead>
                     <TableHead className="text-right">Montant</TableHead>
                     <TableHead>Référence</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -703,38 +635,7 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
                         {payment.reference || "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setEditingPayment(payment);
-                                setPaymentData({
-                                  amount: payment.amount,
-                                  paymentMethod: payment.paymentMethod,
-                                  reference: payment.reference || "",
-                                  paymentDate:
-                                    payment.paymentDate.split("T")[0],
-                                });
-                                setShowPaymentForm(true);
-                              }}
-                            >
-                              <Edit className="h-4 w-4 mr-2" />
-                              Modifier
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-red-600"
-                              onClick={() => setDeletingPayment(payment)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Supprimer
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {payment.description || "-"}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -792,16 +693,6 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
               disabled={isSubmitting}
             >
               Annuler
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeletePayment}
-              disabled={isSubmitting}
-            >
-              {isSubmitting && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Supprimer
             </Button>
           </DialogFooter>
         </DialogContent>

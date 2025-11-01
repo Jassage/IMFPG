@@ -46,7 +46,11 @@ import auditRoutes from "./routes/auditRoutes";
 import backupRoutes from "./routes/backupRoutes";
 import documentRoutes from "./routes/documentRoutes";
 
-import { initializeAcademicYear } from "./services/academicYearService";
+import {
+  ensureAcademicYearsExist,
+  initializeAcademicYear,
+  updateCurrentAcademicYear,
+} from "./services/academicYearService";
 import path from "path";
 import { auditMiddleware } from "./middleware/auditMiddleware";
 import {
@@ -54,6 +58,7 @@ import {
   cleanupExpiredSessions,
   trackUserActivity,
 } from "./middleware/sessionTimeout";
+import { initializeAcademicYearCron } from "./services/cronService";
 
 dotenv.config();
 
@@ -132,8 +137,37 @@ app.use((req, res, next) => {
   }
 });
 
+// Fonction d'initialisation asynchrone
+const initializeApp = async () => {
+  try {
+    console.log("🚀 Démarrage de l'application...");
+
+    // Vérifier la connexion à la base de données
+    await prisma.$connect();
+    console.log("✅ Connecté à la base de données");
+
+    // Initialiser les années académiques
+    console.log("📅 Initialisation des années académiques...");
+    await ensureAcademicYearsExist();
+    await updateCurrentAcademicYear();
+
+    // Démarrer les tâches cron pour la maintenance automatique
+    console.log("🕒 Initialisation des tâches automatiques...");
+    initializeAcademicYearCron();
+
+    console.log("✅ Initialisation de l'application terminée");
+  } catch (error) {
+    console.error("❌ Erreur lors de l'initialisation:", error);
+    process.exit(1);
+  }
+};
+
 // Lancer le serveur
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);
-  initializeAcademicYear();
+
+  // Initialiser l'application de manière asynchrone
+  await initializeApp();
+
+  console.log(`🎯 API prête à recevoir des requêtes sur le port ${PORT}`);
 });

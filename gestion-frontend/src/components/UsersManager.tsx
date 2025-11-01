@@ -696,7 +696,7 @@ export const UsersManager = () => {
                               </>
                             )}
                           </DropdownMenuItem>
-                          // Dans les actions du dropdown
+
                           {canDeleteUser(user) && (
                             <DropdownMenuItem
                               onClick={() =>

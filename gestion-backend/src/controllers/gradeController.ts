@@ -31,7 +31,35 @@ interface GradeUpdateData {
   isRetake?: boolean;
   [key: string]: any;
 }
+// ==================== TYPES POUR IMPORT EXCEL NOTES ====================
+interface ExcelGradeRow {
+  matricule: string;
+  codeUE: string;
+  nomUE?: string;
+  note: number;
+  niveau: string;
+  anneeAcademique: string;
+  semestre: "S1" | "S2";
+  session?: "Normale" | "Reprise";
+}
 
+interface ProcessedGrade {
+  matricule: string;
+  codeUE: string;
+  nomUE?: string;
+  note: number;
+  niveau: string;
+  anneeAcademique: string;
+  semestre: "S1" | "S2";
+  session?: "Normale" | "Reprise";
+  resolvedIds?: {
+    studentId?: string;
+    ueId?: string;
+    academicYearId?: string;
+  };
+  errors?: string[];
+  status?: "PENDING" | "SUCCESS" | "ERROR";
+}
 // ==================== FONCTIONS UTILITAIRES ====================
 // Fonction utilitaire pour gérer les erreurs unknown
 const getErrorMessage = (error: unknown): string => {
@@ -1479,5 +1507,488 @@ export const getGradeHistory = async (req: Request, res: Response) => {
         action: "GET_GRADE_HISTORY",
       }
     );
+  }
+};
+
+const resolveEntitiesForGrades = async (
+  grades: ExcelGradeRow[]
+): Promise<{
+  processed: ProcessedGrade[];
+}> => {
+  const processed: ProcessedGrade[] = [...grades];
+
+  console.log("📥 Données notes reçues de l'Excel:", grades);
+
+  // Récupérer tous les matricules et codes UE uniques
+  const matricules = [...new Set(grades.map((g) => g.matricule))];
+  const ueCodes = [...new Set(grades.map((g) => g.codeUE))];
+  const academicYears = [...new Set(grades.map((g) => g.anneeAcademique))];
+
+  console.log("🔍 Recherche des entités pour notes:", {
+    matricules,
+    ueCodes,
+    academicYears,
+  });
+
+  // Charger toutes les entités
+  const [students, ues, academicYearsData] = await Promise.all([
+    // Charger les étudiants par matricule
+    prisma.student.findMany({
+      where: {
+        studentId: {
+          in: matricules,
+        },
+      },
+      select: {
+        id: true,
+        studentId: true,
+        firstName: true,
+        lastName: true,
+      },
+    }),
+
+    // Charger les UEs par code
+    prisma.ue.findMany({
+      where: {
+        code: {
+          in: ueCodes,
+        },
+      },
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        passingGrade: true,
+      },
+    }),
+
+    // Charger les années académiques
+    prisma.academicYear.findMany({
+      where: {
+        year: {
+          in: academicYears,
+        },
+      },
+      select: {
+        id: true,
+        year: true,
+      },
+    }),
+  ]);
+
+  console.log("📦 Entités trouvées pour notes:", {
+    students: students.map((s) => ({ matricule: s.studentId, id: s.id })),
+    ues: ues.map((u) => ({ code: u.code, id: u.id })),
+    academicYears: academicYearsData.map((ay) => ({
+      year: ay.year,
+      id: ay.id,
+    })),
+  });
+
+  // Créer des maps
+  const studentMap = new Map(
+    students.map((student) => [student.studentId, student])
+  );
+  const ueMap = new Map(ues.map((ue) => [ue.code, ue]));
+  const academicYearMap = new Map(academicYearsData.map((ay) => [ay.year, ay]));
+
+  // Résoudre les IDs pour chaque note
+  for (const grade of processed) {
+    const errors: string[] = [];
+    const resolvedIds: any = {};
+
+    console.log(
+      `\n🔍 Résolution pour note: ${grade.matricule} - ${grade.codeUE}`
+    );
+
+    // Résoudre l'étudiant
+    const student = studentMap.get(grade.matricule);
+    if (student) {
+      resolvedIds.studentId = student.id;
+      console.log(`✅ Étudiant trouvé: ${grade.matricule} -> ${student.id}`);
+    } else {
+      errors.push(`Étudiant non trouvé avec le matricule: ${grade.matricule}`);
+      console.log(`❌ Étudiant non trouvé: ${grade.matricule}`);
+    }
+
+    // Résoudre l'UE
+    const ue = ueMap.get(grade.codeUE);
+    if (ue) {
+      resolvedIds.ueId = ue.id;
+      console.log(`✅ UE trouvée: ${grade.codeUE} -> ${ue.id}`);
+    } else {
+      errors.push(`UE non trouvée avec le code: ${grade.codeUE}`);
+      console.log(`❌ UE non trouvée: ${grade.codeUE}`);
+    }
+
+    // Résoudre l'année académique
+    const academicYear = academicYearMap.get(grade.anneeAcademique);
+    if (academicYear) {
+      resolvedIds.academicYearId = academicYear.id;
+      console.log(
+        `✅ Année académique trouvée: ${grade.anneeAcademique} -> ${academicYear.id}`
+      );
+    } else {
+      errors.push(`Année académique non trouvée: ${grade.anneeAcademique}`);
+      console.log(`❌ Année académique non trouvée: ${grade.anneeAcademique}`);
+    }
+
+    // Validation de la note
+    const gradeValidation = validateGradeInput(grade.note);
+    if (!gradeValidation.isValid && gradeValidation.error) {
+      errors.push(gradeValidation.error);
+      console.log(`❌ Note invalide: ${grade.note}`);
+    }
+
+    grade.resolvedIds = resolvedIds;
+    if (errors.length > 0) {
+      grade.errors = errors;
+      grade.status = "ERROR";
+      console.log(`❌ Erreurs pour cette ligne:`, errors);
+    } else {
+      grade.status = "PENDING";
+      console.log(`✅ Tous les IDs résolus pour cette note`);
+    }
+  }
+
+  return { processed };
+};
+
+// ==================== IMPORTATION DES NOTES DEPUIS EXCEL ====================
+export const importGradesFromExcel = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).user?.id || (req as any).userId || null,
+  };
+
+  try {
+    console.log("🟢 IMPORT NOTES EXCEL DÉBUT");
+
+    if (!req.file) {
+      console.log("❌ Aucun fichier reçu");
+      await createAuditLog({
+        ...auditData,
+        action: "IMPORT_GRADES_EXCEL_ATTEMPT",
+        entity: "Grade",
+        description: "Tentative d'import Excel notes - fichier manquant",
+        status: "ERROR",
+      });
+      return res.status(400).json({
+        success: false,
+        error: "Fichier Excel requis",
+      });
+    }
+
+    console.log("📁 Fichier notes reçu:", req.file.originalname);
+
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.readFile(req.file.path);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+
+    // Convertir en JSON
+    const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, {
+      header: [
+        "matricule",
+        "codeUE",
+        "nomUE",
+        "note",
+        "niveau",
+        "anneeAcademique",
+        "semestre",
+        "session",
+      ],
+      range: 1, // Ignorer la première ligne (en-têtes)
+    });
+
+    console.log("📋 Données brutes Excel notes:", jsonData);
+
+    // Transformer en format structuré
+    const excelGrades: ExcelGradeRow[] = jsonData
+      .filter(
+        (row: any) =>
+          row.matricule &&
+          row.codeUE &&
+          row.note !== undefined &&
+          row.niveau &&
+          row.anneeAcademique &&
+          row.semestre
+      )
+      .map((row: any) => ({
+        matricule: String(row.matricule).trim(),
+        codeUE: String(row.codeUE).trim(),
+        nomUE: row.nomUE ? String(row.nomUE).trim() : undefined,
+        note: parseFloat(String(row.note).replace(",", ".")),
+        niveau: String(row.niveau).trim(),
+        anneeAcademique: String(row.anneeAcademique).trim(),
+        semestre: String(row.semestre).trim().toUpperCase() as "S1" | "S2",
+        session: row.session
+          ? (String(row.session).trim() as "Normale" | "Reprise")
+          : "Normale",
+      }));
+
+    console.log("🔄 Notes traitées:", excelGrades);
+
+    if (excelGrades.length === 0) {
+      console.log("❌ Aucune donnée valide trouvée dans le fichier notes");
+      await createAuditLog({
+        ...auditData,
+        action: "IMPORT_GRADES_EXCEL_ATTEMPT",
+        entity: "Grade",
+        description:
+          "Tentative d'import Excel notes - aucune donnée valide trouvée",
+        status: "ERROR",
+      });
+      return res.status(400).json({
+        success: false,
+        error: "Aucune donnée valide trouvée dans le fichier Excel",
+      });
+    }
+
+    console.log("🔍 Résolution des entités pour notes...");
+    const { processed: gradesWithIds } =
+      await resolveEntitiesForGrades(excelGrades);
+
+    console.log("📊 Notes avec IDs résolus:", gradesWithIds);
+
+    const results = {
+      success: [] as any[],
+      errors: [] as any[],
+      created: 0,
+      failed: 0,
+    };
+
+    // Traiter chaque note
+    for (const [index, grade] of gradesWithIds.entries()) {
+      try {
+        if (grade.status === "ERROR") {
+          results.errors.push({
+            ligne: index + 2,
+            matricule: grade.matricule,
+            codeUE: grade.codeUE,
+            errors: grade.errors,
+          });
+          results.failed++;
+          continue;
+        }
+
+        if (!grade.resolvedIds) {
+          results.errors.push({
+            ligne: index + 2,
+            matricule: grade.matricule,
+            codeUE: grade.codeUE,
+            errors: ["Impossible de résoudre les IDs"],
+          });
+          results.failed++;
+          continue;
+        }
+
+        const { studentId, ueId, academicYearId } = grade.resolvedIds;
+
+        // Vérifier si la note existe déjà pour cette session
+        const existingGrade = await prisma.grade.findFirst({
+          where: {
+            studentId,
+            ueId,
+            academicYearId,
+            semester: grade.semestre,
+            session: grade.session || "Normale",
+            isActive: true,
+          },
+        });
+
+        if (existingGrade) {
+          results.errors.push({
+            ligne: index + 2,
+            matricule: grade.matricule,
+            codeUE: grade.codeUE,
+            errors: ["Note déjà existante pour cette session"],
+            existingGradeId: existingGrade.id,
+          });
+          results.failed++;
+          continue;
+        }
+
+        // Récupérer l'UE pour le calcul du statut
+        const ue = await prisma.ue.findUnique({
+          where: { id: ueId },
+          select: { passingGrade: true },
+        });
+
+        if (!ue) {
+          results.errors.push({
+            ligne: index + 2,
+            matricule: grade.matricule,
+            codeUE: grade.codeUE,
+            errors: ["UE non trouvée pour le calcul du statut"],
+          });
+          results.failed++;
+          continue;
+        }
+
+        // Calculer le statut automatique
+        const status = calculateGradeStatus(grade.note, ue.passingGrade);
+
+        console.log(
+          `➕ Création note: ${grade.matricule} - ${grade.codeUE} - ${grade.note}`
+        );
+
+        // Créer la note (sans professeurId)
+        const newGrade = await prisma.grade.create({
+          data: {
+            studentId: studentId!,
+            ueId: ueId!,
+            grade: grade.note,
+            status,
+            session: (grade.session || "Normale") as GradeSession,
+            semester: grade.semestre,
+            level: grade.niveau,
+            academicYearId: academicYearId!,
+            isActive: true,
+          },
+        });
+
+        results.success.push({
+          ligne: index + 2,
+          gradeId: newGrade.id,
+          details: `${grade.matricule} → ${grade.codeUE}: ${grade.note}/100 (${status})`,
+        });
+        results.created++;
+      } catch (error) {
+        console.error(`❌ Erreur ligne ${index + 2}:`, error);
+        results.errors.push({
+          ligne: index + 2,
+          matricule: grade.matricule,
+          codeUE: grade.codeUE,
+          errors: [getErrorMessage(error)],
+        });
+        results.failed++;
+      }
+    }
+
+    console.log("📈 Résultats finaux import notes:", results);
+
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_GRADES_EXCEL_SUCCESS",
+      entity: "Grade",
+      description: `Import Excel notes terminé - ${results.created} créées, ${results.failed} erreurs`,
+      status: "SUCCESS",
+    });
+
+    // Nettoyer le fichier temporaire
+    const fs = await import("fs");
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    console.log("🟢 IMPORT NOTES EXCEL TERMINÉ AVEC SUCCÈS");
+
+    res.json({
+      success: true,
+      message: `Import Excel notes terminé`,
+      summary: {
+        total: excelGrades.length,
+        created: results.created,
+        failed: results.failed,
+        successRate: `${((results.created / excelGrades.length) * 100).toFixed(1)}%`,
+      },
+      details: {
+        reussites: results.success,
+        erreurs: results.errors,
+      },
+    });
+  } catch (error) {
+    console.error("🔴 ERREUR IMPORT NOTES EXCEL:", error);
+
+    // Nettoyer le fichier temporaire en cas d'erreur
+    if (req.file) {
+      const fs = await import("fs");
+      try {
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+      } catch (cleanupError) {
+        console.error("Erreur lors du nettoyage du fichier:", cleanupError);
+      }
+    }
+
+    // Log d'erreur
+    await createAuditLog({
+      ...auditData,
+      action: "IMPORT_GRADES_EXCEL_ERROR",
+      entity: "Grade",
+      description: `Erreur lors de l'import Excel notes: ${getErrorMessage(error)}`,
+      status: "ERROR",
+    });
+
+    res.status(500).json({
+      success: false,
+      error: getErrorMessage(error),
+      message: "Erreur interne lors de l'importation des notes",
+    });
+  }
+};
+
+// Template pour l'importation des notes (sans nomProfesseur)
+export const downloadGradeTemplate = async (req: Request, res: Response) => {
+  try {
+    const XLSX = await import("xlsx");
+
+    // Créer un workbook
+    const workbook = XLSX.utils.book_new();
+
+    // Données d'exemple pour les notes (sans nomProfesseur)
+    const templateData = [
+      {
+        matricule: "ETU001",
+        codeUE: "BDD201",
+        nomUE: "Bases de Données",
+        note: 75.5,
+        niveau: "3",
+        anneeAcademique: "2025-2026",
+        semestre: "S1",
+        session: "Normale",
+      },
+      {
+        matricule: "ETU002",
+        codeUE: "ALGO102",
+        nomUE: "Algorithmique Avancée",
+        note: 82.0,
+        niveau: "3",
+        anneeAcademique: "2025-2026",
+        semestre: "S1",
+        session: "Normale",
+      },
+    ];
+
+    // Créer la feuille
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+
+    // Ajouter la feuille au workbook
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+
+    // Générer le buffer
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    // Configurer la réponse
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=template_notes.xlsx"
+    );
+
+    res.send(buffer);
+  } catch (error) {
+    console.error("Error generating grade template:", error);
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la génération du template notes",
+    });
   }
 };

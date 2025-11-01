@@ -9,10 +9,14 @@ import {
   removePrerequisite,
   getUEStats,
   searchUEs,
+  downloadUEImportTemplate,
+  exportUEs,
+  importUEs,
 } from "../controllers/uEController";
 import { authenticateToken, requireRole } from "../middleware/auth.middleware";
 import { getUEsByFacultyAndLevel } from "../controllers/courseAssignmentControllers";
 import { deanPermissions } from "../middleware/deanPermissions";
+import { uploadImport } from "../middleware/upload";
 
 const router = express.Router();
 router.use(authenticateToken, deanPermissions);
@@ -24,6 +28,9 @@ router.get("/public/search", searchUEs);
 router.get("/", getUEs);
 router.get("/faculty/:facultyId/level/:level", getUEsByFacultyAndLevel);
 router.get("/search", searchUEs);
+router.get("/template", downloadUEImportTemplate);
+router.get("/export", exportUEs);
+router.post("/import", uploadImport.single("file"), importUEs);
 router.get("/:id", getUEById);
 router.get("/:id/stats", getUEStats);
 router.post("/", requireRole(["Admin", "Directeur", "Secrétaire"]), createUE);

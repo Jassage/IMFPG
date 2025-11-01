@@ -1,4 +1,4 @@
-// store/enrollmentStore.ts - VERSION CORRIGÉE
+// store/enrollmentStore.ts - VERSION AVEC CALCUL DES DATES
 import { create } from "zustand";
 import api from "../services/api";
 import {
@@ -8,10 +8,23 @@ import {
 } from "../types/academic";
 import { toast } from "sonner";
 
+// Interface pour les dates d'inscription
+export interface EnrollmentDates {
+  startDate: string;
+  endDate: string;
+  hasData: boolean;
+  firstEnrollment?: string;
+  lastEnrollment?: string;
+  totalEnrollments?: number;
+  error?: string;
+}
+
 interface EnrollmentStore {
   enrollments: Enrollment[];
+  enrollmentDates: EnrollmentDates | null;
   loading: boolean;
   error: string | null;
+  datesLoading: boolean;
 
   // Actions
   fetchEnrollments: () => Promise<void>;
@@ -25,6 +38,10 @@ interface EnrollmentStore {
     status: "Active" | "Completed" | "Suspended"
   ) => Promise<void>;
   deleteEnrollment: (id: string) => Promise<void>;
+
+  // NOUVELLE ACTION : Calcul des dates d'inscription
+  calculateEnrollmentDates: (studentId: string) => Promise<void>;
+  clearEnrollmentDates: () => void;
 
   // Méthodes utilitaires synchrones
   getEnrollmentsByStudent: (studentId: string) => Enrollment[];
@@ -41,8 +58,10 @@ interface EnrollmentStore {
 
 export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   enrollments: [],
+  enrollmentDates: null,
   loading: false,
   error: null,
+  datesLoading: false,
 
   fetchEnrollments: async () => {
     set({ loading: true, error: null });
@@ -67,7 +86,6 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   addEnrollment: async (enrollmentData: CreateEnrollmentData) => {
     set({ loading: true, error: null });
     try {
-      // console.log("🔍 DEBUG - Données envoyées à l'API:", enrollmentData);
       const payload = {
         studentId: enrollmentData.studentId,
         faculty: enrollmentData.faculty,
@@ -78,7 +96,6 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         status: "Active",
       };
 
-      // console.log("🔍 DEBUG - Données formatées:", payload);
       const response = await api.post("/enrollments", payload);
 
       // Recharger toutes les inscriptions
@@ -127,11 +144,9 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
 
       const response = await api.put(`/enrollments/${id}`, cleanData);
 
-      // CORRECTION CRITIQUE : Normaliser les données reçues de l'API
       const updatedData = response.data;
       const normalizedEnrollment = {
         ...updatedData,
-        // S'assurer que faculty et academicYear sont des strings, pas des objets
         faculty:
           typeof updatedData.faculty === "object"
             ? updatedData.faculty.name || updatedData.faculty.id
@@ -225,6 +240,54 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
       throw new Error(errorMessage);
     }
   },
+
+  // NOUVELLE FONCTION : Calcul des dates d'inscription
+  calculateEnrollmentDates: async (studentId: string) => {
+    set({ datesLoading: true, error: null });
+    try {
+      console.log(`📅 Store: Calcul des dates pour l'étudiant: ${studentId}`);
+
+      const response = await api.get(
+        `/enrollments/${studentId}/enrollment-dates`
+      );
+      const dates = response.data;
+
+      set({
+        enrollmentDates: dates,
+        datesLoading: false,
+        error: null,
+      });
+
+      console.log("✅ Store: Dates calculées avec succès:", dates);
+      return dates;
+    } catch (err: any) {
+      console.error("❌ Store: Erreur lors du calcul des dates:", err);
+
+      const errorMessage =
+        err.response?.data?.error ||
+        "Erreur lors du calcul des dates d'inscription";
+
+      // En cas d'erreur, on peut quand même définir des dates par défaut
+      const fallbackDates: EnrollmentDates = {
+        startDate: "janvier 2021",
+        endDate: "octobre 2025",
+        hasData: false,
+        error: errorMessage,
+      };
+
+      set({
+        enrollmentDates: fallbackDates,
+        datesLoading: false,
+        error: errorMessage,
+      });
+
+      toast.error("Erreur lors du calcul des dates d'inscription");
+      throw new Error(errorMessage);
+    }
+  },
+
+  // NOUVELLE FONCTION : Vider les dates d'inscription
+  clearEnrollmentDates: () => set({ enrollmentDates: null }),
 
   getEnrollmentsByStudent: (studentId: string) => {
     return get().enrollments.filter((e) => e.studentId === studentId);

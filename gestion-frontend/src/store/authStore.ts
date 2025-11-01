@@ -337,6 +337,8 @@ export const useAuthStore = create<AuthState>()(
         set({ lastActivity: Date.now() });
       },
 
+      
+
       // RÉCUPÉRATION DES DOYENS POTENTIELS
       fetchPotentialDeans: async (): Promise<any[]> => {
         try {

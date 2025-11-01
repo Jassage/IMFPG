@@ -21,12 +21,6 @@ export const authenticateToken = async (
     req.user = user; // 🔥 Maintenant compatible avec l'interface étendue
     (req as any).userId = user.id; // Pour compatibilité
 
-    console.log("✅ Authentification réussie pour:", {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
     next();
   } catch (error: any) {
     console.error("❌ Erreur authentification:", error.message);

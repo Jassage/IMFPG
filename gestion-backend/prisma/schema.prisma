@@ -308,15 +308,14 @@ model FeeStructure {
   id           String       @id @default(cuid())
   name         String
   academicYear String
-  faculty      String
-  level        String
   amount       Float
+  description  String?      // Nouveau champ optionnel
   isActive     Boolean      @default(true)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   studentFees  StudentFee[]
 
-  @@unique([academicYear, faculty, level])
+  // UNIQUE par année académique seulement
   @@map("fee_structures")
 }
 

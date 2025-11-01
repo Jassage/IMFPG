@@ -52,6 +52,7 @@ import {
   DollarSign,
   XCircle,
   Loader2,
+  Upload,
 } from "lucide-react";
 import { useEnrollmentStore } from "../../store/enrollmentStore";
 import { useAcademicStore } from "../../store/studentStore";
@@ -63,6 +64,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/components/ui/use-toast";
 import { Switch } from "../ui/switch";
 import { useFeeStructureStore } from "@/store/feeStructureStore";
+import { EnrollmentImportExport } from "./EnrollmentImportExport";
 
 // Types pour les props des composants
 interface StudentListProps {
@@ -290,7 +292,7 @@ const EnrollmentForm = React.memo(
   ({ student, enrollment, onClose, onSuccess }: EnrollmentFormProps) => {
     const { addEnrollment, updateEnrollment, assignFeeToStudent } =
       useEnrollmentStore();
-    const { feeStructures, getFeeStructures } = useFeeStructureStore();
+    const { feeStructures } = useFeeStructureStore();
     const { faculties } = useFacultyStore();
     const { academicYears } = useAcademicYearStore();
     const { toast } = useToast();
@@ -308,57 +310,212 @@ const EnrollmentForm = React.memo(
     const [filteredFeeStructures, setFilteredFeeStructures] = useState<
       FeeStructure[]
     >([]);
+    const [loadingFeeStructures, setLoadingFeeStructures] = useState(false);
+    const [isInitialized, setIsInitialized] = useState(false);
 
+    // Charger toutes les structures de frais au montage du composant
     useEffect(() => {
-      getFeeStructures().catch(console.error);
-    }, [getFeeStructures]);
-
-    useEffect(() => {
-      if (enrollment) {
-        setFormData({
-          faculty: safeRender(enrollment.faculty),
-          level: safeRender(enrollment.level),
-          academicYearId: safeRender(enrollment.academicYearId),
-          status: enrollment.status || "Active",
-          feeStructureId: "",
-        });
-      } else if (academicYears.length > 0) {
-        const currentYear =
-          academicYears.find((ay) => ay.isCurrent) || academicYears[0];
-        setFormData((prev) => ({
-          ...prev,
-          academicYearId: currentYear?.id || "",
-        }));
-      }
-    }, [enrollment, academicYears]);
-
-    useEffect(() => {
-      if (formData.faculty && formData.level && formData.academicYearId) {
-        const filtered = feeStructures.filter(
-          (fee) =>
-            fee.faculty === formData.faculty &&
-            fee.level === formData.level &&
-            fee.academicYear === formData.academicYearId &&
-            fee.isActive
-        );
-        setFilteredFeeStructures(filtered);
-
-        if (filtered.length === 1 && !formData.feeStructureId) {
-          setFormData((prev) => ({ ...prev, feeStructureId: filtered[0].id }));
+      const loadAllFeeStructures = async () => {
+        try {
+          await useFeeStructureStore.getState().getFeeStructures();
+        } catch (error) {
+          console.error(
+            "Erreur lors du chargement des structures de frais:",
+            error
+          );
         }
-      } else {
-        setFilteredFeeStructures([]);
-        setFormData((prev) => ({ ...prev, feeStructureId: "" }));
+      };
+      loadAllFeeStructures();
+    }, []);
+
+    // CORRECTION : Initialiser le formulaire AVEC les données d'enrollment
+    useEffect(() => {
+      if (!isInitialized && academicYears.length > 0 && faculties.length > 0) {
+        console.log("🔄 Initialisation du formulaire avec:", {
+          enrollment,
+          academicYears,
+          faculties,
+        });
+
+        if (enrollment) {
+          // MODE ÉDITION - Préremplir avec les données existantes
+          setFormData({
+            faculty: enrollment.faculty || "",
+            level: enrollment.level || "",
+            academicYearId: enrollment.academicYearId || "",
+            status: enrollment.status || "Active",
+            feeStructureId: "", // On gérera ça séparément
+          });
+
+          console.log("📝 Formulaire prérempli pour édition:", {
+            faculty: enrollment.faculty,
+            level: enrollment.level,
+            academicYearId: enrollment.academicYearId,
+            status: enrollment.status,
+          });
+        } else {
+          // MODE CRÉATION - Valeurs par défaut
+          const currentYear =
+            academicYears.find((ay) => ay.isCurrent) || academicYears[0];
+          setFormData({
+            faculty: "",
+            level: "",
+            academicYearId: currentYear?.id || "",
+            status: "Active",
+            feeStructureId: "",
+          });
+        }
+        setIsInitialized(true);
+      }
+    }, [enrollment, academicYears, faculties, isInitialized]);
+
+    // CORRECTION : Filtrer les structures de frais et gérer la sélection automatique
+    useEffect(() => {
+      if (!isInitialized) return;
+
+      const filterFeeStructures = async () => {
+        if (formData.academicYearId) {
+          setLoadingFeeStructures(true);
+
+          // Trouver l'année académique sélectionnée
+          const selectedYear = academicYears.find(
+            (ay) => ay.id === formData.academicYearId
+          );
+
+          if (selectedYear) {
+            console.log(
+              "🔍 Filtrage des frais pour l'année:",
+              selectedYear.year
+            );
+
+            // Filtrer les structures de frais par année académique
+            const structures = feeStructures.filter(
+              (fee) => fee.academicYear === selectedYear.year && fee.isActive
+            );
+
+            console.log("✅ Structures filtrées:", structures);
+            setFilteredFeeStructures(structures);
+
+            // CORRECTION : Gestion intelligente de la sélection des frais
+            if (enrollment && !formData.feeStructureId) {
+              // En mode édition, essayer de trouver les frais existants de l'étudiant
+              try {
+                const studentFees = await useFeeStructureStore
+                  .getState()
+                  .getStudentFees(student.id);
+                const currentYearFee = studentFees.find(
+                  (fee) => fee.academicYearId === selectedYear.year
+                );
+
+                if (currentYearFee && currentYearFee.feeStructureId) {
+                  setFormData((prev) => ({
+                    ...prev,
+                    feeStructureId: currentYearFee.feeStructureId,
+                  }));
+                  console.log(
+                    "💰 Frais existants trouvés:",
+                    currentYearFee.feeStructureId
+                  );
+                } else if (structures.length === 1) {
+                  // Si un seul frais disponible, le sélectionner automatiquement
+                  setFormData((prev) => ({
+                    ...prev,
+                    feeStructureId: structures[0].id,
+                  }));
+                }
+              } catch (error) {
+                console.error(
+                  "Erreur lors de la récupération des frais étudiants:",
+                  error
+                );
+                // Fallback : sélection automatique si un seul frais disponible
+                if (structures.length === 1) {
+                  setFormData((prev) => ({
+                    ...prev,
+                    feeStructureId: structures[0].id,
+                  }));
+                }
+              }
+            } else if (
+              !enrollment &&
+              structures.length === 1 &&
+              !formData.feeStructureId
+            ) {
+              // En mode création, sélection automatique si un seul frais disponible
+              setFormData((prev) => ({
+                ...prev,
+                feeStructureId: structures[0].id,
+              }));
+            }
+          } else {
+            setFilteredFeeStructures([]);
+            setFormData((prev) => ({ ...prev, feeStructureId: "" }));
+          }
+        } else {
+          setFilteredFeeStructures([]);
+          setFormData((prev) => ({ ...prev, feeStructureId: "" }));
+        }
+
+        setLoadingFeeStructures(false);
+      };
+
+      filterFeeStructures();
+    }, [
+      formData.academicYearId,
+      academicYears,
+      feeStructures,
+      isInitialized,
+      enrollment,
+      student.id,
+    ]);
+
+    // CORRECTION : Gestion spécifique de l'édition - récupérer les frais existants
+    useEffect(() => {
+      if (enrollment && isInitialized && formData.academicYearId) {
+        const loadExistingFees = async () => {
+          try {
+            const studentFees = await useFeeStructureStore
+              .getState()
+              .getStudentFees(student.id);
+            const selectedYear = academicYears.find(
+              (ay) => ay.id === formData.academicYearId
+            );
+            const currentYearFee = studentFees.find(
+              (fee) => fee.academicYearId === selectedYear?.id
+            );
+
+            if (currentYearFee && currentYearFee.feeStructureId) {
+              setFormData((prev) => ({
+                ...prev,
+                feeStructureId: currentYearFee.feeStructureId,
+              }));
+              console.log(
+                "🎯 Frais existants chargés pour l'édition:",
+                currentYearFee.feeStructureId
+              );
+            }
+          } catch (error) {
+            console.error(
+              "Erreur lors du chargement des frais existants:",
+              error
+            );
+          }
+        };
+
+        loadExistingFees();
       }
     }, [
-      formData.faculty,
-      formData.level,
+      enrollment,
+      isInitialized,
       formData.academicYearId,
-      feeStructures,
+      student.id,
+      academicYears,
     ]);
 
     const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
+
+      console.log("📤 Données soumises:", formData);
 
       if (!formData.faculty || !formData.level || !formData.academicYearId) {
         toast({
@@ -379,8 +536,6 @@ const EnrollmentForm = React.memo(
       }
 
       setIsSubmitting(true);
-      // console.log("🔍 DEBUG - Données du formulaire:", formData);
-      // console.log("🔍 DEBUG - Student ID:", student.id);
 
       try {
         const enrollmentData = {
@@ -393,7 +548,8 @@ const EnrollmentForm = React.memo(
             enrollment?.enrollmentDate || new Date().toISOString(),
         };
 
-        // console.log("🔍 DEBUG - Données d'immatriculation:", enrollmentData);
+        console.log("🎓 Données d'immatriculation:", enrollmentData);
+
         let newEnrollment;
 
         if (enrollment) {
@@ -410,13 +566,25 @@ const EnrollmentForm = React.memo(
           });
         }
 
+        // CORRECTION : Gestion améliorée de l'attribution des frais
         if (assignFees && formData.feeStructureId) {
           try {
+            const selectedYear = academicYears.find(
+              (ay) => ay.id === formData.academicYearId
+            );
+
+            console.log("💰 Attribution des frais:", {
+              studentId: student.id,
+              feeStructureId: formData.feeStructureId,
+              academicYearId: selectedYear?.id,
+            });
+
             await assignFeeToStudent({
               studentId: student.id,
               feeStructureId: formData.feeStructureId,
-              academicYearId: formData.academicYearId,
+              academicYearId: selectedYear?.id || formData.academicYearId,
             });
+
             toast({
               title: "Frais attribués",
               description: "Les frais ont été attribués avec succès.",
@@ -426,7 +594,8 @@ const EnrollmentForm = React.memo(
             toast({
               title: "Avertissement",
               description:
-                "Immatriculation réussie, mais erreur lors de l'attribution des frais.",
+                "Immatriculation réussie, mais erreur lors de l'attribution des frais: " +
+                (feeError.message || "Erreur inconnue"),
               variant: "default",
             });
           }
@@ -450,19 +619,44 @@ const EnrollmentForm = React.memo(
     const getAcademicYearDisplay = useCallback(
       (yearId: string): string => {
         const year = academicYears.find((y) => y.id === yearId);
-        return safeRender(year?.year, yearId);
+        return safeRender(year?.year, "Année non trouvée");
       },
       [academicYears]
     );
 
+    const getFacultyDisplay = useCallback(
+      (facultyId: string): string => {
+        const faculty = faculties.find((f) => f.id === facultyId);
+        return safeRender(faculty?.name, facultyId);
+      },
+      [faculties]
+    );
+
+    const getSelectedFeeStructure = useCallback(() => {
+      return filteredFeeStructures.find(
+        (fee) => fee.id === formData.feeStructureId
+      );
+    }, [filteredFeeStructures, formData.feeStructureId]);
+
+    // CORRECTION : Affichage de débogage
+    if (enrollment && !isInitialized) {
+      return (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin mr-2" />
+          <span>Chargement des données d'immatriculation...</span>
+        </div>
+      );
+    }
+
     return (
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* En-tête avec informations de l'étudiant */}
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
           <div className="flex items-center space-x-3">
             <div className="bg-blue-100 dark:bg-blue-800 p-2 rounded-full">
               <UserPlus className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <div>
+            <div className="flex-1">
               <h3 className="font-semibold text-blue-900 dark:text-blue-100">
                 {safeRender(student.firstName)} {safeRender(student.lastName)}
               </h3>
@@ -478,12 +672,23 @@ const EnrollmentForm = React.memo(
                   <Mail className="h-3 w-3" />
                   {safeRender(student.email)}
                 </Badge>
+                {enrollment && (
+                  <Badge
+                    variant="outline"
+                    className="flex items-center gap-1 bg-amber-100 text-amber-700 dark:bg-amber-800 dark:text-amber-300"
+                  >
+                    <Edit className="h-3 w-3" />
+                    Mode édition
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
         </div>
 
+        {/* Champs du formulaire */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Faculté */}
           <div className="space-y-2">
             <Label className="flex items-center gap-1 text-sm font-medium">
               <BookOpen className="h-4 w-4" />
@@ -492,17 +697,13 @@ const EnrollmentForm = React.memo(
             <Select
               value={formData.faculty}
               onValueChange={(value) =>
-                setFormData({ ...formData, faculty: value, feeStructureId: "" })
+                setFormData({ ...formData, faculty: value })
               }
               required
             >
               <SelectTrigger className="h-11">
                 <SafeSelectValue
-                  value={
-                    formData.faculty
-                      ? faculties.find((f) => f.id === formData.faculty)
-                      : undefined
-                  }
+                  value={getFacultyDisplay(formData.faculty)}
                   placeholder="Sélectionner une faculté"
                 />
               </SelectTrigger>
@@ -514,8 +715,14 @@ const EnrollmentForm = React.memo(
                 ))}
               </SelectContent>
             </Select>
+            {enrollment && (
+              <p className="text-xs text-muted-foreground">
+                Ancienne valeur: {enrollment.faculty}
+              </p>
+            )}
           </div>
 
+          {/* Niveau */}
           <div className="space-y-2">
             <Label className="flex items-center gap-1 text-sm font-medium">
               <GraduationCap className="h-4 w-4" />
@@ -524,7 +731,7 @@ const EnrollmentForm = React.memo(
             <Select
               value={formData.level}
               onValueChange={(value) =>
-                setFormData({ ...formData, level: value, feeStructureId: "" })
+                setFormData({ ...formData, level: value })
               }
               required
             >
@@ -546,8 +753,14 @@ const EnrollmentForm = React.memo(
                 <SelectItem value="5">Licence 5 (L5)</SelectItem>
               </SelectContent>
             </Select>
+            {enrollment && (
+              <p className="text-xs text-muted-foreground">
+                Ancienne valeur: {enrollment.level}
+              </p>
+            )}
           </div>
 
+          {/* Année Académique */}
           <div className="space-y-2">
             <Label className="flex items-center gap-1 text-sm font-medium">
               <Calendar className="h-4 w-4" />
@@ -559,7 +772,7 @@ const EnrollmentForm = React.memo(
                 setFormData({
                   ...formData,
                   academicYearId: value,
-                  feeStructureId: "",
+                  feeStructureId: "", // Réinitialiser la sélection des frais
                 })
               }
               required
@@ -584,9 +797,45 @@ const EnrollmentForm = React.memo(
                 ))}
               </SelectContent>
             </Select>
+            {enrollment && (
+              <p className="text-xs text-muted-foreground">
+                Ancienne valeur:{" "}
+                {getAcademicYearDisplay(enrollment.academicYearId)}
+              </p>
+            )}
+          </div>
+
+          {/* Statut */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1 text-sm font-medium">
+              <CheckCircle className="h-4 w-4" />
+              Statut *
+            </Label>
+            <Select
+              value={formData.status}
+              onValueChange={(value: "Active" | "Suspended" | "Completed") =>
+                setFormData({ ...formData, status: value })
+              }
+              required
+            >
+              <SelectTrigger>
+                <SafeSelectValue value={formData.status} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Active">Actif</SelectItem>
+                <SelectItem value="Suspended">Suspendu</SelectItem>
+                <SelectItem value="Completed">Terminé</SelectItem>
+              </SelectContent>
+            </Select>
+            {enrollment && (
+              <p className="text-xs text-muted-foreground">
+                Ancien statut: {enrollment.status}
+              </p>
+            )}
           </div>
         </div>
 
+        {/* Section Frais (identique à la version précédente) */}
         <div className="space-y-4">
           <div className="flex items-center space-x-2 p-4 bg-muted rounded-lg">
             <Switch
@@ -603,37 +852,50 @@ const EnrollmentForm = React.memo(
             <div className="space-y-4 p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
               <h4 className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
                 <DollarSign className="h-5 w-5" />
-                Sélection des Frais
+                Sélection des Frais -{" "}
+                {formData.academicYearId
+                  ? getAcademicYearDisplay(formData.academicYearId)
+                  : "Sélectionnez une année"}
               </h4>
 
-              {filteredFeeStructures.length === 0 ? (
-                <div className="text-center py-4 text-muted-foreground">
-                  {formData.faculty &&
-                  formData.level &&
-                  formData.academicYearId ? (
-                    <div className="space-y-2">
-                      <XCircle className="h-8 w-8 mx-auto text-amber-500" />
-                      <p>
-                        Aucune structure de frais disponible pour cette
-                        combinaison
+              {loadingFeeStructures ? (
+                <div className="text-center py-4">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-blue-600" />
+                  <p className="text-sm text-muted-foreground">
+                    Chargement des structures de frais...
+                  </p>
+                </div>
+              ) : filteredFeeStructures.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  {formData.academicYearId ? (
+                    <div className="space-y-3">
+                      <XCircle className="h-12 w-12 mx-auto text-amber-500" />
+                      <p className="font-medium">
+                        Aucune structure de frais disponible
                       </p>
                       <p className="text-sm">
-                        {safeRender(formData.faculty)} - Niveau{" "}
-                        {safeRender(formData.level)} -{" "}
-                        {getAcademicYearDisplay(formData.academicYearId)}
+                        Pour l'année académique :{" "}
+                        <strong>
+                          {getAcademicYearDisplay(formData.academicYearId)}
+                        </strong>
                       </p>
                     </div>
                   ) : (
-                    <p>
-                      Sélectionnez d'abord une faculté, un niveau et une année
-                      académique
-                    </p>
+                    <div className="space-y-2">
+                      <Calendar className="h-8 w-8 mx-auto text-gray-400" />
+                      <p>Veuillez d'abord sélectionner une année académique</p>
+                    </div>
                   )}
                 </div>
               ) : (
                 <>
                   <div className="space-y-2">
-                    <Label>Structure de Frais *</Label>
+                    <Label className="flex items-center gap-2">
+                      Structure de Frais *
+                      <Badge variant="outline" className="text-xs">
+                        {filteredFeeStructures.length} disponible(s)
+                      </Badge>
+                    </Label>
                     <Select
                       value={formData.feeStructureId}
                       onValueChange={(value) =>
@@ -657,8 +919,15 @@ const EnrollmentForm = React.memo(
                         {filteredFeeStructures.map((fee) => (
                           <SelectItem key={fee.id} value={fee.id}>
                             <div className="flex items-center justify-between w-full">
-                              <span>{safeRender(fee.name)}</span>
-                              <span className="font-semibold text-green-600 ml-2">
+                              <div className="flex flex-col">
+                                <span className="font-medium">
+                                  {safeRender(fee.name)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {fee.description || "Aucune description"}
+                                </span>
+                              </div>
+                              <span className="font-semibold text-green-600 ml-2 whitespace-nowrap">
                                 {fee.amount?.toLocaleString()} HTG
                               </span>
                             </div>
@@ -668,27 +937,35 @@ const EnrollmentForm = React.memo(
                     </Select>
                   </div>
 
-                  {formData.feeStructureId && (
+                  {formData.feeStructureId && getSelectedFeeStructure() && (
                     <Card className="bg-white dark:bg-gray-800 border-green-200 dark:border-green-800">
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-semibold">
-                              {safeRender(
-                                filteredFeeStructures.find(
-                                  (f) => f.id === formData.feeStructureId
-                                )?.name
-                              )}
+                          <div className="flex-1">
+                            <p className="font-semibold text-lg">
+                              {safeRender(getSelectedFeeStructure()?.name)}
                             </p>
-                            <p className="text-sm text-muted-foreground">
-                              Frais sélectionnés
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {getSelectedFeeStructure()?.description ||
+                                "Frais de scolarité"}
                             </p>
+                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                Année:{" "}
+                                {getAcademicYearDisplay(
+                                  formData.academicYearId
+                                )}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <BookOpen className="h-3 w-3" />
+                                Faculté: {getFacultyDisplay(formData.faculty)}
+                              </span>
+                            </div>
                           </div>
-                          <Badge className="bg-green-100 text-green-800 border-green-200 dark:bg-green-800 dark:text-green-300 dark:border-green-700">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            {filteredFeeStructures
-                              .find((f) => f.id === formData.feeStructureId)
-                              ?.amount?.toLocaleString()}{" "}
+                          <Badge className="bg-green-100 text-green-800 border-green-200 dark:bg-green-800 dark:text-green-300 dark:border-green-700 text-lg py-1 px-3">
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            {getSelectedFeeStructure()?.amount?.toLocaleString()}{" "}
                             HTG
                           </Badge>
                         </div>
@@ -701,7 +978,8 @@ const EnrollmentForm = React.memo(
           )}
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
           <Button
             type="button"
             variant="outline"
@@ -710,10 +988,14 @@ const EnrollmentForm = React.memo(
           >
             Annuler
           </Button>
-          <Button type="submit" className="gap-2" disabled={isSubmitting}>
+          <Button
+            type="submit"
+            className="gap-2 bg-blue-600 hover:bg-blue-700"
+            disabled={isSubmitting}
+          >
             {isSubmitting ? (
               <>
-                <RotateCcw className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 Traitement...
               </>
             ) : enrollment ? (
@@ -727,7 +1009,6 @@ const EnrollmentForm = React.memo(
     );
   }
 );
-
 EnrollmentForm.displayName = "EnrollmentForm";
 
 // COMPOSANT STUDENT LIST CORRIGÉ
@@ -1013,6 +1294,7 @@ export const EnrollmentManager = () => {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [showImportExportModal, setShowImportExportModal] = useState(false);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -1243,6 +1525,15 @@ export const EnrollmentManager = () => {
             Gérez les inscriptions des étudiants aux programmes académiques
           </p>
         </div>
+
+        <Button
+          variant="outline"
+          className="gap-2"
+          onClick={() => setShowImportExportModal(true)}
+        >
+          <Upload className="h-4 w-4" />
+          Import/Export
+        </Button>
 
         <Dialog
           open={isEnrollmentFormOpen}
@@ -1505,6 +1796,25 @@ export const EnrollmentManager = () => {
           </TabsContent>
         ))}
       </Tabs>
+
+      <Dialog
+        open={showImportExportModal}
+        onOpenChange={setShowImportExportModal}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Importation et Exportation des Inscriptions
+            </DialogTitle>
+            <DialogDescription>
+              Importez ou exportez les inscriptions en lot
+            </DialogDescription>
+          </DialogHeader>
+          <EnrollmentImportExport
+            onClose={() => setShowImportExportModal(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
