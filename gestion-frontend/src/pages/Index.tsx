@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarTrigger, SidebarInset, Sidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "../components/AppSidebar";
 import {
   Bell,
@@ -17,6 +17,16 @@ import {
   Info,
   Menu,
   X,
+  Home,
+  Users,
+  DollarSign,
+  CreditCard,
+  UserCog,
+  ScrollText,
+  Building2,
+  FileText,
+  UserPlus,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,30 +71,272 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { DeanGradesView } from "@/components/GradesManager";
 import { SearchResults } from "@/components/SearchResults";
-// import { AdminGradesManager } from "@/components/GradesManager";
+import { ActiveTab } from "@/types/navigation";
+import { useAcademicYearStore } from "@/store/academicYearStore";
 
-type ActiveTab =
-  | "dashboard"
-  | "students"
-  | "enrollments"
-  | "courses"
-  | "professeurs"
-  | "grades"
-  | "bulk-grades"
-  | "users"
-  | "retakes"
-  | "faculties"
-  | "guardians"
-  | "payments"
-  | "expenses"
-  | "analytics"
-  | "student-cards"
-  | "transcripts"
-  | "login"
-  | "settings"
-  | "audit-logs"
-  | "backup"
-  | "fees";
+// Ajoutez ces constantes APRÈS les imports et AVANT le composant Index
+
+const menuItems = [
+  { id: "dashboard", label: "Accueil", icon: Home },
+  { id: "students", label: "Étudiants", icon: Users },
+  { id: "enrollments", label: "Immatriculations", icon: UserPlus },
+  { id: "courses", label: "Les cours", icon: BookOpen },
+  { id: "grades", label: "Notes", icon: FileText },
+  { id: "retakes", label: "Catalogues", icon: RotateCcw },
+  { id: "professeurs", label: "Professeurs", icon: Users },
+  { id: "guardians", label: "Parent", icon: Users },
+];
+
+const academicItems = [
+  { id: "payments", label: "Paiements", icon: DollarSign },
+  { id: "expenses", label: "Dépenses", icon: DollarSign },
+  { id: "fees", label: "Frais Scolarite", icon: DollarSign },
+];
+
+const documentItems = [
+  { id: "student-cards", label: "Cartes Étudiants", icon: CreditCard },
+  { id: "transcripts", label: "Bulletins", icon: ScrollText },
+];
+
+const adminItems = [
+  { id: "users", label: "Utilisateurs", icon: UserCog },
+  { id: "faculties", label: "Les Facultés", icon: Building2 },
+  { id: "settings", label: "Paramètres", icon: Settings },
+  { id: "audit-logs", label: "Journal d'Audit", icon: FileText },
+  { id: "backup", label: "Sauvegardes", icon: Shield },
+];
+
+// COMPOSANT MOBILE SIDEBAR - STYLE APPSIDEBAR
+// COMPOSANT MOBILE SIDEBAR - AVEC PROPS
+const MobileSidebar = ({
+  activeTab,
+  onTabChange,
+  hasPermission,
+  isTabAccessible,
+  user,
+}: {
+  activeTab: ActiveTab;
+  onTabChange: (tab: ActiveTab) => void;
+  hasPermission: (permission: string) => boolean;
+  isTabAccessible: (tab: ActiveTab) => boolean;
+  user: any;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const { currentAcademicYear } = useAcademicYearStore();
+
+  return (
+    <>
+      {/* Bouton hamburger */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="md:hidden"
+        onClick={() => setIsOpen(true)}
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+
+      {/* Sheet avec état local */}
+      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+        <SheetContent side="left" className="w-80 p-0 bg-sidebar">
+          <div className="flex flex-col h-full">
+            {/* Header - Même style que AppSidebar */}
+            <div className="p-4 ujeph-header border-b">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20 text-white">
+                    <img
+                      src="/logo.png"
+                      alt="UJEPH Logo"
+                      className="h-10 w-10 object-contain"
+                    />
+                  </div>
+                  <div className="flex flex-col text-white">
+                    <h3 className="text-lg font-bold">UJEPH</h3>
+                    <span className="sr-only">
+                      Navigation principale de l'application
+                    </span>
+                    <span className="text-xs opacity-90">
+                      Université Jerusalem
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsOpen(false)}
+                  className="h-8 w-8 text-white hover:bg-white/20"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Content - Même structure que AppSidebar */}
+            <div className="flex-1 overflow-auto p-4 bg-sidebar">
+              {/* Navigation Principale */}
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-sidebar-foreground/70 mb-2">
+                  Navigation Principale
+                </h3>
+                <div className="space-y-1">
+                  {menuItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    if (!isTabAccessible(item.id as ActiveTab)) return null;
+
+                    return (
+                      <Button
+                        key={item.id}
+                        variant={isActive ? "secondary" : "ghost"}
+                        className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        onClick={() => {
+                          onTabChange(item.id as ActiveTab);
+                          setIsOpen(false);
+                        }}
+                      >
+                        <Icon className="h-4 w-4 mr-2" />
+                        {item.label}
+                        {isActive && (
+                          <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
+                        )}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Gestion Académique */}
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-sidebar-foreground/70 mb-2">
+                  Gestion Académique
+                </h3>
+                <div className="space-y-1">
+                  {academicItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    if (!isTabAccessible(item.id as ActiveTab)) return null;
+
+                    return (
+                      <Button
+                        key={item.id}
+                        variant={isActive ? "secondary" : "ghost"}
+                        className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        onClick={() => {
+                          onTabChange(item.id as ActiveTab);
+                          setIsOpen(false);
+                        }}
+                      >
+                        <Icon className="h-4 w-4 mr-2" />
+                        {item.label}
+                        {isActive && (
+                          <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
+                        )}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Documents */}
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-sidebar-foreground/70 mb-2">
+                  Documents
+                </h3>
+                <div className="space-y-1">
+                  {documentItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    if (!isTabAccessible(item.id as ActiveTab)) return null;
+
+                    return (
+                      <Button
+                        key={item.id}
+                        variant={isActive ? "secondary" : "ghost"}
+                        className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        onClick={() => {
+                          onTabChange(item.id as ActiveTab);
+                          setIsOpen(false);
+                        }}
+                      >
+                        <Icon className="h-4 w-4 mr-2" />
+                        {item.label}
+                        {isActive && (
+                          <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
+                        )}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Administration */}
+              {hasPermission("view_admin") && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-sidebar-foreground/70 mb-2">
+                    Administration
+                  </h3>
+                  <div className="space-y-1">
+                    {adminItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.id;
+                      if (!isTabAccessible(item.id as ActiveTab)) return null;
+
+                      return (
+                        <Button
+                          key={item.id}
+                          variant={isActive ? "secondary" : "ghost"}
+                          className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          onClick={() => {
+                            onTabChange(item.id as ActiveTab);
+                            setIsOpen(false);
+                          }}
+                        >
+                          <Icon className="h-4 w-4 mr-2" />
+                          {item.label}
+                          {isActive && (
+                            <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
+                          )}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer - Même style que AppSidebar */}
+            <div className="p-4 border-t border-sidebar-border bg-sidebar">
+              <div className="text-xs text-sidebar-foreground/70">
+                <div className="font-medium mb-1">Année Académique</div>
+                <div>
+                  {currentAcademicYear ? (
+                    <Badge
+                      variant="secondary"
+                      className="bg-green-100 text-green-800 text-xs"
+                    >
+                      {currentAcademicYear.year}
+                    </Badge>
+                  ) : (
+                    <span className="text-sidebar-foreground/50 text-xs">
+                      Non définie
+                    </span>
+                  )}
+                </div>
+                {user && (
+                  <div className="mt-2 text-xs text-sidebar-foreground/70">
+                    Connecté en tant que:{" "}
+                    <span className="capitalize">{user.role}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+};
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
@@ -97,6 +349,7 @@ const Index = () => {
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false); // NOUVEAU ÉTAT
   const searchRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -185,7 +438,8 @@ const Index = () => {
 
     setSelectedStudentId(studentId);
     setActiveTab("students");
-    setIsMobileMenuOpen(false); // Fermer le menu mobile après sélection
+    setIsMobileMenuOpen(false);
+    // setIsMobileSidebarOpen(false); // Fermer aussi la sidebar mobile
     toast({
       title: "Étudiant sélectionné",
       description: "Redirection vers la page des étudiants",
@@ -195,6 +449,7 @@ const Index = () => {
   const handleSettingsClick = () => {
     setActiveTab("settings");
     setIsMobileMenuOpen(false);
+    // setIsMobileSidebarOpen(false);
   };
 
   const handleProfileClick = () => {
@@ -203,6 +458,7 @@ const Index = () => {
       description: "Page de profil en développement",
     });
     setIsMobileMenuOpen(false);
+    // setIsMobileSidebarOpen(false);
   };
 
   const handleLogout = () => {
@@ -249,10 +505,11 @@ const Index = () => {
           "Vous n'avez pas les permissions pour accéder à cette section",
         variant: "destructive",
       });
-      // return;
+      return;
     }
     setActiveTab(tab);
-    setIsMobileMenuOpen(false); // Fermer le menu mobile sur mobile
+    setIsMobileMenuOpen(false);
+    // setIsMobileSidebarOpen(false); // Fermer la sidebar mobile après sélection
   };
 
   const renderContent = () => {
@@ -327,7 +584,6 @@ const Index = () => {
         ) : (
           <UnauthorizedView />
         );
-
       case "payments":
         return hasPermission("view_payments") ? (
           <PaymentManager />
@@ -458,7 +714,7 @@ const Index = () => {
     <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
       <SheetTrigger asChild>
         <Button variant="ghost" size="icon" className="md:hidden">
-          <Menu className="h-5 w-5" />
+          <User className="h-5 w-5" />
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-[280px] sm:w-[350px]">
@@ -561,10 +817,11 @@ const Index = () => {
       <div className="flex flex-col flex-1 overflow-hidden w-full min-w-0">
         {/* Header responsive */}
         <header className="flex-shrink-0 z-40 flex h-16 items-center gap-2 md:gap-4 px-3 md:px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 w-full">
-          {/* Sidebar trigger pour desktop, menu mobile pour mobile */}
+          {/* Sidebar trigger pour desktop, sidebar mobile pour mobile */}
           <div className="flex items-center gap-2">
             <SidebarTrigger className="-ml-1 hidden md:flex" />
-            <MobileUserMenu />
+            {/* <MobileSidebar />{" "} */}
+            {/* REMPLACÉ : Maintenant c'est la sidebar mobile */}
           </div>
 
           {/* Titre principal */}
@@ -738,17 +995,15 @@ const Index = () => {
             </DropdownMenu>
           </div>
 
-          {/* Version mobile simplifiée */}
+          {/* Version mobile simplifiée CORRIGÉE */}
           <div className="flex md:hidden items-center gap-1">
-            {hasPermission("view_notifications") && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowNotifications(!showNotifications)}
-              >
-                <Bell className="h-4 w-4" />
-              </Button>
-            )}
+            <MobileSidebar
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              hasPermission={hasPermission}
+              isTabAccessible={isTabAccessible}
+              user={user}
+            />
             <Button
               variant="ghost"
               size="icon"
@@ -760,6 +1015,7 @@ const Index = () => {
                 <Moon className="h-4 w-4" />
               )}
             </Button>
+            <MobileUserMenu />
           </div>
         </header>
 
@@ -785,7 +1041,6 @@ const Index = () => {
             </div>
           </div>
         )}
-
         {/* Contenu principal */}
         <main className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 w-full bg-background">
           {/* Indicateur pour les doyens */}

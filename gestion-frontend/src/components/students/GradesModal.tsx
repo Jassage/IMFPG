@@ -58,14 +58,11 @@ export const GradesModal = ({
 
   // CORRECTION: Utiliser activeGrades au lieu de grades
   useEffect(() => {
-    console.log("🔍 DEBUG GradesModal:", {
+    console.log("🔍 DEBUG GradesModal - Initialisation:", {
       student: `${student.firstName} ${student.lastName}`,
-      enrollment: enrollment,
+      enrollmentId: enrollment.id,
       allGradesCount: grades.length,
       activeGradesCount: activeGrades.length,
-      activeGrades: activeGrades,
-      firstGrade: activeGrades?.[0],
-      ueStructure: activeGrades?.[0]?.ue,
     });
 
     const timer = setTimeout(() => {
@@ -73,7 +70,7 @@ export const GradesModal = ({
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [activeGrades, student, enrollment, grades]);
+  }, []); // ← EXECUTION UNIQUE
 
   // CORRECTION: Valeur par défaut pour passingGrade
   const DEFAULT_PASSING_GRADE = 70;
@@ -176,20 +173,26 @@ export const GradesModal = ({
   };
 
   // CORRECTION: Grouper les notes ACTIVES par semestre
-  const gradesBySemester = activeGrades?.reduce((acc, grade) => {
-    if (!grade || !grade.semester) return acc;
+  const gradesBySemester = useMemo(() => {
+    return activeGrades?.reduce((acc, grade) => {
+      if (!grade || !grade.semester) return acc;
+      const semester = grade.semester;
+      if (!acc[semester]) acc[semester] = [];
+      acc[semester].push(grade);
+      return acc;
+    }, {} as Record<string, GradeWithDetails[]>);
+  }, [activeGrades]);
 
-    const semester = grade.semester;
-    if (!acc[semester]) {
-      acc[semester] = [];
+  const semesters = useMemo(
+    () => (gradesBySemester ? Object.keys(gradesBySemester).sort() : []),
+    [gradesBySemester]
+  );
+
+  useEffect(() => {
+    if (semesters.length > 0 && !selectedSemester) {
+      setSelectedSemester(semesters[0]);
     }
-    acc[semester].push(grade);
-    return acc;
-  }, {} as Record<string, GradeWithDetails[]>);
-
-  const semesters = gradesBySemester
-    ? Object.keys(gradesBySemester).sort()
-    : [];
+  }, [semesters, selectedSemester]);
 
   // CORRECTION: Sélectionner le premier semestre par défaut
   useEffect(() => {

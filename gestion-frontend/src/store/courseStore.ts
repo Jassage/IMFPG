@@ -131,17 +131,29 @@ export const useUEStore = create<UEState>((set, get) => ({
     set({ loading: true });
     try {
       const params = new URLSearchParams();
-      const response = await api.get("/ues?limit=1000");
+
+      // Ajouter les filtres aux paramètres
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== "" && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
+
+      const response = await api.get(`/ues?${params.toString()}`);
       const allUEs = response.data || [];
+
       set({
         ues: allUEs,
+        allUEs: allUEs, // ✅ Stocke aussi dans allUEs
         filters,
         loading: false,
         error: null,
       });
+
+      return allUEs; // ✅ RETOURNE les données
     } catch (error: any) {
       set({
-        error: error.response?.data?.message || "Erreur de chargement de l'UE",
+        error: error.response?.data?.message || "Erreur de chargement des UEs",
         loading: false,
       });
       throw error;

@@ -336,3 +336,29 @@
 :root {
   --sidebar-width: 16rem; /* Ajustez selon la largeur de votre sidebar */
 }
+
+/* Breakpoints personnalisés */
+@custom-media --xs (min-width: 480px);
+@custom-media --sm (min-width: 640px);
+@custom-media --md (min-width: 768px);
+@custom-media --lg (min-width: 1024px);
+@custom-media --xl (min-width: 1280px);
+
+/* Classes utilitaires responsive */
+.hover-scale {
+  transition: transform 0.2s ease-in-out;
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
+}
+
+@media (max-width: 640px) {
+  .text-xs-mobile {
+    font-size: 0.75rem;
+  }
+
+  .p-mobile {
+    padding: 1rem;
+  }
+}

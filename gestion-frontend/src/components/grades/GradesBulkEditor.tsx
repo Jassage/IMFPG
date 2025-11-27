@@ -1154,110 +1154,109 @@ export const GradesBulkEditor = () => {
             </Button>
           </div>
         </CardHeader>
-        {showFilters && (
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {/* Faculté */}
-              <div className="space-y-2">
-                <Label htmlFor="faculty" className="text-sm font-medium">
-                  Faculté
-                </Label>
-                <Select
-                  value={filters.facultyId}
-                  onValueChange={handleFacultyChange}
-                >
-                  <SelectTrigger
-                    id="faculty"
-                    className="h-10 border-blue-300 dark:border-blue-700 focus:border-blue-500 dark:focus:border-blue-400"
-                  >
-                    <SelectValue placeholder="Sélectionner une faculté" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {faculties.map((faculty) => (
-                      <SelectItem key={faculty.id} value={faculty.id}>
-                        {faculty.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
 
-              {/* Niveau */}
-              <div className="space-y-2">
-                <Label htmlFor="level" className="text-sm font-medium">
-                  Niveau
-                </Label>
-                <Select value={filters.level} onValueChange={handleLevelChange}>
-                  <SelectTrigger
-                    id="level"
-                    className="h-10 border-blue-300 dark:border-blue-700 focus:border-blue-500 dark:focus:border-blue-400"
-                  >
-                    <SelectValue placeholder="Sélectionner un niveau" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5].map((level) => (
-                      <SelectItem key={level} value={level.toString()}>
-                        {getLevelLabel(level.toString())}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Année académique */}
-              <div className="space-y-2">
-                <Label htmlFor="academicYear" className="text-sm font-medium">
-                  Année académique
-                </Label>
-                <Select
-                  value={filters.academicYearId}
-                  onValueChange={(value) =>
-                    setFilters((prev) => ({ ...prev, academicYearId: value }))
-                  }
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Faculté */}
+            <div className="space-y-2">
+              <Label htmlFor="faculty" className="text-sm font-medium">
+                Faculté
+              </Label>
+              <Select
+                value={filters.facultyId}
+                onValueChange={handleFacultyChange}
+              >
+                <SelectTrigger
+                  id="faculty"
+                  className="h-10 border-blue-300 dark:border-blue-700 focus:border-blue-500 dark:focus:border-blue-400"
                 >
-                  <SelectTrigger
-                    id="academicYear"
-                    className="h-10 border-blue-300 dark:border-blue-700 focus:border-blue-500 dark:focus:border-blue-400"
-                  >
-                    <SelectValue placeholder="Sélectionner une année" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {academicYears.map((year) => (
-                      <SelectItem key={year.id} value={year.id}>
-                        {year.year}
-                        {year.isCurrent && " (En cours)"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Semestre */}
-              <div className="space-y-2">
-                <Label htmlFor="semester" className="text-sm font-medium">
-                  Semestre
-                </Label>
-                <Select
-                  value={filters.semester}
-                  onValueChange={(value: "S1" | "S2") =>
-                    setFilters((prev) => ({ ...prev, semester: value }))
-                  }
-                >
-                  <SelectTrigger
-                    id="semester"
-                    className="h-10 border-blue-300 dark:border-blue-700 focus:border-blue-500 dark:focus:border-blue-400"
-                  >
-                    <SelectValue placeholder="Sélectionner un semestre" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="S1">Semestre 1</SelectItem>
-                    <SelectItem value="S2">Semestre 2</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  <SelectValue placeholder="Sélectionner une faculté" />
+                </SelectTrigger>
+                <SelectContent>
+                  {faculties.map((faculty) => (
+                    <SelectItem key={faculty.id} value={faculty.id}>
+                      {faculty.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </CardContent>
-        )}
+
+            {/* Niveau */}
+            <div className="space-y-2">
+              <Label htmlFor="level" className="text-sm font-medium">
+                Niveau
+              </Label>
+              <Select value={filters.level} onValueChange={handleLevelChange}>
+                <SelectTrigger
+                  id="level"
+                  className="h-10 border-blue-300 dark:border-blue-700 focus:border-blue-500 dark:focus:border-blue-400"
+                >
+                  <SelectValue placeholder="Sélectionner un niveau" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <SelectItem key={level} value={level.toString()}>
+                      {getLevelLabel(level.toString())}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Année académique */}
+            <div className="space-y-2">
+              <Label htmlFor="academicYear" className="text-sm font-medium">
+                Année académique
+              </Label>
+              <Select
+                value={filters.academicYearId}
+                onValueChange={(value) =>
+                  setFilters((prev) => ({ ...prev, academicYearId: value }))
+                }
+              >
+                <SelectTrigger
+                  id="academicYear"
+                  className="h-10 border-blue-300 dark:border-blue-700 focus:border-blue-500 dark:focus:border-blue-400"
+                >
+                  <SelectValue placeholder="Sélectionner une année" />
+                </SelectTrigger>
+                <SelectContent>
+                  {academicYears.map((year) => (
+                    <SelectItem key={year.id} value={year.id}>
+                      {year.year}
+                      {year.isCurrent && " (En cours)"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Semestre */}
+            <div className="space-y-2">
+              <Label htmlFor="semester" className="text-sm font-medium">
+                Semestre
+              </Label>
+              <Select
+                value={filters.semester}
+                onValueChange={(value: "S1" | "S2") =>
+                  setFilters((prev) => ({ ...prev, semester: value }))
+                }
+              >
+                <SelectTrigger
+                  id="semester"
+                  className="h-10 border-blue-300 dark:border-blue-700 focus:border-blue-500 dark:focus:border-blue-400"
+                >
+                  <SelectValue placeholder="Sélectionner un semestre" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="S1">Semestre 1</SelectItem>
+                  <SelectItem value="S2">Semestre 2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
       </Card>
 
       {/* Statistiques */}

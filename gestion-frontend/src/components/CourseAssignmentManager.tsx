@@ -239,6 +239,7 @@ export const CourseAssignmentManager = () => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isCopyWizardOpen, setIsCopyWizardOpen] = useState(false);
   const [availableUes, setAvailableUes] = useState<any[]>([]);
+  const [uesLoading, setUesLoading] = useState(false);
 
   // AJOUT: États pour l'importation Excel
   const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
@@ -248,23 +249,26 @@ export const CourseAssignmentManager = () => {
     console.log("🚀 Initialisation du composant");
     const initializeData = async () => {
       try {
+        setUesLoading(true);
         await Promise.all([
           fetchFaculties(),
           fetchAcademicYears(),
           fetchProfessors(),
         ]);
 
-        // Utilisez getAllUEs au lieu de fetchUEs
-        const allUEsData = await getAllUEs();
-        setAvailableUes(allUEsData || []);
-        console.log("✅ Toutes les UEs chargées:", allUEsData?.length);
+        // ✅ getAllUEs ne retourne rien directement ; il peuple le store, utilisez allUes depuis le store
+        await getAllUEs();
+        console.log("✅ UEs chargées via getAllUEs:", allUes?.length);
+        setAvailableUes(allUes || []);
       } catch (error) {
         console.error("❌ Erreur lors de l'initialisation:", error);
+      } finally {
+        setUesLoading(false);
       }
     };
 
     initializeData();
-  }, [fetchFaculties, fetchAcademicYears, fetchProfessors, fetchUEs]);
+  }, [fetchFaculties, fetchAcademicYears, fetchProfessors, getAllUEs]);
 
   useEffect(() => {
     if (faculties.length > 0 && academicYears.length > 0 && !isInitialized) {
