@@ -35,7 +35,7 @@ export const createEvent = async (req: Request, res: Response) => {
         location: location || null,
         organizer: organizer || null,
         category,
-        participants: participants || [],
+        // participants: participants || [],
         isPublic: isPublic !== undefined ? isPublic : true,
         status: "Programmé",
       },
@@ -118,7 +118,7 @@ export const getEventById = async (req: Request, res: Response) => {
         category: true,
         isPublic: true,
         status: true,
-        participants: true,
+        // participants: true,
       },
     });
 
@@ -175,7 +175,7 @@ export const updateEvent = async (req: Request, res: Response) => {
         location: location ?? undefined,
         organizer: organizer ?? undefined,
         category: category ?? undefined,
-        participants: participants ?? undefined,
+        // participants: participants ?? undefined,
         isPublic: isPublic ?? undefined,
         status: status ?? undefined,
       },
@@ -199,7 +199,7 @@ export const deleteEvent = async (req: Request, res: Response) => {
       where: { id },
       select: {
         id: true,
-        participants: true,
+        // participants: true,
       },
     });
 
@@ -260,7 +260,7 @@ export const registerForEvent = async (req: Request, res: Response) => {
       where: { id },
       select: {
         id: true,
-        participants: true,
+        // participants: true,
       },
     });
 
@@ -271,19 +271,19 @@ export const registerForEvent = async (req: Request, res: Response) => {
     }
 
     // Vérifier si l'utilisateur est déjà inscrit
-    if (event.participants.includes(userId)) {
-      return res.status(400).json({
-        message: "Utilisateur déjà inscrit à cet événement",
-      });
-    }
+    // if (event.participants.includes(userId)) {
+    //   return res.status(400).json({
+    //     message: "Utilisateur déjà inscrit à cet événement",
+    //   });
+    // }
 
     // Ajouter l'utilisateur aux participants
     const updatedEvent = await prisma.event.update({
       where: { id },
       data: {
-        participants: {
-          connect: { id: userId },
-        },
+        // participants: {
+        //   push: userId,
+        // },
       },
     });
 

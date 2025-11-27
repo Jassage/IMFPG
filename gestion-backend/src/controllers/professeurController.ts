@@ -268,7 +268,7 @@ export const bulkImportProfesseurs = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
     userAgent: req.get("User-Agent") || "unknown",
-    userId: getUserIdFromRequest(req as any),
+    userId: getUserIdFromRequest(req as any) ?? null,
   };
 
   try {

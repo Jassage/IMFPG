@@ -2,6 +2,37 @@
 import prisma from "../prisma";
 
 export class AuditService {
+  static logCreate(
+    entity: string,
+    entityId: string,
+    id: any,
+    newData: any,
+    arg4: any,
+    ip: any
+  ) {
+    throw new Error("Method not implemented.");
+  }
+  static logUpdate(
+    entity: string,
+    entityId: string,
+    id: any,
+    oldData: any,
+    newData: any,
+    arg5: any,
+    ip: any
+  ) {
+    throw new Error("Method not implemented.");
+  }
+  static logDelete(
+    entity: string,
+    entityId: string,
+    id: any,
+    oldData: any,
+    arg4: any,
+    ip: any
+  ) {
+    throw new Error("Method not implemented.");
+  }
   static async log(data: {
     action: string;
     entity: string;

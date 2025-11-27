@@ -43,10 +43,9 @@ export const createAuditLog = async (data: {
     // Ne pas throw l'erreur pour ne pas interrompre le flux principal
   }
 };
-export const getUserIdFromRequest = (
-  req: Request // 🔥 Utiliser Request standard
-): string | undefined => {
-  return req.user?.id; // Simple et direct maintenant
+// Dans auditController.ts
+export const getUserIdFromRequest = (req: any): string | null => {
+  return req.user?.id || req.userId || null;
 };
 
 export const getAuditLogs = async (req: Request, res: Response) => {

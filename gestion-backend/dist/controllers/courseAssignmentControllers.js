@@ -1,0 +1,2129 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.downloadAssignmentTemplate = exports.importAssignmentsFromExcel = exports.copyAssignments = exports.bulkCreateAssignments = exports.getProfessorAssignments = exports.getAssignmentById = exports.getUEsByFacultyAndLevel = exports.getAssignmentsByFaculty = exports.deleteCourseAssignment = exports.updateCourseAssignment = exports.getCourseAssignments = exports.createCourseAssignment = void 0;
+const prisma_1 = require("../../generated/prisma");
+const auditController_1 = require("./auditController");
+const prisma = new prisma_1.PrismaClient();
+// ==================== FONCTIONS UTILITAIRES ====================
+// Fonction utilitaire pour gérer les erreurs unknown
+const getErrorMessage = (error) => {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    else if (typeof error === "string") {
+        return error;
+    }
+    else if (error && typeof error === "object" && "message" in error) {
+        return String(error.message);
+    }
+    else {
+        return "Erreur inconnue";
+    }
+};
+function isPrismaError(error) {
+    return error instanceof Error && "code" in error;
+}
+function validateAssignmentInput(data) {
+    const errors = [];
+    const requiredFields = [
+        "ueId",
+        "professeurId",
+        "facultyId",
+        "level",
+        "academicYearId",
+        "semester",
+    ];
+    requiredFields.forEach((field) => {
+        if (!data[field]) {
+            errors.push(`Le champ ${field} est requis`);
+        }
+    });
+    // Validation du semestre
+    if (data.semester && !["S1", "S2"].includes(data.semester)) {
+        errors.push("Le semestre doit être 'S1' ou 'S2'");
+    }
+    // Validation du niveau
+    if (data.level && !["1", "2", "3", "4", "5"].includes(data.level)) {
+        errors.push("Le niveau doit être compris entre 1 et 5");
+    }
+    return {
+        isValid: errors.length === 0,
+        errors,
+    };
+}
+// ==================== GESTIONNAIRE D'ERREURS UNIFIÉ ====================
+const handleControllerError = (error, res, context, auditData) => {
+    console.error(`Error in ${context}:`, error);
+    let statusCode = 500;
+    let errorMessage = `Erreur lors de ${context}`;
+    if (isPrismaError(error)) {
+        switch (error.code) {
+            case "P2002":
+                statusCode = 409;
+                errorMessage = "Une affectation existe déjà pour cette combinaison";
+                break;
+            case "P2003":
+                statusCode = 404;
+                errorMessage = "Référence étrangère non trouvée";
+                break;
+            case "P2025":
+                statusCode = 404;
+                errorMessage = "Enregistrement non trouvé";
+                break;
+            default:
+                errorMessage = `Erreur base de données: ${error.message}`;
+                break;
+        }
+    }
+    else if (error instanceof Error) {
+        errorMessage = error.message;
+    }
+    // Log d'erreur d'audit
+    (0, auditController_1.createAuditLog)({
+        ...auditData,
+        action: `${auditData.action}_ERROR`,
+        description: `Erreur lors de ${context}`,
+        status: "ERROR",
+        errorMessage: errorMessage,
+    });
+    const response = {
+        error: errorMessage,
+        success: false,
+    };
+    if (process.env.NODE_ENV === "development") {
+        response.details = getErrorMessage(error);
+        if (isPrismaError(error) && error.meta) {
+            response.meta = error.meta;
+        }
+    }
+    res.status(statusCode).json(response);
+};
+// ==================== CONTRÔLEURS ====================
+const createCourseAssignment = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.user?.id || req.userId || null,
+    };
+    try {
+        const assignmentData = req.body;
+        console.log("Requête création affectation:", assignmentData);
+        // Validation des données
+        const validation = validateAssignmentInput(assignmentData);
+        if (!validation.isValid) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "CREATE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative de création d'affectation - données invalides",
+                status: "ERROR",
+                errorMessage: validation.errors.join(", "),
+            });
+            return res.status(400).json({
+                success: false,
+                error: "Données invalides",
+                details: validation.errors,
+                receivedData: assignmentData,
+            });
+        }
+        // Vérifications d'existence des entités liées
+        const [professor, ue, faculty, academicYear] = await Promise.all([
+            prisma.professeur.findUnique({
+                where: { id: assignmentData.professeurId },
+                select: { id: true, firstName: true, lastName: true },
+            }),
+            prisma.ue.findUnique({
+                where: { id: assignmentData.ueId },
+                select: { id: true, code: true, title: true },
+            }),
+            prisma.faculty.findUnique({
+                where: { id: assignmentData.facultyId },
+                select: { id: true, name: true },
+            }),
+            prisma.academicYear.findUnique({
+                where: { id: assignmentData.academicYearId },
+                select: { id: true, year: true },
+            }),
+        ]);
+        // Vérifications avec messages d'erreur spécifiques
+        if (!professor) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "CREATE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                description: `Tentative de création d'affectation - professeur ${assignmentData.professeurId} non trouvé`,
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Professeur non trouvé",
+                professeurId: assignmentData.professeurId,
+            });
+        }
+        if (!ue) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "CREATE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                description: `Tentative de création d'affectation - UE ${assignmentData.ueId} non trouvée`,
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Cours non trouvée",
+                ueId: assignmentData.ueId,
+            });
+        }
+        if (!faculty) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "CREATE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                description: `Tentative de création d'affectation - faculté ${assignmentData.facultyId} non trouvée`,
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Faculté non trouvée",
+                facultyId: assignmentData.facultyId,
+            });
+        }
+        if (!academicYear) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "CREATE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                description: `Tentative de création d'affectation - année académique ${assignmentData.academicYearId} non trouvée`,
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Année académique non trouvée",
+                academicYearId: assignmentData.academicYearId,
+            });
+        }
+        // Vérifier si l'affectation existe déjà
+        const existingAssignment = await prisma.courseAssignment.findFirst({
+            where: {
+                ueId: assignmentData.ueId,
+                professeurId: assignmentData.professeurId,
+                facultyId: assignmentData.facultyId,
+                level: assignmentData.level,
+                academicYearId: assignmentData.academicYearId,
+                semester: assignmentData.semester,
+            },
+        });
+        if (existingAssignment) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "CREATE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                description: `Tentative de création d'affectation - affectation déjà existante pour cette combinaison`,
+                status: "ERROR",
+            });
+            return res.status(409).json({
+                success: false,
+                error: "Cette affectation existe déjà",
+                existingAssignmentId: existingAssignment.id,
+                details: {
+                    ueId: assignmentData.ueId,
+                    professeurId: assignmentData.professeurId,
+                    facultyId: assignmentData.facultyId,
+                    level: assignmentData.level,
+                    academicYearId: assignmentData.academicYearId,
+                    semester: assignmentData.semester,
+                },
+            });
+        }
+        // Créer l'affectation
+        const assignment = await prisma.courseAssignment.create({
+            data: assignmentData,
+            include: {
+                ue: {
+                    select: {
+                        id: true,
+                        code: true,
+                        title: true,
+                        credits: true,
+                        type: true,
+                    },
+                },
+                professeur: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                    },
+                },
+                faculty: {
+                    select: {
+                        id: true,
+                        name: true,
+                        description: true,
+                    },
+                },
+                academicYear: {
+                    select: {
+                        id: true,
+                        year: true,
+                        isCurrent: true,
+                    },
+                },
+            },
+        });
+        // Log de création réussie
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "CREATE_ASSIGNMENT_SUCCESS",
+            entity: "CourseAssignment",
+            entityId: assignment.id,
+            description: `Affectation créée: ${professor.firstName} ${professor.lastName} assigné à ${ue.code} (${faculty.name}, niveau ${assignmentData.level}, ${assignmentData.semester})`,
+            status: "SUCCESS",
+        });
+        res.status(201).json({
+            success: true,
+            message: "Affectation créée avec succès",
+            data: assignment,
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la création de l'affectation", {
+            ...auditData,
+            action: "CREATE_ASSIGNMENT",
+        });
+    }
+};
+exports.createCourseAssignment = createCourseAssignment;
+const getCourseAssignments = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.userId || "unknown",
+    };
+    try {
+        const { professorId, facultyId, academicYearId, semester, level, ueId } = req.query;
+        const where = {};
+        // Filtres avec validation
+        if (professorId)
+            where.professeurId = professorId;
+        if (facultyId)
+            where.facultyId = facultyId;
+        if (academicYearId)
+            where.academicYearId = academicYearId;
+        if (semester) {
+            if (["S1", "S2"].includes(semester)) {
+                where.semester = semester;
+            }
+            else {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "GET_ASSIGNMENTS_ATTEMPT",
+                    entity: "CourseAssignment",
+                    description: "Tentative de récupération des affectations - semestre invalide",
+                    status: "ERROR",
+                });
+                return res.status(400).json({
+                    success: false,
+                    error: "Semestre invalide",
+                    validSemesters: ["S1", "S2"],
+                });
+            }
+        }
+        if (level) {
+            if (["1", "2", "3", "4", "5"].includes(level)) {
+                where.level = level;
+            }
+            else {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "GET_ASSIGNMENTS_ATTEMPT",
+                    entity: "CourseAssignment",
+                    description: "Tentative de récupération des affectations - niveau invalide",
+                    status: "ERROR",
+                });
+                return res.status(400).json({
+                    success: false,
+                    error: "Niveau invalide",
+                    validLevels: ["1", "2", "3", "4", "5"],
+                });
+            }
+        }
+        if (ueId)
+            where.ueId = ueId;
+        const assignments = await prisma.courseAssignment.findMany({
+            where,
+            include: {
+                ue: {
+                    select: {
+                        id: true,
+                        code: true,
+                        title: true,
+                        credits: true,
+                        type: true,
+                        passingGrade: true,
+                    },
+                },
+                professeur: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                        status: true,
+                    },
+                },
+                faculty: {
+                    select: {
+                        id: true,
+                        name: true,
+                        description: true,
+                        status: true,
+                    },
+                },
+                academicYear: {
+                    select: {
+                        id: true,
+                        year: true,
+                        isCurrent: true,
+                    },
+                },
+            },
+            orderBy: [
+                { academicYear: { year: "desc" } },
+                { semester: "desc" },
+                { level: "asc" },
+                { ue: { code: "asc" } },
+            ],
+        });
+        // Log de consultation réussie
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "GET_ASSIGNMENTS_SUCCESS",
+            entity: "CourseAssignment",
+            description: `Consultation de la liste des affectations - ${assignments.length} affectation(s) trouvée(s)`,
+            status: "SUCCESS",
+        });
+        res.json({
+            success: true,
+            count: assignments.length,
+            data: assignments,
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la récupération des affectations", {
+            ...auditData,
+            action: "GET_ASSIGNMENTS",
+        });
+    }
+};
+exports.getCourseAssignments = getCourseAssignments;
+const updateCourseAssignment = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.userId || "unknown",
+    };
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+        if (!id) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "UPDATE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative de mise à jour d'affectation - ID manquant",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "ID de l'affectation requis",
+            });
+        }
+        // Vérifier si l'affectation existe
+        const existingAssignment = await prisma.courseAssignment.findUnique({
+            where: { id },
+            include: {
+                ue: true,
+                professeur: true,
+                faculty: true,
+                academicYear: true,
+            },
+        });
+        if (!existingAssignment) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "UPDATE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                entityId: id,
+                description: "Tentative de mise à jour d'affectation - non trouvée",
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Affectation non trouvée",
+            });
+        }
+        // Vérifications optionnelles pour les relations
+        if (updateData.ueId) {
+            const ue = await prisma.ue.findUnique({
+                where: { id: updateData.ueId },
+                select: { id: true, code: true, title: true },
+            });
+            if (!ue) {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "UPDATE_ASSIGNMENT_ATTEMPT",
+                    entity: "CourseAssignment",
+                    entityId: id,
+                    description: `Tentative de mise à jour d'affectation - UE ${updateData.ueId} non trouvée`,
+                    status: "ERROR",
+                });
+                return res.status(404).json({
+                    success: false,
+                    error: "UE non trouvée",
+                    ueId: updateData.ueId,
+                });
+            }
+        }
+        if (updateData.facultyId) {
+            const faculty = await prisma.faculty.findUnique({
+                where: { id: updateData.facultyId },
+                select: { id: true, name: true },
+            });
+            if (!faculty) {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "UPDATE_ASSIGNMENT_ATTEMPT",
+                    entity: "CourseAssignment",
+                    entityId: id,
+                    description: `Tentative de mise à jour d'affectation - faculté ${updateData.facultyId} non trouvée`,
+                    status: "ERROR",
+                });
+                return res.status(404).json({
+                    success: false,
+                    error: "Faculté non trouvée",
+                    facultyId: updateData.facultyId,
+                });
+            }
+        }
+        if (updateData.academicYearId) {
+            const academicYear = await prisma.academicYear.findUnique({
+                where: { id: updateData.academicYearId },
+                select: { id: true, year: true },
+            });
+            if (!academicYear) {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "UPDATE_ASSIGNMENT_ATTEMPT",
+                    entity: "CourseAssignment",
+                    entityId: id,
+                    description: `Tentative de mise à jour d'affectation - année académique ${updateData.academicYearId} non trouvée`,
+                    status: "ERROR",
+                });
+                return res.status(404).json({
+                    success: false,
+                    error: "Année académique non trouvée",
+                    academicYearId: updateData.academicYearId,
+                });
+            }
+        }
+        if (updateData.professeurId) {
+            const professor = await prisma.professeur.findUnique({
+                where: { id: updateData.professeurId },
+                select: { id: true, firstName: true, lastName: true },
+            });
+            if (!professor) {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "UPDATE_ASSIGNMENT_ATTEMPT",
+                    entity: "CourseAssignment",
+                    entityId: id,
+                    description: `Tentative de mise à jour d'affectation - professeur ${updateData.professeurId} non trouvé`,
+                    status: "ERROR",
+                });
+                return res.status(404).json({
+                    success: false,
+                    error: "Professeur non trouvé",
+                    professeurId: updateData.professeurId,
+                });
+            }
+        }
+        // CORRECTION CRITIQUE : Vérifier les conflits UNIQUEMENT si au moins 2 champs clés sont modifiés
+        // Cela permet de modifier un seul champ (professeur, année ou semestre) sans conflit
+        const modifiedFields = Object.keys(updateData).filter((key) => updateData[key] !== undefined);
+        // Si au moins 2 champs clés sont modifiés, vérifier les conflits
+        const keyFields = [
+            "ueId",
+            "professeurId",
+            "facultyId",
+            "level",
+            "academicYearId",
+            "semester",
+        ];
+        const modifiedKeyFields = modifiedFields.filter((field) => keyFields.includes(field));
+        if (modifiedKeyFields.length >= 2) {
+            const conflictCheck = await prisma.courseAssignment.findFirst({
+                where: {
+                    id: { not: id },
+                    ueId: updateData.ueId || existingAssignment.ueId,
+                    facultyId: updateData.facultyId || existingAssignment.facultyId,
+                    level: updateData.level || existingAssignment.level,
+                    academicYearId: updateData.academicYearId || existingAssignment.academicYearId,
+                    semester: updateData.semester || existingAssignment.semester,
+                    professeurId: updateData.professeurId || existingAssignment.professeurId,
+                },
+            });
+            if (conflictCheck) {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "UPDATE_ASSIGNMENT_ATTEMPT",
+                    entity: "CourseAssignment",
+                    entityId: id,
+                    description: `Tentative de mise à jour d'affectation - conflit avec l'affectation ${conflictCheck.id}`,
+                    status: "ERROR",
+                });
+                return res.status(409).json({
+                    success: false,
+                    error: "Une affectation similaire existe déjà",
+                    conflictingAssignmentId: conflictCheck.id,
+                });
+            }
+        }
+        // Mettre à jour l'affectation
+        const updatedAssignment = await prisma.courseAssignment.update({
+            where: { id },
+            data: updateData,
+            include: {
+                ue: {
+                    select: {
+                        id: true,
+                        code: true,
+                        title: true,
+                        credits: true,
+                    },
+                },
+                professeur: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                    },
+                },
+                faculty: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                academicYear: {
+                    select: {
+                        id: true,
+                        year: true,
+                    },
+                },
+            },
+        });
+        // Log de mise à jour réussie
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "UPDATE_ASSIGNMENT_SUCCESS",
+            entity: "CourseAssignment",
+            entityId: id,
+            description: `Affectation mise à jour: ${updatedAssignment.professeur.firstName} ${updatedAssignment.professeur.lastName} assigné à ${updatedAssignment.ue.code} (${updatedAssignment.faculty.name}, niveau ${updatedAssignment.level}, ${updatedAssignment.semester})`,
+            status: "SUCCESS",
+        });
+        res.json({
+            success: true,
+            message: "Affectation mise à jour avec succès",
+            data: updatedAssignment,
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la mise à jour de l'affectation", {
+            ...auditData,
+            action: "UPDATE_ASSIGNMENT",
+        });
+    }
+};
+exports.updateCourseAssignment = updateCourseAssignment;
+const deleteCourseAssignment = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.userId || "unknown",
+    };
+    try {
+        const { id } = req.params;
+        if (!id) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "DELETE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative de suppression d'affectation - ID manquant",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "ID de l'affectation requis",
+            });
+        }
+        // Vérifier si l'affectation existe
+        const existingAssignment = await prisma.courseAssignment.findUnique({
+            where: { id },
+            include: {
+                ue: {
+                    select: {
+                        code: true,
+                        title: true,
+                    },
+                },
+                professeur: {
+                    select: {
+                        firstName: true,
+                        lastName: true,
+                    },
+                },
+                faculty: {
+                    select: {
+                        name: true,
+                    },
+                },
+            },
+        });
+        if (!existingAssignment) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "DELETE_ASSIGNMENT_ATTEMPT",
+                entity: "CourseAssignment",
+                entityId: id,
+                description: "Tentative de suppression d'affectation - non trouvée",
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Affectation non trouvée",
+            });
+        }
+        // Supprimer l'affectation
+        await prisma.courseAssignment.delete({
+            where: { id },
+        });
+        // Log de suppression réussie
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "DELETE_ASSIGNMENT_SUCCESS",
+            entity: "CourseAssignment",
+            entityId: id,
+            description: `Affectation supprimée: ${existingAssignment.professeur.firstName} ${existingAssignment.professeur.lastName} n'est plus assigné à ${existingAssignment.ue.code} (${existingAssignment.faculty.name})`,
+            status: "SUCCESS",
+        });
+        res.status(200).json({
+            success: true,
+            message: "Affectation supprimée avec succès",
+            deletedAssignment: {
+                id: existingAssignment.id,
+                ueId: existingAssignment.ueId,
+                professeurId: existingAssignment.professeurId,
+                facultyId: existingAssignment.facultyId,
+            },
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la suppression de l'affectation", {
+            ...auditData,
+            action: "DELETE_ASSIGNMENT",
+        });
+    }
+};
+exports.deleteCourseAssignment = deleteCourseAssignment;
+const getAssignmentsByFaculty = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.userId || "unknown",
+    };
+    try {
+        const { facultyId } = req.params;
+        const { level, academicYearId, semester } = req.query;
+        if (!facultyId) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "GET_ASSIGNMENTS_BY_FACULTY_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative de récupération par faculté - ID manquant",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "ID de la faculté requis",
+            });
+        }
+        // Vérifier si la faculté existe
+        const faculty = await prisma.faculty.findUnique({
+            where: { id: facultyId },
+            select: { id: true, name: true },
+        });
+        if (!faculty) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "GET_ASSIGNMENTS_BY_FACULTY_ATTEMPT",
+                entity: "CourseAssignment",
+                description: `Tentative de récupération par faculté - faculté ${facultyId} non trouvée`,
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Faculté non trouvée",
+                facultyId,
+            });
+        }
+        const where = { facultyId };
+        // Filtres avec validation
+        if (level) {
+            if (["1", "2", "3", "4", "5"].includes(level)) {
+                where.level = level;
+            }
+            else {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "GET_ASSIGNMENTS_BY_FACULTY_ATTEMPT",
+                    entity: "CourseAssignment",
+                    description: "Tentative de récupération par faculté - niveau invalide",
+                    status: "ERROR",
+                });
+                return res.status(400).json({
+                    success: false,
+                    error: "Niveau invalide",
+                    validLevels: ["1", "2", "3", "4", "5"],
+                });
+            }
+        }
+        if (academicYearId)
+            where.academicYearId = academicYearId;
+        if (semester) {
+            if (["S1", "S2"].includes(semester)) {
+                where.semester = semester;
+            }
+            else {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "GET_ASSIGNMENTS_BY_FACULTY_ATTEMPT",
+                    entity: "CourseAssignment",
+                    description: "Tentative de récupération par faculté - semestre invalide",
+                    status: "ERROR",
+                });
+                return res.status(400).json({
+                    success: false,
+                    error: "Semestre invalide",
+                    validSemesters: ["S1", "S2"],
+                });
+            }
+        }
+        const assignments = await prisma.courseAssignment.findMany({
+            where,
+            include: {
+                ue: {
+                    select: {
+                        id: true,
+                        code: true,
+                        title: true,
+                        credits: true,
+                        type: true,
+                        passingGrade: true,
+                    },
+                },
+                professeur: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                        status: true,
+                    },
+                },
+                academicYear: {
+                    select: {
+                        id: true,
+                        year: true,
+                        isCurrent: true,
+                    },
+                },
+            },
+            orderBy: [
+                { academicYear: { year: "desc" } },
+                { semester: "desc" },
+                { level: "asc" },
+                { ue: { code: "asc" } },
+            ],
+        });
+        // Log de consultation réussie
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "GET_ASSIGNMENTS_BY_FACULTY_SUCCESS",
+            entity: "CourseAssignment",
+            description: `Consultation des affectations de la faculté ${faculty.name} - ${assignments.length} affectation(s) trouvée(s)`,
+            status: "SUCCESS",
+        });
+        res.json({
+            success: true,
+            faculty: {
+                id: faculty.id,
+                name: faculty.name,
+            },
+            count: assignments.length,
+            data: assignments,
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la récupération des affectations par faculté", {
+            ...auditData,
+            action: "GET_ASSIGNMENTS_BY_FACULTY",
+        });
+    }
+};
+exports.getAssignmentsByFaculty = getAssignmentsByFaculty;
+const getUEsByFacultyAndLevel = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.userId || "unknown",
+    };
+    try {
+        const { facultyId, level } = req.params;
+        if (!facultyId || !level) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "GET_UES_BY_FACULTY_LEVEL_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative de récupération des UEs - paramètres manquants",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "facultyId et level sont requis",
+            });
+        }
+        // Validation du niveau
+        if (!["1", "2", "3", "4", "5"].includes(level)) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "GET_UES_BY_FACULTY_LEVEL_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative de récupération des UEs - niveau invalide",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "Niveau invalide",
+                validLevels: ["1", "2", "3", "4", "5"],
+            });
+        }
+        // Vérifier si la faculté existe
+        const faculty = await prisma.faculty.findUnique({
+            where: { id: facultyId },
+            select: { id: true, name: true },
+        });
+        if (!faculty) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "GET_UES_BY_FACULTY_LEVEL_ATTEMPT",
+                entity: "CourseAssignment",
+                description: `Tentative de récupération des UEs - faculté ${facultyId} non trouvée`,
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Faculté non trouvée",
+                facultyId,
+            });
+        }
+        const assignments = await prisma.courseAssignment.findMany({
+            where: {
+                facultyId,
+                level,
+            },
+            include: {
+                ue: {
+                    select: {
+                        id: true,
+                        code: true,
+                        title: true,
+                        credits: true,
+                        type: true,
+                        passingGrade: true,
+                        description: true,
+                    },
+                },
+            },
+            distinct: ["ueId"],
+        });
+        const ues = assignments.map((assignment) => assignment.ue);
+        // Log de consultation réussie
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "GET_UES_BY_FACULTY_LEVEL_SUCCESS",
+            entity: "CourseAssignment",
+            description: `Consultation des UEs de la faculté ${faculty.name} niveau ${level} - ${ues.length} UE(s) trouvée(s)`,
+            status: "SUCCESS",
+        });
+        res.json({
+            success: true,
+            faculty: {
+                id: faculty.id,
+                name: faculty.name,
+            },
+            level,
+            count: ues.length,
+            data: ues,
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la récupération des Cours par faculté et niveau", {
+            ...auditData,
+            action: "GET_UES_BY_FACULTY_LEVEL",
+        });
+    }
+};
+exports.getUEsByFacultyAndLevel = getUEsByFacultyAndLevel;
+// ==================== CONTRÔLEURS SUPPLÉMENTAIRES ====================
+const getAssignmentById = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.userId || "unknown",
+    };
+    try {
+        const { id } = req.params;
+        if (!id) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "GET_ASSIGNMENT_BY_ID_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative de consultation d'affectation - ID manquant",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "ID de l'affectation requis",
+            });
+        }
+        const assignment = await prisma.courseAssignment.findUnique({
+            where: { id },
+            include: {
+                ue: {
+                    select: {
+                        id: true,
+                        code: true,
+                        title: true,
+                        credits: true,
+                        type: true,
+                        passingGrade: true,
+                        description: true,
+                    },
+                },
+                professeur: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                        phone: true,
+                        status: true,
+                    },
+                },
+                faculty: {
+                    select: {
+                        id: true,
+                        name: true,
+                        description: true,
+                        status: true,
+                    },
+                },
+                academicYear: {
+                    select: {
+                        id: true,
+                        year: true,
+                        isCurrent: true,
+                    },
+                },
+            },
+        });
+        if (!assignment) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "GET_ASSIGNMENT_BY_ID_ATTEMPT",
+                entity: "CourseAssignment",
+                entityId: id,
+                description: "Tentative de consultation d'affectation - non trouvée",
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Affectation non trouvée",
+            });
+        }
+        // Log de consultation réussie
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "GET_ASSIGNMENT_BY_ID_SUCCESS",
+            entity: "CourseAssignment",
+            entityId: id,
+            description: `Consultation de l'affectation ${id}: ${assignment.professeur.firstName} ${assignment.professeur.lastName} - ${assignment.ue.code}`,
+            status: "SUCCESS",
+        });
+        res.json({
+            success: true,
+            data: assignment,
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la récupération de l'affectation", {
+            ...auditData,
+            action: "GET_ASSIGNMENT_BY_ID",
+        });
+    }
+};
+exports.getAssignmentById = getAssignmentById;
+const getProfessorAssignments = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.userId || "unknown",
+    };
+    try {
+        const { professorId } = req.params;
+        const { academicYearId, semester } = req.query;
+        if (!professorId) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "GET_PROFESSOR_ASSIGNMENTS_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative de récupération des affectations du professeur - ID manquant",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "ID du professeur requis",
+            });
+        }
+        // Vérifier si le professeur existe
+        const professor = await prisma.professeur.findUnique({
+            where: { id: professorId },
+            select: { id: true, firstName: true, lastName: true },
+        });
+        if (!professor) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "GET_PROFESSOR_ASSIGNMENTS_ATTEMPT",
+                entity: "CourseAssignment",
+                description: `Tentative de récupération des affectations du professeur - professeur ${professorId} non trouvé`,
+                status: "ERROR",
+            });
+            return res.status(404).json({
+                success: false,
+                error: "Professeur non trouvé",
+                professorId,
+            });
+        }
+        const where = { professeurId: professorId };
+        if (academicYearId)
+            where.academicYearId = academicYearId;
+        if (semester) {
+            if (["S1", "S2"].includes(semester)) {
+                where.semester = semester;
+            }
+            else {
+                await (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "GET_PROFESSOR_ASSIGNMENTS_ATTEMPT",
+                    entity: "CourseAssignment",
+                    description: "Tentative de récupération des affectations du professeur - semestre invalide",
+                    status: "ERROR",
+                });
+                return res.status(400).json({
+                    success: false,
+                    error: "Semestre invalide",
+                    validSemesters: ["S1", "S2"],
+                });
+            }
+        }
+        const assignments = await prisma.courseAssignment.findMany({
+            where,
+            include: {
+                ue: {
+                    select: {
+                        id: true,
+                        code: true,
+                        title: true,
+                        credits: true,
+                        type: true,
+                    },
+                },
+                faculty: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                academicYear: {
+                    select: {
+                        id: true,
+                        year: true,
+                    },
+                },
+            },
+            orderBy: [
+                { academicYear: { year: "desc" } },
+                { semester: "desc" },
+                { faculty: { name: "asc" } },
+            ],
+        });
+        // Statistiques
+        const stats = {
+            total: assignments.length,
+            bySemester: {
+                S1: assignments.filter((a) => a.semester === "S1").length,
+                S2: assignments.filter((a) => a.semester === "S2").length,
+            },
+            byFaculty: assignments.reduce((acc, assignment) => {
+                const facultyName = assignment.faculty.name;
+                acc[facultyName] = (acc[facultyName] || 0) + 1;
+                return acc;
+            }, {}),
+        };
+        // Log de consultation réussie
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "GET_PROFESSOR_ASSIGNMENTS_SUCCESS",
+            entity: "CourseAssignment",
+            description: `Consultation des affectations du professeur ${professor.firstName} ${professor.lastName} - ${assignments.length} affectation(s) trouvée(s)`,
+            status: "SUCCESS",
+        });
+        res.json({
+            success: true,
+            professor: {
+                id: professor.id,
+                firstName: professor.firstName,
+                lastName: professor.lastName,
+            },
+            stats,
+            count: assignments.length,
+            data: assignments,
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la récupération des affectations du professeur", {
+            ...auditData,
+            action: "GET_PROFESSOR_ASSIGNMENTS",
+        });
+    }
+};
+exports.getProfessorAssignments = getProfessorAssignments;
+const bulkCreateAssignments = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.user?.id || req.userId || null,
+    };
+    try {
+        const { assignments } = req.body;
+        if (!Array.isArray(assignments) || assignments.length === 0) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "BULK_CREATE_ASSIGNMENTS_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative de création en masse - données invalides",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "Un tableau d'affectations est requis",
+            });
+        }
+        // Limiter le nombre d'affectations par requête
+        if (assignments.length > 50) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "BULK_CREATE_ASSIGNMENTS_ATTEMPT",
+                entity: "CourseAssignment",
+                description: `Tentative de création en masse - trop d'affectations (${assignments.length})`,
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "Trop d'affectations dans une seule requête (maximum 50)",
+            });
+        }
+        const results = {
+            success: [],
+            errors: [],
+        };
+        // Traiter chaque affectation individuellement
+        for (const [index, assignmentData] of assignments.entries()) {
+            try {
+                const validation = validateAssignmentInput(assignmentData);
+                if (!validation.isValid) {
+                    results.errors.push({
+                        index,
+                        error: "Données invalides",
+                        details: validation.errors,
+                        data: assignmentData,
+                    });
+                    continue;
+                }
+                // Vérifier l'existence des entités
+                const [professor, ue, faculty, academicYear] = await Promise.all([
+                    prisma.professeur.findUnique({
+                        where: { id: assignmentData.professeurId },
+                        select: { firstName: true, lastName: true },
+                    }),
+                    prisma.ue.findUnique({
+                        where: { id: assignmentData.ueId },
+                        select: { code: true, title: true },
+                    }),
+                    prisma.faculty.findUnique({
+                        where: { id: assignmentData.facultyId },
+                        select: { name: true },
+                    }),
+                    prisma.academicYear.findUnique({
+                        where: { id: assignmentData.academicYearId },
+                        select: { year: true },
+                    }),
+                ]);
+                if (!professor) {
+                    results.errors.push({
+                        index,
+                        error: "Professeur non trouvé",
+                        professeurId: assignmentData.professeurId,
+                    });
+                    continue;
+                }
+                if (!ue) {
+                    results.errors.push({
+                        index,
+                        error: "Cours non trouvée",
+                        ueId: assignmentData.ueId,
+                    });
+                    continue;
+                }
+                if (!faculty) {
+                    results.errors.push({
+                        index,
+                        error: "Faculté non trouvée",
+                        facultyId: assignmentData.facultyId,
+                    });
+                    continue;
+                }
+                if (!academicYear) {
+                    results.errors.push({
+                        index,
+                        error: "Année académique non trouvée",
+                        academicYearId: assignmentData.academicYearId,
+                    });
+                    continue;
+                }
+                // Vérifier l'unicité
+                const existingAssignment = await prisma.courseAssignment.findFirst({
+                    where: {
+                        ueId: assignmentData.ueId,
+                        professeurId: assignmentData.professeurId,
+                        facultyId: assignmentData.facultyId,
+                        level: assignmentData.level,
+                        academicYearId: assignmentData.academicYearId,
+                        semester: assignmentData.semester,
+                    },
+                });
+                if (existingAssignment) {
+                    results.errors.push({
+                        index,
+                        error: "Affectation déjà existante",
+                        existingAssignmentId: existingAssignment.id,
+                    });
+                    continue;
+                }
+                // Créer l'affectation
+                const newAssignment = await prisma.courseAssignment.create({
+                    data: assignmentData,
+                });
+                results.success.push({
+                    index,
+                    assignmentId: newAssignment.id,
+                    ueId: newAssignment.ueId,
+                    professeurId: newAssignment.professeurId,
+                    details: `${professor.firstName} ${professor.lastName} - ${ue.code} (${faculty.name})`,
+                });
+            }
+            catch (error) {
+                results.errors.push({
+                    index,
+                    error: getErrorMessage(error),
+                    data: assignmentData,
+                });
+            }
+        }
+        // Log de création en masse réussie
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "BULK_CREATE_ASSIGNMENTS_SUCCESS",
+            entity: "CourseAssignment",
+            description: `Création en masse d'affectations terminée - ${results.success.length} succès, ${results.errors.length} erreurs`,
+            status: "SUCCESS",
+        });
+        res.status(201).json({
+            success: true,
+            message: `Traitement des affectations terminé`,
+            summary: {
+                total: assignments.length,
+                success: results.success.length,
+                errors: results.errors.length,
+            },
+            results,
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la création des affectations en masse", {
+            ...auditData,
+            action: "BULK_CREATE_ASSIGNMENTS",
+        });
+    }
+};
+exports.bulkCreateAssignments = bulkCreateAssignments;
+const copyAssignments = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.userId || "unknown",
+    };
+    try {
+        const { sourceFacultyId, sourceLevel, sourceAcademicYearId, sourceSemester, targetFacultyId, targetLevel, targetAcademicYearId, targetSemester, copyProfessors = true, // Garder les mêmes professeurs
+        conflictResolution = "skip", // skip, override, merge
+        customMappings = {}, // Mappings personnalisés UE → Professeur
+         } = req.body;
+        // Validation des paramètres requis
+        const requiredFields = [
+            "sourceFacultyId",
+            "sourceLevel",
+            "sourceAcademicYearId",
+            "sourceSemester",
+            "targetFacultyId",
+            "targetLevel",
+            "targetAcademicYearId",
+            "targetSemester",
+        ];
+        const missingFields = requiredFields.filter((field) => !req.body[field]);
+        if (missingFields.length > 0) {
+            return res.status(400).json({
+                success: false,
+                error: `Champs manquants: ${missingFields.join(", ")}`,
+                requiredFields,
+            });
+        }
+        // Validation des semestres
+        if (!["S1", "S2"].includes(sourceSemester) ||
+            !["S1", "S2"].includes(targetSemester)) {
+            return res.status(400).json({
+                success: false,
+                error: "Les semestres doivent être 'S1' ou 'S2'",
+                validSemesters: ["S1", "S2"],
+            });
+        }
+        // Vérification des existences
+        const [sourceFaculty, targetFaculty, sourceAcademicYear, targetAcademicYear,] = await Promise.all([
+            prisma.faculty.findUnique({ where: { id: sourceFacultyId } }),
+            prisma.faculty.findUnique({ where: { id: targetFacultyId } }),
+            prisma.academicYear.findUnique({ where: { id: sourceAcademicYearId } }),
+            prisma.academicYear.findUnique({ where: { id: targetAcademicYearId } }),
+        ]);
+        if (!sourceFaculty) {
+            return res.status(404).json({
+                success: false,
+                error: "Faculté source non trouvée",
+                sourceFacultyId,
+            });
+        }
+        if (!targetFaculty) {
+            return res.status(404).json({
+                success: false,
+                error: "Faculté cible non trouvée",
+                targetFacultyId,
+            });
+        }
+        if (!sourceAcademicYear) {
+            return res.status(404).json({
+                success: false,
+                error: "Année académique source non trouvée",
+                sourceAcademicYearId,
+            });
+        }
+        if (!targetAcademicYear) {
+            return res.status(404).json({
+                success: false,
+                error: "Année académique cible non trouvée",
+                targetAcademicYearId,
+            });
+        }
+        // Récupérer les affectations source avec filtres
+        const sourceAssignments = await prisma.courseAssignment.findMany({
+            where: {
+                facultyId: sourceFacultyId,
+                level: sourceLevel,
+                academicYearId: sourceAcademicYearId,
+                semester: sourceSemester,
+            },
+            include: {
+                ue: {
+                    select: {
+                        id: true,
+                        code: true,
+                        title: true,
+                        credits: true,
+                    },
+                },
+                professeur: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                    },
+                },
+                faculty: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                academicYear: {
+                    select: {
+                        id: true,
+                        year: true,
+                    },
+                },
+            },
+        });
+        if (sourceAssignments.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: "Aucune affectation trouvée pour les critères source spécifiés",
+                criteria: {
+                    faculty: sourceFaculty.name,
+                    level: sourceLevel,
+                    academicYear: sourceAcademicYear.year,
+                    semester: sourceSemester,
+                },
+            });
+        }
+        const results = {
+            created: [],
+            updated: [],
+            errors: [],
+            skipped: [],
+        };
+        // Traitement de chaque affectation
+        for (const sourceAssignment of sourceAssignments) {
+            try {
+                // Déterminer le professeur cible
+                let targetProfessorId = sourceAssignment.professeurId;
+                // Appliquer les mappings personnalisés si spécifiés
+                if (customMappings[sourceAssignment.ueId]) {
+                    targetProfessorId = customMappings[sourceAssignment.ueId];
+                }
+                else if (!copyProfessors) {
+                    // Si on ne copie pas les professeurs, on ne peut pas créer l'affectation
+                    results.skipped.push({
+                        originalId: sourceAssignment.id,
+                        ue: sourceAssignment.ue.code,
+                        reason: "Aucun professeur assigné (copyProfessors = false)",
+                    });
+                    continue;
+                }
+                // Vérifier que le professeur cible existe
+                if (targetProfessorId !== sourceAssignment.professeurId) {
+                    const targetProfessor = await prisma.professeur.findUnique({
+                        where: { id: targetProfessorId },
+                    });
+                    if (!targetProfessor) {
+                        results.errors.push({
+                            originalId: sourceAssignment.id,
+                            ue: sourceAssignment.ue.code,
+                            error: `Professeur cible non trouvé: ${targetProfessorId}`,
+                        });
+                        continue;
+                    }
+                }
+                // Vérifier si l'affectation existe déjà
+                const existingAssignment = await prisma.courseAssignment.findFirst({
+                    where: {
+                        ueId: sourceAssignment.ueId,
+                        facultyId: targetFacultyId,
+                        level: targetLevel,
+                        academicYearId: targetAcademicYearId,
+                        semester: targetSemester,
+                    },
+                    include: {
+                        ue: true,
+                        professeur: true,
+                    },
+                });
+                // Gestion des conflits
+                if (existingAssignment) {
+                    switch (conflictResolution) {
+                        case "skip":
+                            results.skipped.push({
+                                originalId: sourceAssignment.id,
+                                existingId: existingAssignment.id,
+                                ue: sourceAssignment.ue.code,
+                                reason: "Affectation déjà existante (skip)",
+                            });
+                            continue;
+                        case "override":
+                            // Supprimer l'ancienne affectation
+                            await prisma.courseAssignment.delete({
+                                where: { id: existingAssignment.id },
+                            });
+                            results.skipped.push({
+                                originalId: sourceAssignment.id,
+                                existingId: existingAssignment.id,
+                                ue: sourceAssignment.ue.code,
+                                reason: "Ancienne affectation supprimée (override)",
+                            });
+                            break;
+                        case "merge":
+                            // Garder l'existante, ignorer la nouvelle
+                            results.skipped.push({
+                                originalId: sourceAssignment.id,
+                                existingId: existingAssignment.id,
+                                ue: sourceAssignment.ue.code,
+                                reason: "Affectation conservée (merge)",
+                            });
+                            continue;
+                    }
+                }
+                // Données pour la nouvelle affectation
+                const newAssignmentData = {
+                    ueId: sourceAssignment.ueId,
+                    professeurId: targetProfessorId,
+                    facultyId: targetFacultyId,
+                    level: targetLevel,
+                    academicYearId: targetAcademicYearId,
+                    semester: targetSemester,
+                };
+                // Créer la nouvelle affectation
+                const newAssignment = await prisma.courseAssignment.create({
+                    data: newAssignmentData,
+                    include: {
+                        ue: true,
+                        professeur: true,
+                        faculty: true,
+                        academicYear: true,
+                    },
+                });
+                results.created.push({
+                    originalId: sourceAssignment.id,
+                    newId: newAssignment.id,
+                    ue: newAssignment.ue.code,
+                    professor: `${newAssignment.professeur.firstName} ${newAssignment.professeur.lastName}`,
+                    faculty: newAssignment.faculty.name,
+                    level: newAssignment.level,
+                    academicYear: newAssignment.academicYear.year,
+                    semester: newAssignment.semester,
+                });
+            }
+            catch (error) {
+                results.errors.push({
+                    originalId: sourceAssignment.id,
+                    ue: sourceAssignment.ue.code,
+                    error: getErrorMessage(error),
+                });
+            }
+        }
+        // Log d'audit
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "COPY_ASSIGNMENTS_BULK",
+            entity: "CourseAssignment",
+            description: `Copie en masse: ${sourceFaculty.name} (${sourceLevel}, ${sourceAcademicYear.year}, ${sourceSemester}) → ${targetFaculty.name} (${targetLevel}, ${targetAcademicYear.year}, ${targetSemester}) - ${results.created.length} créées, ${results.errors.length} erreurs`,
+            status: "SUCCESS",
+        });
+        res.json({
+            success: true,
+            message: `Copie terminée avec succès`,
+            summary: {
+                source: {
+                    faculty: sourceFaculty.name,
+                    level: sourceLevel,
+                    academicYear: sourceAcademicYear.year,
+                    semester: sourceSemester,
+                    totalAssignments: sourceAssignments.length,
+                },
+                target: {
+                    faculty: targetFaculty.name,
+                    level: targetLevel,
+                    academicYear: targetAcademicYear.year,
+                    semester: targetSemester,
+                },
+                results: {
+                    created: results.created.length,
+                    updated: results.updated.length,
+                    errors: results.errors.length,
+                    skipped: results.skipped.length,
+                },
+            },
+            details: results,
+        });
+    }
+    catch (error) {
+        handleControllerError(error, res, "la copie des affectations", {
+            ...auditData,
+            action: "COPY_ASSIGNMENTS_BULK",
+        });
+    }
+};
+exports.copyAssignments = copyAssignments;
+const resolveEntitiesFromNames = async (assignments) => {
+    const processed = [...assignments];
+    console.log("📥 Données reçues de l'Excel:", assignments);
+    // Récupérer tous les codes UE uniques
+    const ueCodes = [...new Set(assignments.map((a) => a.codeUE))];
+    const professorNames = [...new Set(assignments.map((a) => a.nomProfesseur))];
+    const facultyNames = [...new Set(assignments.map((a) => a.nomFaculte))];
+    const academicYears = [...new Set(assignments.map((a) => a.anneeAcademique))];
+    console.log("🔍 Recherche des entités:", {
+        ueCodes,
+        professorNames,
+        facultyNames,
+        academicYears,
+    });
+    // Charger toutes les entités
+    const [ues, allProfessors, faculties, academicYearsData] = await Promise.all([
+        prisma.ue.findMany({
+            where: { code: { in: ueCodes } },
+            select: { id: true, code: true, title: true },
+        }),
+        // Charger TOUS les professeurs
+        prisma.professeur.findMany({
+            select: { id: true, firstName: true, lastName: true },
+        }),
+        // Charger TOUTES les facultés pour debugger
+        prisma.faculty.findMany({
+            select: { id: true, name: true },
+        }),
+        prisma.academicYear.findMany({
+            where: { year: { in: academicYears } },
+            select: { id: true, year: true },
+        }),
+    ]);
+    console.log("📦 TOUTES les facultés disponibles:", faculties.map((f) => ({ name: f.name, id: f.id })));
+    // CORRECTION: Créer des maps avec nettoyage des noms
+    const ueMap = new Map(ues.map((ue) => [ue.code, ue]));
+    // Map des facultés avec nettoyage des noms
+    const facultyMap = new Map();
+    faculties.forEach((faculty) => {
+        const cleanName = faculty.name.toLowerCase().trim().replace(/\s+/g, " ");
+        facultyMap.set(cleanName, faculty);
+        // Ajouter aussi le nom original pour debug
+        facultyMap.set(faculty.name, faculty);
+    });
+    const academicYearMap = new Map(academicYearsData.map((ay) => [ay.year, ay]));
+    // Fonction pour trouver un professeur par nom
+    const findProfessor = (professorName) => {
+        const cleanName = professorName.toLowerCase().trim().replace(/\s+/g, " ");
+        // Recherche exacte
+        const exactMatch = allProfessors.find((p) => `${p.firstName} ${p.lastName}`
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, " ") === cleanName);
+        if (exactMatch) {
+            console.log(`🔍 Professeur trouvé (exact): ${professorName} -> ${exactMatch.firstName} ${exactMatch.lastName}`);
+            return exactMatch;
+        }
+        // Recherche par nom de famille seulement
+        const lastNameMatch = allProfessors.find((p) => p.lastName.toLowerCase().trim() === cleanName);
+        if (lastNameMatch) {
+            console.log(`🔍 Professeur trouvé (nom seul): ${professorName} -> ${lastNameMatch.firstName} ${lastNameMatch.lastName}`);
+            return lastNameMatch;
+        }
+        // Recherche flexible
+        const flexibleMatch = allProfessors.find((p) => {
+            const profFullName = `${p.firstName} ${p.lastName}`
+                .toLowerCase()
+                .trim()
+                .replace(/\s+/g, " ");
+            return (cleanName.includes(p.lastName.toLowerCase()) ||
+                profFullName.includes(cleanName));
+        });
+        if (flexibleMatch) {
+            console.log(`🔍 Professeur trouvé (flexible): ${professorName} -> ${flexibleMatch.firstName} ${flexibleMatch.lastName}`);
+        }
+        return flexibleMatch;
+    };
+    // Fonction pour trouver une faculté par nom
+    const findFaculty = (facultyName) => {
+        const cleanName = facultyName.toLowerCase().trim().replace(/\s+/g, " ");
+        console.log(`🔍 Recherche faculté: "${facultyName}" -> "${cleanName}"`);
+        // Recherche exacte dans le map nettoyé
+        let faculty = facultyMap.get(cleanName);
+        if (faculty) {
+            console.log(`✅ Faculté trouvée (nettoyée): ${facultyName} -> ${faculty.name}`);
+            return faculty;
+        }
+        // Recherche exacte avec le nom original
+        faculty = facultyMap.get(facultyName);
+        if (faculty) {
+            console.log(`✅ Faculté trouvée (originale): ${facultyName} -> ${faculty.name}`);
+            return faculty;
+        }
+        // Recherche flexible
+        for (const [key, fac] of facultyMap.entries()) {
+            if (cleanName.includes(key.toLowerCase()) ||
+                key.toLowerCase().includes(cleanName)) {
+                console.log(`✅ Faculté trouvée (flexible): ${facultyName} -> ${fac.name}`);
+                return fac;
+            }
+        }
+        console.log(`❌ Faculté NON trouvée: ${facultyName}`);
+        console.log(`   Facultés disponibles:`, Array.from(facultyMap.keys()));
+        return null;
+    };
+    // Résoudre les IDs pour chaque assignment
+    for (const assignment of processed) {
+        const errors = [];
+        const resolvedIds = {};
+        console.log(`\n🔍 Résolution pour: ${assignment.codeUE} - ${assignment.nomProfesseur}`);
+        // Résoudre l'UE
+        const ue = ueMap.get(assignment.codeUE);
+        if (ue) {
+            resolvedIds.ueId = ue.id;
+            console.log(`✅ UE trouvée: ${assignment.codeUE} -> ${ue.id}`);
+        }
+        else {
+            errors.push(`UE non trouvée avec le code: ${assignment.codeUE}`);
+            console.log(`❌ UE non trouvée: ${assignment.codeUE}`);
+        }
+        // Résoudre le professeur
+        const professor = findProfessor(assignment.nomProfesseur);
+        if (professor) {
+            resolvedIds.professeurId = professor.id;
+            console.log(`✅ Professeur résolu: ${assignment.nomProfesseur} -> ${professor.id}`);
+        }
+        else {
+            errors.push(`Professeur non trouvé: ${assignment.nomProfesseur}`);
+            console.log(`❌ Professeur non trouvé: ${assignment.nomProfesseur}`);
+        }
+        // CORRECTION: Résoudre la faculté avec la nouvelle fonction
+        const faculty = findFaculty(assignment.nomFaculte);
+        if (faculty) {
+            resolvedIds.facultyId = faculty.id;
+            console.log(`✅ Faculté résolue: ${assignment.nomFaculte} -> ${faculty.id}`);
+        }
+        else {
+            errors.push(`Faculté non trouvée: ${assignment.nomFaculte}`);
+            console.log(`❌ Faculté non trouvée: ${assignment.nomFaculte}`);
+        }
+        // Résoudre l'année académique
+        const academicYear = academicYearMap.get(assignment.anneeAcademique);
+        if (academicYear) {
+            resolvedIds.academicYearId = academicYear.id;
+            console.log(`✅ Année académique trouvée: ${assignment.anneeAcademique} -> ${academicYear.id}`);
+        }
+        else {
+            errors.push(`Année académique non trouvée: ${assignment.anneeAcademique}`);
+            console.log(`❌ Année académique non trouvée: ${assignment.anneeAcademique}`);
+        }
+        assignment.resolvedIds = resolvedIds;
+        if (errors.length > 0) {
+            assignment.errors = errors;
+            assignment.status = "ERROR";
+            console.log(`❌ Erreurs pour cette ligne:`, errors);
+        }
+        else {
+            assignment.status = "PENDING";
+            console.log(`✅ Tous les IDs résolus pour cette ligne`);
+        }
+    }
+    return { processed };
+};
+// ==================== IMPORTATION DEPUIS EXCEL ====================
+const importAssignmentsFromExcel = async (req, res) => {
+    const auditData = {
+        ipAddress: req.ip || "unknown",
+        userAgent: req.get("User-Agent") || "unknown",
+        userId: req.user?.id || req.userId || null,
+    };
+    try {
+        if (!req.file) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "IMPORT_ASSIGNMENTS_EXCEL_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative d'import Excel - fichier manquant",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "Fichier Excel requis",
+            });
+        }
+        const XLSX = await Promise.resolve().then(() => __importStar(require("xlsx")));
+        const workbook = XLSX.readFile(req.file.path);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        // Convertir en JSON avec les bons en-têtes
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+            header: [
+                "codeUE",
+                "nomUE",
+                "nomProfesseur",
+                "nomFaculte",
+                "niveau",
+                "anneeAcademique",
+                "semestre",
+                "credits",
+            ],
+            range: 1, // Ignorer la première ligne (en-têtes)
+        });
+        // Transformer en format structuré
+        const excelAssignments = jsonData
+            .filter((row) => row.codeUE &&
+            row.nomProfesseur &&
+            row.nomFaculte &&
+            row.niveau &&
+            row.anneeAcademique &&
+            row.semestre)
+            .map((row) => ({
+            codeUE: String(row.codeUE).trim(),
+            nomUE: String(row.nomUE).trim(),
+            nomProfesseur: String(row.nomProfesseur).trim(),
+            nomFaculte: String(row.nomFaculte).trim(),
+            niveau: String(row.niveau).trim(),
+            anneeAcademique: String(row.anneeAcademique).trim(),
+            semestre: String(row.semestre).trim().toUpperCase(),
+        }));
+        if (excelAssignments.length === 0) {
+            await (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "IMPORT_ASSIGNMENTS_EXCEL_ATTEMPT",
+                entity: "CourseAssignment",
+                description: "Tentative d'import Excel - aucune donnée valide trouvée",
+                status: "ERROR",
+            });
+            return res.status(400).json({
+                success: false,
+                error: "Aucune donnée valide trouvée dans le fichier Excel",
+            });
+        }
+        // Résoudre les noms vers les IDs
+        const { processed: assignmentsWithIds } = await resolveEntitiesFromNames(excelAssignments);
+        const results = {
+            success: [],
+            errors: [],
+            created: 0,
+            failed: 0,
+        };
+        // Traiter chaque assignment
+        for (const [index, assignment] of assignmentsWithIds.entries()) {
+            try {
+                if (assignment.status === "ERROR") {
+                    results.errors.push({
+                        ligne: index + 2, // +2 car header + index 0-based
+                        codeUE: assignment.codeUE,
+                        nomProfesseur: assignment.nomProfesseur,
+                        errors: assignment.errors,
+                    });
+                    results.failed++;
+                    continue;
+                }
+                if (!assignment.resolvedIds) {
+                    results.errors.push({
+                        ligne: index + 2,
+                        codeUE: assignment.codeUE,
+                        nomProfesseur: assignment.nomProfesseur,
+                        errors: ["Impossible de résoudre les IDs"],
+                    });
+                    results.failed++;
+                    continue;
+                }
+                const { ueId, professeurId, facultyId, academicYearId } = assignment.resolvedIds;
+                // Vérifier si l'affectation existe déjà
+                const existingAssignment = await prisma.courseAssignment.findFirst({
+                    where: {
+                        ueId,
+                        professeurId,
+                        facultyId,
+                        level: assignment.niveau,
+                        academicYearId,
+                        semester: assignment.semestre,
+                    },
+                });
+                if (existingAssignment) {
+                    results.errors.push({
+                        ligne: index + 2,
+                        codeUE: assignment.codeUE,
+                        nomProfesseur: assignment.nomProfesseur,
+                        errors: ["Affectation déjà existante"],
+                        existingAssignmentId: existingAssignment.id,
+                    });
+                    results.failed++;
+                    continue;
+                }
+                // Créer l'affectation
+                const newAssignment = await prisma.courseAssignment.create({
+                    data: {
+                        ueId: ueId,
+                        professeurId: professeurId,
+                        facultyId: facultyId,
+                        level: assignment.niveau,
+                        academicYearId: academicYearId,
+                        semester: assignment.semestre,
+                    },
+                    include: {
+                        ue: { select: { code: true, title: true } },
+                        professeur: { select: { firstName: true, lastName: true } },
+                        faculty: { select: { name: true } },
+                        academicYear: { select: { year: true } },
+                    },
+                });
+                results.success.push({
+                    ligne: index + 2,
+                    assignmentId: newAssignment.id,
+                    // details: `${newAssignment.professeur.firstName} ${newAssignment.professeur.lastName} → ${newAssignment.ue.code} (${newAssignment.faculty.name})`,
+                });
+                results.created++;
+            }
+            catch (error) {
+                results.errors.push({
+                    ligne: index + 2,
+                    codeUE: assignment.codeUE,
+                    nomProfesseur: assignment.nomProfesseur,
+                    errors: [getErrorMessage(error)],
+                });
+                results.failed++;
+            }
+        }
+        // Log d'audit
+        await (0, auditController_1.createAuditLog)({
+            ...auditData,
+            action: "IMPORT_ASSIGNMENTS_EXCEL_SUCCESS",
+            entity: "CourseAssignment",
+            description: `Import Excel terminé - ${results.created} créées, ${results.failed} erreurs`,
+            status: "SUCCESS",
+        });
+        // Nettoyer le fichier temporaire
+        const fs = await Promise.resolve().then(() => __importStar(require("fs")));
+        fs.unlinkSync(req.file.path);
+        res.json({
+            success: true,
+            message: `Import Excel terminé`,
+            summary: {
+                total: excelAssignments.length,
+                created: results.created,
+                failed: results.failed,
+                successRate: `${((results.created / excelAssignments.length) * 100).toFixed(1)}%`,
+            },
+            details: {
+                reussites: results.success,
+                erreurs: results.errors,
+            },
+        });
+    }
+    catch (error) {
+        // Nettoyer le fichier temporaire en cas d'erreur
+        if (req.file) {
+            const fs = await Promise.resolve().then(() => __importStar(require("fs")));
+            try {
+                fs.unlinkSync(req.file.path);
+            }
+            catch (cleanupError) {
+                console.error("Erreur lors du nettoyage du fichier:", cleanupError);
+            }
+        }
+        handleControllerError(error, res, "l'importation depuis Excel", {
+            ...auditData,
+            action: "IMPORT_ASSIGNMENTS_EXCEL",
+        });
+    }
+};
+exports.importAssignmentsFromExcel = importAssignmentsFromExcel;
+// Template adapté pour votre structure
+const downloadAssignmentTemplate = async (req, res) => {
+    try {
+        const XLSX = await Promise.resolve().then(() => __importStar(require("xlsx")));
+        // Créer un workbook
+        const workbook = XLSX.utils.book_new();
+        // Données d'exemple adaptées à votre structure
+        const templateData = [
+            {
+                codeUE: "BDD201",
+                nomUE: "Bases de Données",
+                nomProfesseur: "Jay Occius",
+                nomFaculte: "Sciences Informatiques",
+                niveau: "3",
+                anneeAcademique: "2025-2026",
+                semestre: "S1",
+            },
+            {
+                codeUE: "ALGO102",
+                nomUE: "Algorithmique Avancée",
+                nomProfesseur: "Jay Occius",
+                nomFaculte: "Sciences Informatiques",
+                niveau: "3",
+                anneeAcademique: "2025-2026",
+                semestre: "S1",
+            },
+        ];
+        // Créer la feuille
+        const worksheet = XLSX.utils.json_to_sheet(templateData);
+        // Ajouter la feuille au workbook
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+        // Générer le buffer
+        const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+        // Configurer la réponse
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", "attachment; filename=template_affectations.xlsx");
+        res.send(buffer);
+    }
+    catch (error) {
+        console.error("Error generating template:", error);
+        res.status(500).json({
+            success: false,
+            error: "Erreur lors de la génération du template",
+        });
+    }
+};
+exports.downloadAssignmentTemplate = downloadAssignmentTemplate;
+//# sourceMappingURL=courseAssignmentControllers.js.map
