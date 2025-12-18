@@ -1,52 +1,86 @@
-// src/routes/studentRoutes.ts
-import express from "express";
+/**
+ * @file studentRoutes.ts
+ * @description Routes pour la gestion des étudiants
+ */
+
+import { Router } from "express";
+import {
+  requireAuth,
+  requireAdmin,
+  requireStaff,
+  validateRequestBody,
+  validateContentType,
+  sanitizeInput,
+  handleValidationErrors,
+} from "../middleware";
+
 import {
   createStudent,
+  deleteStudent,
+  getStudentById,
   getStudents,
   updateStudent,
-  deleteStudent,
-  importStudents,
-  updateStudentPhoto,
-  downloadImportTemplate,
-  getStudent,
 } from "../controllers/studentController";
-import { uploadProfile, uploadImport } from "../middleware/upload";
 import {
-  deanPermissions,
-  checkDeanAccess,
-} from "../middleware/deanPermissions";
-import { authenticateToken } from "../middleware/auth.middleware";
-// import { authenticateToken } from "../middleware/auth.middleware";
+  validateCreateStudent,
+  validateUpdateStudent,
+} from "../utils/studentValidators";
 
-const router = express.Router();
+const router = Router();
 
-// Appliquer l'authentification et les permissions doyen à toutes les routes
-router.use(authenticateToken, deanPermissions);
+/**
+ * @route GET /api/students
+ * @description Récupère la liste des étudiants
+ * @access Staff/Admin
+ */
+router.get("/", requireAuth, requireStaff, getStudents);
 
+/**
+ * @route GET /api/students/:id
+ * @description Récupère un étudiant par ID
+ * @access Staff/Admin
+ */
+router.get("/:id", requireAuth, requireStaff, sanitizeInput, getStudentById);
+
+/**
+ * @route POST /api/students
+ * @description Crée un nouvel étudiant
+ * @access Admin
+ */
 router.post(
   "/",
-  authenticateToken,
-  uploadProfile.single("photo"),
+  requireAuth,
+  requireAdmin,
+  validateContentType(),
+  validateRequestBody,
+  sanitizeInput,
+  validateCreateStudent,
+  handleValidationErrors,
   createStudent
 );
-router.get("/", getStudents);
-router.get("/:id", checkDeanAccess("student"), getStudent);
+
+/**
+ * @route PUT /api/students/:id
+ * @description Met à jour un étudiant
+ * @access Admin
+ */
 router.put(
   "/:id",
-  uploadProfile.single("photo"),
-  checkDeanAccess("student"),
+  requireAuth,
+  requireAdmin,
+  validateContentType(),
+  validateRequestBody,
+  sanitizeInput,
+  validateUpdateStudent,
+  handleValidationErrors,
   updateStudent
 );
-router.delete("/:id", checkDeanAccess("student"), deleteStudent);
 
-// Autres routes
-router.post("/import", uploadImport.single("file"), importStudents);
-router.patch(
-  "/:id/photo",
-  uploadProfile.single("photo"),
-  checkDeanAccess("student"),
-  updateStudentPhoto
-);
-router.get("/import/template", downloadImportTemplate);
+/**
+ * @route DELETE /api/students/:id
+ * @description Supprime un étudiant
+ * @access Admin
+ */
+router.delete("/:id", requireAuth, requireAdmin, sanitizeInput, deleteStudent);
 
 export default router;

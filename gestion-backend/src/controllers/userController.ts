@@ -1,353 +1,174 @@
+/**
+ * @file userController.ts
+ * @description Contrôleurs pour la gestion des utilisateurs (partie admin)
+ * @version 1.0.0
+ */
+
 import { Request, Response } from "express";
+import { PrismaClient } from "../../generated/prisma";
 
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import prisma from "../prisma";
+import {
+  generateResetToken,
+  generateResetTokenExpiry,
+  hashPassword,
+} from "../utils/security";
+import {
+  extractAuditData,
+  generateEmailTemplate,
+  generateResetLink,
+} from "./auth/authUtils";
 import { createAuditLog } from "./auditController";
+import { AuthActionTypes, AuthControllerResponse } from "./auth/authTypes";
+import { sendEmail } from "../services/emailService";
 
-// Étendre l'interface Request pour inclure 'user'
-declare global {
-  namespace Express {
-    interface User {
-      id: string;
-      [key: string]: any;
-    }
-    interface Request {
-      user?: User;
-    }
-  }
-}
+const prisma = new PrismaClient();
 
-// const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || "votre_secret_jwt";
+/**
+ * @desc Récupère la liste des utilisateurs avec pagination et filtres
+ * @route GET /api/auth/users
+ * @access Admin
+ */
+export const getUsers = async (req: Request, res: Response): Promise<void> => {
+  const auditData = extractAuditData(req);
 
-enum UserRole {
-  Admin = "Admin",
-  Professeur = "Professeur",
-  Secretaire = "Secretaire",
-  Directeur = "Directeur",
-  Doyen = "Doyen",
-}
-
-// Ou utiliser un type literal
-type UserRoleType =
-  | "Admin"
-  | "Professeur"
-  | "Secretaire"
-  | "Directeur"
-  | "Doyen";
-
-const validRoles: UserRoleType[] = [
-  "Admin",
-  "Professeur",
-  "Secretaire",
-  "Directeur",
-  "Doyen",
-];
-
-const validateUserRole = (role: string): UserRoleType => {
-  console.log("🔍 Rôle reçu pour validation:", role);
-
-  if (!role) {
-    throw new Error("Le rôle est requis");
-  }
-
-  if (validRoles.includes(role as UserRoleType)) {
-    return role as UserRoleType;
-  }
-
-  throw new Error(
-    `Rôle invalide: "${role}". Valeurs acceptées: ${validRoles.join(", ")}`
-  );
-};
-
-export const registerUser = async (req: Request, res: Response) => {
   try {
-    const { email, password, role, firstName, lastName, phone } = req.body;
+    const {
+      page = 1,
+      limit = 20,
+      role,
+      status,
+      search,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = req.query;
 
-    console.log("📨 Données reçues:", { email, role, firstName, lastName });
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    const skip = (pageNum - 1) * limitNum;
 
-    // Validation des données requises
-    if (!email || !password || !role || !firstName || !lastName) {
-      return res.status(400).json({
-        message: "Tous les champs obligatoires doivent être remplis",
-        required: ["email", "password", "role", "firstName", "lastName"],
-        received: {
-          email: !!email,
-          password: !!password,
-          role: !!role,
-          firstName: !!firstName,
-          lastName: !!lastName,
-        },
-      });
+    // Construire la requête de filtrage
+    const filter: any = {};
+
+    if (role) {
+      filter.role = role;
     }
 
-    // Valider que le rôle est acceptable
-    const validatedRole = validateUserRole(role);
-    console.log("✅ Rôle validé:", validatedRole);
-
-    // Vérifier si l'utilisateur existe déjà
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (existingUser) {
-      return res.status(400).json({
-        message: "Un utilisateur avec cet email existe déjà",
-      });
+    if (status) {
+      filter.status = status;
     }
 
-    // Hasher le mot de passe
-    const hashedPassword = await bcrypt.hash(password, 12);
-
-    // Créer l'utilisateur avec tous les champs requis
-    const user = await prisma.user.create({
-      data: {
-        firstName,
-        lastName,
-        email,
-        phone: phone || null,
-        role: validatedRole,
-        password: hashedPassword,
-        status: "Actif",
-        createdAt: new Date(), // Ajout explicite
-        updatedAt: new Date(), // Ajout explicite
-        // Ajoutez d'autres champs requis par votre schéma si nécessaire
-      },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        role: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true, // Inclure updatedAt dans la sélection
-      },
-    });
-
-    console.log("✅ Utilisateur créé:", user.id);
-
-    res.status(201).json({
-      message: "Utilisateur créé avec succès",
-      user,
-    });
-  } catch (error: any) {
-    console.error("❌ Registration error:", error);
-    console.error("❌ Stack:", error.stack);
-
-    // Log plus détaillé pour comprendre l'erreur Prisma
-    if (error.code) {
-      console.error("❌ Prisma error code:", error.code);
-    }
-    if (error.meta) {
-      console.error("❌ Prisma error meta:", error.meta);
-    }
-
-    res.status(400).json({
-      message: error.message,
-      error:
-        process.env.NODE_ENV === "development"
-          ? {
-              stack: error.stack,
-              receivedRole: req.body?.role,
-              prismaError: error.code || error.meta,
-            }
-          : undefined,
-    });
-  }
-};
-export const loginUser = async (email: string, password: string) => {
-  // Trouver l'utilisateur
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
-
-  if (!user) {
-    throw new Error("Email ou mot de passe incorrect");
-  }
-
-  // Vérifier le statut
-  if (user.status !== "Actif") {
-    throw new Error("Votre compte est désactivé");
-  }
-
-  // Vérifier le mot de passe
-  if (!user.password) {
-    throw new Error("Email ou mot de passe incorrect");
-  }
-
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-  if (!isPasswordValid) {
-    throw new Error("Email ou mot de passe incorrect");
-  }
-
-  // Générer le token JWT
-  const token = jwt.sign(
-    {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    },
-    JWT_SECRET,
-    { expiresIn: "24h" }
-  );
-
-  // Mettre à jour la dernière connexion
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { lastLogin: new Date() },
-  });
-
-  return {
-    token,
-    user: {
-      id: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      avatar: user.avatar,
-    },
-  };
-};
-
-// export const getUsers = async (req: Request, res: Response) => {
-//   try {
-//     const { role, status, search } = req.query;
-
-//     const where: any = {};
-
-//     if (role && role !== "all") {
-//       where.role = role;
-//     }
-
-//     if (status && status !== "all") {
-//       where.status = status;
-//     }
-
-//     if (search) {
-//       where.OR = [
-//         { firstName: { contains: search as string, mode: "insensitive" } },
-//         { lastName: { contains: search as string, mode: "insensitive" } },
-//         { email: { contains: search as string, mode: "insensitive" } },
-//       ];
-//     }
-
-//     const users = await prisma.user.findMany({
-//       where,
-//       select: {
-//         id: true,
-//         firstName: true,
-//         lastName: true,
-//         email: true,
-//         phone: true,
-//         role: true,
-//         status: true,
-//         lastLogin: true,
-//         createdAt: true,
-//         avatar: true,
-//       },
-//       orderBy: {
-//         createdAt: "desc",
-//       },
-//     });
-
-//     res.json(users);
-//   } catch (error) {
-//     console.error("Erreur récupération utilisateurs:", error);
-//     res.status(500).json({
-//       message: "Erreur interne du serveur",
-//     });
-//   }
-// };
-
-export const getUsers = async (req: Request, res: Response) => {
-  try {
-    const { role, status, search } = req.query;
-    const user = (req as any).user;
-    const facultyId = (req as any).facultyId;
-
-    const where: any = {};
-
-    // Si c'est un doyen, limiter aux utilisateurs de sa faculté
-    if (user?.role === "Doyen" && facultyId) {
-      where.OR = [
-        {
-          student: {
-            enrollments: {
-              some: {
-                facultyId: facultyId,
-                status: "Active",
-              },
-            },
-          },
-        },
-        {
-          professeur: {
-            assignments: {
-              some: {
-                facultyId: facultyId,
-              },
-            },
-          },
-        },
-        // Le doyen lui-même
-        { id: user.id },
+    if (search) {
+      const searchStr = search as string;
+      filter.OR = [
+        { email: { contains: searchStr } },
+        { firstName: { contains: searchStr } },
+        { lastName: { contains: searchStr } },
       ];
-    } else {
-      // Pour les autres rôles, appliquer les filtres normaux
-      if (role && role !== "all") {
-        where.role = role;
-      }
 
-      if (status && status !== "all") {
-        where.status = status;
-      }
-
-      if (search) {
-        where.OR = [
-          { firstName: { contains: search as string, mode: "insensitive" } },
-          { lastName: { contains: search as string, mode: "insensitive" } },
-          { email: { contains: search as string, mode: "insensitive" } },
-        ];
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`Recherche avec terme: ${searchStr}`);
       }
     }
 
-    const users = await prisma.user.findMany({
-      where,
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        role: true,
-        status: true,
-        lastLogin: true,
-        createdAt: true,
-        avatar: true,
-      },
-      orderBy: {
-        createdAt: "desc",
+    // Récupérer les utilisateurs avec pagination
+    const [users, totalUsers] = await Promise.all([
+      prisma.user.findMany({
+        where: filter,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          role: true,
+          status: true,
+          lastLogin: true,
+          createdAt: true,
+          updatedAt: true,
+          loginAttempts: true,
+        },
+        orderBy: {
+          [sortBy as string]: sortOrder === "desc" ? "desc" : "asc",
+        },
+        skip,
+        take: limitNum,
+      }),
+      prisma.user.count({
+        where: filter,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(totalUsers / limitNum);
+
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USERS_LIST_REQUEST,
+      entity: "User",
+      description: "Liste des utilisateurs récupérée avec succès",
+      status: "SUCCESS",
+      metadata: {
+        page: pageNum,
+        limit: limitNum,
+        totalUsers,
+        filters: { role, status, search },
       },
     });
 
-    res.json(users);
-  } catch (error) {
-    console.error("Erreur récupération utilisateurs:", error);
-    res.status(500).json({
-      message: "Erreur interne du serveur",
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Liste des utilisateurs récupérée avec succès",
+      data: {
+        users,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          totalUsers,
+          totalPages,
+          hasNextPage: pageNum < totalPages,
+          hasPrevPage: pageNum > 1,
+        },
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - getUsers error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USERS_LIST_ERROR,
+      entity: "User",
+      description: "Erreur lors de la récupération des utilisateurs",
+      status: "ERROR",
+      errorMessage: error.message,
     });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-export const getUserById = async (req: Request, res: Response) => {
+/**
+ * @desc Récupère un utilisateur spécifique par ID
+ * @route GET /api/auth/users/:id
+ * @access Admin
+ */
+export const getUserById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
   try {
     const { id } = req.params;
 
+    // Récupérer l'utilisateur avec ses informations
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -360,29 +181,98 @@ export const getUserById = async (req: Request, res: Response) => {
         status: true,
         lastLogin: true,
         createdAt: true,
-        avatar: true,
+        updatedAt: true,
+        loginAttempts: {
+          orderBy: {
+            attemptTime: "desc",
+          },
+          take: 5,
+        },
       },
     });
 
     if (!user) {
-      return res.status(404).json({
-        message: "Utilisateur non trouvé",
+      await createAuditLog({
+        ...auditData,
+        action: AuthActionTypes.USER_NOT_FOUND,
+        entity: "User",
+        description: "Utilisateur non trouvé",
+        status: "ERROR",
+        metadata: { userId: id },
       });
+
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Utilisateur non trouvé",
+        code: "USER_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
 
-    res.json(user);
-  } catch (error) {
-    console.error("Erreur récupération utilisateur:", error);
-    res.status(500).json({
-      message: "Erreur interne du serveur",
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_DETAILS_REQUEST,
+      entity: "User",
+      entityId: id,
+      description: "Détails de l'utilisateur récupérés avec succès",
+      status: "SUCCESS",
     });
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Utilisateur récupéré avec succès",
+      data: { user },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - getUserById error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_DETAILS_ERROR,
+      entity: "User",
+      description:
+        "Erreur lors de la récupération des détails de l'utilisateur",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-export const updateUser = async (req: Request, res: Response) => {
+/**
+ * @desc Met à jour un utilisateur
+ * @route PUT /api/auth/users/:id
+ * @access Admin
+ */
+export const updateUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
   try {
     const { id } = req.params;
-    const { firstName, lastName, email, phone, role, status } = req.body;
+    const {
+      email,
+      firstName,
+      lastName,
+      phone,
+      dateOfBirth,
+      preferences,
+      status,
+      role,
+    } = req.body;
 
     // Vérifier si l'utilisateur existe
     const existingUser = await prisma.user.findUnique({
@@ -390,34 +280,49 @@ export const updateUser = async (req: Request, res: Response) => {
     });
 
     if (!existingUser) {
-      return res.status(404).json({
+      const response: AuthControllerResponse = {
+        success: false,
         message: "Utilisateur non trouvé",
-      });
+        code: "USER_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
 
-    // Vérifier les conflits d'email
+    // Vérifier si l'email est déjà utilisé par un autre utilisateur
     if (email && email !== existingUser.email) {
-      const existingEmail = await prisma.user.findUnique({
+      const userWithEmail = await prisma.user.findUnique({
         where: { email },
       });
-      if (existingEmail) {
-        return res.status(400).json({
-          message: "Un utilisateur avec cet email existe déjà",
-        });
+
+      if (userWithEmail && userWithEmail.id !== id) {
+        const response: AuthControllerResponse = {
+          success: false,
+          message: "Cet email est déjà utilisé par un autre utilisateur",
+          code: "EMAIL_ALREADY_EXISTS",
+        };
+        res.status(400).json(response);
+        return;
       }
     }
 
+    // Préparer les données de mise à jour
+    const updateData: any = {};
+    if (email !== undefined) updateData.email = email;
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (phone !== undefined) updateData.phone = phone;
+    if (dateOfBirth !== undefined)
+      updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    // if (preferences !== undefined)
+    //   updateData.preferences = { ...existingUser.preferences, ...preferences };
+    if (status !== undefined) updateData.status = status;
+    if (role !== undefined) updateData.role = role;
+
     // Mettre à jour l'utilisateur
-    const user = await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id },
-      data: {
-        firstName: firstName ?? undefined,
-        lastName: lastName ?? undefined,
-        email: email ?? undefined,
-        phone: phone ?? undefined,
-        role: role ?? undefined,
-        status: status ?? undefined,
-      },
+      data: updateData,
       select: {
         id: true,
         firstName: true,
@@ -428,23 +333,66 @@ export const updateUser = async (req: Request, res: Response) => {
         status: true,
         lastLogin: true,
         createdAt: true,
-        avatar: true,
+        updatedAt: true,
       },
     });
 
-    res.json({
-      message: "Utilisateur modifié avec succès",
-      user,
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_UPDATE_SUCCESS,
+      entity: "User",
+      entityId: id,
+      userId: id,
+      description: "Utilisateur mis à jour avec succès",
+      status: "SUCCESS",
+      metadata: {
+        updatedFields: Object.keys(updateData),
+        oldEmail: existingUser.email,
+        newEmail: updatedUser.email,
+      },
     });
-  } catch (error) {
-    console.error("Erreur modification utilisateur:", error);
-    res.status(500).json({
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Utilisateur mis à jour avec succès",
+      data: { user: updatedUser },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - updateUser error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_UPDATE_ERROR,
+      entity: "User",
+      description: "Erreur lors de la mise à jour de l'utilisateur",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
       message: "Erreur interne du serveur",
-    });
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-export const deleteUser = async (req: Request, res: Response) => {
+/**
+ * @desc Désactive un utilisateur (soft delete)
+ * @route DELETE /api/auth/users/:id
+ * @access Admin
+ */
+export const deactivateUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
   try {
     const { id } = req.params;
 
@@ -454,195 +402,1149 @@ export const deleteUser = async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      return res.status(404).json({
+      const response: AuthControllerResponse = {
+        success: false,
         message: "Utilisateur non trouvé",
-      });
+        code: "USER_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
 
-    // Empêcher la suppression de son propre compte
-    if (req.user?.id === id) {
-      return res.status(400).json({
-        message: "Vous ne pouvez pas supprimer votre propre compte",
-      });
+    // Vérifier si l'utilisateur est déjà désactivé
+    if (user.status === "Inactif") {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "L'utilisateur est déjà désactivé",
+        code: "USER_ALREADY_DEACTIVATED",
+      };
+      res.status(400).json(response);
+      return;
     }
 
-    // Supprimer l'utilisateur
-    await prisma.user.delete({
+    // Empêcher l'auto-désactivation
+    if (id === auditData.userId) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Vous ne pouvez pas désactiver votre propre compte",
+        code: "SELF_DEACTIVATION_NOT_ALLOWED",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Désactiver l'utilisateur
+    const deactivatedUser = await prisma.user.update({
       where: { id },
-    });
-
-    res.status(204).send();
-  } catch (error) {
-    console.error("Erreur suppression utilisateur:", error);
-    res.status(500).json({
-      message: "Erreur interne du serveur",
-    });
-  }
-};
-
-export const changePassword = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { currentPassword, newPassword } = req.body;
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        message:
-          "Le mot de passe actuel et le nouveau mot de passe sont requis",
-      });
-    }
-
-    // Trouver l'utilisateur
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        message: "Utilisateur non trouvé",
-      });
-    }
-
-    // Vérifier le mot de passe actuel
-    if (!user.password) {
-      return res.status(401).json({
-        message: "Mot de passe actuel incorrect",
-      });
-    }
-    const isPasswordValid = await bcrypt.compare(
-      currentPassword,
-      user.password
-    );
-
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        message: "Mot de passe actuel incorrect",
-      });
-    }
-
-    // Hasher le nouveau mot de passe
-    const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-    // Mettre à jour le mot de passe
-    await prisma.user.update({
-      where: { id },
-      data: { password: hashedPassword },
-    });
-
-    res.json({
-      message: "Mot de passe modifié avec succès",
-    });
-  } catch (error) {
-    console.error("Erreur modification mot de passe:", error);
-    res.status(500).json({
-      message: "Erreur interne du serveur",
-    });
-  }
-};
-
-export const getCurrentUser = async (userId: string) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      phone: true,
-      role: true,
-      status: true,
-      lastLogin: true,
-      createdAt: true,
-      avatar: true,
-    },
-  });
-
-  if (!user) {
-    throw new Error("Utilisateur non trouvé");
-  }
-
-  return user;
-};
-// Dans votre controller userController.ts
-export const getPotentialDeans = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).user?.id || (req as any).userId || null,
-  };
-
-  try {
-    // Récupérer tous les utilisateurs avec le rôle "Doyen"
-    const deans = await prisma.user.findMany({
-      where: {
-        role: "Doyen",
+      data: {
+        status: "Inactif",
+        // deactivatedAt: new Date(),
+        // deactivatedBy: auditData.userId,
       },
       select: {
         id: true,
         firstName: true,
         lastName: true,
         email: true,
-        avatar: true,
         role: true,
         status: true,
-        deanOf: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
+        // deactivatedAt: true,
       },
-      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
     });
 
-    // Formater la réponse
-    const formattedDeans = deans.map((dean) => ({
-      id: dean.id,
-      firstName: dean.firstName,
-      lastName: dean.lastName,
-      email: dean.email,
-      avatar: dean.avatar,
-      role: dean.role,
-      status: dean.status,
-      fullName: `${dean.firstName} ${dean.lastName}`,
-      currentFaculty: dean.deanOf
-        ? {
-            id: dean.deanOf.id,
-            name: dean.deanOf.name,
-            code: dean.deanOf.code,
-          }
-        : null,
-      isAvailable: !dean.deanOf, // Disponible si pas déjà doyen d'une faculté
-    }));
+    // Envoyer un email de notification
+    try {
+      const emailTemplate = `
+        <h2>Compte désactivé</h2>
+        <p>Bonjour ${user.firstName} ${user.lastName},</p>
+        <p>Votre compte a été désactivé par un administrateur.</p>
+        <p>Date de désactivation : ${new Date().toLocaleDateString("fr-FR")}</p>
+        <p>Pour toute question, veuillez contacter le support.</p>
+      `;
 
-    // Log de consultation
+      await sendEmail({
+        to: user.email,
+        subject: "Votre compte a été désactivé",
+        html: emailTemplate,
+      });
+    } catch (emailError) {
+      console.error(
+        "❌ Erreur lors de l'envoi de l'email de désactivation:",
+        emailError
+      );
+    }
+
+    // Log d'audit
     await createAuditLog({
       ...auditData,
-      action: "GET_POTENTIAL_DEANS",
+      action: AuthActionTypes.USER_DEACTIVATION_SUCCESS,
       entity: "User",
-      description: `Consultation des utilisateurs pouvant être doyens - ${formattedDeans.length} trouvé(s)`,
+      entityId: id,
+      userId: id,
+      description: "Utilisateur désactivé avec succès",
       status: "SUCCESS",
+      metadata: {
+        deactivatedAt: new Date(),
+        deactivatedBy: auditData.userId,
+      },
     });
 
-    res.json(formattedDeans);
-  } catch (error: any) {
-    console.error("Erreur récupération des doyens:", error);
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Utilisateur désactivé avec succès",
+      data: { user: deactivatedUser },
+    };
 
-    // Log d'erreur
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - deactivateUser error:", error);
+
     await createAuditLog({
       ...auditData,
-      action: "GET_POTENTIAL_DEANS_ERROR",
+      action: AuthActionTypes.USER_DEACTIVATION_ERROR,
       entity: "User",
-      description:
-        "Erreur lors de la récupération des utilisateurs pouvant être doyens",
+      description: "Erreur lors de la désactivation de l'utilisateur",
       status: "ERROR",
       errorMessage: error.message,
     });
 
-    res.status(500).json({
-      message: "Erreur lors de la récupération des doyens",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
+
+/**
+ * @desc Change le statut d'un utilisateur
+ * @route PUT /api/auth/users/:id/status
+ * @access Admin
+ */
+export const updateUserStatus = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { id } = req.params;
+    const { status, reason } = req.body;
+
+    // Valider le statut
+    const validStatuses = ["Actif", "Inactif", "Suspendu", "En attente"];
+    if (!validStatuses.includes(status)) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Statut invalide",
+        code: "INVALID_STATUS",
+        data: { validStatuses },
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Vérifier si l'utilisateur existe
+    const user = await prisma.user.findUnique({
+      where: { id },
     });
+
+    if (!user) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Utilisateur non trouvé",
+        code: "USER_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    // Sauvegarder l'ancien statut
+    const oldStatus = user.status;
+
+    // Préparer les données de mise à jour
+    const updateData: any = {
+      status,
+    };
+
+    // Gérer les dates selon le statut
+    if (status === "Suspendu") {
+      updateData.suspendedAt = new Date();
+      updateData.suspendedBy = auditData.userId;
+      updateData.suspensionReason = reason;
+    } else if (status === "Inactif") {
+      updateData.deactivatedAt = new Date();
+      updateData.deactivatedBy = auditData.userId;
+      updateData.deactivationReason = reason;
+    } else {
+      // Si on réactive l'utilisateur
+      updateData.suspendedAt = null;
+      updateData.suspendedBy = null;
+      updateData.suspensionReason = null;
+      updateData.deactivatedAt = null;
+      updateData.deactivatedBy = null;
+      updateData.deactivationReason = null;
+    }
+
+    // Mettre à jour l'utilisateur
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+        status: true,
+        // suspendedAt: true,
+        // deactivatedAt: true,
+      },
+    });
+
+    // Envoyer un email de notification si le statut a changé
+    if (oldStatus !== status) {
+      try {
+        const emailSubject = `Modification du statut de votre compte`;
+        const emailTemplate = `
+          <h2>Statut du compte modifié</h2>
+          <p>Bonjour ${user.firstName} ${user.lastName},</p>
+          <p>Le statut de votre compte a été modifié :</p>
+          <ul>
+            <li>Ancien statut : ${oldStatus}</li>
+            <li>Nouveau statut : ${status}</li>
+            ${reason ? `<li>Raison : ${reason}</li>` : ""}
+          </ul>
+          <p>Date du changement : ${new Date().toLocaleDateString("fr-FR")}</p>
+          ${
+            status === "Suspendu" || status === "Inactif"
+              ? `<p>Pour toute question, veuillez contacter le support.</p>`
+              : ""
+          }
+        `;
+
+        await sendEmail({
+          to: user.email,
+          subject: emailSubject,
+          html: emailTemplate,
+        });
+      } catch (emailError) {
+        console.error(
+          "❌ Erreur lors de l'envoi de l'email de notification:",
+          emailError
+        );
+      }
+    }
+
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_STATUS_UPDATE_SUCCESS,
+      entity: "User",
+      entityId: id,
+      userId: id,
+      description: `Statut de l'utilisateur modifié de ${oldStatus} à ${status}`,
+      status: "SUCCESS",
+      metadata: {
+        oldStatus,
+        newStatus: status,
+        reason,
+      },
+    });
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: `Statut de l'utilisateur mis à jour avec succès`,
+      data: {
+        user: updatedUser,
+        change: {
+          oldStatus,
+          newStatus: status,
+        },
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - updateUserStatus error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_STATUS_UPDATE_ERROR,
+      entity: "User",
+      description: "Erreur lors de la mise à jour du statut",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
+
+/**
+ * @desc Change le rôle d'un utilisateur
+ * @route PUT /api/auth/users/:id/role
+ * @access Admin
+ */
+export const updateUserRole = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    // Valider le rôle
+    const validRoles = ["Parent", "Staff", "Admin"];
+    if (!validRoles.includes(role)) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Rôle invalide",
+        code: "INVALID_ROLE",
+        data: { validRoles },
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Vérifier si l'utilisateur existe
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Utilisateur non trouvé",
+        code: "USER_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    // Empêcher l'auto-modification du rôle
+    if (id === auditData.userId) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Vous ne pouvez pas modifier votre propre rôle",
+        code: "SELF_ROLE_MODIFICATION_NOT_ALLOWED",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Sauvegarder l'ancien rôle
+    const oldRole = user.role;
+
+    // Mettre à jour le rôle
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: { role },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+        status: true,
+        updatedAt: true,
+      },
+    });
+
+    // Envoyer un email de notification
+    try {
+      const emailTemplate = `
+        <h2>Modification de votre rôle</h2>
+        <p>Bonjour ${user.firstName} ${user.lastName},</p>
+        <p>Votre rôle dans l'application a été modifié :</p>
+        <ul>
+          <li>Ancien rôle : ${oldRole}</li>
+          <li>Nouveau rôle : ${role}</li>
+        </ul>
+        <p>Date du changement : ${new Date().toLocaleDateString("fr-FR")}</p>
+        <p>Pour toute question, veuillez contacter le support.</p>
+      `;
+
+      await sendEmail({
+        to: user.email,
+        subject: "Modification de votre rôle",
+        html: emailTemplate,
+      });
+    } catch (emailError) {
+      console.error(
+        "❌ Erreur lors de l'envoi de l'email de notification:",
+        emailError
+      );
+    }
+
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_ROLE_UPDATE_SUCCESS,
+      entity: "User",
+      entityId: id,
+      userId: id,
+      description: `Rôle de l'utilisateur modifié de ${oldRole} à ${role}`,
+      status: "SUCCESS",
+      metadata: {
+        oldRole,
+        newRole: role,
+      },
+    });
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: `Rôle de l'utilisateur mis à jour avec succès`,
+      data: {
+        user: updatedUser,
+        change: {
+          oldRole,
+          newRole: role,
+        },
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - updateUserRole error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_ROLE_UPDATE_ERROR,
+      entity: "User",
+      description: "Erreur lors de la mise à jour du rôle",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
+
+/**
+ * @desc Réactive un utilisateur
+ * @route PUT /api/auth/users/:id/activate
+ * @access Admin
+ */
+export const activateUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { id } = req.params;
+
+    // Vérifier si l'utilisateur existe
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Utilisateur non trouvé",
+        code: "USER_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    // Vérifier si l'utilisateur est déjà actif
+    if (user.status === "Actif") {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "L'utilisateur est déjà actif",
+        code: "USER_ALREADY_ACTIVE",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Réactiver l'utilisateur
+    const activatedUser = await prisma.user.update({
+      where: { id },
+      data: {
+        status: "Actif",
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+        status: true,
+        updatedAt: true,
+      },
+    });
+
+    // Envoyer un email de notification
+    try {
+      const emailTemplate = `
+        <h2>Compte réactivé</h2>
+        <p>Bonjour ${user.firstName} ${user.lastName},</p>
+        <p>Votre compte a été réactivé par un administrateur.</p>
+        <p>Vous pouvez maintenant vous connecter normalement.</p>
+        <p>Date de réactivation : ${new Date().toLocaleDateString("fr-FR")}</p>
+      `;
+
+      await sendEmail({
+        to: user.email,
+        subject: "Votre compte a été réactivé",
+        html: emailTemplate,
+      });
+    } catch (emailError) {
+      console.error(
+        "❌ Erreur lors de l'envoi de l'email de réactivation:",
+        emailError
+      );
+    }
+
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_ACTIVATION_SUCCESS,
+      entity: "User",
+      entityId: id,
+      userId: id,
+      description: "Utilisateur réactivé avec succès",
+      status: "SUCCESS",
+    });
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Utilisateur réactivé avec succès",
+      data: { user: activatedUser },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - activateUser error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_ACTIVATION_ERROR,
+      entity: "User",
+      description: "Erreur lors de la réactivation de l'utilisateur",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
+
+/**
+ * @desc Réinitialise le mot de passe d'un utilisateur (admin seulement)
+ * @route POST /api/auth/users/:id/reset-password
+ * @access Admin
+ */
+export const adminResetPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { id } = req.params;
+
+    // Vérifier si l'utilisateur existe
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Utilisateur non trouvé",
+        code: "USER_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    // Générer un token de réinitialisation
+    const resetToken = generateResetToken();
+    const resetTokenExpiry = generateResetTokenExpiry();
+
+    // Sauvegarde du token
+    await prisma.user.update({
+      where: { id },
+      data: {
+        resetToken: resetToken,
+        resetTokenExpiry: resetTokenExpiry,
+      },
+    });
+
+    // Génération du lien et de l'email
+    const resetLink = generateResetLink(resetToken);
+    const emailTemplate = generateEmailTemplate(user.firstName, resetLink);
+
+    // Envoi de l'email
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: "Réinitialisation de votre mot de passe (administrateur)",
+        html: emailTemplate,
+      });
+
+      // Log d'audit
+      await createAuditLog({
+        ...auditData,
+        action: AuthActionTypes.ADMIN_PASSWORD_RESET_REQUEST,
+        entity: "User",
+        entityId: id,
+        userId: id,
+        description: "Email de réinitialisation envoyé par admin",
+        status: "SUCCESS",
+        metadata: { emailSent: true, resetToken },
+      });
+    } catch (emailError) {
+      console.error("❌ Erreur envoi email de réinitialisation:", emailError);
+
+      await createAuditLog({
+        ...auditData,
+        action: AuthActionTypes.ADMIN_PASSWORD_RESET_ERROR,
+        entity: "User",
+        entityId: id,
+        userId: id,
+        description: "Erreur lors de l'envoi de l'email de réinitialisation",
+        status: "ERROR",
+        errorMessage:
+          typeof emailError === "object" &&
+          emailError !== null &&
+          "message" in emailError
+            ? (emailError as any).message
+            : String(emailError),
+      });
+    }
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Email de réinitialisation envoyé avec succès",
+      data: {
+        email: user.email,
+        token: process.env.NODE_ENV === "development" ? resetToken : undefined,
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - adminResetPassword error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.ADMIN_PASSWORD_RESET_ERROR,
+      entity: "User",
+      description:
+        "Erreur lors de la réinitialisation du mot de passe par admin",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
+
+/**
+ * @desc Crée un nouvel utilisateur (admin seulement)
+ * @route POST /api/auth/users
+ * @access Admin
+ */
+export const createUserByAdmin = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { email, password, firstName, lastName, phone, role, status } =
+      req.body;
+
+    // Vérifier si l'utilisateur existe déjà
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Un utilisateur avec cet email existe déjà",
+        code: "EMAIL_ALREADY_EXISTS",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Hasher le mot de passe si fourni, sinon générer un mot de passe temporaire
+    const hashedPassword = password
+      ? await hashPassword(password)
+      : await hashPassword(generateTemporaryPassword());
+
+    // Créer l'utilisateur
+    const user = await prisma.user.create({
+      data: {
+        firstName,
+        lastName,
+        email,
+        phone: phone || null,
+        role,
+        password: hashedPassword,
+        status: status || "Actif",
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        role: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_CREATED_BY_ADMIN,
+      entity: "User",
+      entityId: user.id,
+      description: "Utilisateur créé par admin avec succès",
+      status: "SUCCESS",
+      metadata: {
+        role: user.role,
+        status: user.status,
+      },
+    });
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Utilisateur créé avec succès",
+      data: { user },
+    };
+
+    res.status(201).json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - createUserByAdmin error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_CREATION_ERROR,
+      entity: "User",
+      description: "Erreur lors de la création de l'utilisateur par admin",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
+
+/**
+ * @desc Recherche d'utilisateurs avec filtres avancés
+ * @route POST /api/auth/users/search
+ * @access Admin
+ */
+export const searchUsers = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const {
+      search,
+      role,
+      status,
+      page = 1,
+      limit = 20,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = req.body;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Construire la requête de filtrage
+    const where: any = {};
+
+    if (role) {
+      where.role = role;
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (search) {
+      where.OR = [
+        { email: { contains: search, mode: "insensitive" } },
+        { firstName: { contains: search, mode: "insensitive" } },
+        { lastName: { contains: search, mode: "insensitive" } },
+        { phone: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    // Exécuter les requêtes en parallèle
+    const [users, totalUsers] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          role: true,
+          status: true,
+          lastLogin: true,
+          createdAt: true,
+        },
+        orderBy: {
+          [sortBy]: sortOrder === "desc" ? "desc" : "asc",
+        },
+        skip,
+        take: limitNum,
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(totalUsers / limitNum);
+
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USERS_SEARCH_REQUEST,
+      entity: "User",
+      description: "Recherche d'utilisateurs effectuée avec succès",
+      status: "SUCCESS",
+      metadata: {
+        search,
+        role,
+        status,
+        results: users.length,
+        totalUsers,
+      },
+    });
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Recherche d'utilisateurs effectuée avec succès",
+      data: {
+        users,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          totalUsers,
+          totalPages,
+          hasNextPage: pageNum < totalPages,
+          hasPrevPage: pageNum > 1,
+        },
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - searchUsers error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USERS_SEARCH_ERROR,
+      entity: "User",
+      description: "Erreur lors de la recherche d'utilisateurs",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
+
+// Fonction utilitaire pour générer un mot de passe temporaire
+const generateTemporaryPassword = (): string => {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+  let password = "";
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+};
+
+/**
+ * @desc Supprime définitivement un utilisateur (hard delete)
+ * @route DELETE /api/auth/users/:id/hard-delete
+ * @access Admin/SuperAdmin
+ */
+export const hardDeleteUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { id } = req.params;
+
+    // Vérifier si l'utilisateur existe
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: {
+        loginAttempts: true,
+        // Ajouter d'autres relations selon votre schéma
+        // parent: true,
+        // staff: true,
+        // etc.
+      },
+    });
+
+    if (!user) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Utilisateur non trouvé",
+        code: "USER_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    // Empêcher la suppression d'un admin par un non-super-admin
+    if (user.role === "Admin" && req.user?.role !== "Admin") {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Vous n'avez pas la permission de supprimer un administrateur",
+        code: "UNAUTHORIZED",
+      };
+      res.status(403).json(response);
+      return;
+    }
+
+    // Empêcher l'auto-suppression
+    if (id === auditData.userId) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Vous ne pouvez pas supprimer votre propre compte",
+        code: "SELF_DELETION_NOT_ALLOWED",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Vérifier les dépendances avant suppression
+    const hasDependencies = await checkUserDependencies(id);
+    if (hasDependencies) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message:
+          "Cet utilisateur a des données associées. Veuillez d'abord supprimer ou transférer ces données.",
+        code: "USER_HAS_DEPENDENCIES",
+        data: { dependencies: hasDependencies },
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Supprimer les tentatives de connexion d'abord (si existent)
+    if (user.loginAttempts) {
+      await prisma.loginAttempt.deleteMany({
+        where: { userId: id },
+      });
+    }
+
+    // Supprimer les autres relations selon votre schéma
+    // Exemple:
+    // if (user.parent) {
+    //   await prisma.parent.delete({
+    //     where: { userId: id },
+    //   });
+    // }
+
+    // Supprimer définitivement l'utilisateur
+    await prisma.user.delete({
+      where: { id },
+    });
+
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_HARD_DELETION_SUCCESS,
+      entity: "User",
+      entityId: id,
+      description: "Utilisateur supprimé définitivement",
+      status: "SUCCESS",
+      metadata: {
+        email: user.email,
+        role: user.role,
+        deletedAt: new Date(),
+      },
+    });
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Utilisateur supprimé définitivement avec succès",
+      data: {
+        deletedUser: {
+          id: user.id,
+          email: user.email,
+          name: `${user.firstName} ${user.lastName}`,
+        },
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - hardDeleteUser error:", error);
+
+    // Limiter la longueur du message d'erreur
+    const shortErrorMessage = error.message
+      ? error.message.substring(0, 500)
+      : "Erreur inconnue";
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_HARD_DELETION_ERROR,
+      entity: "User",
+      description: "Erreur lors de la suppression définitive de l'utilisateur",
+      status: "ERROR",
+      errorMessage: shortErrorMessage,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
+
+/**
+ * @desc Vérifie les dépendances d'un utilisateur
+ * @param {string} userId - ID de l'utilisateur
+ * @returns {Promise<object | null>} Liste des dépendances
+ */
+const checkUserDependencies = async (
+  userId: string
+): Promise<object | null> => {
+  const dependencies: any = {};
+
+  // 1. Vérifier les logs d'audit
+  const auditLogs = await prisma.auditLog.count({
+    where: { userId },
+  });
+  if (auditLogs > 0) {
+    dependencies.auditLogs = auditLogs;
+  }
+
+  // 2. Vérifier les tokens de réinitialisation (si table séparée)
+  // const resetTokens = await prisma.passwordResetToken.count({
+  //   where: { userId },
+  // });
+  // if (resetTokens > 0) {
+  //   dependencies.resetTokens = resetTokens;
+  // }
+
+  // 3. Vérifier d'autres relations selon votre application
+  // - Messages
+  // - Commentaires
+  // - Commandes
+  // - etc.
+
+  return Object.keys(dependencies).length > 0 ? dependencies : null;
+};
+
+/**
+ * @desc Récupère les statistiques des dépendances d'un utilisateur
+ * @route GET /api/auth/users/:id/dependencies
+ * @access Admin
+ */
+export const getUserDependencies = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { id } = req.params;
+
+    const dependencies = await checkUserDependencies(id);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_DEPENDENCIES_CHECK,
+      entity: "User",
+      entityId: id,
+      description: "Vérification des dépendances de l'utilisateur",
+      status: "SUCCESS",
+    });
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: "Dépendances récupérées avec succès",
+      data: { dependencies },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("❌ UserController - getUserDependencies error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.USER_DEPENDENCIES_CHECK_ERROR,
+      entity: "User",
+      description: "Erreur lors de la vérification des dépendances",
+      status: "ERROR",
+      errorMessage: error.message?.substring(0, 500),
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };

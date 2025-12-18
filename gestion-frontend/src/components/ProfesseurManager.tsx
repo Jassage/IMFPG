@@ -1,12 +1,5 @@
-// ProfesseurManager.tsx - VERSION COMPLÈTEMENT CORRIGÉE
-import { useState, useEffect, useMemo } from "react"; // AJOUT: useMemo
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { useState, useEffect, useMemo } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,36 +8,38 @@ import {
   Plus,
   Edit,
   Trash2,
+  Filter,
   User,
   Mail,
   Phone,
   BookOpen,
-  GraduationCap,
-  Filter,
   Calendar,
-  Download,
-  Upload,
-  MoreHorizontal,
-  Eye,
+  Briefcase,
+  ChevronDown,
+  ChevronUp,
+  Clock,
   CheckCircle,
   XCircle,
   UserPlus,
-  Shield,
-  Moon,
-  Sun,
-  Laptop,
-  FileUp,
   AlertCircle,
-  Loader2,
+  Sparkles,
+  Hash,
+  AtSign,
+  PhoneCall,
+  GraduationCap,
+  Award,
+  ShieldAlert,
+  CalendarDays,
+  Eye,
 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
-  DialogFooter,
   DialogTrigger,
+  DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -54,6 +49,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -62,1202 +65,1801 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { z } from "zod";
+import { Controller, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Checkbox } from "@/components/ui/checkbox";
-import { useProfessorStore } from "../store/professorStore";
-import { Professeur } from "../types/academic";
-import { toast } from "@/hooks/use-toast";
-import * as XLSX from "xlsx";
-import { ProfessorDetails } from "./professorDetails";
-import { useTheme } from "next-themes";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import { Professeur } from "@/types/academic";
+import useProfesseurStore from "@/store/professorStore";
+import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-export const ProfesseurManager = () => {
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+// Fonction pour générer un identifiant unique
+const generateProfesseurId = (
+  firstName: string,
+  lastName: string,
+  existingIds: string[] = []
+): string => {
+  if (!firstName.trim() || !lastName.trim()) return "";
 
+  // Format: PRE-NOM-YYMMDD-XXX
+  const now = new Date();
+  const year = now.getFullYear().toString().slice(-2);
+  const month = (now.getMonth() + 1).toString().padStart(2, "0");
+  const day = now.getDate().toString().padStart(2, "0");
+
+  // Créer la base du code
+  const baseCode = `${firstName.charAt(0).toUpperCase()}${lastName
+    .charAt(0)
+    .toUpperCase()}-${year}${month}${day}`;
+
+  // Ajouter un suffixe numérique si nécessaire
+  let finalCode = baseCode;
+  let counter = 1;
+  while (existingIds.includes(finalCode) && counter < 1000) {
+    finalCode = `${baseCode}-${counter.toString().padStart(3, "0")}`;
+    counter++;
+  }
+
+  return finalCode;
+};
+
+// Schéma de validation amélioré avec toutes les contraintes
+const professeurSchema = z.object({
+  firstName: z
+    .string()
+    .min(2, { message: "Le prénom doit contenir au moins 2 caractères" })
+    .max(50, { message: "Le prénom ne peut pas dépasser 50 caractères" })
+    .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, {
+      message:
+        "Le prénom ne peut contenir que des lettres, espaces, apostrophes et tirets",
+    })
+    .refine((value) => value.trim().length > 0, {
+      message: "Le prénom ne peut pas être vide",
+    })
+    .transform((value) => value.trim()),
+
+  lastName: z
+    .string()
+    .min(2, { message: "Le nom doit contenir au moins 2 caractères" })
+    .max(50, { message: "Le nom ne peut pas dépasser 50 caractères" })
+    .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, {
+      message:
+        "Le nom ne peut contenir que des lettres, espaces, apostrophes et tirets",
+    })
+    .refine((value) => value.trim().length > 0, {
+      message: "Le nom ne peut pas être vide",
+    })
+    .transform((value) => value.trim()),
+
+  email: z
+    .string()
+    .min(1, { message: "L'email est requis" })
+    .email({ message: "Adresse email invalide" })
+    .refine(
+      (email) => {
+        // Vérifier le format de l'email académique
+        const academicDomains = [".edu", ".ac.", "univ-", "school", "college"];
+        return (
+          academicDomains.some((domain) =>
+            email.toLowerCase().includes(domain)
+          ) || /@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)
+        );
+      },
+      {
+        message: "Veuillez utiliser une adresse email valide",
+      }
+    )
+    .transform((value) => value.toLowerCase().trim()),
+
+  phone: z
+    .string()
+    .refine(
+      (phone) => {
+        if (!phone || phone.trim() === "") return true; // Optionnel
+
+        // Nettoyer le numéro (supprimer espaces, tirets, parenthèses)
+        const cleaned = phone.replace(/[\s\-()]/g, "");
+
+        // Format Haïtien: +509xxxxxxxx (10 chiffres après +509)
+        const phoneRegex = /^(\+509)\d{8}$/;
+
+        // Vérifier longueur: +509 (4) + 8 chiffres = 12 caractères
+        const isValidLength = cleaned.length === 12;
+        const isValidFormat = phoneRegex.test(cleaned);
+
+        return isValidLength && isValidFormat;
+      },
+      {
+        message:
+          "Numéro de téléphone invalide. Format: +509XXXXXXXX (ex: +50944556677)",
+      }
+    )
+    .optional()
+    .default(""),
+
+  speciality: z
+    .string()
+    .min(2, { message: "La spécialité doit contenir au moins 2 caractères" })
+    .max(100, { message: "La spécialité ne peut pas dépasser 100 caractères" })
+    .optional()
+    .default(""),
+
+  hireDate: z
+    .string()
+    .refine(
+      (date) => {
+        if (!date || date.trim() === "") return true; // Optionnel
+
+        const selectedDate = new Date(date);
+        const today = new Date();
+        const minDate = new Date("2000-01-01");
+
+        // Vérifier que la date est valide
+        if (isNaN(selectedDate.getTime())) return false;
+
+        // Vérifier que la date n'est pas dans le futur
+        if (selectedDate > today) return false;
+
+        // Vérifier que la date est après 2000
+        if (selectedDate < minDate) return false;
+
+        return true;
+      },
+      {
+        message: "Date invalide. Doit être entre 2000-01-01 et aujourd'hui",
+      }
+    )
+    .optional()
+    .default(""),
+
+  status: z.enum(["Actif", "Inactif"]).default("Actif"),
+
+  matricule: z
+    .string()
+    .min(3, { message: "Le matricule doit contenir au moins 3 caractères" })
+    .max(20, { message: "Le matricule ne peut pas dépasser 20 caractères" })
+    .regex(/^[A-Z0-9-]+$/, {
+      message:
+        "Le matricule ne peut contenir que des lettres majuscules, chiffres et tirets",
+    })
+    .optional()
+    .default(""),
+
+  address: z
+    .string()
+    .max(200, { message: "L'adresse ne peut pas dépasser 200 caractères" })
+    .optional()
+    .default(""),
+
+  qualifications: z
+    .string()
+    .max(500, {
+      message: "Les qualifications ne peuvent pas dépasser 500 caractères",
+    })
+    .optional()
+    .default(""),
+});
+
+type ProfesseurFormData = z.infer<typeof professeurSchema>;
+
+export const ProfesseursManager = () => {
   const {
-    professors,
-    assignments,
+    professeurs,
+    fetchProfesseurs,
+    fetchProfesseurById,
+    createProfesseur,
+    updateProfesseur,
+    deleteProfesseur,
+    activateProfesseur,
+    deactivateProfesseur,
     loading,
     error,
-    fetchProfessors,
-    fetchProfessorAssignments,
-    addProfessor,
-    updateProfessor,
-    deleteProfessor,
-    bulkUpdateStatus,
-    bulkImportProfessors,
-    clearError,
-  } = useProfessorStore();
+    filters,
+    setFilters,
+  } = useProfesseurStore();
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [selectedProfessor, setSelectedProfessor] = useState<Professeur | null>(
-    null
-  );
-  const [isProfessorFormOpen, setIsProfessorFormOpen] = useState(false);
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [importLoading, setImportLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<"list" | "details">("list");
-  const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    speciality: "",
-    status: "Actif" as "Actif" | "Inactif",
-  });
-  const [selectedProfessors, setSelectedProfessors] = useState<Set<string>>(
-    new Set()
-  );
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<{
     key: keyof Professeur;
     direction: "asc" | "desc";
-  }>({ key: "lastName", direction: "asc" });
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [importResults, setImportResults] = useState<{
-    success: number;
-    errors: any[];
   } | null>(null);
+  const [editingProfesseur, setEditingProfesseur] = useState<Professeur | null>(
+    null
+  );
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showStatusDialog, setShowStatusDialog] = useState(false);
+  const [selectedProfesseur, setSelectedProfesseur] =
+    useState<Professeur | null>(null);
+  const [activeTab, setActiveTab] = useState("all");
+  const [actionType, setActionType] = useState<"activate" | "deactivate">(
+    "activate"
+  );
+  const [formErrors, setFormErrors] = useState<string[]>([]);
+  const [isGeneratingMatricule, setIsGeneratingMatricule] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    fetchProfessors();
-  }, [fetchProfessors]);
-
-  useEffect(() => {
-    if (selectedProfessor && viewMode === "details") {
-      fetchProfessorAssignments(selectedProfessor.id);
-    }
-  }, [selectedProfessor, fetchProfessorAssignments, viewMode]);
-
-  // CORRECTION: Fonction de filtrage SÉCURISÉE avec useMemo
-  const filteredProfessors = useMemo(() => {
-    console.log("🔄 Filtrage des professeurs...");
-
-    // CORRECTION CRITIQUE: S'assurer que professors est toujours un tableau
-    const professorsArray = Array.isArray(professors) ? professors : [];
-    console.log(`📊 ${professorsArray.length} professeurs à filtrer`);
-
-    const filtered = professorsArray
-      .filter((professor) => {
-        // Validation de chaque professeur
-        if (!professor || typeof professor !== "object") {
-          console.warn("❌ Professeur invalide filtré:", professor);
-          return false;
-        }
-
-        const searchLower = searchTerm.toLowerCase();
-        const matchesSearch =
-          (professor.firstName?.toLowerCase() || "").includes(searchLower) ||
-          (professor.lastName?.toLowerCase() || "").includes(searchLower) ||
-          (professor.email?.toLowerCase() || "").includes(searchLower);
-
-        const matchesStatus =
-          statusFilter === "all" || professor.status === statusFilter;
-
-        return matchesSearch && matchesStatus;
-      })
-      .sort((a, b) => {
-        const aValue = a[sortConfig.key] || "";
-        const bValue = b[sortConfig.key] || "";
-
-        if (aValue < bValue) {
-          return sortConfig.direction === "asc" ? -1 : 1;
-        }
-        if (aValue > bValue) {
-          return sortConfig.direction === "asc" ? 1 : -1;
-        }
-        return 0;
-      });
-
-    console.log(`✅ ${filtered.length} professeurs après filtrage`);
-    return filtered;
-  }, [professors, searchTerm, statusFilter, sortConfig]);
-
-  // CORRECTION: Calculs statistiques SÉCURISÉS
-  const statistics = useMemo(() => {
-    const professorsArray = Array.isArray(professors) ? professors : [];
-
-    return {
-      total: professorsArray.length,
-      active: professorsArray.filter((p) => p?.status === "Actif").length,
-      inactive: professorsArray.filter((p) => p?.status === "Inactif").length,
-      assignments: Array.isArray(assignments) ? assignments.length : 0,
-    };
-  }, [professors, assignments]);
-
-  const handleSubmitProfessor = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (selectedProfessor) {
-        await updateProfessor(selectedProfessor.id, formData);
-        toast({
-          title: "✅ Succès",
-          description: "Professeur modifié avec succès",
-        });
-      } else {
-        await addProfessor(formData);
-        toast({
-          title: "✅ Succès",
-          description: "Professeur ajouté avec succès",
-        });
-      }
-      setIsProfessorFormOpen(false);
-      resetForm();
-    } catch (error: any) {
-      console.error("Erreur:", error);
-      toast({
-        title: "❌ Erreur",
-        description: error.message || "Une erreur est survenue",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
+  // Initialisation du formulaire
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+    setValue,
+    watch,
+    control,
+    trigger,
+    clearErrors,
+    setError,
+  } = useForm<ProfesseurFormData>({
+    resolver: zodResolver(professeurSchema),
+    defaultValues: {
       firstName: "",
       lastName: "",
       email: "",
       phone: "",
       speciality: "",
+      hireDate: new Date().toISOString().split("T")[0],
       status: "Actif",
+      matricule: "",
+      address: "",
+      qualifications: "",
+    },
+    mode: "onChange",
+  });
+
+  const firstNameValue = watch("firstName");
+  const lastNameValue = watch("lastName");
+  const matriculeValue = watch("matricule");
+  const phoneValue = watch("phone");
+
+  useEffect(() => {
+    fetchProfesseurs();
+  }, [fetchProfesseurs, filters]);
+
+  // Effet pour générer le matricule automatiquement
+  useEffect(() => {
+    if (!isFormOpen) return;
+
+    if (!editingProfesseur && firstNameValue && lastNameValue) {
+      const generatedMatricule = generateProfesseurId(
+        firstNameValue,
+        lastNameValue,
+        professeurs.map((p) => p.matricule || "")
+      );
+
+      // Ne mettre à jour que si l'utilisateur n'a pas modifié manuellement le matricule
+      if (!matriculeValue) {
+        setValue("matricule", generatedMatricule, { shouldValidate: true });
+      }
+    }
+  }, [
+    firstNameValue,
+    lastNameValue,
+    isFormOpen,
+    editingProfesseur,
+    professeurs,
+    setValue,
+    matriculeValue,
+  ]);
+
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+    setFilters({ search: value });
+  };
+
+  // Fonction pour formater le téléphone
+  const formatPhoneNumber = (phone: string) => {
+    if (!phone) return "";
+
+    const cleaned = phone.replace(/[\s\-()]/g, "");
+
+    // Format Haïtien: +509 XX XX XX XX
+    if (cleaned.startsWith("+509") && cleaned.length === 12) {
+      return `+509 ${cleaned.slice(4, 6)} ${cleaned.slice(
+        6,
+        8
+      )} ${cleaned.slice(8, 10)} ${cleaned.slice(10)}`;
+    }
+
+    return phone;
+  };
+
+  // Fonction pour regénérer le matricule
+  const handleRegenerateMatricule = () => {
+    if (!firstNameValue || !lastNameValue) {
+      toast({
+        title: "Attention",
+        description: "Veuillez d'abord saisir le prénom et le nom",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingMatricule(true);
+    const newMatricule = generateProfesseurId(
+      firstNameValue,
+      lastNameValue,
+      professeurs
+        .map((p) => p.matricule || "")
+        .filter((m) => m !== editingProfesseur?.matricule)
+    );
+
+    setValue("matricule", newMatricule, { shouldValidate: true });
+
+    setTimeout(() => {
+      setIsGeneratingMatricule(false);
+    }, 300);
+  };
+
+  // Fonction pour ouvrir le formulaire d'édition
+  const handleEdit = async (professeur: Professeur) => {
+    try {
+      const professeurDetails = await fetchProfesseurById(professeur.id);
+      setEditingProfesseur(professeurDetails);
+      setFormErrors([]);
+
+      setValue("firstName", professeurDetails.firstName);
+      setValue("lastName", professeurDetails.lastName);
+      setValue("email", professeurDetails.email);
+      setValue("phone", professeurDetails.phone || "");
+      setValue("speciality", professeurDetails.speciality || "");
+      setValue("hireDate", professeurDetails.hireDate?.split("T")[0] || "");
+      setValue("status", professeurDetails.status);
+      setValue("matricule", professeurDetails.matricule || "");
+      setValue("address", professeurDetails.address || "");
+      setValue("qualifications", professeurDetails.qualifications || "");
+
+      setIsFormOpen(true);
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les détails du professeur",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Fonction pour réinitialiser le formulaire
+  const resetForm = () => {
+    setEditingProfesseur(null);
+    setFormErrors([]);
+    reset({
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      speciality: "",
+      hireDate: new Date().toISOString().split("T")[0],
+      status: "Actif",
+      matricule: "",
+      address: "",
+      qualifications: "",
     });
-    setSelectedProfessor(null);
   };
 
-  const handleEdit = (professor: Professeur) => {
-    setSelectedProfessor(professor);
-    setFormData({
-      firstName: professor.firstName,
-      lastName: professor.lastName,
-      email: professor.email,
-      phone: professor.phone || "",
-      speciality: professor.speciality || "",
-      status: professor.status,
-    });
-    setIsProfessorFormOpen(true);
+  // Vérifier si l'email est unique
+  const isEmailUnique = (email: string): boolean => {
+    const existingEmails = professeurs.map((p) => p.email.toLowerCase());
+    if (editingProfesseur) {
+      return !existingEmails.some(
+        (e) =>
+          e === email.toLowerCase() &&
+          email.toLowerCase() !== editingProfesseur.email.toLowerCase()
+      );
+    }
+    return !existingEmails.includes(email.toLowerCase());
   };
 
-  const handleViewDetails = (professor: Professeur) => {
-    setSelectedProfessor(professor);
-    setViewMode("details");
-  };
-
-  const handleBackToList = () => {
-    setViewMode("list");
-    setSelectedProfessor(null);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirm("Êtes-vous sûr de vouloir supprimer ce professeur ?")) {
-      try {
-        await deleteProfessor(id);
-        toast({
-          title: "✅ Succès",
-          description: "Professeur supprimé avec succès",
+  // Soumission du formulaire
+  const onSubmit = async (data: ProfesseurFormData) => {
+    try {
+      // Valider l'unicité de l'email
+      if (!isEmailUnique(data.email)) {
+        setError("email", {
+          type: "manual",
+          message: "Cette adresse email est déjà utilisée",
         });
-        if (viewMode === "details") {
-          handleBackToList();
-        }
-      } catch (error: any) {
-        console.error("Erreur:", error);
         toast({
-          title: "❌ Erreur",
-          description: error.message || "Erreur lors de la suppression",
+          title: "Email dupliqué",
+          description:
+            "Cette adresse email est déjà utilisée par un autre professeur",
           variant: "destructive",
         });
+        return;
       }
-    }
-  };
 
-  const handleBulkStatusChange = async (status: "Actif" | "Inactif") => {
-    if (selectedProfessors.size === 0) {
-      toast({
-        title: "⚠️ Attention",
-        description: "Veuillez sélectionner au moins un professeur",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      await bulkUpdateStatus(Array.from(selectedProfessors), status);
-      toast({
-        title: "✅ Succès",
-        description: `Statut de ${selectedProfessors.size} professeur(s) modifié(s)`,
-      });
-      setSelectedProfessors(new Set());
-    } catch (error: any) {
-      console.error("Erreur:", error);
-      toast({
-        title: "❌ Erreur",
-        description: error.message || "Erreur lors de la modification",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleSelectAll = () => {
-    if (
-      selectedProfessors.size === filteredProfessors.length &&
-      filteredProfessors.length > 0
-    ) {
-      setSelectedProfessors(new Set());
-    } else {
-      setSelectedProfessors(new Set(filteredProfessors.map((prof) => prof.id)));
-    }
-  };
-
-  const handleSelectProfessor = (id: string) => {
-    const newSelected = new Set(selectedProfessors);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelectedProfessors(newSelected);
-  };
-
-  const handleSort = (key: keyof Professeur) => {
-    setSortConfig({
-      key,
-      direction:
-        sortConfig.key === key && sortConfig.direction === "asc"
-          ? "desc"
-          : "asc",
-    });
-  };
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setImportFile(file);
-    }
-  };
-
-  const handleImport = async () => {
-    if (!importFile) {
-      toast({
-        title: "❌ Erreur",
-        description: "Veuillez sélectionner un fichier",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setImportLoading(true);
-    setImportResults(null);
-
-    try {
-      const data = await readExcelFile(importFile);
-      const professorsToImport = data.map((row: any) => ({
-        firstName: row.Prénom || row.firstName || "",
-        lastName: row.Nom || row.lastName || "",
-        email: row.Email || row.email || "",
-        phone: row.Téléphone || row.phone || "",
-        speciality: row.Spécialité || row.speciality || "",
-        status: (row.Statut || row.status || "Actif") as "Actif" | "Inactif",
-      }));
-
-      const result = await bulkImportProfessors(professorsToImport);
-      setImportResults(result);
-
-      if (result.errors.length === 0) {
+      // Valider les données avec Zod
+      const validation = professeurSchema.safeParse(data);
+      if (!validation.success) {
+        const errors = validation.error.errors.map((err) => err.message);
+        setFormErrors(errors);
         toast({
-          title: "✅ Import réussi",
-          description: `${result.success} professeur(s) importé(s) avec succès`,
+          title: "Erreur de validation",
+          description: "Veuillez corriger les erreurs dans le formulaire",
+          variant: "destructive",
         });
-        setIsImportDialogOpen(false);
-        setImportFile(null);
+        return;
+      }
+
+      // Préparer les données pour l'API
+      const professeurData = {
+        firstName: data.firstName.trim(),
+        lastName: data.lastName.trim(),
+        email: data.email.toLowerCase().trim(),
+        status: data.status,
+        phone: data.phone?.trim() || undefined,
+        speciality: data.speciality?.trim() || undefined,
+        hireDate: data.hireDate?.trim() || undefined,
+        matricule: data.matricule?.trim() || undefined,
+        address: data.address?.trim() || undefined,
+        qualifications: data.qualifications?.trim() || undefined,
+      };
+
+      if (editingProfesseur) {
+        await updateProfesseur(editingProfesseur.id, professeurData);
+        toast({
+          title: "✅ Professeur mis à jour",
+          description: `Le professeur ${data.firstName} ${data.lastName} a été modifié avec succès`,
+        });
       } else {
+        await createProfesseur(professeurData);
         toast({
-          title: "⚠️ Import partiel",
-          description: `${result.success} importé(s), ${result.errors.length} erreur(s)`,
-          variant: result.success > 0 ? "default" : "destructive",
+          title: "✅ Professeur créé",
+          description: `Le professeur ${data.firstName} ${data.lastName} a été ajouté avec succès`,
         });
       }
+
+      setIsFormOpen(false);
+      resetForm();
     } catch (error: any) {
-      console.error("Erreur import:", error);
+      const errorMessage =
+        error.message || "Une erreur est survenue lors de l'enregistrement";
+      setFormErrors([errorMessage]);
       toast({
-        title: "❌ Erreur d'import",
-        description: error.message || "Erreur lors de l'import",
+        title: "❌ Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedProfesseur) return;
+
+    try {
+      // Vérifier si le professeur a des assignations
+      // CORRECTION: Utiliser seulement assignments puisque classes n'existe pas
+      const hasAssignments = (selectedProfesseur._count?.assignments || 0) > 0;
+
+      if (hasAssignments) {
+        toast({
+          title: "Impossible de supprimer",
+          description:
+            "Ce professeur a des cours assignés et ne peut pas être supprimé",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await deleteProfesseur(selectedProfesseur.id);
+      toast({
+        title: "✅ Suppression réussie",
+        description: "Le professeur a été supprimé avec succès",
+      });
+    } catch (error: any) {
+      toast({
+        title: "❌ Erreur",
+        description: error.message || "Erreur lors de la suppression",
         variant: "destructive",
       });
     } finally {
-      setImportLoading(false);
+      setShowDeleteDialog(false);
+      setSelectedProfesseur(null);
     }
   };
 
-  const readExcelFile = (file: File): Promise<any[]> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: "array" });
-          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
-          resolve(jsonData);
-        } catch (error) {
-          reject(new Error("Format de fichier invalide"));
+  const confirmStatusChange = async () => {
+    if (!selectedProfesseur) return;
+
+    try {
+      if (actionType === "activate") {
+        await activateProfesseur(selectedProfesseur.id);
+        toast({
+          title: "✅ Activation réussie",
+          description: "Le professeur a été activé avec succès",
+        });
+      } else {
+        await deactivateProfesseur(selectedProfesseur.id);
+        toast({
+          title: "⚠️ Désactivation réussie",
+          description: "Le professeur a été désactivé avec succès",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "❌ Erreur",
+        description: error.message || "Erreur lors du changement de statut",
+        variant: "destructive",
+      });
+    } finally {
+      setShowStatusDialog(false);
+      setSelectedProfesseur(null);
+    }
+  };
+
+  const handleSort = (key: keyof Professeur) => {
+    let direction: "asc" | "desc" = "asc";
+    if (
+      sortConfig &&
+      sortConfig.key === key &&
+      sortConfig.direction === "asc"
+    ) {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const filteredProfesseurs = useMemo(() => {
+    return professeurs.filter((professeur) => {
+      const matchesSearch =
+        `${professeur.firstName} ${professeur.lastName}`
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        professeur.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (professeur.speciality &&
+          professeur.speciality
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase())) ||
+        (professeur.matricule &&
+          professeur.matricule
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()));
+
+      const matchesStatus = filters.status
+        ? professeur.status === filters.status
+        : true;
+      const matchesSpeciality = filters.speciality
+        ? professeur.speciality &&
+          professeur.speciality
+            .toLowerCase()
+            .includes(filters.speciality.toLowerCase())
+        : true;
+
+      // Filtre par onglet
+      if (activeTab === "active") {
+        return (
+          matchesSearch &&
+          matchesStatus &&
+          matchesSpeciality &&
+          professeur.status === "Actif"
+        );
+      } else if (activeTab === "inactive") {
+        return (
+          matchesSearch &&
+          matchesStatus &&
+          matchesSpeciality &&
+          professeur.status === "Inactif"
+        );
+      }
+
+      return matchesSearch && matchesStatus && matchesSpeciality;
+    });
+  }, [professeurs, searchTerm, filters.status, filters.speciality, activeTab]);
+
+  // Trier les professeurs
+  const sortedProfesseurs = useMemo(() => {
+    const professeursToSort = [...filteredProfesseurs];
+    if (sortConfig !== null) {
+      professeursToSort.sort((a, b) => {
+        if (a[sortConfig.key] < b[sortConfig.key]) {
+          return sortConfig.direction === "asc" ? -1 : 1;
         }
-      };
-      reader.onerror = () => reject(new Error("Erreur de lecture du fichier"));
-      reader.readAsArrayBuffer(file);
-    });
+        if (a[sortConfig.key] > b[sortConfig.key]) {
+          return sortConfig.direction === "asc" ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return professeursToSort;
+  }, [filteredProfesseurs, sortConfig]);
+
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case "Actif":
+        return "default";
+      case "Inactif":
+        return "secondary";
+      default:
+        return "outline";
+    }
   };
 
-  const downloadTemplate = () => {
-    const template = [
-      {
-        Prénom: "Jean",
-        Nom: "Dupont",
-        Email: "jean.dupont@email.com",
-        Téléphone: "+33 1 23 45 67 89",
-        Spécialité: "Informatique",
-        Statut: "Actif",
-      },
-    ];
-
-    const worksheet = XLSX.utils.json_to_sheet(template);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
-    XLSX.writeFile(workbook, "template-import-professeurs.xlsx");
-
-    toast({
-      title: "📥 Template téléchargé",
-      description: "Le template d'import a été téléchargé",
-    });
+  const getInitials = (firstName: string, lastName: string) => {
+    return `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase();
   };
 
-  const exportToExcel = () => {
-    const data = filteredProfessors.map((professor) => ({
-      ID: professor.id,
-      Prénom: professor.firstName,
-      Nom: professor.lastName,
-      Email: professor.email,
-      Téléphone: professor.phone || "",
-      Spécialité: professor.speciality || "",
-      Statut: professor.status,
-      "Date de création": professor.createdAt
-        ? new Date(professor.createdAt).toLocaleDateString()
-        : "",
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Professeurs");
-    XLSX.writeFile(
-      workbook,
-      `professeurs-${new Date().toISOString().split("T")[0]}.xlsx`
+  const SortIcon = ({ columnKey }: { columnKey: keyof Professeur }) => {
+    if (!sortConfig || sortConfig.key !== columnKey) {
+      return <ChevronDown className="h-4 w-4 opacity-30" />;
+    }
+    return sortConfig.direction === "asc" ? (
+      <ChevronUp className="h-4 w-4" />
+    ) : (
+      <ChevronDown className="h-4 w-4" />
     );
-
-    toast({
-      title: "📤 Export réussi",
-      description: `${filteredProfessors.length} professeur(s) exporté(s)`,
-    });
   };
 
-  const cardClassName = "border-0 shadow-lg bg-card";
-  const statCardClassName = "border-0 shadow-md bg-gradient-to-br";
+  // Calcul des statistiques pour les cartes
+  const totalProfesseurs = professeurs.length;
+  const activeProfesseurs = professeurs.filter(
+    (p) => p.status === "Actif"
+  ).length;
+  const totalAssignments = professeurs.reduce(
+    (total, prof) => total + (prof._count?.assignments || 0),
+    0
+  );
 
-  if (!mounted) {
+  if (loading && professeurs.length === 0)
     return (
-      <div className="flex justify-center items-center min-h-screen">
+      <div className="flex justify-center items-center min-h-[400px]">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-4" />
-          <p className="text-muted-foreground">Chargement...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">
+            Chargement des professeurs...
+          </p>
         </div>
       </div>
     );
-  }
-
-  // Affichage des détails du professeur
-  if (viewMode === "details" && selectedProfessor) {
-    return (
-      <div className="space-y-6">
-        <ProfessorDetails
-          professor={selectedProfessor}
-          onClose={handleBackToList}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-        />
-
-        <Dialog
-          open={isProfessorFormOpen}
-          onOpenChange={setIsProfessorFormOpen}
-        >
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {selectedProfessor
-                  ? "Modifier le Professeur"
-                  : "Ajouter un Professeur"}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmitProfessor} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Prénom *</Label>
-                  <Input
-                    value={formData.firstName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, firstName: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Nom *</Label>
-                  <Input
-                    value={formData.lastName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, lastName: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Email *</Label>
-                <Input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Téléphone</Label>
-                  <Input
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Spécialité</Label>
-                  <Input
-                    value={formData.speciality}
-                    onChange={(e) =>
-                      setFormData({ ...formData, speciality: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Statut</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      status: value as "Actif" | "Inactif",
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Actif">Actif</SelectItem>
-                    <SelectItem value="Inactif">Inactif</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsProfessorFormOpen(false)}
-                >
-                  Annuler
-                </Button>
-                <Button type="submit">
-                  {selectedProfessor ? "Modifier" : "Ajouter"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mr-3" />
-        <span>Chargement des professeurs...</span>
-      </div>
-    );
-  }
 
   if (error) {
     return (
-      <div className="space-y-4">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-        <div className="text-center">
-          <Button
-            onClick={() => {
-              clearError();
-              fetchProfessors();
-            }}
-            variant="outline"
-          >
-            Réessayer
-          </Button>
+      <div className="p-6 rounded-lg border border-red-200 bg-red-50">
+        <div className="flex items-center">
+          <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+          <h3 className="text-lg font-semibold text-red-700">
+            Erreur de chargement
+          </h3>
         </div>
+        <p className="mt-2 text-red-600">{error}</p>
+        <Button
+          onClick={() => fetchProfesseurs()}
+          variant="outline"
+          className="mt-4 border-red-200 text-red-700 hover:bg-red-100"
+        >
+          Réessayer
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <GraduationCap className="h-6 w-6" />
-            Gestion des Professeurs
-          </h1>
-          <p className="text-muted-foreground">
-            Administration des professeurs et de leurs affectations
-          </p>
-        </div>
+    <TooltipProvider>
+      <div className="space-y-6">
+        {/* Dialogues de confirmation */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-red-500" />
+                Supprimer le professeur
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                <div className="space-y-2">
+                  <p>
+                    Êtes-vous sûr de vouloir supprimer le professeur{" "}
+                    <span className="font-semibold">
+                      {selectedProfesseur?.firstName}{" "}
+                      {selectedProfesseur?.lastName}
+                    </span>{" "}
+                    ?
+                  </p>
+                  {/* CORRECTION: Utiliser seulement assignments */}
+                  {(selectedProfesseur?._count?.assignments || 0) > 0 && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                      <p className="text-amber-800 text-sm">
+                        ⚠️ Ce professeur a{" "}
+                        {selectedProfesseur._count.assignments} cours assignés.
+                        La suppression pourrait affecter le planning des cours.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDelete}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Supprimer définitivement
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-        <div className="flex gap-2">
-          {/* Sélecteur de thème */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon">
-                <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                <span className="sr-only">Changer le thème</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setTheme("light")}>
-                <Sun className="h-4 w-4 mr-2" />
-                Clair
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("dark")}>
-                <Moon className="h-4 w-4 mr-2" />
-                Sombre
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("system")}>
-                <Laptop className="h-4 w-4 mr-2" />
-                Système
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <AlertDialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                {actionType === "activate" ? (
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-amber-500" />
+                )}
+                {actionType === "activate" ? "Activer" : "Désactiver"} le
+                professeur
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Êtes-vous sûr de vouloir{" "}
+                {actionType === "activate" ? "activer" : "désactiver"} le
+                professeur{" "}
+                <span className="font-semibold">
+                  {selectedProfesseur?.firstName} {selectedProfesseur?.lastName}
+                </span>{" "}
+                ?
+                {actionType === "deactivate" && (
+                  <p className="mt-2 text-amber-600 text-sm">
+                    ⚠️ Ce professeur ne pourra plus être assigné à de nouveaux
+                    cours.
+                  </p>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmStatusChange}
+                className={
+                  actionType === "activate"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-amber-600 hover:bg-amber-700"
+                }
+              >
+                {actionType === "activate" ? "Activer" : "Désactiver"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-          <Button variant="outline" onClick={exportToExcel}>
-            <Download className="h-4 w-4 mr-2" />
-            Exporter
-          </Button>
-
-          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
-            <Upload className="h-4 w-4 mr-2" />
-            Importer
-          </Button>
+        {/* En-tête */}
+        <div className="flex flex-col space-y-4 md:flex-row md:justify-between md:items-center md:space-y-0">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+              <GraduationCap className="h-8 w-8 text-primary" />
+              Gestion des Professeurs
+            </h1>
+            <p className="text-muted-foreground mt-2">
+              Gérez les professeurs et leurs informations académiques
+            </p>
+          </div>
 
           <Dialog
-            open={isProfessorFormOpen}
-            onOpenChange={setIsProfessorFormOpen}
+            open={isFormOpen}
+            onOpenChange={(open) => {
+              setIsFormOpen(open);
+              if (!open) resetForm();
+            }}
           >
             <DialogTrigger asChild>
-              <Button onClick={resetForm}>
-                <Plus className="h-4 w-4 mr-2" />
+              <Button
+                className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all duration-300"
+                onClick={resetForm}
+                size="lg"
+              >
+                <Plus className="h-5 w-5 mr-2" />
                 Nouveau Professeur
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>
-                  {selectedProfessor
-                    ? "Modifier le Professeur"
-                    : "Ajouter un Professeur"}
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader className="pb-4 border-b">
+                <DialogTitle className="text-2xl flex items-center gap-2">
+                  {editingProfesseur ? (
+                    <>
+                      <Edit className="h-6 w-6 text-primary" />
+                      Modifier le professeur
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="h-6 w-6 text-primary" />
+                      Nouveau professeur
+                    </>
+                  )}
                 </DialogTitle>
+                <DialogDescription>
+                  {editingProfesseur
+                    ? "Modifiez les informations du professeur"
+                    : "Remplissez les informations pour créer un nouveau professeur"}
+                </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleSubmitProfessor} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Prénom *</Label>
-                    <Input
-                      value={formData.firstName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, firstName: e.target.value })
-                      }
-                      required
-                    />
+
+              {/* Affichage des erreurs globales */}
+              {formErrors.length > 0 && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-md mt-4">
+                  <div className="flex items-center gap-2 text-red-700 mb-2">
+                    <AlertCircle className="h-5 w-5" />
+                    <span className="font-semibold">Erreurs à corriger</span>
                   </div>
+                  <ul className="list-disc list-inside space-y-1 text-red-600 text-sm">
+                    {formErrors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <form
+                onSubmit={handleSubmit(onSubmit)}
+                className="space-y-6 mt-4"
+              >
+                {/* Section Informations personnelles */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Informations personnelles
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="firstName"
+                        className="flex items-center gap-2"
+                      >
+                        <span>Prénom *</span>
+                      </Label>
+                      <Input
+                        id="firstName"
+                        {...register("firstName")}
+                        placeholder="Prénom"
+                        className={`${
+                          errors.firstName ? "border-red-500" : ""
+                        }`}
+                      />
+                      {errors.firstName && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.firstName.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="lastName"
+                        className="flex items-center gap-2"
+                      >
+                        <span>Nom *</span>
+                      </Label>
+                      <Input
+                        id="lastName"
+                        {...register("lastName")}
+                        placeholder="Nom"
+                        className={`${errors.lastName ? "border-red-500" : ""}`}
+                      />
+                      {errors.lastName && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.lastName.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
-                    <Label>Nom *</Label>
-                    <Input
-                      value={formData.lastName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, lastName: e.target.value })
-                      }
-                      required
-                    />
+                    <div className="flex items-center justify-between">
+                      <Label
+                        htmlFor="matricule"
+                        className="flex items-center gap-2"
+                      >
+                        <Hash className="h-4 w-4" />
+                        Matricule *
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help text-muted-foreground">
+                              ℹ️
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">
+                              Identifiant unique généré automatiquement
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRegenerateMatricule}
+                        disabled={
+                          !firstNameValue ||
+                          !lastNameValue ||
+                          isGeneratingMatricule
+                        }
+                        className="h-7 px-2"
+                      >
+                        {isGeneratingMatricule ? (
+                          <span className="animate-spin">⟳</span>
+                        ) : (
+                          <Sparkles className="h-3 w-3" />
+                        )}
+                        <span className="ml-1 text-xs">Nouveau</span>
+                      </Button>
+                    </div>
+                    <div className="relative">
+                      <Input
+                        id="matricule"
+                        {...register("matricule")}
+                        placeholder="Ex: JD-231201-001"
+                        className={`font-mono uppercase ${
+                          errors.matricule ? "border-red-500" : ""
+                        }`}
+                        onChange={(e) => {
+                          const value = e.target.value.toUpperCase();
+                          e.target.value = value;
+                          register("matricule").onChange(e);
+                        }}
+                        maxLength={20}
+                      />
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-muted-foreground">
+                        {matriculeValue?.length || 0}/20
+                      </div>
+                    </div>
+                    {errors.matricule && (
+                      <p className="text-sm text-red-500 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.matricule.message}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Format: Lettres majuscules et chiffres uniquement
+                    </p>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Email *</Label>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    required
-                  />
-                </div>
+                <Separator />
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Téléphone</Label>
-                    <Input
-                      value={formData.phone}
-                      onChange={(e) =>
-                        setFormData({ ...formData, phone: e.target.value })
-                      }
-                    />
+                {/* Section Contact */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <PhoneCall className="h-4 w-4" />
+                    Informations de contact
+                  </h3>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="email"
+                        className="flex items-center gap-2"
+                      >
+                        <AtSign className="h-4 w-4" />
+                        Email académique *
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="email"
+                          type="email"
+                          {...register("email")}
+                          placeholder="nom.prenom@gmail.com"
+                          className={`pl-10 ${
+                            errors.email ? "border-red-500" : ""
+                          }`}
+                          onChange={(e) => {
+                            const value = e.target.value.toLowerCase();
+                            e.target.value = value;
+                            register("email").onChange(e);
+                          }}
+                        />
+                        <AtSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                      </div>
+                      {errors.email && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.email.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="phone"
+                        className="flex items-center gap-2"
+                      >
+                        <Phone className="h-4 w-4" />
+                        Téléphone
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="phone"
+                          {...register("phone")}
+                          placeholder="+509 44 55 66 77"
+                          className={`pl-10 ${
+                            errors.phone ? "border-red-500" : ""
+                          }`}
+                          onChange={(e) => {
+                            // Formater le numéro en temps réel
+                            const value = e.target.value;
+                            const formatted = formatPhoneNumber(value);
+                            if (formatted !== value) {
+                              e.target.value = formatted;
+                            }
+                            register("phone").onChange(e);
+                          }}
+                          maxLength={15} // +509 XX XX XX XX = 15 caractères max
+                        />
+                        <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                        {phoneValue && (
+                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                            <Badge variant="outline" className="text-xs">
+                              {
+                                phoneValue
+                                  .replace(/[\s\-()]/g, "")
+                                  .replace("+509", "").length
+                              }
+                              /8 chiffres
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+                      {errors.phone && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.phone.message}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Format: +509XXXXXXXX (ex: +50944556677) - 8 chiffres
+                        après +509
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="address"
+                        className="flex items-center gap-2"
+                      >
+                        Adresse
+                      </Label>
+                      <Textarea
+                        id="address"
+                        {...register("address")}
+                        placeholder="Adresse complète..."
+                        rows={2}
+                      />
+                      {errors.address && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.address.message}
+                        </p>
+                      )}
+                    </div>
                   </div>
+                </div>
+
+                <Separator />
+
+                {/* Section Professionnelle */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <Briefcase className="h-4 w-4" />
+                    Informations professionnelles
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="speciality"
+                        className="flex items-center gap-2"
+                      >
+                        <Award className="h-4 w-4" />
+                        Spécialité
+                      </Label>
+                      <Controller
+                        name="speciality"
+                        control={control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger id="speciality">
+                              <SelectValue placeholder="Sélectionnez une spécialité" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Mathématiques">
+                                Mathématiques
+                              </SelectItem>
+                              <SelectItem value="Physique">Physique</SelectItem>
+                              <SelectItem value="Chimie">Chimie</SelectItem>
+                              <SelectItem value="Sciences de la Vie et de la Terre">
+                                Sciences de la Vie et de la Terre
+                              </SelectItem>
+                              <SelectItem value="Informatique">
+                                Informatique
+                              </SelectItem>
+                              <SelectItem value="Français">Français</SelectItem>
+                              <SelectItem value="Anglais">Anglais</SelectItem>
+                              <SelectItem value="Espagnol">Espagnol</SelectItem>
+                              <SelectItem value="Arabe">Arabe</SelectItem>
+                              <SelectItem value="Histoire-Géographie">
+                                Histoire-Géographie
+                              </SelectItem>
+                              <SelectItem value="Philosophie">
+                                Philosophie
+                              </SelectItem>
+                              <SelectItem value="Éducation Physique et Sportive">
+                                Éducation Physique et Sportive
+                              </SelectItem>
+                              <SelectItem value="Arts Plastiques">
+                                Arts Plastiques
+                              </SelectItem>
+                              <SelectItem value="Musique">Musique</SelectItem>
+                              <SelectItem value="Économie">Économie</SelectItem>
+                              <SelectItem value="Gestion">Gestion</SelectItem>
+                              <SelectItem value="Autre">Autre</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {errors.speciality && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.speciality.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="hireDate"
+                        className="flex items-center gap-2"
+                      >
+                        <CalendarDays className="h-4 w-4" />
+                        Date d'embauche
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="hireDate"
+                          type="date"
+                          {...register("hireDate")}
+                          className={errors.hireDate ? "border-red-500" : ""}
+                          max={new Date().toISOString().split("T")[0]}
+                          min="2000-01-01"
+                        />
+                      </div>
+                      {errors.hireDate && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.hireDate.message}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Doit être entre 2000-01-01 et aujourd'hui
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="status"
+                        className="flex items-center gap-2"
+                      >
+                        <ShieldAlert className="h-4 w-4" />
+                        Statut
+                      </Label>
+                      <Controller
+                        name="status"
+                        control={control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger id="status">
+                              <SelectValue placeholder="Statut" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem
+                                value="Actif"
+                                className="flex items-center gap-2"
+                              >
+                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                Actif
+                              </SelectItem>
+                              <SelectItem
+                                value="Inactif"
+                                className="flex items-center gap-2"
+                              >
+                                <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                Inactif
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {errors.status && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.status.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
-                    <Label>Spécialité</Label>
-                    <Input
-                      value={formData.speciality}
-                      onChange={(e) =>
-                        setFormData({ ...formData, speciality: e.target.value })
-                      }
+                    <Label
+                      htmlFor="qualifications"
+                      className="flex items-center gap-2"
+                    >
+                      <Award className="h-4 w-4" />
+                      Qualifications & Diplômes
+                    </Label>
+                    <Textarea
+                      id="qualifications"
+                      {...register("qualifications")}
+                      placeholder="Listez les diplômes, certifications, expériences..."
+                      rows={3}
+                      className="resize-none"
                     />
+                    <div className="flex justify-between">
+                      {errors.qualifications && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.qualifications.message}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground ml-auto">
+                        {watch("qualifications")?.length || 0}/500 caractères
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Statut</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        status: value as "Actif" | "Inactif",
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Actif">Actif</SelectItem>
-                      <SelectItem value="Inactif">Inactif</SelectItem>
-                    </SelectContent>
-                  </Select>
+                {/* Récapitulatif */}
+                <div className="p-4 bg-muted/30 rounded-lg space-y-3">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    Récapitulatif
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground">Nom complet:</p>
+                      <p className="font-semibold">
+                        {watch("firstName") && watch("lastName")
+                          ? `${watch("firstName")} ${watch("lastName")}`
+                          : "Non renseigné"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground">Matricule:</p>
+                      <p className="font-mono font-bold">
+                        {watch("matricule") || "Génération automatique"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground">Email:</p>
+                      <p className="font-medium truncate">
+                        {watch("email") || "Non renseigné"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground">Statut:</p>
+                      <Badge
+                        variant={
+                          watch("status") === "Actif" ? "default" : "secondary"
+                        }
+                        className="text-xs"
+                      >
+                        {watch("status") || "Non défini"}
+                      </Badge>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsProfessorFormOpen(false)}
-                  >
-                    Annuler
-                  </Button>
-                  <Button type="submit">
-                    {selectedProfessor ? "Modifier" : "Ajouter"}
-                  </Button>
-                </div>
+                <Separator />
+
+                <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between sm:space-x-2">
+                  <div className="text-sm text-muted-foreground mt-2 sm:mt-0">
+                    {editingProfesseur && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs">
+                          Créé le{" "}
+                          {new Date(
+                            editingProfesseur.createdAt
+                          ).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsFormOpen(false)}
+                      className="flex-1 sm:flex-none"
+                    >
+                      Annuler
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="flex-1 sm:flex-none bg-primary hover:bg-primary/90"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <span className="animate-spin mr-2">⟳</span>
+                          Traitement...
+                        </>
+                      ) : editingProfesseur ? (
+                        "Mettre à jour"
+                      ) : (
+                        "Créer le professeur"
+                      )}
+                    </Button>
+                  </div>
+                </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
         </div>
-      </div>
 
-      {/* Statistiques - CORRIGÉ avec données sécurisées */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card
-          className={cn(
-            statCardClassName,
-            "from-blue-50 to-blue-100 border-blue-200",
-            "dark:from-blue-950/20 dark:to-blue-900/20 dark:border-blue-800"
-          )}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                  Total
-                </p>
-                <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">
-                  {statistics.total}
-                </p>
-              </div>
-              <div className="p-3 rounded-full bg-blue-200 dark:bg-blue-800">
-                <User className="h-6 w-6 text-blue-700 dark:text-blue-300" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Filtres et onglets */}
+        <div className="space-y-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="w-full md:w-auto">
+              <TabsTrigger value="all" className="flex-1 md:flex-none">
+                Tous ({totalProfesseurs})
+              </TabsTrigger>
+              <TabsTrigger
+                value="active"
+                className="flex-1 md:flex-none flex items-center gap-1"
+              >
+                <CheckCircle className="h-3 w-3 text-green-500" />
+                Actifs ({activeProfesseurs})
+              </TabsTrigger>
+              <TabsTrigger
+                value="inactive"
+                className="flex-1 md:flex-none flex items-center gap-1"
+              >
+                <XCircle className="h-3 w-3 text-gray-400" />
+                Inactifs ({totalProfesseurs - activeProfesseurs})
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-        <Card
-          className={cn(
-            statCardClassName,
-            "from-green-50 to-green-100 border-green-200",
-            "dark:from-green-950/20 dark:to-green-900/20 dark:border-green-800"
-          )}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-green-700 dark:text-green-300">
-                  Actifs
-                </p>
-                <p className="text-3xl font-bold text-green-900 dark:text-green-100">
-                  {statistics.active}
-                </p>
-              </div>
-              <div className="p-3 rounded-full bg-green-200 dark:bg-green-800">
-                <CheckCircle className="h-6 w-6 text-green-700 dark:text-green-300" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={cn(
-            statCardClassName,
-            "from-gray-50 to-gray-100 border-gray-200",
-            "dark:from-gray-800 dark:to-gray-900 dark:border-gray-700"
-          )}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Inactifs
-                </p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-                  {statistics.inactive}
-                </p>
-              </div>
-              <div className="p-3 rounded-full bg-gray-200 dark:bg-gray-700">
-                <XCircle className="h-6 w-6 text-gray-700 dark:text-gray-300" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={cn(
-            statCardClassName,
-            "from-purple-50 to-purple-100 border-purple-200",
-            "dark:from-purple-950/20 dark:to-purple-900/20 dark:border-purple-800"
-          )}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-purple-700 dark:text-purple-300">
-                  Affectations
-                </p>
-                <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">
-                  {statistics.assignments}
-                </p>
-              </div>
-              <div className="p-3 rounded-full bg-purple-200 dark:bg-purple-800">
-                <Shield className="h-6 w-6 text-purple-700 dark:text-purple-300" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      {/* Filters and Search */}
-      <Card className={cardClassName}>
-        <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <div className="relative flex-1 max-w-sm">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Rechercher un professeur..."
+                placeholder="Rechercher par nom, matricule, email ou spécialité..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                onChange={(e) => handleSearch(e.target.value)}
+                className="pl-10 bg-background"
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-32">
+            <div className="flex gap-2 flex-wrap">
+              <Select
+                value={filters.status}
+                onValueChange={(value) =>
+                  setFilters({ status: value === "all" ? "" : value })
+                }
+              >
+                <SelectTrigger className="w-[150px] bg-background">
+                  <Filter className="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Statut" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
-                  <SelectItem value="Actif">Actifs</SelectItem>
-                  <SelectItem value="Inactif">Inactifs</SelectItem>
+                  <SelectItem value="all">Tous les statuts</SelectItem>
+                  <SelectItem value="Actif">Actif</SelectItem>
+                  <SelectItem value="Inactif">Inactif</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.speciality}
+                onValueChange={(value) =>
+                  setFilters({ speciality: value === "all" ? "" : value })
+                }
+              >
+                <SelectTrigger className="w-[180px] bg-background">
+                  <Briefcase className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Spécialité" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes spécialités</SelectItem>
+                  <SelectItem value="Mathématiques">Mathématiques</SelectItem>
+                  <SelectItem value="Physique">Physique</SelectItem>
+                  <SelectItem value="Chimie">Chimie</SelectItem>
+                  <SelectItem value="Sciences de la Vie et de la Terre">
+                    SVT
+                  </SelectItem>
+                  <SelectItem value="Informatique">Informatique</SelectItem>
+                  <SelectItem value="Français">Français</SelectItem>
+                  <SelectItem value="Anglais">Anglais</SelectItem>
+                  <SelectItem value="Arabe">Arabe</SelectItem>
+                  <SelectItem value="Histoire-Géographie">
+                    Histoire-Géo
+                  </SelectItem>
+                  <SelectItem value="Philosophie">Philosophie</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+          </div>
+        </div>
 
-            {selectedProfessors.size > 0 && (
-              <div className="flex gap-2 items-center flex-wrap">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleBulkStatusChange("Actif")}
-                >
-                  <CheckCircle className="h-4 w-4 mr-1" />
-                  Activer
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleBulkStatusChange("Inactif")}
-                >
-                  <XCircle className="h-4 w-4 mr-1" />
-                  Désactiver
-                </Button>
-                <Badge variant="secondary" className="ml-2">
-                  {selectedProfessors.size} sélectionné(s)
-                </Badge>
+        {/* Statistiques */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-blue-600">Total professeurs</p>
+                  <p className="text-2xl font-bold">{totalProfesseurs}</p>
+                </div>
+                <User className="h-8 w-8 text-blue-500" />
               </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-green-600">Actifs</p>
+                  <p className="text-2xl font-bold">{activeProfesseurs}</p>
+                </div>
+                <CheckCircle className="h-8 w-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-orange-600">Cours assignés</p>
+                  <p className="text-2xl font-bold">{totalAssignments}</p>
+                </div>
+                <BookOpen className="h-8 w-8 text-orange-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-purple-600">Inactifs</p>
+                  <p className="text-2xl font-bold">
+                    {totalProfesseurs - activeProfesseurs}
+                  </p>
+                </div>
+                <Clock className="h-8 w-8 text-purple-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-      {/* Professors Table */}
-      <Card className={cardClassName}>
-        <CardHeader>
-          <CardTitle>Liste des professeurs</CardTitle>
-          <CardDescription>
-            {filteredProfessors.length} professeur(s) trouvé(s)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={
-                        selectedProfessors.size === filteredProfessors.length &&
-                        filteredProfessors.length > 0
-                      }
-                      onCheckedChange={handleSelectAll}
-                    />
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => handleSort("lastName")}
-                  >
-                    <div className="flex items-center gap-1">
-                      Nom
-                      {sortConfig.key === "lastName" &&
-                        (sortConfig.direction === "asc" ? " ↑" : " ↓")}
-                    </div>
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => handleSort("firstName")}
-                  >
-                    <div className="flex items-center gap-1">
-                      Prénom
-                      {sortConfig.key === "firstName" &&
-                        (sortConfig.direction === "asc" ? " ↑" : " ↓")}
-                    </div>
-                  </TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Téléphone</TableHead>
-                  <TableHead>Spécialité</TableHead>
-                  <TableHead
-                    className="cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => handleSort("status")}
-                  >
-                    <div className="flex items-center gap-1">
-                      Statut
-                      {sortConfig.key === "status" &&
-                        (sortConfig.direction === "asc" ? " ↑" : " ↓")}
-                    </div>
-                  </TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredProfessors.map((professor) => (
-                  <TableRow
-                    key={professor.id}
-                    className="group hover:bg-muted/50 transition-colors"
-                  >
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedProfessors.has(professor.id)}
-                        onCheckedChange={() =>
-                          handleSelectProfessor(professor.id)
-                        }
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {professor.lastName}
-                    </TableCell>
-                    <TableCell>{professor.firstName}</TableCell>
-                    <TableCell>
+        {/* Tableau des professeurs */}
+        <Card className="shadow-lg border">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="min-w-[200px]">
                       <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        <span className="truncate max-w-[200px]">
-                          {professor.email}
-                        </span>
+                        <User className="h-4 w-4" />
+                        <span>Professeur</span>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {professor.phone || (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {professor.speciality || (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          professor.status === "Actif" ? "default" : "secondary"
-                        }
-                        className={cn(
-                          professor.status === "Actif"
-                            ? "bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-300 dark:border-green-700"
-                            : "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600"
-                        )}
-                      >
-                        {professor.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem
-                            onClick={() => handleViewDetails(professor)}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            Voir détails
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleEdit(professor)}
-                          >
-                            <Edit className="h-4 w-4 mr-2" />
-                            Modifier
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-red-600 focus:text-red-600"
-                            onClick={() => handleDelete(professor.id)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Supprimer
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:bg-muted transition-colors min-w-[150px]"
+                      onClick={() => handleSort("email")}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        <span>Contact</span>
+                        <SortIcon columnKey="email" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="min-w-[120px]">
+                      <div className="flex items-center gap-2">
+                        <Award className="h-4 w-4" />
+                        <span>Spécialité</span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="min-w-[120px]">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4" />
+                        <span>Matricule</span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="min-w-[100px]">
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="h-4 w-4" />
+                        <span>Assignations</span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="min-w-[100px]">
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="h-4 w-4" />
+                        <span>Statut</span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right min-w-[120px]">
+                      Actions
+                    </TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {sortedProfesseurs.map((professeur) => (
+                    <TableRow
+                      key={professeur.id}
+                      className="hover:bg-muted/30 transition-colors"
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10 border-2">
+                            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                              {getInitials(
+                                professeur.firstName,
+                                professeur.lastName
+                              )}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-semibold">
+                              {professeur.firstName} {professeur.lastName}
+                            </div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {professeur.hireDate
+                                ? `Embauche: ${new Date(
+                                    professeur.hireDate
+                                  ).toLocaleDateString()}`
+                                : "Sans date d'embauche"}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Mail className="h-3 w-3 text-muted-foreground" />
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-sm truncate max-w-[150px] cursor-help">
+                                  {professeur.email}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{professeur.email}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                          {professeur.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-sm font-mono">
+                                {formatPhoneNumber(professeur.phone)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {professeur.speciality ? (
+                          <Badge
+                            variant="outline"
+                            className="truncate max-w-[120px]"
+                          >
+                            {professeur.speciality}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">
+                            Non spécifié
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-mono font-bold text-primary bg-primary/10 px-2 py-1 rounded inline-block text-sm">
+                          {professeur.matricule || "N/A"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <BookOpen className="h-3 w-3" />
+                            <span className="text-sm">
+                              {professeur._count?.assignments || 0} cours
+                            </span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={getStatusBadgeVariant(professeur.status)}
+                          className={`${
+                            professeur.status === "Actif"
+                              ? "bg-green-100 text-green-800 hover:bg-green-100 border-green-200"
+                              : "bg-gray-100 text-gray-800 hover:bg-gray-100 border-gray-200"
+                          }`}
+                        >
+                          {professeur.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="outline" size="sm" asChild>
+                                <Link to={`/professeurs/${professeur.id}`}>
+                                  <span className="sr-only">Détails</span>
+                                  <Eye className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Voir les détails</p>
+                            </TooltipContent>
+                          </Tooltip>
 
-          {filteredProfessors.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg mt-4">
-              <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Aucun professeur trouvé</p>
-              {searchTerm || statusFilter !== "all" ? (
-                <p className="text-sm mt-2">
-                  Essayez de modifier vos critères de recherche
-                </p>
-              ) : (
-                <Button
-                  variant="outline"
-                  className="mt-4"
-                  onClick={() => setIsProfessorFormOpen(true)}
-                >
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Ajouter le premier professeur
-                </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                                  />
+                                </svg>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem
+                                onClick={() => handleEdit(professeur)}
+                              >
+                                <Edit className="h-4 w-4 mr-2" />
+                                Modifier
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              {professeur.status === "Actif" ? (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedProfesseur(professeur);
+                                    setActionType("deactivate");
+                                    setShowStatusDialog(true);
+                                  }}
+                                  className="text-amber-600"
+                                >
+                                  <XCircle className="h-4 w-4 mr-2" />
+                                  Désactiver
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedProfesseur(professeur);
+                                    setActionType("activate");
+                                    setShowStatusDialog(true);
+                                  }}
+                                  className="text-green-600"
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                  Activer
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedProfesseur(professeur);
+                                  setShowDeleteDialog(true);
+                                }}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Supprimer
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {sortedProfesseurs.length === 0 && (
+                <div className="text-center py-16">
+                  <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-4">
+                    <User className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">
+                    Aucun professeur trouvé
+                  </h3>
+                  <p className="text-muted-foreground mb-6">
+                    {searchTerm || filters.status || filters.speciality
+                      ? "Aucun résultat pour vos critères de recherche"
+                      : "Commencez par créer votre premier professeur"}
+                  </p>
+                  {!searchTerm && !filters.status && !filters.speciality && (
+                    <Button onClick={resetForm} className="shadow-md">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Créer un professeur
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Dialog d'import */}
-      <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileUp className="h-5 w-5" />
-              Importer des professeurs
-            </DialogTitle>
-            <DialogDescription>
-              Importez un fichier Excel contenant la liste des professeurs
-            </DialogDescription>
-          </DialogHeader>
-
-          <Tabs defaultValue="upload" className="w-full">
-            <TabsList className="grid grid-cols-2 w-full">
-              <TabsTrigger value="upload">Upload</TabsTrigger>
-              <TabsTrigger value="template">Template</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="upload" className="space-y-4">
-              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
-                <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground mb-2">
-                  {importFile
-                    ? importFile.name
-                    : "Glissez-déposez un fichier Excel ou cliquez pour parcourir"}
-                </p>
-                <Input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="import-file"
-                />
-                <Label htmlFor="import-file">
-                  <Button variant="outline" asChild>
-                    <span>Choisir un fichier</span>
-                  </Button>
-                </Label>
-              </div>
-
-              {importResults && importResults.errors.length > 0 && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {importResults.errors.length} erreur(s) lors de l'import
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-2">
-                <Label>Format attendu:</Label>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p>
-                    • Colonnes: Prénom, Nom, Email, Téléphone, Spécialité,
-                    Statut
-                  </p>
-                  <p>• Formats supportés: .xlsx, .xls</p>
-                  <p>• Taille maximale: 10MB</p>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="template" className="space-y-4">
-              <div className="border rounded-lg p-4 bg-muted/50">
-                <h4 className="font-semibold mb-2">Structure du fichier:</h4>
-                <div className="text-sm space-y-1">
-                  <p>
-                    <strong>Prénom:</strong> Prénom du professeur (requis)
-                  </p>
-                  <p>
-                    <strong>Nom:</strong> Nom du professeur (requis)
-                  </p>
-                  <p>
-                    <strong>Email:</strong> Adresse email (requis, unique)
-                  </p>
-                  <p>
-                    <strong>Téléphone:</strong> Numéro de téléphone (optionnel)
-                  </p>
-                  <p>
-                    <strong>Spécialité:</strong> Domaine d'expertise (optionnel)
-                  </p>
-                  <p>
-                    <strong>Statut:</strong> "Actif" ou "Inactif" (défaut:
-                    "Actif")
-                  </p>
-                </div>
-              </div>
-
+        {/* Pagination et informations */}
+        {professeurs.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
+            <div className="text-sm text-muted-foreground">
+              Affichage de{" "}
+              <span className="font-semibold">{sortedProfesseurs.length}</span>{" "}
+              professeur{sortedProfesseurs.length > 1 ? "s" : ""} sur{" "}
+              <span className="font-semibold">{professeurs.length}</span>
+            </div>
+            <div className="flex items-center space-x-2">
               <Button
-                onClick={downloadTemplate}
                 variant="outline"
-                className="w-full"
+                size="sm"
+                onClick={() => setFilters({ page: (filters.page || 1) - 1 })}
+                disabled={filters.page === 1}
+                className="shadow-sm"
               >
-                <Download className="h-4 w-4 mr-2" />
-                Télécharger le template
+                Précédent
               </Button>
-            </TabsContent>
-          </Tabs>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsImportDialogOpen(false);
-                setImportFile(null);
-                setImportResults(null);
-              }}
-            >
-              Annuler
-            </Button>
-            <Button
-              onClick={handleImport}
-              disabled={!importFile || importLoading}
-            >
-              {importLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Import en cours...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Importer
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+              <div className="flex items-center px-3 py-1 bg-background border rounded-md shadow-sm">
+                <span className="text-sm font-medium">
+                  Page {filters.page || 1}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFilters({ page: (filters.page || 1) + 1 })}
+                disabled={(filters.page || 1) * 10 >= professeurs.length}
+                className="shadow-sm"
+              >
+                Suivant
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </TooltipProvider>
   );
 };

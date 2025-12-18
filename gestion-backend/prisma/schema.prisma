@@ -7,6 +7,7 @@ datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
+
 enum BloodGroup {
   A_POSITIVE
   A_NEGATIVE
@@ -18,20 +19,17 @@ enum BloodGroup {
   O_NEGATIVE
 }
 
-enum UEType {
-  Obligatoire
-  Optionnelle
-}
-
 enum ExpenseStatus {
   Pending
   Approved
   Rejected
 }
 
-enum Semester {
-  S1
-  S2
+enum ControlType {
+  CONTROLE_1
+  CONTROLE_2
+  CONTROLE_3
+  CONTROLE_4
 }
 
 enum DocumentType {
@@ -72,7 +70,7 @@ enum EnrollmentStatus {
 enum GradeStatus {
   Valid_
   Non_valid_
-  reprendre
+  Reprendre
 }
 
 enum GradeSession {
@@ -85,13 +83,8 @@ enum UserRole {
   Professeur
   Secretaire
   Directeur
-  Doyen
-}
-
-enum RetakeStatus {
-  Programme
-  EnCours
-  Termine
+  Parent
+  Student
 }
 
 enum UserStatus {
@@ -117,108 +110,115 @@ enum StudentSexe {
   Autre
 }
 
-model Ue {
-  id            String             @id @default(cuid())
-  code          String             @unique
-  title         String
-  credits       Int
-  type          UEType
-  passingGrade  Int                @default(60)
-  description   String?
-  objectives    String?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  createdById   String
-  assignments   CourseAssignment[]
-  grades        Grade[]
-  retakes       Retake[]
-  prerequisites UePrerequisite[]   @relation("Prerequisites")
-  requiredFor   UePrerequisite[]   @relation("RequiredFor")
-  createdBy     User               @relation("CreatedBy", fields: [createdById], references: [id])
+enum SubjectType {
+  Obligatoire
+  Optionnelle
+}
+
+enum ClassLevel {
+  Sixieme
+  Cinquieme
+  Quatrieme
+  Troisieme
+  Seconde
+  Premiere
+  Terminale
+  NSI
+  NSII
+  NSIII
+  NSIV
+}
+
+model Subject {
+  id           String            @id @default(cuid())
+  code         String            @unique
+  name         String
+  coefficient  Int               @default(1) 
+  type         SubjectType
+  passingGrade Int               @default(60)
+  description  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  createdById  String
+  assignments  ClassAssignment[]
+  grades       Grade[]
+  createdBy    User              @relation("CreatedSubject", fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([createdById])
-  @@map("ues")
+  @@map("subjects")
 }
 
-model CourseAssignment {
-  id             String        @id @default(cuid())
-  ueId           String
-  facultyId      String
+model ClassAssignment {
+  id             String     @id @default(cuid())
+  subjectId      String
   professeurId   String
-  semester       Semester
-  level          String
-  facultyLevelId String?
-  status         String        @default("Active")
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  classLevel     ClassLevel
   academicYearId String
-  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  faculty        Faculty       @relation(fields: [facultyId], references: [id], onDelete: Cascade)
-  facultyLevel   FacultyLevel? @relation(fields: [facultyLevelId], references: [id])
-  professeur     Professeur    @relation(fields: [professeurId], references: [id])
-  ue             Ue            @relation(fields: [ueId], references: [id])
-  schedules      Schedule[]
+  status         String     @default("Active")
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  @@unique([ueId, facultyId, level, academicYearId, semester])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  professeur   Professeur   @relation(fields: [professeurId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  schedules    Schedule[]
+  grades       Grade[]
+
+  @@unique([subjectId, classLevel, academicYearId, professeurId])
   @@index([academicYearId])
-  @@index([facultyId])
-  @@index([facultyLevelId])
   @@index([professeurId])
-  @@map("course_assignments")
+  @@index([subjectId])
+  @@map("class_assignments")
 }
 
-model UePrerequisite {
-  id             String   @id @default(cuid())
-  ueId           String
-  prerequisiteId String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  prerequisite   Ue       @relation("Prerequisites", fields: [prerequisiteId], references: [id], onDelete: Cascade)
-  ue             Ue       @relation("RequiredFor", fields: [ueId], references: [id], onDelete: Cascade)
+model SchoolClass {
+  id             String     @id @default(cuid())
+  name           String
+  level          ClassLevel
+  capacity       Int        @default(30)
+  status         String     @default("Active")
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  @@unique([ueId, prerequisiteId])
-  @@index([prerequisiteId])
-  @@map("ue_prerequisites")
+  students     Student[]
+  schedules    Schedule[]
+  enrollments  Enrollment[]
+
+
+  @@map("school_classes")
 }
 
-model Faculty {
-  id            String             @id @default(cuid())
-  name          String
-  code          String             @unique
-  description   String?
-  deanId        String?            @unique
-  dean          User?              @relation(fields: [deanId], references: [id], onDelete: SetNull)
-  studentsCount Int                @default(0)
-  coursesCount  Int                @default(0)
-  studyDuration Int
-  status        String             @default("Active")
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  assignments   CourseAssignment[]
-  enrollments   Enrollment[]
-  levels        FacultyLevel[]
-  users         User[]             @relation("UserFaculty")
+model Schedule {
+  id           String   @id @default(cuid())
+  assignmentId String
+  classId      String
+  professeurId String
+  dayOfWeek    String   
+  startTime    String   
+  endTime      String   
+  classroom    String?
+  status       String   @default("ACTIVE")
+  recurrence   String?
+  untilDate    DateTime?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  @@map("faculties")
-}
+  // Relations
+  classAssignment ClassAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  professeur      Professeur      @relation(fields: [professeurId], references: [id], onDelete: Cascade)
+  schoolClass     SchoolClass     @relation(fields: [classId], references: [id], onDelete: Cascade)
 
-model FacultyLevel {
-  id          String             @id @default(cuid())
-  facultyId   String
-  level       String
-  assignments CourseAssignment[]
-  faculty     Faculty            @relation(fields: [facultyId], references: [id], onDelete: Cascade)
-
-  @@unique([facultyId, level])
-  @@map("faculty_levels")
+  @@unique([assignmentId, classId, dayOfWeek, startTime])
+  @@map("schedules")
 }
 
 model Transcript {
   id               String            @id @default(cuid())
   studentId        String
   academicYearId   String
-  semester         Semester
-  level            String
+  controlType         ControlType
+  classLevel       ClassLevel
   documentType     DocumentType
   gpa              Float
   totalCredits     Int
@@ -239,10 +239,10 @@ model Transcript {
   academicYear     AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
   student          Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@unique([studentId, academicYearId, semester, documentType])
+  @@unique([studentId, academicYearId, controlType, documentType])
   @@index([studentId])
   @@index([academicYearId])
-  @@index([semester])
+  @@index([controlType])
   @@index([documentType])
   @@index([generatedAt])
   @@index([status])
@@ -266,18 +266,17 @@ model TranscriptGrade {
 }
 
 model AcademicYear {
-  id          String             @id @default(cuid())
-  year        String             @unique
+  id          String            @id @default(cuid())
+  year        String            @unique
   startDate   DateTime
   endDate     DateTime
-  isCurrent   Boolean            @default(false)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  assignments CourseAssignment[]
+  isCurrent   Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  assignments ClassAssignment[]
   enrollments Enrollment[]
   grades      Grade[]
   payments    Payment[]
-  scholarships Scholarship[]
   studentFees StudentFee[]
   transcripts Transcript[]
 
@@ -296,7 +295,7 @@ model Expense {
   approvedBy    String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-  approver      User?         @relation("ExpenseApprover", fields: [approvedBy], references: [id])
+  approver      User?         @relation("ExpenseApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
   creator       User          @relation("ExpenseCreator", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([approvedBy])
@@ -309,13 +308,12 @@ model FeeStructure {
   name         String
   academicYear String
   amount       Float
-  description  String?      // Nouveau champ optionnel
+  description  String?
   isActive     Boolean      @default(true)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   studentFees  StudentFee[]
 
-  // UNIQUE par année académique seulement
   @@map("fee_structures")
 }
 
@@ -331,10 +329,11 @@ model StudentFee {
   updatedAt      DateTime     @updatedAt
   academicYearId String
   payments       FeePayment[]
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
   feeStructure   FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
   student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
+  @@unique([studentId, feeStructureId, academicYearId])
   @@index([academicYearId])
   @@index([feeStructureId])
   @@index([studentId])
@@ -385,45 +384,272 @@ model Analytics {
 }
 
 model Announcement {
-  id                     String                   @id @default(cuid())
-  title                  String
-  content                String
-  authorId               String
-  publishDate            DateTime
-  expiryDate             DateTime?
-  targetAudience         String
-  priority               String
-  isActive               Boolean                  @default(true)
-  announcementAttachments AnnouncementAttachment[]
+  id             String    @id @default(cuid())
+  title          String
+  content        String
+  authorId       String
+  publishDate    DateTime
+  expiryDate     DateTime?
+  targetAudience String
+  priority       String
+  isActive       Boolean   @default(true)
+  attachments    Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  author         User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-  @@map("announcement")
+  @@index([authorId])
+  @@index([publishDate])
+  @@index([isActive])
+  @@map("announcements")
 }
 
-model AnnouncementAttachment {
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  location    String?
+  organizer   String?
+  category    String
+  isPublic    Boolean  @default(true)
+  status      String   @default("Scheduled")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([startDate])
+  @@index([category])
+  @@index([isPublic])
+  @@map("events")
+}
+
+model Grade {
   id             String       @id @default(cuid())
-  announcementId String
-  url            String
-  announcement   Announcement @relation(fields: [announcementId], references: [id])
+  studentId      String
+  subjectId      String
+  assignmentId   String
+  grade          Float
+  status         GradeStatus
+  session        GradeSession
+  controlType       ControlType
+  createdAt      DateTime     @default(now())
+  academicYearId String
+  classLevel     ClassLevel
+  isActive       Boolean      @default(true)
+  updatedAt      DateTime     @updatedAt
+  notes          String?
 
-  @@index([announcementId])
-  @@map("announcementattachment")
+  academicYear     AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  student          Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject          Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  classAssignment  ClassAssignment   @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  transcriptGrades TranscriptGrade[]
+
+  @@unique([studentId, subjectId, academicYearId, controlType, session, assignmentId])
+  @@index([academicYearId, controlType])
+  @@index([studentId, academicYearId])
+  @@index([studentId, subjectId])
+  @@index([assignmentId])
+  @@index([subjectId])
+  @@map("grades")
 }
 
-model Attendance {
-  id         String   @id @default(cuid())
-  studentId  String
-  scheduleId String
-  date       DateTime
-  status     String
-  notes      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime
-  schedule   Schedule @relation(fields: [scheduleId], references: [id])
-  student    Student  @relation(fields: [studentId], references: [id])
+model Payment {
+  id             String       @id @default(cuid())
+  studentId      String
+  amount         Float
+  type           String
+  status         String
+  paidDate       DateTime?
+  description    String?
+  academicYearId String
+  createdAt      DateTime     @default(now())
+  paymentMethod  String       @default("Cash")
+  updatedAt      DateTime     @default(now())
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@index([scheduleId])
+  @@index([academicYearId])
   @@index([studentId])
-  @@map("attendance")
+  @@map("payments")
+}
+
+model Professeur {
+  id         String           @id @default(cuid())
+  firstName  String
+  lastName   String
+  email      String           @unique
+  phone      String?
+  speciality String?
+  matricule  String           @unique
+  status     ProfesseurStatus @default(Actif)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  userId     String?          @unique
+
+  assignments ClassAssignment[]
+  user        User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules   Schedule[]
+  @@map("professeurs")
+}
+
+
+
+model User {
+  id               String     @id @default(cuid())
+  firstName        String
+  lastName         String
+  email            String     @unique
+  phone            String?
+  role             UserRole
+  failedAttempts   Int        @default(0)
+  lockUntil        DateTime?
+  status           UserStatus
+  lastLogin        DateTime?
+  avatar           String?
+  password         String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  resetToken       String?
+  resetTokenExpiry DateTime?
+
+  // Relations
+  auditLogs        AuditLog[]
+  loginAttempts    LoginAttempt[]
+  approvedExpenses Expense[]      @relation("ExpenseApprover")
+  createdExpenses  Expense[]      @relation("ExpenseCreator")
+  professeur       Professeur?
+  studentRecord    Student? // Relation avec Student
+  createdSubjects  Subject[]      @relation("CreatedSubject")
+  announcements    Announcement[]
+  parentAccount    Parent?
+
+  @@index([email, status])
+  @@index([role, status])
+  @@map("users")
+}
+
+model Student {
+  id           String        @id @default(cuid())
+  firstName    String
+  lastName     String
+  studentCode  String        @unique
+  email        String        @unique
+  phone        String?
+  dateOfBirth  DateTime?
+  placeOfBirth String?
+  address      String?
+  photo        String?
+  bloodGroup   BloodGroup?
+  allergies    String?
+  disabilities String?
+  status       StudentStatus @default(Active)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  userId       String?       @unique
+  cin          String?       @unique
+  sexe         StudentSexe?
+  classId      String?
+
+  // Relations
+  enrollments Enrollment[] // Changé de enrollment? à enrollments[]
+  grades      Grade[]
+  guardians   Guardian[]
+  payments    Payment[]
+  user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studentFees StudentFee[]
+  transcripts Transcript[]
+  schoolClass SchoolClass? @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@index([studentCode])
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+  @@index([classId])
+  @@map("students")
+}
+
+model Guardian {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  relationship String
+  phone        String
+  email        String?
+  address      String?
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    Parent? @relation(fields: [parentId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, parentId])
+  @@index([studentId])
+  @@index([parentId])
+  @@index([phone])
+  @@index([isPrimary])
+  @@map("guardians")
+}
+
+model Parent {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guardians Guardian[]
+
+  @@map("parents")
+}
+
+model Enrollment {
+  id                     String           @id @default(cuid())
+  studentId              String
+  classId                String
+  enrollmentDate         DateTime
+  status                 EnrollmentStatus
+  academicYearId         String
+  
+  // Pour les réinscriptions
+  isReenrollment         Boolean          @default(false)
+  previousEnrollmentId   String?          // Pas unique pour permettre plusieurs réinscriptions
+  reenrollmentDate       DateTime?
+  reenrollmentNotes      String?
+  
+  // Relations pour chaînage des inscriptions
+  previousEnrollment     Enrollment?      @relation("EnrollmentChain", fields: [previousEnrollmentId], references: [id])
+  nextEnrollments        Enrollment[]     @relation("EnrollmentChain") // Plusieurs inscriptions suivantes possibles
+  
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @default(now())
+  academicYear           AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  student                Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolClass            SchoolClass      @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, academicYearId])
+  @@index([academicYearId])
+  @@index([classId])
+  @@index([studentId])
+  @@index([previousEnrollmentId])
+  @@map("enrollments")
+}
+
+model LoginAttempt {
+  id             String   @id @default(cuid())
+  userId         String
+  failedAttempts Int      @default(0)
+  attemptTime    DateTime @default(now())
+  ipAddress      String?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@index([userId])
+  @@map("login_attempts")
 }
 
 model AuditLog {
@@ -439,10 +665,10 @@ model AuditLog {
   ipAddress    String?
   status       String?
   errorMessage String?
-  metadata    Json?
+  metadata     Json?
   duration     Int?
   createdAt    DateTime @default(now())
-  user         User?    @relation(fields: [userId], references: [id])
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([action])
   @@index([createdAt])
@@ -450,426 +676,8 @@ model AuditLog {
   @@index([entity])
   @@index([status])
   @@index([userId])
-  @@map("auditlog")
-}
-
-model Book {
-  id        String     @id @default(cuid())
-  title     String
-  author    String
-  isbn      String?    @unique
-  category  String?
-  faculty   String?
-  quantity  Int        @default(0)
-  available Int        @default(0)
-  location  String?
-  status    String
-  bookLoans BookLoan[]
-
-  @@map("book")
-}
-
-model BookLoan {
-  id           String    @id @default(cuid())
-  bookId       String
-  studentId    String
-  loanDate     DateTime
-  dueDate      DateTime
-  returnDate   DateTime?
-  status       String
-  renewalCount Int       @default(0)
-  fine         Float?
-  book         Book      @relation(fields: [bookId], references: [id])
-  student      Student   @relation(fields: [studentId], references: [id])
-
-  @@index([bookId])
-  @@index([studentId])
-  @@map("bookloan")
-}
-
-model Certificate {
-  id               String    @id @default(cuid())
-  studentId        String
-  type             String
-  title            String
-  issueDate        DateTime
-  validUntil       DateTime?
-  signedBy         String
-  verificationCode String
-  status           String
-  student          Student   @relation(fields: [studentId], references: [id])
-
-  @@index([studentId])
-  @@map("certificate")
-}
-
-model Enrollment {
-  id             String            @id @default(cuid())
-  studentId      String
-  level          String
-  enrollmentDate DateTime
-  status         EnrollmentStatus
-  academicYearId String            @default("2024-2025")
-  facultyId      String
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @default(now())
-  academicYear   AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  faculty        Faculty           @relation(fields: [facultyId], references: [id], onDelete: Cascade)
-  student        Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@index([academicYearId])
-  @@index([facultyId, level])
-  @@index([studentId, academicYearId])
-  @@map("enrollment")
-}
-
-model Event {
-  id               String             @id @default(cuid())
-  title            String
-  description      String?
-  startDate        DateTime
-  endDate          DateTime
-  location         String?
-  organizer        String?
-  category         String
-  isPublic         Boolean            @default(true)
-  status           String
-  eventParticipants EventParticipant[]
-
-  @@map("event")
-}
-
-model EventParticipant {
-  id      String @id @default(cuid())
-  eventId String
-  name    String
-  event   Event  @relation(fields: [eventId], references: [id])
-
-  @@index([eventId])
-  @@map("eventparticipant")
-}
-
-model Grade {
-  id               String            @id @default(cuid())
-  studentId        String
-  ueId             String
-  grade            Float
-  status           GradeStatus
-  session          GradeSession
-  semester         String
-  createdAt        DateTime          @default(now())
-  transcriptId     String?
-  academicYearId   String
-  level            String
-  isActive         Boolean           @default(true)
-  updatedAt        DateTime          @updatedAt
-  academicYear     AcademicYear      @relation(fields: [academicYearId], references: [id])
-  student          Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  ue               Ue                @relation(fields: [ueId], references: [id])
-  transcriptGrades TranscriptGrade[]
-
-  @@unique([studentId, ueId, academicYearId, semester, session])
-  @@index([academicYearId, semester])
-  @@index([studentId, academicYearId])
-  @@index([studentId, ueId])
-  @@index([ueId, academicYearId, semester])
-  @@map("grade")
+  @@map("audit_logs")
 }
 
 
-model Message {
-  id                String              @id @default(cuid())
-  senderId          String
-  receiverId        String
-  subject           String?
-  content           String
-  timestamp         DateTime            @default(now())
-  isRead            Boolean             @default(false)
-  priority          String
-  messageAttachments MessageAttachment[]
 
-  @@map("message")
-}
-
-model MessageAttachment {
-  id        String  @id @default(cuid())
-  messageId String
-  url       String
-  message   Message @relation(fields: [messageId], references: [id])
-
-  @@index([messageId])
-  @@map("messageattachment")
-}
-
-model Payment {
-  id             String       @id @default(cuid())
-  studentId      String
-  amount         Float
-  type           String
-  status         String
-  paidDate       DateTime?
-  description    String?
-  academicYearId String       @default("2024-2025")
-  createdAt      DateTime     @default(now())
-  moyen          String       @default("Cash")
-  updatedAt      DateTime     @default(now())
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@index([academicYearId])
-  @@index([studentId])
-  @@map("payment")
-}
-
-model Professeur {
-  id          String             @id @default(cuid())
-  firstName   String
-  lastName    String
-  email       String             @unique
-  phone       String?
-  department  String?
-  office      String?
-  hireDate    DateTime?
-  status      ProfesseurStatus  @default(Actif)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  userId      String?            @unique
-  speciality  String?
-  assignments CourseAssignment[]
-  user        User?              @relation(fields: [userId], references: [id])
-  schedules   Schedule[]
-
-  @@map("professeur")
-}
-
-model Retake {
-  id                String        @id @default(cuid())
-  studentId         String
-  ueId              String
-  originalGrade     Float
-  retakeGrade       Float?
-  scheduledSemester String
-  status            RetakeStatus
-  student           Student       @relation(fields: [studentId], references: [id])
-  ue                Ue            @relation(fields: [ueId], references: [id])
-
-  @@index([studentId])
-  @@index([ueId])
-  @@map("retake")
-}
-
-model Room {
-  id              String            @id @default(cuid())
-  name            String
-  type            String
-  capacity        Int
-  location        String?
-  status          String
-  roomEquipments  RoomEquipment[]
-  roomReservations RoomReservation[]
-
-  @@map("room")
-}
-
-model RoomEquipment {
-  id     String @id @default(cuid())
-  roomId String
-  name   String
-  room   Room   @relation(fields: [roomId], references: [id])
-
-  @@index([roomId])
-  @@map("roomequipment")
-}
-
-model RoomReservation {
-  id        String   @id @default(cuid())
-  roomId    String
-  userId    String
-  startTime DateTime
-  endTime   DateTime
-  purpose   String?
-  status    String
-  room      Room     @relation(fields: [roomId], references: [id])
-
-  @@index([roomId])
-  @@map("roomreservation")
-}
-
-model Schedule {
-  id                 String           @id @default(cuid())
-  classroom          String?
-  dayOfWeek          Int
-  startTime          String
-  endTime            String
-  professeurId       String?
-  assignmentId       String
-  exceptions         Json?
-  recurrence         String?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime
-  attendances        Attendance[]
-  courseAssignment   CourseAssignment @relation(fields: [assignmentId], references: [id])
-  professeur         Professeur?      @relation(fields: [professeurId], references: [id])
-
-  @@index([assignmentId])
-  @@index([professeurId])
-  @@map("schedule")
-}
-
-model Scholarship {
-  id                     String                   @id @default(cuid())
-  name                   String
-  description            String?
-  amount                 Float
-  criteria               String?
-  applicationDeadline    DateTime
-  maxRecipients          Int
-  currentRecipients      Int                      @default(0)
-  status                 String
-  academicYearId         String
-  academicYear           AcademicYear             @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  scholarshipApplications ScholarshipApplication[]
-
-  @@index([academicYearId])
-  @@map("scholarship")
-}
-
-model ScholarshipApplication {
-  id                  String                @id @default(cuid())
-  scholarshipId       String
-  studentId           String
-  applicationDate     DateTime
-  motivation          String?
-  status              String
-  reviewNotes         String?
-  scholarship         Scholarship           @relation(fields: [scholarshipId], references: [id])
-  student             Student               @relation(fields: [studentId], references: [id])
-  scholarshipDocuments ScholarshipDocument[]
-
-  @@index([scholarshipId])
-  @@index([studentId])
-  @@map("scholarshipapplication")
-}
-
-model ScholarshipDocument {
-  id                       String                 @id @default(cuid())
-  scholarshipApplicationId String
-  url                      String
-  scholarshipApplication   ScholarshipApplication @relation(fields: [scholarshipApplicationId], references: [id])
-
-  @@index([scholarshipApplicationId])
-  @@map("scholarshipdocument")
-}
-
-
-model User {
-  id                String      @id @default(cuid())
-  firstName         String
-  lastName          String
-  email             String      @unique
-  phone             String?
-  role              UserRole
-  failedAttempts    Int         @default(0)
-  lockUntil         DateTime?
-  status            UserStatus
-  lastLogin         DateTime?
-  avatar            String?
-  password          String?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  resetToken        String?
-  resetTokenExpiry  DateTime?
-  facultyId         String?
-  
-  // Relations
-  auditLogs         AuditLog[]
-  loginattempt      LoginAttempt[]
-  approvedExpenses  Expense[]   @relation("ExpenseApprover")
-  createdExpenses   Expense[]   @relation("ExpenseCreator")
-  professeur        Professeur?
-  studentRecord     Student?
-  createdUEs        Ue[]        @relation("CreatedBy")
-  faculty           Faculty?    @relation("UserFaculty", fields: [facultyId], references: [id])
-  deanOf            Faculty?    // Faculté dont cet user est le doyen
-
-  @@index([email, status])
-  @@index([facultyId])
-  @@index([role, status])
-  @@map("user")
-}
-
-
-model Student {
-  id                     String                   @id @default(cuid())
-  firstName              String                   @db.VarChar(100)
-  lastName               String                   @db.VarChar(100)
-  studentId              String                   @unique @db.VarChar(50)
-  email                  String                   @unique @db.VarChar(255)
-  phone                  String?                  @db.VarChar(20)
-  dateOfBirth            DateTime?
-  placeOfBirth           String?                  @db.VarChar(100)
-  address                String?                  @db.VarChar(500)
-  photo                  String?                  @db.VarChar(500)
-  bloodGroup             BloodGroup?
-  allergies              String?                  @db.VarChar(500)
-  disabilities           String?                  @db.VarChar(500)
-  status                 StudentStatus           @default(Active)
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
-  userId                 String?                  @unique
-  cin                    String?                  @unique @db.VarChar(20)
-  sexe                   StudentSexe?
-
-  // Relations
-  attendances            Attendance[]
-  bookLoans              BookLoan[]
-  certificates           Certificate[]
-  enrollments            Enrollment[]
-  grades                 Grade[]
-  guardians              Guardian[]
-  payments               Payment[]
-  retakes                Retake[]
-  scholarshipApplications ScholarshipApplication[]
-  user                   User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  studentFees            StudentFee[]
-  transcripts            Transcript[]
-
-  @@map("students")
-  @@index([studentId])
-  @@index([email])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model Guardian {
-  id           String   @id @default(cuid())
-  firstName    String   @db.VarChar(100)
-  lastName     String   @db.VarChar(100)
-  relationship String   @db.VarChar(50)
-  phone        String   @db.VarChar(20)
-  email        String?  @db.VarChar(255)
-  address      String?  @db.VarChar(500)
-  isPrimary    Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
-  studentId    String
-  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@map("guardians")
-  @@index([studentId])
-  @@index([phone])
-  @@index([isPrimary])
-}
-
-
-model LoginAttempt {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  failedAttempts  Int      @default(0)
-  attemptTime     DateTime @default(now())
-  ipAddress       String?
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("loginattempt")
-}

@@ -1,152 +1,143 @@
 import { create } from "zustand";
-import api from "../services/api";
 import { User } from "../types/academic";
+import api from "../services/api";
 
-interface AuthState {
-  user: User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-
-  loading: boolean;
-  error: string | null;
-  setUser: (user: User | null) => void;
-  setToken: (token: string | null) => void;
-  register: (
-    userData: Omit<User, "id" | "createdAt"> & { password: string }
-  ) => Promise<void>;
-  logout: () => void;
-  getCurrentUser: () => Promise<void>;
-  updateProfile: (userData: Partial<User>) => Promise<void>;
-  fetchPotentialDeans: () => Promise<User[]>;
+interface UserFilters {
+  search?: string;
+  role?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
-  token: localStorage.getItem("token"),
-  isAuthenticated: !!localStorage.getItem("token"),
-  loading: false,
-  error: null,
-  setUser: (user) => set({ user }),
-  setToken: (token) => {
-    if (token) {
-      localStorage.setItem("token", token);
-    } else {
-      localStorage.removeItem("token");
-    }
-    set({ token, isAuthenticated: !!token });
-  },
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
 
-  register: async (userData) => {
-    set({ loading: true, error: null });
-    try {
-      const response = await api.post("/auth/register", userData);
-      const { token, user } = response.data;
-
-      localStorage.setItem("token", token);
-      set({ user, token, isAuthenticated: true, loading: false });
-    } catch (error: any) {
-      set({
-        error: error.response?.data?.message || "Erreur d'inscription",
-        loading: false,
-      });
-      throw error;
-    }
-  },
-
-  logout: () => {
-    localStorage.removeItem("token");
-    set({ user: null, token: null, isAuthenticated: false });
-  },
-
-  getCurrentUser: async () => {
-    set({ loading: true });
-    try {
-      const response = await api.get("/users/me");
-      set({ user: response.data, loading: false });
-    } catch (error: any) {
-      set({
-        error: error.response?.data?.message || "Erreur de chargement",
-        loading: false,
-      });
-      // Si le token est invalide, déconnecter
-      if (error.response?.status === 401) {
-        get().logout();
-      }
-    }
-  },
-
-  updateProfile: async (userData) => {
-    set({ loading: true });
-    try {
-      const response = await api.put(`/users/${get().user?.id}`, userData);
-      set({ user: response.data.user, loading: false });
-    } catch (error: any) {
-      set({
-        error: error.response?.data?.message || "Erreur de modification",
-        loading: false,
-      });
-      throw error;
-    }
-  },
-
-  fetchPotentialDeans: async () => {
-    try {
-      const response = await api.get("/users/potential/deans");
-      return response.data;
-    } catch (error: any) {
-      console.error("Erreur récupération doyens:", error);
-      throw error;
-    }
-  },
-}));
-
-// Store pour l'administration des utilisateurs
 interface UserManagementState {
+  // État
   users: User[];
+  currentUser: User | null;
   loading: boolean;
   error: string | null;
+
+  // Filtres et pagination
+  filters: UserFilters;
+  pagination: Pagination;
+
+  // Actions
+  setFilters: (filters: Partial<UserFilters>) => void;
   fetchUsers: () => Promise<void>;
   fetchUserById: (id: string) => Promise<User>;
-  createUser: (
-    userData: Omit<User, "id" | "createdAt"> & { password: string }
-  ) => Promise<void>;
-  updateUser: (id: string, userData: Partial<User>) => Promise<void>;
+  createUser: (userData: CreateUserData) => Promise<User>;
+  updateUser: (
+    id: string,
+    userData: Partial<User> & { password?: string }
+  ) => Promise<User>;
   deleteUser: (id: string) => Promise<void>;
+  updateUserStatus: (
+    id: string,
+    status: string,
+    reason?: string
+  ) => Promise<User>;
+  updateUserRole: (id: string, role: string) => Promise<User>;
+  activateUser: (id: string) => Promise<User>;
+  resetPassword: (id: string) => Promise<void>;
+  sendResetPasswordEmail: (email: string) => Promise<void>;
+  clearError: () => void;
+  clearUsers: () => void;
+  hardDeleteUser: (id: string) => Promise<void>;
+  getUserDependencies: (id: string) => Promise<any>;
+}
+
+interface CreateUserData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  role: string;
+  status?: string;
+  password?: string;
+  avatar?: string;
 }
 
 export const useUserStore = create<UserManagementState>((set, get) => ({
   users: [],
+  currentUser: null,
   loading: false,
   error: null,
+
+  filters: {
+    search: "",
+    role: "",
+    status: "",
+    page: 1,
+    limit: 20,
+  },
+
+  pagination: {
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  },
+
+  setFilters: (filters) => {
+    set((state) => ({
+      filters: { ...state.filters, ...filters, page: 1 },
+    }));
+    get().fetchUsers();
+  },
 
   fetchUsers: async () => {
     set({ loading: true, error: null });
     try {
-      const response = await api.get("/users");
-      set({ users: response.data, loading: false });
+      const { filters } = get();
+
+      
+      const response = await api.get(`/auth/users`, {
+        params: {
+          search: filters.search || undefined,
+          role: filters.role || undefined,
+          status: filters.status || undefined,
+          page: filters.page || 1,
+          limit: filters.limit || 20,
+        },
+      });
+
+      const { users, pagination } = response.data.data;
+
+      set({
+        users,
+        loading: false,
+        pagination: {
+          page: pagination.page,
+          limit: pagination.limit,
+          total: pagination.totalUsers,
+          totalPages: pagination.totalPages,
+        },
+      });
     } catch (error: any) {
       set({
-        error: error.response?.data?.message || "Erreur de chargement",
+        error:
+          error.response?.data?.message ||
+          "Erreur lors du chargement des utilisateurs",
         loading: false,
       });
-      throw error;
     }
   },
-  fetchPotentialDeans: async () => {
-    try {
-      const response = await api.get("/users/potential/deans");
-      return response.data;
-    } catch (error: any) {
-      console.error("Erreur récupération doyens:", error);
-      throw error;
-    }
-  },
+
   fetchUserById: async (id: string) => {
     set({ loading: true });
     try {
-      const response = await api.get(`/users/${id}`);
-      set({ loading: false });
-      return response.data;
+      const response = await api.get(`/auth/users/${id}`);
+      const user = response.data.data.user;
+
+      set({ loading: false, currentUser: user });
+      return user;
     } catch (error: any) {
       set({
         error: error.response?.data?.message || "Erreur de chargement",
@@ -156,23 +147,19 @@ export const useUserStore = create<UserManagementState>((set, get) => ({
     }
   },
 
-  createUser: async (userData) => {
-    const payload = {
-      firstName: userData.firstName,
-      lastName: userData.lastName,
-      email: userData.email,
-      phone: userData.phone,
-      role: userData.role,
-      status: userData.status,
-      password: userData.password,
-    };
-    set({ loading: true });
+  createUser: async (userData: CreateUserData) => {
+    set({ loading: true, error: null });
     try {
-      const response = await api.post("/auth/register", userData);
+  
+      const response = await api.post("/auth/users", userData);
+      const newUser = response.data.data.user;
+
       set((state) => ({
-        users: [...state.users, response.data.user],
+        users: [newUser, ...state.users],
         loading: false,
       }));
+
+      return newUser;
     } catch (error: any) {
       set({
         error: error.response?.data?.message || "Erreur de création",
@@ -182,16 +169,26 @@ export const useUserStore = create<UserManagementState>((set, get) => ({
     }
   },
 
-  updateUser: async (id, userData) => {
-    set({ loading: true });
+  updateUser: async (
+    id: string,
+    userData: Partial<User> & { password?: string }
+  ) => {
+    set({ loading: true, error: null });
     try {
-      const response = await api.put(`/users/${id}`, userData);
+     
+      const { password, ...updateData } = userData;
+
+      const response = await api.put(`/auth/users/${id}`, updateData);
+      const updatedUser = response.data.data.user;
+
       set((state) => ({
-        users: state.users.map((user) =>
-          user.id === id ? response.data.user : user
-        ),
+        users: state.users.map((user) => (user.id === id ? updatedUser : user)),
+        currentUser:
+          state.currentUser?.id === id ? updatedUser : state.currentUser,
         loading: false,
       }));
+
+      return updatedUser;
     } catch (error: any) {
       set({
         error: error.response?.data?.message || "Erreur de modification",
@@ -201,48 +198,164 @@ export const useUserStore = create<UserManagementState>((set, get) => ({
     }
   },
 
-  deleteUser: async (id) => {
-    set({ loading: true });
+  deleteUser: async (id: string) => {
+    set({ loading: true, error: null });
     try {
-      await api.delete(`/users/${id}`);
+   
+      await api.delete(`/auth/users/${id}`);
+
+      set((state) => ({
+        users: state.users.map((user) =>
+          user.id === id ? { ...user, status: "Inactif" } : user
+        ),
+        loading: false,
+      }));
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur de désactivation",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  updateUserStatus: async (id: string, status: string, reason?: string) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.put(`/auth/users/${id}/status`, {
+        status,
+        reason,
+      });
+      const updatedUser = response.data.data.user;
+
+      set((state) => ({
+        users: state.users.map((user) => (user.id === id ? updatedUser : user)),
+        loading: false,
+      }));
+
+      return updatedUser;
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur lors du changement de statut",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  updateUserRole: async (id: string, role: string) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.put(`/auth/users/${id}/role`, { role });
+      const updatedUser = response.data.data.user;
+
+      set((state) => ({
+        users: state.users.map((user) => (user.id === id ? updatedUser : user)),
+        loading: false,
+      }));
+
+      return updatedUser;
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message || "Erreur lors du changement de rôle",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  activateUser: async (id: string) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.put(`/auth/users/${id}/activate`);
+      const updatedUser = response.data.data.user;
+
+      set((state) => ({
+        users: state.users.map((user) => (user.id === id ? updatedUser : user)),
+        loading: false,
+      }));
+
+      return updatedUser;
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message || "Erreur lors de la réactivation",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  resetPassword: async (id: string) => {
+    set({ loading: true, error: null });
+    try {
+      // Envoyer un email de réinitialisation
+      await api.post(`/auth/users/${id}/reset-password`);
+
+      set({ loading: false });
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur lors de la réinitialisation du mot de passe",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+  hardDeleteUser: async (id: string) => {
+    set({ loading: true, error: null });
+    try {
+      await api.delete(`/auth/users/${id}/hard-delete`);
+
       set((state) => ({
         users: state.users.filter((user) => user.id !== id),
         loading: false,
       }));
     } catch (error: any) {
       set({
-        error: error.response?.data?.message || "Erreur de suppression",
+        error: error.response?.data?.message || "Erreur lors de la suppression",
         loading: false,
       });
       throw error;
     }
   },
 
-  changePassword: async (id, newPassword) => {
+  getUserDependencies: async (id: string) => {
     set({ loading: true });
     try {
-      await api.patch(`/users/${id}/password`, { newPassword });
+      const response = await api.get(`/auth/users/${id}/dependencies`);
       set({ loading: false });
+      return response.data.data.dependencies;
     } catch (error: any) {
       set({
-        error: error.response?.data?.message || "Erreur de modification",
+        error: error.response?.data?.message || "Erreur de chargement",
         loading: false,
       });
       throw error;
     }
   },
 
-  resetPassword: async (email) => {
-    set({ loading: true });
+  sendResetPasswordEmail: async (email: string) => {
+    set({ loading: true, error: null });
     try {
-      await api.post(`/auth/reset-password`, { email });
+      await api.post("/auth/forgot-password", { email });
       set({ loading: false });
     } catch (error: any) {
       set({
-        error: error.response?.data?.message || "Erreur de modification",
+        error:
+          error.response?.data?.message || "Erreur lors de l'envoi de l'email",
         loading: false,
       });
       throw error;
     }
   },
+
+  clearError: () => set({ error: null }),
+  clearUsers: () => set({ users: [], currentUser: null, error: null }),
 }));
+
+export default useUserStore;

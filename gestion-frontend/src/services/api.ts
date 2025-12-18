@@ -1,28 +1,35 @@
-// CORRECTION dans api.ts - Version simplifiée
-import { getAuthState } from "@/store/authStore";
+// CORRECTION dans api.ts - Version corrigée
 import axios from "axios";
+import { toast } from "sonner";
 
 const api = axios.create({
   baseURL: "http://localhost:4000/api",
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 10000, // ✅ Ajouter un timeout
+  timeout: 10000,
 });
 
-// Intercepteur de requête SIMPLIFIÉ
+// Variable pour suivre les redirections en cours
+let isRedirecting = false;
+
+// Intercepteur de requête
 api.interceptors.request.use(
   (config) => {
-    // ✅ CORRECTION: Utiliser une seule source de vérité
+    // Récupérer le token du localStorage uniquement
     const token = localStorage.getItem("authToken");
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    console.log(
-      `🔄 API Request: ${config.method?.toUpperCase()} ${config.url}`
-    );
+    // Debug: seulement en développement
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        `🔄 API Request: ${config.method?.toUpperCase()} ${config.url}`
+      );
+    }
+
     return config;
   },
   (error) => {
@@ -31,15 +38,19 @@ api.interceptors.request.use(
   }
 );
 
-// Intercepteur de réponse UNIQUE
+// Intercepteur de réponse CORRIGÉ
 api.interceptors.response.use(
   (response) => {
-    console.log(`✅ API Response: ${response.status} ${response.config.url}`);
+    // Debug: seulement en développement
+    if (process.env.NODE_ENV === "development") {
+      console.log(`✅ API Response: ${response.status} ${response.config.url}`);
+    }
     return response;
   },
   (error) => {
     const { config, response } = error;
 
+    // Pas de réponse = erreur réseau
     if (!response) {
       console.error("❌ Network error:", error.message);
       return Promise.reject(new Error("Erreur de connexion au serveur"));
@@ -48,43 +59,84 @@ api.interceptors.response.use(
     const { status } = response;
     const url = config?.url;
 
-    console.log(`❌ API Error: ${status} ${url}`);
+    // Debug
+    if (process.env.NODE_ENV === "development") {
+      console.log(`❌ API Error: ${status} ${url}`);
+    }
 
+    // ✅ CORRECTION IMPORTANTE: NE PAS rediriger pour les requêtes d'authentification
     if (status === 401) {
-      // ✅ CORRECTION: Liste étendue des endpoints où 401 est normale
-      const allowed401Endpoints = [
+      // Routes où une erreur 401 est normale et ne doit pas rediriger
+      const authRoutes = [
         "/auth/login",
-        "/auth/verify-password",
         "/auth/register",
+        "/auth/verify-password",
+        "/auth/verify",
+        "/auth/me", // ✅ AJOUT CRITIQUE: ne pas rediriger pour /auth/me
       ];
 
-      const shouldIgnore401 = allowed401Endpoints.some((endpoint) =>
-        url?.includes(endpoint)
-      );
+      const isAuthRoute = authRoutes.some((route) => url?.includes(route));
 
-      if (shouldIgnore401) {
-        console.log("🔄 Erreur 401 normale (login/register)");
+      if (isAuthRoute) {
+        // Pour les routes d'authentification, on rejette simplement l'erreur
         return Promise.reject(error);
       }
 
-      // Pour les vraies erreurs d'authentification
-      console.log("🔐 Session expirée, déconnexion...");
+      // Pour les autres routes 401, on gère la déconnexion
+      // Éviter les redirections multiples
+      if (!isRedirecting) {
+        isRedirecting = true;
 
-      // ✅ CORRECTION: Nettoyage sécurisé
-      localStorage.removeItem("authToken");
-      localStorage.removeItem("userData");
+        // Nettoyage sécurisé
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("userData");
 
-      if (api?.defaults?.headers) {
-        delete api.defaults.headers.common["Authorization"];
-      }
+        // Supprimer le header Authorization
+        if (api?.defaults?.headers) {
+          delete api.defaults.headers.common["Authorization"];
+        }
 
-      getAuthState().logout("Session expirée");
-
-      // Redirection vers login si pas déjà sur la page
-      if (!window.location.pathname.includes("/login")) {
-        window.location.href = "/login";
+        // Attendre un peu avant la redirection pour éviter les boucles
+        setTimeout(() => {
+          // Rediriger uniquement si pas déjà sur la page de login
+          if (!window.location.pathname.includes("/login")) {
+            window.location.href = `/login?redirect=${encodeURIComponent(
+              window.location.pathname
+            )}`;
+          }
+          isRedirecting = false;
+        }, 100);
       }
     }
+
+    // Pour toutes les autres erreurs, rejeter normalement
+    return Promise.reject(error);
+  }
+);
+
+api.interceptors.response.use(
+  (response) => {
+    console.log(" API Response:", response.status, response.config.url);
+    return response;
+  },
+  (error) => {
+    console.error(" API Error:", error.response?.status, error.config?.url);
+
+    // AJOUTEZ CES LOGS :
+    if (error.response) {
+      console.error("📄 Error Data:", error.response.data);
+      console.error("📋 Error Message:", error.response.data?.message);
+      console.error("🔤 Error Code:", error.response.data?.code);
+      console.error("🔍 Full Error Response:", error.response);
+      const errorMessage = error.response.data?.message;
+      toast.error(errorMessage);
+    }
+
+    if (error.request) {
+      console.error("🌐 No Response:", error.request);
+    }
+
+    console.error("🔧 Error Config:", error.config);
 
     return Promise.reject(error);
   }

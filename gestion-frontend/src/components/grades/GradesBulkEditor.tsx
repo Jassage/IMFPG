@@ -49,7 +49,7 @@ import {
   DownloadCloud,
   UploadCloud,
 } from "lucide-react";
-import { useAcademicStore } from "../../store/studentStore";
+// import { useAcademicStore } from "../../store/studentStore";
 import { useAcademicYearStore } from "@/store/academicYearStore";
 import { useFacultyStore } from "@/store/facultyStore";
 import { useUEStore } from "@/store/courseStore";
@@ -60,6 +60,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { useInitialData } from "@/hooks/useInitialData";
 import { GradeImportWizard } from "../GradeImportWizard";
+import useStudentStore from "@/store/studentStore";
 
 // Types améliorés avec validation
 interface GradeEditModalProps {
@@ -401,7 +402,7 @@ const BulkControls = ({
 
 export const GradesBulkEditor = () => {
   useInitialData();
-  const { students, fetchStudents } = useAcademicStore();
+  const { students, fetchStudents } = useStudentStore();
   const { academicYears } = useAcademicYearStore();
   const { faculties } = useFacultyStore();
   const { ues: allUes } = useUEStore();

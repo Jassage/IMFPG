@@ -1,62 +1,24 @@
+// store/gradeStore.ts
 import { create } from "zustand";
-import { Grade, GradeWithDetails } from "../types/academic";
+import {
+  Grade,
+  GradeStatus,
+  GradeSession,
+  ControlType,
+  ClassLevel,
+  ClassLevelFilter,
+} from "../types/academic";
 import api from "@/services/api";
+import { toast } from "sonner";
 
-// Types améliorés
-interface GradeStore {
-  grades: Grade[];
-  loading: boolean;
-  error: string | null;
-  fetchGrades: (filters?: GradeFilters) => Promise<void>;
-  fetchGradesByStudent: (studentId: string) => Promise<GradeWithDetails[]>;
-  fetchGradesByUE: (
-    ueId: string,
-    academicYear?: string
-  ) => Promise<GradeWithDetails[]>;
-  fetchStudentGrades: (
-    studentId: string,
-    academicYear?: string
-  ) => Promise<GradeWithDetails[]>;
-  addGrade: (
-    grade: Omit<Grade, "id" | "createdAt" | "updatedAt">
-  ) => Promise<Grade>;
-  updateGrade: (
-    id: string,
-    grade: Partial<Grade>,
-    isRetake?: boolean
-  ) => Promise<Grade | { grade: Grade }>;
-  deleteGrade: (id: string) => Promise<void>;
-  bulkAddGrades: (
-    grades: Omit<Grade, "id" | "createdAt" | "updatedAt">[]
-  ) => Promise<Grade[]>;
-  recalculateStatus: (
-    grade: number,
-    passingGrade?: number
-  ) => "Valid_" | "Non_valid_" | "reprendre";
-  getStudentGradeForUE: (
-    studentId: string,
-    ueId: string,
-    academicYear: string,
-    semester: string
-  ) => Grade | null;
-  clearError: () => void;
-  getStudentGradeHistory: (
-    studentId: string,
-    ueId: string,
-    academicYearId: string,
-    semester: string
-  ) => Grade[];
-
-  // Méthode pour récupérer toutes les notes d'un étudiant (y compris historiques)
-  getAllStudentGrades: (studentId: string) => Grade[];
-  getGradeHistory: (
-    studentId: string,
-    ueId: string,
-    academicYearId: string,
-    semester: string
-  ) => Promise<Grade[]>;
-  importGradesFromExcel: (file: File) => Promise<ImportResult>;
-  downloadGradeTemplate: () => Promise<void>;
+interface GradeFilters {
+  academicYearId?: string;
+  classLevel?: ClassLevelFilter;
+  subjectId?: string;
+  controlType?: ControlType | "";
+  session?: GradeSession | "";
+  status?: GradeStatus | "";
+  studentId?: string;
 }
 
 interface ImportResult {
@@ -74,61 +36,85 @@ interface ImportResult {
   };
 }
 
-interface GradeFilters {
-  studentId?: string;
-  ueId?: string;
-  academicYear?: string;
-  semester?: "S1" | "S2";
-  status?: Grade["status"];
-}
+// UNE SEULE DÉFINITION DE L'INTERFACE
+export interface GradeStore {
+  grades: Grade[];
+  loading: boolean;
+  isSaving: boolean; // Cette propriété était manquante dans l'initialisation
+  error: string | null;
 
-// Classe d'erreur métier
-class GradeStoreError extends Error {
-  constructor(message: string, public code: string, public context?: any) {
-    super(message);
-    this.name = "GradeStoreError";
-  }
-}
+  fetchGrades: (filters?: GradeFilters) => Promise<void>;
+  fetchGradeById: (id: string) => Promise<Grade>;
+  fetchStudentGrades: (studentId: string) => Promise<Grade[]>;
+  fetchSubjectGrades: (subjectId: string) => Promise<Grade[]>;
 
-// Validateur de données
-class GradeDataValidator {
-  static validateGradeInput(gradeData: any): void {
-    const errors: string[] = [];
+  addGrade: (
+    gradeData: Omit<
+      Grade,
+      | "id"
+      | "createdAt"
+      | "updatedAt"
+      | "student"
+      | "subject"
+      | "classAssignment"
+      | "academicYear"
+    >
+  ) => Promise<Grade>;
 
-    if (!gradeData.studentId) errors.push("ID étudiant manquant");
-    if (!gradeData.ueId) errors.push("ID UE manquant");
-    if (gradeData.grade === undefined || gradeData.grade === null)
-      errors.push("Note manquante");
-
-    if (gradeData.grade !== undefined) {
-      const grade = Number(gradeData.grade);
-      if (isNaN(grade)) errors.push("La note doit être un nombre");
-      if (grade < 0 || grade > 100)
-        errors.push("La note doit être entre 0 et 100");
+  updateGrade: (
+    id: string,
+    gradeData: {
+      grade?: number;
+      status?: GradeStatus;
+      session?: GradeSession;
+      controlType?: ControlType;
+      notes?: string;
+      isActive?: boolean;
     }
+  ) => Promise<Grade>;
 
-    if (!gradeData.academicYearId) errors.push("Année académique manquante");
-    if (!gradeData.semester) errors.push("Semestre manquant");
+  deleteGrade: (id: string) => Promise<void>;
 
-    if (errors.length > 0) {
-      throw new GradeStoreError(
-        errors.join(", "),
-        "VALIDATION_ERROR",
-        gradeData
-      );
-    }
-  }
+  bulkAddGrades: (
+    gradesData: Omit<
+      Grade,
+      | "id"
+      | "createdAt"
+      | "updatedAt"
+      | "student"
+      | "subject"
+      | "classAssignment"
+      | "academicYear"
+    >[]
+  ) => Promise<Grade[]>;
+
+  recalculateStatus: (grade: number, passingGrade: number) => GradeStatus;
+
+  getStudentGradeForSubject: (
+    studentId: string,
+    subjectId: string,
+    academicYearId: string,
+    controlType: ControlType,
+    session: GradeSession
+  ) => Grade | null;
+
+  importGradesFromExcel: (file: File) => Promise<ImportResult>;
+  downloadGradeTemplate: () => Promise<void>;
+  clearError: () => void;
 }
 
 export const useGradeStore = create<GradeStore>((set, get) => ({
+  // ÉTAT INITIAL - AJOUTEZ isSaving
   grades: [],
   loading: false,
+  isSaving: false, // ← AJOUTEZ CETTE LIGNE
   error: null,
 
   fetchGrades: async (filters = {}) => {
     set({ loading: true, error: null });
     try {
       const params = new URLSearchParams();
+
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== "") {
           params.append(key, value.toString());
@@ -137,100 +123,127 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
 
       const response = await api.get(`/grades?${params}`);
 
+      console.log("📊 API Response for grades:", {
+        status: response.status,
+        data: response.data,
+        isArray: Array.isArray(response.data),
+        hasData: !!response.data?.data,
+        hasGrades: !!response.data?.grades,
+      });
+
       if (response.status !== 200) {
-        throw new GradeStoreError(
-          `Erreur HTTP ${response.status}`,
-          "NETWORK_ERROR"
-        );
+        throw new Error(`Erreur HTTP ${response.status}`);
       }
 
-      // CORRECTION : S'assurer que response.data est bien un tableau
-      const gradesData = Array.isArray(response.data)
-        ? response.data
-        : Array.isArray(response.data?.grades)
-        ? response.data.grades
-        : [];
+      let gradesData = [];
 
-      set({ grades: gradesData, loading: false });
+      if (Array.isArray(response.data)) {
+        gradesData = response.data;
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        gradesData = response.data.data;
+      } else if (response.data?.grades && Array.isArray(response.data.grades)) {
+        gradesData = response.data.grades;
+      } else if (
+        response.data?.results &&
+        Array.isArray(response.data.results)
+      ) {
+        gradesData = response.data.results;
+      } else {
+        console.warn(" Structure de réponse inattendue:", response.data);
+        if (typeof response.data === "object" && response.data !== null) {
+          gradesData = Object.values(response.data).filter(
+            (item) => typeof item === "object" && item !== null && "id" in item
+          );
+        }
+      }
+
+      console.log(" Extracted grades:", gradesData);
+
+      set({
+        grades: gradesData,
+        loading: false,
+      });
     } catch (error) {
-      const storeError =
-        error instanceof GradeStoreError
-          ? error
-          : new GradeStoreError(
-              "Erreur lors du chargement des notes",
-              "FETCH_ERROR",
-              { filters, error }
-            );
-
-      set({ error: storeError.message, loading: false });
-      throw storeError;
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur inconnue";
+      console.error(" Error fetching grades:", errorMessage);
+      set({ error: errorMessage, loading: false });
+      throw error;
     }
   },
 
-  fetchGradesByStudent: async (studentId: string) => {
+  fetchGradeById: async (id: string) => {
     set({ loading: true, error: null });
     try {
-      if (!studentId) {
-        throw new GradeStoreError("ID étudiant manquant", "VALIDATION_ERROR");
+      const response = await api.get(`/grades/${id}`);
+
+      if (response.status !== 200) {
+        throw new Error(`Erreur HTTP ${response.status}`);
       }
 
+      set({ loading: false });
+      return response.data?.grade || response.data;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur inconnue";
+      set({ error: errorMessage, loading: false });
+      throw error;
+    }
+  },
+
+  fetchStudentGrades: async (studentId: string) => {
+    set({ loading: true, error: null });
+    try {
       const response = await api.get(`/grades/student/${studentId}`);
 
       if (response.status !== 200) {
-        throw new GradeStoreError(
-          `Erreur HTTP ${response.status}`,
-          "NETWORK_ERROR"
-        );
+        throw new Error(`Erreur HTTP ${response.status}`);
       }
 
       set({ loading: false });
       return response.data?.grades || response.data || [];
     } catch (error) {
-      const storeError =
-        error instanceof GradeStoreError
-          ? error
-          : new GradeStoreError(
-              "Erreur lors du chargement des notes de l'étudiant",
-              "FETCH_ERROR",
-              { studentId, error }
-            );
-
-      set({ error: storeError.message, loading: false });
-      throw storeError;
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur inconnue";
+      set({ error: errorMessage, loading: false });
+      throw error;
     }
   },
 
-  // Dans gradeStore.ts - Améliorer addGrade
-  addGrade: async (gradeData) => {
+  fetchSubjectGrades: async (subjectId: string) => {
     set({ loading: true, error: null });
     try {
-      // Validation des données
-      GradeDataValidator.validateGradeInput(gradeData);
+      const response = await api.get(`/grades/subject/${subjectId}`);
 
-      console.log("🔄 Store: Adding grade", gradeData);
-
-      const response = await api.post("/grades", gradeData);
-
-      // Gérer les différents codes de statut
-      if (response.status === 409) {
-        // Conflit - note déjà existante
-        const conflictData = response.data;
-        throw new GradeStoreError(
-          conflictData.error || "Note déjà existante",
-          "CONFLICT_ERROR",
-          {
-            gradeData,
-            existingGrade: conflictData.existingGrade,
-            suggestions: conflictData.suggestions,
-          }
-        );
+      if (response.status !== 200) {
+        throw new Error(`Erreur HTTP ${response.status}`);
       }
 
+      set({ loading: false });
+      return response.data?.grades || response.data || [];
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur inconnue";
+      set({ error: errorMessage, loading: false });
+      throw error;
+    }
+  },
+
+  addGrade: async (gradeData) => {
+    set({ loading: true, isSaving: true, error: null });
+    try {
+      const validatedData = {
+        ...gradeData,
+        status: gradeData.status as GradeStatus,
+        session: gradeData.session as GradeSession,
+        controlType: gradeData.controlType as ControlType,
+        classLevel: gradeData.classLevel as ClassLevel,
+      };
+
+      const response = await api.post("/grades", validatedData);
+
       if (response.status !== 201 && response.status !== 200) {
-        throw new GradeStoreError(
-          `Erreur HTTP ${response.status}`,
-          "NETWORK_ERROR"
-        );
+        throw new Error(`Erreur HTTP ${response.status}`);
       }
 
       const newGrade = response.data?.grade || response.data;
@@ -238,264 +251,54 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
       set((state) => ({
         grades: [...state.grades, newGrade],
         loading: false,
+        isSaving: false,
       }));
 
       return newGrade;
     } catch (error) {
-      console.error("❌ Store: Error adding grade:", error);
-
-      // Gérer spécifiquement les conflits
-      if (error.response?.status === 409) {
-        const storeError = new GradeStoreError(
-          error.response.data?.error ||
-            "Une note existe déjà pour cet étudiant et ce cours",
-          "CONFLICT_ERROR",
-          {
-            gradeData,
-            existingGrade: error.response.data?.existingGrade,
-            suggestions: error.response.data?.suggestions,
-          }
-        );
-        set({ error: storeError.message, loading: false });
-        throw storeError;
-      }
-
-      const storeError =
-        error instanceof GradeStoreError
-          ? error
-          : new GradeStoreError(
-              "Erreur lors de l'ajout de la note",
-              "ADD_ERROR",
-              { gradeData, error: error.message }
-            );
-
-      set({ error: storeError.message, loading: false });
-      throw storeError;
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur inconnue";
+      toast.error(errorMessage);
+      set({ error: errorMessage, loading: false, isSaving: false });
+      throw error;
     }
   },
 
-  // store/gradeStore.ts - Corriger la méthode updateGrade
-  updateGrade: async (id, gradeData, isRetake = false) => {
-    set({ loading: true, error: null });
+  updateGrade: async (id, gradeData) => {
+    set({ loading: true, isSaving: true, error: null });
     try {
-      if (!id) {
-        throw new GradeStoreError("ID de note manquant", "VALIDATION_ERROR");
-      }
-
-      console.log("🔄 Store: Updating grade", { id, gradeData, isRetake });
-
-      // Validation partielle pour la mise à jour
-      if (gradeData.grade !== undefined) {
-        const grade = Number(gradeData.grade);
-        if (isNaN(grade) || grade < 0 || grade > 100) {
-          throw new GradeStoreError("Note invalide", "VALIDATION_ERROR");
-        }
-      }
-
-      const response = await api.put(`/grades/${id}`, {
-        ...gradeData,
-        isRetake,
-      });
-
-      console.log("📡 API Response:", response);
+      const response = await api.put(`/grades/${id}`, gradeData);
 
       if (response.status !== 200) {
-        throw new GradeStoreError(
-          `Erreur HTTP ${response.status}: ${response.statusText}`,
-          "NETWORK_ERROR"
-        );
+        throw new Error(`Erreur HTTP ${response.status}`);
       }
 
-      const result = response.data;
-
-      if (isRetake && result.grade) {
-        // Si c'est une reprise, ajouter la nouvelle note
-        console.log("🔄 Adding retake grade to store:", result.grade);
-        set((state) => ({
-          grades: [...state.grades, result.grade],
-          loading: false,
-        }));
-        return result;
-      } else {
-        // Mise à jour normale
-        console.log("✏️ Updating existing grade in store");
-        set((state) => ({
-          grades: state.grades.map((grade) =>
-            grade.id === id ? { ...grade, ...gradeData } : grade
-          ),
-          loading: false,
-        }));
-        return result.grade || result;
-      }
-    } catch (error) {
-      console.error("❌ Store: Error updating grade:", error);
-
-      // Amélioration du message d'erreur
-      let errorMessage = "Erreur lors de la modification de la note";
-      if (error.response?.status === 404) {
-        errorMessage = "Note non trouvée. Vérifiez que la note existe encore.";
-      } else if (error.response?.status === 400) {
-        errorMessage = "Données invalides pour la mise à jour";
-      }
-
-      const storeError = new GradeStoreError(errorMessage, "UPDATE_ERROR", {
-        id,
-        gradeData,
-        isRetake,
-        error: error.message,
-      });
-
-      set({ error: storeError.message, loading: false });
-      throw storeError;
-    }
-  },
-
-  bulkAddGrades: async (grades) => {
-    set({ loading: true, error: null });
-    try {
-      // Validation de toutes les notes
-      grades.forEach((gradeData) => {
-        GradeDataValidator.validateGradeInput(gradeData);
-      });
-
-      const response = await api.post("/grades/bulk", { grades });
-
-      if (response.status !== 201) {
-        throw new GradeStoreError(
-          `Erreur HTTP ${response.status}`,
-          "NETWORK_ERROR"
-        );
-      }
-
-      const newGrades = response.data?.results?.success || response.data || [];
+      const updatedGrade = response.data?.grade || response.data;
 
       set((state) => ({
-        grades: [...state.grades, ...newGrades],
+        grades: state.grades.map((grade) =>
+          grade.id === id ? { ...grade, ...updatedGrade } : grade
+        ),
         loading: false,
+        isSaving: false, // ← AJOUTEZ isSaving: false
       }));
 
-      return newGrades;
+      return updatedGrade;
     } catch (error) {
-      const storeError =
-        error instanceof GradeStoreError
-          ? error
-          : new GradeStoreError(
-              "Erreur lors de l'ajout des notes en masse",
-              "BULK_ADD_ERROR",
-              { gradesCount: grades.length, error }
-            );
-
-      set({ error: storeError.message, loading: false });
-      throw storeError;
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur inconnue";
+      set({ error: errorMessage, loading: false, isSaving: false }); // ← AJOUTEZ isSaving: false
+      throw error;
     }
-  },
-  // store/gradeStore.ts - Corriger l'implémentation
-  getGradeHistory: async (
-    studentId: string,
-    ueId: string,
-    academicYearId: string,
-    semester: string
-  ): Promise<Grade[]> => {
-    set({ loading: true, error: null });
-
-    try {
-      console.log("🔍 getGradeHistory API call:", {
-        studentId,
-        ueId,
-        academicYearId,
-        semester,
-      });
-
-      // Appel API direct pour récupérer l'historique
-      const response = await api.get(
-        `/grades/history/${studentId}/${ueId}/${academicYearId}/${semester}`
-      );
-
-      console.log("🔍 getGradeHistory API response:", {
-        status: response.status,
-        data: response.data,
-      });
-
-      if (response.status !== 200) {
-        throw new GradeStoreError(
-          `Erreur HTTP ${response.status}`,
-          "NETWORK_ERROR"
-        );
-      }
-
-      // Extraire les notes de la réponse et les typer correctement
-      const historyGrades: Grade[] =
-        response.data?.grades || response.data || [];
-      console.log("🔍 History grades from API:", historyGrades.length);
-
-      // Mettre à jour le store avec l'historique
-      set((state) => {
-        // Filtrer les notes existantes pour éviter les doublons
-        const existingIds = new Set(state.grades.map((g) => g.id));
-        const newGrades = historyGrades.filter(
-          (grade: Grade) => !existingIds.has(grade.id)
-        );
-
-        return {
-          grades: [...state.grades, ...newGrades],
-          loading: false,
-        };
-      });
-
-      return historyGrades; // Retourne Grade[] comme promis
-    } catch (error) {
-      console.error("❌ Error in getGradeHistory:", error);
-
-      const storeError = new GradeStoreError(
-        "Erreur lors du chargement de l'historique",
-        "HISTORY_FETCH_ERROR",
-        { studentId, ueId, academicYearId, semester, error: error.message }
-      );
-
-      set({ error: storeError.message, loading: false });
-      throw storeError;
-    }
-  },
-
-  getAllGradesByStudent: (studentId: string): Grade[] => {
-    const { grades } = get();
-    return grades.filter((grade) => grade.studentId === studentId);
-  },
-  getStudentGradeHistory: (studentId, ueId, academicYearId, semester) => {
-    const { grades } = get();
-    return grades
-      .filter(
-        (grade) =>
-          grade.studentId === studentId &&
-          grade.ueId === ueId &&
-          grade.academicYearId === academicYearId &&
-          grade.semester === semester
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-  },
-
-  getAllStudentGrades: (studentId) => {
-    const { grades } = get();
-    return grades.filter((grade) => grade.studentId === studentId);
   },
 
   deleteGrade: async (id) => {
     set({ loading: true, error: null });
     try {
-      if (!id) {
-        throw new GradeStoreError("ID de note manquant", "VALIDATION_ERROR");
-      }
-
       const response = await api.delete(`/grades/${id}`);
 
       if (response.status !== 200) {
-        throw new GradeStoreError(
-          `Erreur HTTP ${response.status}`,
-          "NETWORK_ERROR"
-        );
+        throw new Error(`Erreur HTTP ${response.status}`);
       }
 
       set((state) => ({
@@ -503,131 +306,127 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         loading: false,
       }));
     } catch (error) {
-      const storeError =
-        error instanceof GradeStoreError
-          ? error
-          : new GradeStoreError(
-              "Erreur lors de la suppression de la note",
-              "DELETE_ERROR",
-              { id, error }
-            );
-
-      set({ error: storeError.message, loading: false });
-      throw storeError;
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur inconnue";
+      set({ error: errorMessage, loading: false });
+      throw error;
     }
   },
 
-  recalculateStatus: (grade, passingGrade = 10) => {
+  bulkAddGrades: async (
+    gradesData: Omit<
+      Grade,
+      | "id"
+      | "createdAt"
+      | "updatedAt"
+      | "student"
+      | "subject"
+      | "classAssignment"
+      | "academicYear"
+    >[]
+  ) => {
+    try {
+      console.log(" Starting bulk add for", gradesData.length, "grades");
+      set({ loading: true, isSaving: true, error: null });
+
+      const createdGrades: Grade[] = [];
+
+      try {
+        const response = await api.post("/grades/bulk", gradesData);
+        console.log(" Bulk add successful:", response.data);
+
+        let gradesArray: Grade[] = [];
+
+        if (Array.isArray(response.data)) {
+          gradesArray = response.data;
+        } else if (response.data?.data && Array.isArray(response.data.data)) {
+          gradesArray = response.data.data;
+        } else if (
+          response.data?.grades &&
+          Array.isArray(response.data.grades)
+        ) {
+          gradesArray = response.data.grades;
+        }
+
+        createdGrades.push(...gradesArray);
+      } catch (bulkError) {
+        console.log(
+          " Bulk endpoint failed, falling back to individual requests:",
+          bulkError
+        );
+
+        for (const gradeData of gradesData) {
+          try {
+            const response = await api.post("/grades", gradeData);
+            console.log(" Grade added for student:", gradeData.studentId);
+            createdGrades.push(response.data);
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          } catch (error) {
+            console.error(
+              ` Error adding grade for student ${gradeData.studentId}:`,
+              error
+            );
+            const errorMessage =
+              error instanceof Error ? error.message : "Erreur inconnue";
+            toast.error(errorMessage);
+            throw error;
+          }
+        }
+      }
+
+      set((state) => ({
+        grades: [...state.grades, ...createdGrades],
+        loading: false,
+        isSaving: false,
+      }));
+
+      console.log("📊 Created", createdGrades.length, "grades");
+
+      await get().fetchGrades();
+
+      return createdGrades;
+    } catch (error) {
+      console.error(" Error in bulkAddGrades:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur inconnue";
+      toast.error(errorMessage);
+      set({ loading: false, isSaving: false, error: error.message });
+      throw error;
+    }
+  },
+
+  recalculateStatus: (grade, passingGrade) => {
     if (grade >= passingGrade) return "Valid_";
-    if (grade >= passingGrade * 0.7) return "reprendre";
+    if (grade >= passingGrade * 0.7) return "Reprendre";
     return "Non_valid_";
   },
 
-  getStudentGradeForUE: (studentId, ueId, academicYearId, semester) => {
+  getStudentGradeForSubject: (
+    studentId,
+    subjectId,
+    academicYearId,
+    controlType,
+    session
+  ) => {
     const { grades } = get();
 
-    // CORRECTION : Vérification que grades est bien un tableau
-    if (!Array.isArray(grades)) {
-      console.warn("Grades n'est pas un tableau:", grades);
-      return null;
-    }
-
-    if (!studentId || !ueId || !academicYearId || !semester) {
-      console.warn("Paramètres manquants pour getStudentGradeForUE");
-      return null;
-    }
-
-    const foundGrade = grades.find(
-      (grade) =>
-        grade.studentId === studentId &&
-        grade.ueId === ueId &&
-        grade.academicYearId === academicYearId &&
-        grade.semester === semester
+    return (
+      grades.find(
+        (grade) =>
+          grade.studentId === studentId &&
+          grade.subjectId === subjectId &&
+          grade.academicYearId === academicYearId &&
+          grade.controlType === controlType &&
+          grade.session === session
+      ) || null
     );
-
-    return foundGrade || null;
-  },
-
-  clearError: () => set({ error: null }),
-
-  fetchGradesByUE: async (ueId: string, academicYear?: string) => {
-    set({ loading: true, error: null });
-    try {
-      if (!ueId) {
-        throw new GradeStoreError("ID UE manquant", "VALIDATION_ERROR");
-      }
-
-      const params = new URLSearchParams();
-      if (academicYear) params.append("academicYear", academicYear);
-
-      const response = await api.get(`/grades/ue/${ueId}?${params}`);
-
-      if (response.status !== 200) {
-        throw new GradeStoreError(
-          `Erreur HTTP ${response.status}`,
-          "NETWORK_ERROR"
-        );
-      }
-
-      set({ loading: false });
-      return response.data?.grades || response.data || [];
-    } catch (error) {
-      const storeError =
-        error instanceof GradeStoreError
-          ? error
-          : new GradeStoreError(
-              "Erreur lors du chargement des notes de l'UE",
-              "FETCH_ERROR",
-              { ueId, academicYear, error }
-            );
-
-      set({ error: storeError.message, loading: false });
-      throw storeError;
-    }
-  },
-
-  fetchStudentGrades: async (studentId: string, academicYear?: string) => {
-    set({ loading: true, error: null });
-    try {
-      if (!studentId) {
-        throw new GradeStoreError("ID étudiant manquant", "VALIDATION_ERROR");
-      }
-
-      const params = new URLSearchParams();
-      if (academicYear) params.append("academicYear", academicYear);
-
-      const response = await api.get(`/grades/student/${studentId}?${params}`);
-
-      if (response.status !== 200) {
-        throw new GradeStoreError(
-          `Erreur HTTP ${response.status}`,
-          "NETWORK_ERROR"
-        );
-      }
-
-      set({ loading: false });
-      return response.data?.grades || response.data || [];
-    } catch (error) {
-      const storeError =
-        error instanceof GradeStoreError
-          ? error
-          : new GradeStoreError(
-              "Erreur lors du chargement des notes de l'étudiant",
-              "FETCH_ERROR",
-              { studentId, academicYear, error }
-            );
-
-      set({ error: storeError.message, loading: false });
-      throw storeError;
-    }
   },
 
   importGradesFromExcel: async (file: File): Promise<ImportResult> => {
     set({ loading: true, error: null });
 
     try {
-      console.log("📤 Store: Début importation notes Excel");
-
       const formData = new FormData();
       formData.append("file", file);
 
@@ -637,31 +436,18 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         },
       });
 
-      console.log("📨 Store: Réponse importation", response.data);
-
-      const result = response.data;
-
-      // Recharger les notes si l'import a réussi
-      if (result.success && result.summary?.created > 0) {
+      if (response.data?.success && response.data.summary?.created > 0) {
         await get().fetchGrades();
       }
 
       set({ loading: false });
-      return result;
+      return response.data;
     } catch (error: any) {
-      console.error("❌ Store: Erreur importation notes", error);
-
       const errorMessage =
         error.response?.data?.error ||
-        error.response?.data?.message ||
         error.message ||
-        "Erreur lors de l'importation des notes";
-
-      set({
-        loading: false,
-        error: errorMessage,
-      });
-
+        "Erreur lors de l'importation";
+      set({ error: errorMessage, loading: false });
       throw new Error(errorMessage);
     }
   },
@@ -670,13 +456,10 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      console.log("📥 Store: Téléchargement template notes");
-
       const response = await api.get("/grades/import/template", {
         responseType: "blob",
       });
 
-      // Créer un blob et télécharger le fichier
       const blob = new Blob([response.data]);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -689,20 +472,14 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
 
       set({ loading: false });
     } catch (error: any) {
-      console.error("❌ Store: Erreur téléchargement template", error);
-
       const errorMessage =
         error.response?.data?.error ||
-        error.response?.data?.message ||
         error.message ||
-        "Erreur lors du téléchargement du template";
-
-      set({
-        loading: false,
-        error: errorMessage,
-      });
-
+        "Erreur lors du téléchargement";
+      set({ error: errorMessage, loading: false });
       throw new Error(errorMessage);
     }
   },
+
+  clearError: () => set({ error: null }),
 }));

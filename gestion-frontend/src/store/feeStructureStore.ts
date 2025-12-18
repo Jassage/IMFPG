@@ -22,11 +22,11 @@ interface FeeStructureStore {
   ) => Promise<void>;
   deleteFeeStructure: (id: string) => Promise<void>;
 
-  // Actions pour les frais étudiants
   assignFeeToStudent: (
     studentId: string,
     academicYear: string,
-    feeStructureId: string
+    feeStructureId: string,
+    studentCode: string
   ) => Promise<void>;
   getStudentFees: (studentId: string) => Promise<StudentFee[]>;
   getStudentFeeByYear: (
@@ -256,16 +256,19 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
   // Assigner des frais à un étudiant
   assignFeeToStudent: async (
     studentId: string,
-    academicYear: string,
-    feeStructureId: string
+    academicYearId: string,
+    feeStructureId: string,
+    studentCode: string
   ) => {
     set({ loading: true, error: null });
     try {
       const response = await api.post("/student-fees/assign", {
         studentId,
-        academicYear,
+        academicYearId,
         feeStructureId,
+        studentCode,
       });
+      console.log(response);
 
       if (response.data) {
         set((state) => ({

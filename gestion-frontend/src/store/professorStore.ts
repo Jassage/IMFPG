@@ -1,413 +1,447 @@
-// store/professorStore.ts - CORRECTION DE L'INTERFACE
+/**
+ * @file professeurStore.ts
+ * @description Store Zustand pour la gestion des professeurs
+ */
+
 import { create } from "zustand";
-import api from "../services/api";
-import {
-  Professeur,
-  ProfessorAssignment,
-  CreateProfessorData,
-  UpdateProfessorData,
-  ProfessorImportResult,
-} from "../types/academic";
-import { toast } from "sonner";
 
-interface ProfessorStore {
-  professors: Professeur[];
-  assignments: ProfessorAssignment[];
-  loading: boolean;
-  error: string | null;
-
-  // CORRECTION: Types cohérents avec l'implémentation
-  fetchProfessors: () => Promise<void>;
-  fetchProfessorAssignments: (professorId: string) => Promise<void>;
-  addProfessor: (professor: CreateProfessorData) => Promise<Professeur>; // ← Retourne Professeur
-  updateProfessor: (
-    id: string,
-    professor: UpdateProfessorData
-  ) => Promise<Professeur>; // ← Retourne Professeur
-  deleteProfessor: (id: string) => Promise<void>;
-  bulkUpdateStatus: (
-    ids: string[],
-    status: "Actif" | "Inactif"
-  ) => Promise<void>;
-  bulkImportProfessors: (
-    professors: CreateProfessorData[]
-  ) => Promise<ProfessorImportResult>;
-
-  // Utilitaires
-  clearError: () => void;
+// Types
+export interface Professeur {
+  matricule: string;
+  address: string;
+  qualifications: string;
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  speciality?: string;
+  hireDate?: string;
+  status: "Actif" | "Inactif";
+  createdAt: string;
+  updatedAt: string;
+  userId?: string;
+  user?: {
+    id: string;
+    email: string;
+    role: string;
+    status: string;
+  };
+  _count?: {
+    assignments: number;
+    schedules: number;
+    classes: number;
+  };
 }
 
-// store/professorStore.ts - CORRECTION de validateProfessorsData
-const validateProfessorsData = (data: any): Professeur[] => {
-  console.log("🛠️ Validation des données:", data);
-
-  if (!data) {
-    console.warn("❌ Données null ou undefined");
-    return [];
-  }
-
-  // Si c'est un objet avec une propriété data
-  if (data.data && Array.isArray(data.data)) {
-    data = data.data;
-  }
-
-  // Si c'est un objet avec une propriété professeurs
-  if (data.professeurs && Array.isArray(data.professeurs)) {
-    data = data.professeurs;
-  }
-
-  if (!Array.isArray(data)) {
-    console.warn("❌ Données n'est pas un tableau:", typeof data, data);
-    return [];
-  }
-
-  const validProfessors = data.filter((prof: any) => {
-    if (!prof || typeof prof !== "object") {
-      console.warn("❌ Professeur invalide:", prof);
-      return false;
-    }
-
-    // Validation plus flexible selon votre schéma Prisma
-    const isValid =
-      prof.id &&
-      typeof prof.id === "string" &&
-      typeof prof.firstName === "string" &&
-      typeof prof.lastName === "string" &&
-      typeof prof.email === "string";
-
-    if (!isValid) {
-      console.warn("❌ Structure professeur invalide:", prof);
-    }
-
-    return isValid;
-  });
-
-  console.log(
-    `📊 ${validProfessors.length} professeurs valides sur ${data.length}`
-  );
-  return validProfessors;
-};
-// Fonction utilitaire pour créer un Professeur valide
-const createValidProfessor = (apiData: any, defaults: any): Professeur => {
-  // Extraire les données du professeur selon différents formats
-  const professorData = apiData.professor || apiData.data || apiData;
-
-  // CORRECTION: S'assurer que tous les champs requis sont présents
-  return {
-    id: professorData.id || `temp-${Date.now()}`,
-    firstName: professorData.firstName || defaults.firstName,
-    lastName: professorData.lastName || defaults.lastName,
-    email: professorData.email || defaults.email,
-    phone: professorData.phone || defaults.phone,
-    speciality: professorData.speciality || defaults.speciality,
-    status: professorData.status || defaults.status, // Garanti d'avoir une valeur
-    createdAt: professorData.createdAt || new Date().toISOString(),
-    updatedAt: professorData.updatedAt,
+export interface ProfesseurSchedule {
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  classroom?: string;
+  subject?: {
+    id: string;
+    name: string;
+    code: string;
   };
-};
+  class?: {
+    id: string;
+    name: string;
+    level: string;
+  };
+}
 
-export const useProfessorStore = create<ProfessorStore>((set, get) => ({
-  professors: [],
-  assignments: [],
+export interface ProfesseurAssignment {
+  id: string;
+  subject: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  classLevel: string;
+  academicYear: {
+    id: string;
+    year: string;
+  };
+  schedules: Array<{
+    id: string;
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+    classroom?: string;
+  }>;
+}
+
+// Interfaces pour les filtres
+interface ProfesseurFilters {
+  search?: string;
+  status?: string;
+  speciality?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
+// Interface pour l'état du store
+interface ProfesseurStore {
+  // État
+  professeurs: Professeur[];
+  currentProfesseur: Professeur | null;
+  professeurSchedule: ProfesseurSchedule[];
+  professeurAssignments: ProfesseurAssignment[];
+  loading: boolean;
+  error: string | null;
+  filters: ProfesseurFilters;
+
+  // Pagination
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+
+  // Actions
+  setFilters: (filters: Partial<ProfesseurFilters>) => void;
+  fetchProfesseurs: () => Promise<void>;
+  fetchProfesseurById: (id: string) => Promise<Professeur>;
+  fetchProfesseurSchedule: (id: string) => Promise<void>;
+  fetchProfesseurAssignments: (id: string) => Promise<void>;
+  createProfesseur: (
+    professeurData: CreateProfesseurData
+  ) => Promise<Professeur>;
+  updateProfesseur: (
+    id: string,
+    professeurData: UpdateProfesseurData
+  ) => Promise<Professeur>;
+  deleteProfesseur: (id: string) => Promise<void>;
+  activateProfesseur: (id: string) => Promise<Professeur>;
+  deactivateProfesseur: (id: string) => Promise<Professeur>;
+  clearCurrentProfesseur: () => void;
+  clearError: () => void;
+  clearProfesseurs: () => void;
+}
+interface CreateProfesseurData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  speciality?: string;
+  hireDate?: string;
+  userId?: string;
+}
+
+interface UpdateProfesseurData {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  speciality?: string;
+  hireDate?: string;
+  status?: "Actif" | "Inactif";
+  userId?: string;
+}
+
+// Import de l'API
+import api from "../services/api";
+
+export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
+  // État initial
+  professeurs: [],
+  currentProfesseur: null,
+  professeurSchedule: [],
+  professeurAssignments: [],
   loading: false,
   error: null,
 
-  fetchProfessors: async () => {
-    set({ loading: true, error: null });
-
-    try {
-      console.log("🔄 Début du chargement des professeurs...");
-
-      const response = await api.get("/professeurs");
-      console.log("📡 Réponse API professors:", response);
-
-      let professorsData: Professeur[] = [];
-
-      // CORRECTION: Vérifier la structure de réponse de votre API
-      if (response && response.data) {
-        // Votre API retourne { success: true, data: [...], count: ... }
-        if (response.data.success && Array.isArray(response.data.data)) {
-          professorsData = validateProfessorsData(response.data.data);
-        }
-        // Si l'API retourne directement un tableau
-        else if (Array.isArray(response.data)) {
-          professorsData = validateProfessorsData(response.data);
-        }
-        // Structure alternative
-        else if (response.data.professeurs) {
-          professorsData = validateProfessorsData(response.data.professeurs);
-        }
-
-        console.log(`✅ ${professorsData.length} professeurs validés`);
-      } else {
-        console.warn("⚠️ Réponse API invalide:", response);
-        professorsData = [];
-      }
-
-      set({
-        professors: professorsData,
-        loading: false,
-      });
-
-      console.log("✅ Chargement des professeurs terminé");
-    } catch (err: any) {
-      console.error("❌ Erreur fetchProfessors:", err);
-
-      const errorMessage =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.message ||
-        "Erreur lors du chargement des professeurs";
-
-      set({
-        professors: [],
-        error: errorMessage,
-        loading: false,
-      });
-
-      toast.error(errorMessage);
-      throw err;
-    }
+  filters: {
+    search: "",
+    status: "",
+    speciality: "",
+    page: 1,
+    limit: 20,
+    sortBy: "lastName",
+    sortOrder: "asc",
   },
 
-  fetchProfessorAssignments: async (professorId: string) => {
+  pagination: {
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  },
+
+  // Actions
+
+  setFilters: (filters) => {
+    set((state) => ({
+      filters: { ...state.filters, ...filters, page: 1 },
+    }));
+    get().fetchProfesseurs();
+  },
+
+  fetchProfesseurs: async () => {
     set({ loading: true, error: null });
 
     try {
-      const response = await api.get(`/professeurs/${professorId}/assignments`);
+      const { filters } = get();
 
-      const assignmentsData = Array.isArray(response?.data)
-        ? response.data
-        : [];
-
-      set({
-        assignments: assignmentsData,
-        loading: false,
+      const response = await api.get("/professeurs", {
+        params: {
+          search: filters.search || undefined,
+          status: filters.status || undefined,
+          speciality: filters.speciality || undefined,
+          page: filters.page || 1,
+          limit: filters.limit || 20,
+          sortBy: filters.sortBy,
+          sortOrder: filters.sortOrder,
+        },
       });
-    } catch (err: any) {
-      console.error("Erreur fetchProfessorAssignments:", err);
+
+      const { professeurs, pagination } = response.data.data;
 
       set({
-        assignments: [],
+        professeurs,
+        loading: false,
+        pagination: {
+          page: pagination.page,
+          limit: pagination.limit,
+          total: pagination.total,
+          totalPages: pagination.totalPages,
+        },
+      });
+    } catch (error: any) {
+      set({
         error:
-          err.response?.data?.error ||
-          "Erreur lors du chargement des affectations",
+          error.response?.data?.message ||
+          "Erreur lors du chargement des professeurs",
         loading: false,
       });
-
-      throw err;
     }
   },
-  // store/professorStore.ts - VERSION SIMPLIFIÉE ET ROBUSTE
-  addProfessor: async (
-    professorData: CreateProfessorData
-  ): Promise<Professeur> => {
+
+  fetchProfesseurById: async (id: string) => {
     set({ loading: true, error: null });
 
     try {
-      console.log("🔄 Tentative d'ajout du professeur:", professorData);
-
-      // CORRECTION: Préparation des données avec valeurs par défaut
-      const professorWithDefaults = {
-        status: "Actif" as const,
-        phone: "",
-        speciality: "",
-        ...professorData,
-      };
-
-      const response = await api.post("/professeurs", professorWithDefaults);
-      console.log("📡 Réponse API addProfessor:", response);
-
-      let newProfessor: Professeur;
-
-      if (response?.data) {
-        // CORRECTION: Fonction utilitaire pour créer un Professeur valide
-        newProfessor = createValidProfessor(
-          response.data,
-          professorWithDefaults
-        );
-      } else {
-        // Fallback: création locale
-        newProfessor = {
-          id: `temp-${Date.now()}`,
-          ...professorWithDefaults,
-          createdAt: new Date().toISOString(),
-        };
-      }
-
-      set((state) => ({
-        professors: [...state.professors, newProfessor],
-        loading: false,
-      }));
-
-      toast.success("Professeur ajouté avec succès");
-      return newProfessor;
-    } catch (err: any) {
-      console.error("❌ Erreur addProfessor:", err);
-
-      const errorMessage =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.message ||
-        "Erreur lors de l'ajout du professeur";
+      const response = await api.get(`/professeurs/${id}`);
+      const professeur = response.data.data.professeur;
 
       set({
-        error: errorMessage,
+        currentProfesseur: professeur,
         loading: false,
       });
 
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
+      return professeur;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur de chargement",
+        loading: false,
+      });
+      throw error;
     }
   },
 
-  // CORRECTION: updateProfessor doit aussi retourner Professeur
-  updateProfessor: async (
-    id: string,
-    professorData: UpdateProfessorData
-  ): Promise<Professeur> => {
+  fetchProfesseurSchedule: async (id: string) => {
     set({ loading: true, error: null });
 
     try {
-      const response = await api.put(`/professeurs/${id}`, professorData);
+      const response = await api.get(`/professeurs/${id}/schedule`);
+      const { scheduleByDay, totalSessions } = response.data.data;
 
-      let updatedProfessor: Professeur;
-
-      if (response?.data) {
-        updatedProfessor = createValidProfessor(response.data, professorData);
-      } else {
-        // Fallback: trouver le professeur et le mettre à jour localement
-        const existingProfessor = get().professors.find((p) => p.id === id);
-        if (!existingProfessor) {
-          throw new Error("Professeur non trouvé");
+      // Convertir l'objet en tableau plat
+      const scheduleArray: ProfesseurSchedule[] = [];
+      Object.entries(scheduleByDay).forEach(
+        ([day, schedules]: [string, any]) => {
+          schedules.forEach((schedule: any) => {
+            scheduleArray.push({
+              ...schedule,
+              dayOfWeek: parseInt(day),
+            });
+          });
         }
-        // CORRECTION: Garder le status existant si non fourni
-        updatedProfessor = {
-          ...existingProfessor,
-          ...professorData,
-          status: professorData.status || existingProfessor.status, // Garde l'ancien status si non fourni
-        };
-      }
-
-      set((state) => ({
-        professors: state.professors.map((prof) =>
-          prof.id === id ? updatedProfessor : prof
-        ),
-        loading: false,
-      }));
-
-      toast.success("Professeur modifié avec succès");
-      return updatedProfessor;
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error ||
-        err.message ||
-        "Erreur lors de la modification du professeur";
+      );
 
       set({
-        error: errorMessage,
+        professeurSchedule: scheduleArray,
         loading: false,
       });
-
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur de chargement de l'emploi du temps",
+        loading: false,
+      });
+      throw error;
     }
   },
 
-  deleteProfessor: async (id: string) => {
+  fetchProfesseurAssignments: async (id: string) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.get(`/professeurs/${id}/assignments`);
+      const assignments = response.data.data.assignments;
+
+      set({
+        professeurAssignments: assignments,
+        loading: false,
+      });
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur de chargement des assignations",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  createProfesseur: async (professeurData: CreateProfesseurData) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.post("/professeurs", professeurData);
+      const newProfesseur = response.data.data.professeur;
+
+      set((state) => ({
+        professeurs: [newProfesseur, ...state.professeurs],
+        loading: false,
+      }));
+
+      return newProfesseur;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur de création",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  updateProfesseur: async (
+    id: string,
+    professeurData: UpdateProfesseurData
+  ) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.put(`/professeurs/${id}`, professeurData);
+      const updatedProfesseur = response.data.data.professeur;
+
+      set((state) => ({
+        professeurs: state.professeurs.map((prof) =>
+          prof.id === id ? updatedProfesseur : prof
+        ),
+        currentProfesseur: updatedProfesseur,
+        loading: false,
+      }));
+
+      return updatedProfesseur;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur de modification",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  deleteProfesseur: async (id: string) => {
     set({ loading: true, error: null });
 
     try {
       await api.delete(`/professeurs/${id}`);
 
       set((state) => ({
-        professors: state.professors.filter((prof) => prof.id !== id),
+        professeurs: state.professeurs.filter((prof) => prof.id !== id),
         loading: false,
       }));
-
-      toast.success("Professeur supprimé avec succès");
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error ||
-        err.message ||
-        "Erreur lors de la suppression du professeur";
-
+    } catch (error: any) {
       set({
-        error: errorMessage,
+        error: error.response?.data?.message || "Erreur de suppression",
         loading: false,
       });
-
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
+      throw error;
     }
   },
 
-  bulkUpdateStatus: async (ids: string[], status: "Actif" | "Inactif") => {
+  activateProfesseur: async (id: string) => {
     set({ loading: true, error: null });
 
     try {
-      const response = await api.patch("/professeurs/bulk-status", {
-        ids,
-        status,
-      });
+      const response = await api.put(`/professeurs/${id}/activate`);
+      const updatedProfesseur = response.data.data.professeur;
 
       set((state) => ({
-        professors: state.professors.map((prof) =>
-          ids.includes(prof.id) ? { ...prof, status } : prof
+        professeurs: state.professeurs.map((prof) =>
+          prof.id === id ? updatedProfesseur : prof
         ),
+        currentProfesseur: updatedProfesseur,
         loading: false,
       }));
 
-      toast.success(`Statut de ${ids.length} professeur(s) modifié(s)`);
-      return response.data;
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error ||
-        err.message ||
-        "Erreur lors de la modification en masse";
-
+      return updatedProfesseur;
+    } catch (error: any) {
       set({
-        error: errorMessage,
+        error: error.response?.data?.message || "Erreur d'activation",
         loading: false,
       });
-
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
+      throw error;
     }
   },
 
-  bulkImportProfessors: async (professorsData: CreateProfessorData[]) => {
+  deactivateProfesseur: async (id: string) => {
     set({ loading: true, error: null });
 
     try {
-      const response = await api.post("/professeurs/bulk-import", {
-        professors: professorsData,
-      });
+      const response = await api.put(`/professeurs/${id}/deactivate`);
+      const updatedProfesseur = response.data.data.professeur;
 
-      const result: ProfessorImportResult = response?.data || {
-        success: 0,
-        errors: [],
-      };
+      set((state) => ({
+        professeurs: state.professeurs.map((prof) =>
+          prof.id === id ? updatedProfesseur : prof
+        ),
+        currentProfesseur: updatedProfesseur,
+        loading: false,
+      }));
 
-      if (result.success > 0) {
-        await get().fetchProfessors();
-      }
-
-      set({ loading: false });
-      return result;
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error || err.message || "Erreur lors de l'import";
-
+      return updatedProfesseur;
+    } catch (error: any) {
       set({
-        error: errorMessage,
+        error: error.response?.data?.message || "Erreur de désactivation",
         loading: false,
       });
-
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
+      throw error;
     }
   },
 
+  clearCurrentProfesseur: () =>
+    set({
+      currentProfesseur: null,
+      professeurSchedule: [],
+      professeurAssignments: [],
+    }),
+
   clearError: () => set({ error: null }),
+
+  clearProfesseurs: () =>
+    set({
+      professeurs: [],
+      currentProfesseur: null,
+      professeurSchedule: [],
+      professeurAssignments: [],
+      pagination: {
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+      },
+    }),
 }));
+
+export default useProfesseurStore;

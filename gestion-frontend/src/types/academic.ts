@@ -1,102 +1,28 @@
-// export interface Student {
-//   retakes: any[];
-//   id: string;
-//   firstName: string;
-//   lastName: string;
-//   studentId: string;
-//   email: string;
-//   phone: string;
-//   dateOfBirth: string;
-//   placeOfBirth: string;
-//   address: string;
-//   photo?: string;
-//   bloodGroup?: string;
-//   allergies?: string;
-//   disabilities?: string;
-//   status: "Active" | "Inactive" | "Graduated";
-//   guardians: Guardian[];
-//   enrollments?: Enrollment[];
-//   grades?: Grade[];
-//   cin?: string;
-//   sexe?: string;
-//   createdAt: string;
-// }
-
-// // types/academic.ts
-export interface Enrollment {
-  id: string;
-  studentId: string;
-  faculty: string; // Nom de la faculté (pour l'affichage)
-  facultyId?: string; // ID de la faculté (pour l'API)
-  level: string;
-  semester: "S1" | "S2";
-  academicYear: string; // Année académique (pour l'affichage)
-  academicYearId?: string; // ID de l'année académique (pour l'API)
-  status: "Active" | "Suspended" | "Completed";
-  enrollmentDate: string;
-  createdAt?: string;
-  updatedAt?: string;
-
-  // Relations optionnelles pour l'affichage
-  student?: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    studentId: string;
-  };
-}
-export interface CreateEnrollmentData {
-  studentId: string;
-  faculty: string;
-  level: string;
-  academicYearId: string;
-  enrollmentDate?: string;
-  status?: "Active" | "Completed" | "Suspended";
-}
-
-export interface UpdateEnrollmentData {
-  faculty?: string;
-  level?: string;
-  academicYearId?: string;
-  status?: "Active" | "Completed" | "Suspended";
-}
-// export interface CreateEnrollmentData {
-//   studentId: string;
-//   faculty: string;
-//   level: string;
-//   academicYearId: string;
-//   // academicYear: string; // ✅ requis
-//   status: "Active" | "Suspended" | "Completed";
-//   enrollmentDate: string;
-// }
-
-// export interface UpdateEnrollmentData {
-//   faculty?: string;
-//   level?: string;
-//   academicYearId?: string;
-//   status?: "Active" | "Suspended" | "Completed";
-// }
-
-// export interface Guardian {
-//   id?: string;
-//   firstName: string;
-//   lastName: string;
-//   studentId: string;
-//   relationship: string;
-//   phone: string;
-//   email?: string;
-//   address?: string;
-//   isPrimary: boolean;
-//   createdAt?: string;
-// }
-// src/types/academic.ts
-
-// src/types/academic.ts
-
 // Utiliser des unions de string literals au lieu d'enum
 export type StudentStatus = "Active" | "Inactive" | "Graduated" | "Suspended";
 export type StudentSexe = "Masculin" | "Feminin" | "Autre";
+export type GradeStatus = "Valid_" | "Non_valid_" | "Reprendre";
+export type GradeSession = "Normale" | "Reprise";
+export type ControlType =
+  | "CONTROLE_1"
+  | "CONTROLE_2"
+  | "CONTROLE_3"
+  | "CONTROLE_4";
+
+export type ClassLevel =
+  | "Sixieme"
+  | "Cinquieme"
+  | "Quatrieme"
+  | "Troisieme"
+  | "Seconde"
+  | "Premiere"
+  | "Terminale"
+  | "NSI"
+  | "NSII"
+  | "NSIII"
+  | "NSIV";
+
+export type ClassLevelFilter = ClassLevel | "";
 export type BloodGroup =
   | "A_POSITIVE"
   | "A_NEGATIVE"
@@ -111,42 +37,115 @@ export interface Student {
   id: string;
   firstName: string;
   lastName: string;
-  studentId: string;
+  studentCode: string;
   email: string;
-  phone: string;
-  dateOfBirth: string;
-  placeOfBirth: string;
-  address: string;
+  phone?: string;
+  dateOfBirth?: Date;
+  placeOfBirth?: string;
+  address?: string;
   photo?: string;
-  bloodGroup?: BloodGroup;
+  bloodGroup?: string;
   allergies?: string;
   disabilities?: string;
-  status: StudentStatus;
-  guardians: Guardian[];
+  status: string;
+  sexe?: string;
+  cin?: string;
+  classId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  userId?: string;
+
+  schoolClass?: SchoolClass;
+  user?: User;
+  guardians?: Guardian[];
   enrollments?: Enrollment[];
   grades?: Grade[];
-  cin?: string;
-  sexe?: StudentSexe;
-  createdAt: string;
-  updatedAt?: string;
-  retakes?: any[];
+  payments?: Payment[];
+}
+
+export interface Payment {
+  academicYear: string;
+  id: string;
+  studentCode: string;
+  amount: number;
+  type: string;
+  status: string;
+  date: string;
+  description?: string;
 }
 
 export interface Guardian {
   id: string;
   firstName: string;
   lastName: string;
-  studentId: string;
   relationship: string;
   phone: string;
   email?: string;
   address?: string;
   isPrimary: boolean;
-  createdAt: string;
+  studentId: string;
+  parentId?: string; // AJOUTER CETTE LIGNE
+  notes?: string; // AJOUTER CETTE LIGNE
+  createdAt?: string;
   updatedAt?: string;
+
+  // Relations optionnelles
+  student?: Student;
+  parent?: Parent; // NOUVEAU TYPE
 }
 
-// Types pour les opérations de formulaire
+export interface Parent {
+  id: string;
+  userId?: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  createdAt?: string;
+  updatedAt?: string;
+
+  // Relations
+  user?: User;
+  guardians?: Guardian[];
+  children?: Student[];
+}
+
+export interface SchoolClass {
+  id: string;
+  name: string;
+  level: string;
+  academicYear: string;
+  capacity: number;
+  currentStudents: number;
+  teacherId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  teacher?: User;
+}
+
+export interface Enrollment {
+  id: string;
+  studentCode: string;
+  classId: string;
+  academicYearId: string;
+  enrollmentDate: Date | string;
+  status: "Active" | "Suspended" | "Completed";
+  isReenrollment?: boolean;
+  previousEnrollmentId?: string;
+  reenrollmentDate?: Date | string;
+  reenrollmentNotes?: string;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+
+  // Relations (optionnelles)
+  student?: Student;
+  schoolClass?: SchoolClass;
+  academicYear?: AcademicYear;
+  previousEnrollment?: Enrollment;
+  nextEnrollments?: Enrollment[];
+}
+
 export type StudentFormData = {
   firstName: string;
   lastName: string;
@@ -180,32 +179,7 @@ export type CreateStudentData = Omit<
   "id" | "createdAt" | "updatedAt"
 >;
 export type UpdateStudentData = Partial<StudentFormData>;
-// export interface Enrollment {
-//   id: string;
-//   studentId: string;
-//   facultyId: string;
-//   academicYearId: string;
-//   level: string;
-//   enrollmentDate: string; // ISO string
-//   status: "Active" | "Completed" | "Cancelled";
-//   faculty?: {
-//     id: string;
-//     name: string;
-//     code: string;
-//     dean?: string;
-//   };
-//   academicYear?: {
-//     id: string;
-//     year: string;
-//     startDate: string;
-//     endDate: string;
-//     isCurrent: boolean;
-//   };
-//   createdAt: string;
-//   updatedAt?: string;
-// }
 
-// Types pour les réponses API
 export interface ApiResponse<T> {
   data: T;
   message?: string;
@@ -215,36 +189,55 @@ export interface ApiResponse<T> {
 export interface StudentApiResponse extends ApiResponse<Student> {}
 export interface StudentsApiResponse extends ApiResponse<Student[]> {}
 
-export interface Course {
+export interface Subject {
   id: string;
   code: string;
-  title: string;
-  credits: number;
-  passingGrade: number;
+  name: string;
+  coefficient: number;
   type: "Obligatoire" | "Optionnelle";
-  prerequisites: string[];
-  inCatalog?: boolean;
+  passingGrade: number;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  _count?: {
+    assignments: number;
+    grades: number;
+  };
 }
 
-// export interface Grade {
-//   id: string;
-//   studentId: string;
-//   ueId: string;
-//   grade: number;
-//   status: "Validé" | "À reprendre" | "En cours";
-//   session: "Normale" | "Rattrapage";
-//   semester: string;
-//   academicYear: string;
-// }
+// Interfaces pour les filtres
+export interface SubjectFilters {
+  search?: string;
+  type?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
 
-export interface Retake {
-  id: string;
-  studentId: string;
-  ueId: string;
-  originalGrade: number;
-  retakeGrade?: number;
-  scheduledSemester: string;
-  status: "Programmé" | "En cours" | "Terminé";
+// Interfaces pour les données du formulaire
+export interface CreateSubjectData {
+  code?: string;
+  name?: string;
+  coefficient?: number;
+  type?: "Obligatoire" | "Optionnelle";
+  passingGrade?: number;
+  description?: string;
+}
+
+export interface UpdateSubjectData {
+  code?: string;
+  name?: string;
+  coefficient?: number;
+  type?: "Obligatoire" | "Optionnelle";
+  passingGrade?: number;
+  description?: string;
 }
 
 export interface User {
@@ -254,101 +247,17 @@ export interface User {
   email: string;
   phone: string;
   facultyId?: string;
-  role: "Admin" | "Professeur" | "Secrétaire" | "Directeur" | "Doyen";
+  role:
+    | "Admin"
+    | "Professeur"
+    | "Secretaire"
+    | "Directeur"
+    | "Student"
+    | "Parent";
   status: "Actif" | "Inactif";
   lastLogin?: string;
   avatar?: string;
   createdAt: string;
-}
-
-export interface FacultyLevel {
-  id: string;
-  level: string;
-  facultyId: string;
-  assignments?: any[]; // Ajouté pour la relation
-}
-
-export interface FacultyWithLevels {
-  id: string;
-  name: string;
-  code: string;
-  description?: string;
-  deanId?: string;
-  dean?: string;
-  studentsCount?: number; // Rendre optionnel
-  coursesCount?: number; // Rendre optionnel
-  studyDuration: number;
-  levels: FacultyLevel[];
-  status: "Active" | "Inactive";
-  createdAt: string;
-  updatedAt: string;
-  assignments?: any[];
-  _count?: {
-    assignments: number;
-  };
-}
-// Nouvelles interfaces pour les fonctionnalités ajoutées
-export interface Schedule {
-  id: string;
-  ueId: string;
-  professorId: string;
-  classroom: string;
-  dayOfWeek: number; // 0 = Dimanche, 1 = Lundi, etc.
-  startTime: string;
-  endTime: string;
-  faculty: string;
-  level: string;
-  semester: "S1" | "S2";
-  academicYear: string;
-}
-
-export interface Attendance {
-  id: string;
-  studentId: string;
-  scheduleId: string;
-  date: string;
-  status: "Présent" | "Absent" | "Retard" | "Excusé";
-  notes?: string;
-}
-
-export interface Payment {
-  id: string;
-  studentId: string;
-  amount: number;
-  type: "Inscription" | "Scolarité" | "Examen" | "Certificat" | "Autre";
-  status: "En attente" | "Payé" | "Annulé";
-  moyen: "Cash" | "Natcash" | "Moncash" | "Sogebank" | "Fonkoze";
-  description?: string;
-  academicYear: string; // Ex: "2024-2025"
-  academicYearId: string; // ID de l'année académique
-  paidDate?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface Book {
-  id: string;
-  title: string;
-  author: string;
-  isbn: string;
-  category: string;
-  faculty: string;
-  quantity: number;
-  available: number;
-  location: string;
-  status: "Disponible" | "Épuisé" | "En commande";
-}
-
-export interface BookLoan {
-  id: string;
-  bookId: string;
-  studentId: string;
-  loanDate: string;
-  dueDate: string;
-  returnDate?: string;
-  status: "En cours" | "Retourné" | "En retard" | "Perdu";
-  renewalCount: number;
-  fine?: number;
 }
 
 export interface Transcript {
@@ -361,19 +270,6 @@ export interface Transcript {
   totalCredits: number;
   creditsEarned: number;
   generatedDate: string;
-}
-
-// Nouvelles interfaces pour les fonctionnalités avancées
-export interface Message {
-  id: string;
-  senderId: string;
-  receiverId: string;
-  subject: string;
-  content: string;
-  timestamp: string;
-  isRead: boolean;
-  attachments?: string[];
-  priority: "Normal" | "Urgent" | "Important";
 }
 
 export interface Event {
@@ -403,71 +299,6 @@ export interface Announcement {
   isActive: boolean;
 }
 
-export interface Scholarship {
-  id: string;
-  name: string;
-  description: string;
-  amount: number;
-  criteria: string;
-  applicationDeadline: string;
-  academicYear: string;
-  maxRecipients: number;
-  currentRecipients: number;
-  status: "Ouvert" | "Fermé" | "En évaluation" | "Attribué";
-}
-
-export interface ScholarshipApplication {
-  id: string;
-  scholarshipId: string;
-  studentId: string;
-  applicationDate: string;
-  documents: string[];
-  motivation: string;
-  status: "Soumise" | "En cours" | "Acceptée" | "Refusée";
-  reviewNotes?: string;
-}
-
-export interface Room {
-  id: string;
-  name: string;
-  type:
-    | "Amphithéâtre"
-    | "Salle de cours"
-    | "Laboratoire"
-    | "Bibliothèque"
-    | "Bureau";
-  capacity: number;
-  equipment: string[];
-  location: string;
-  status: "Disponible" | "Occupée" | "Maintenance" | "Réservée";
-}
-
-export interface RoomReservation {
-  id: string;
-  roomId: string;
-  userId: string;
-  startTime: string;
-  endTime: string;
-  purpose: string;
-  status: "Confirmée" | "En attente" | "Annulée";
-  recurring?: {
-    frequency: "Quotidien" | "Hebdomadaire" | "Mensuel";
-    endDate: string;
-  };
-}
-
-export interface Certificate {
-  id: string;
-  studentId: string;
-  type: "Diplôme" | "Certificat" | "Attestation" | "Relevé de notes";
-  title: string;
-  issueDate: string;
-  validUntil?: string;
-  signedBy: string;
-  verificationCode: string;
-  status: "Émis" | "En préparation" | "Annulé";
-}
-
 export interface Analytics {
   id: string;
   type: "Performance" | "Présence" | "Paiements" | "Général";
@@ -476,100 +307,6 @@ export interface Analytics {
   parameters: Record<string, any>;
 }
 
-// types/academic.ts
-export interface CourseAssignment {
-  id: string;
-  ueId: string;
-  facultyId: string;
-  professeurId: string;
-  academicYearId: string;
-  semester: "S1" | "S2";
-  level: string;
-  facultyLevelId?: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-
-  // Relations (optionnelles, pour l'UI)
-  ue?: UE;
-  faculty?: FacultyWithLevels;
-  professeur?: Professeur;
-  academicYear?: AcademicYear;
-}
-
-export interface UE {
-  semester?: string;
-  facultyId: string;
-  level: string;
-  id: string;
-  code: string;
-  title: string;
-  credits: number;
-  type: UEType;
-  passingGrade: number;
-  description?: string;
-  objectives?: string;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: User;
-  createdById: string;
-
-  prerequisites: UEPrerequisite[];
-  requiredFor: UEPrerequisite[];
-  assignments: CourseAssignment[];
-  grades: Grade[];
-  retakes: Retake[];
-  inCatalog: boolean;
-}
-
-export interface UEPrerequisite {
-  id: string;
-  ueId: string;
-  prerequisiteId: string;
-  ue: UE;
-  prerequisite: UE;
-  createdAt: string;
-}
-
-// Ajoutez un type pour la création sans les relations complexes
-export interface CreateUEData {
-  code: string;
-  title: string;
-  credits: number;
-  type: UEType;
-  passingGrade: number;
-  description?: string;
-  objectives?: string;
-  createdById: string;
-  prerequisites: string[]; // Pour la création, on envoie juste les IDs
-}
-
-export interface UpdateUEData {
-  code?: string;
-  title?: string;
-  credits?: number;
-  type?: UEType;
-  passingGrade?: number;
-  description?: string;
-  objectives?: string;
-  prerequisites?: string[]; // Pour la mise à jour aussi
-}
-
-export type UEType = "Obligatoire" | "Optionnelle";
-
-// export interface Professeur {
-//   id: string;
-//   firstName: string;
-//   lastName: string;
-//   email: string;
-//   phone?: string;
-//   speciality?: string;
-//   status: "Actif" | "Inactif";
-//   createdAt: string;
-//   updatedAt?: string;
-// }
-
-// types/academic.ts
 export interface AcademicYear {
   id: string;
   year: string;
@@ -577,45 +314,330 @@ export interface AcademicYear {
   endDate: string;
   isCurrent: boolean;
 }
-export type GradeSession = "Normale" | "Reprise";
-// export type GradeStatus = "Valide" | "AReprendre" | "EnCours";
-export type GradeStatus = "Valid_" | "Non_valid_" | "reprendre";
 
-// types/academic.ts
-export interface Grade {
-  ue: any;
+export interface FeeStructure {
   id: string;
-  studentId: string;
-  ueId: string;
-  grade: number;
-  status: GradeStatus;
-  session: GradeSession;
-  semester: "S1" | "S2";
-  academicYearId: string;
+  name: string;
+  academicYear: string;
+  amount: number;
+  description?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-  level: string;
 }
 
-// export interface GradeWithDetails extends Grade {
-//   student: {
-//     firstName: string;
-//     lastName: string;
-//     studentId: string;
-//   };
-//   ue: {
-//     id: string;
-//     code: string;
-//     title: string;
-//     credits: number;
-//     passingGrade: number;
-//   };
-//   academicYearId: string;
-//   semester: "S1" | "S2";
-// }
+export type FeeStructureCreate = Omit<
+  FeeStructure,
+  "id" | "createdAt" | "updatedAt"
+>;
 
-// types/expense.ts
+export interface StudentFee {
+  payments: any;
+  id: string;
+  studentId: string;
+  academicYearId: string;
+  feeStructureId: string;
+  totalAmount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  status: "pending" | "partial" | "paid" | "overdue";
+  dueDate: string;
+  createdAt: string;
+  updatedAt: string;
+  student?: {
+    id: string;
+    studentId: string;
+    firstName: string;
+    lastName: string;
+  };
+  feeStructure?: FeeStructure;
+  academicYearRef?: AcademicYear;
+}
+
+export interface CreateFeeStructureInput {
+  academicYear: string;
+  name: string;
+  faculty: string;
+  level: string;
+  amount: number;
+  isActive?: boolean;
+}
+
+export interface AssignFeeToStudentInput {
+  studentId: string;
+  academicYear: string;
+  feeStructureId: string;
+}
+
+export interface UpdateFeePaymentInput {
+  amount: number;
+}
+
+export interface CreatePaymentInput {
+  studentCode: string;
+  amount: number;
+  type: "Inscription" | "Scolarité" | "Examen" | "Certificat" | "Autre";
+  status?: "Payé" | "En attente" | "Retard" | "Annulé";
+  moyen: string;
+  paidDate?: string;
+  description?: string;
+  academicYear: string;
+  academicYearId?: string;
+  reference?: string;
+}
+
+export interface UpdatePaymentInput {
+  studentCode?: string;
+  amount?: number;
+  type?: "Inscription" | "Scolarité" | "Examen" | "Certificat" | "Autre";
+  status?: "Payé" | "En attente" | "Retard" | "Annulé";
+  moyen?: string;
+  paidDate?: string;
+  description?: string;
+  academicYear?: string;
+  academicYearId?: string;
+  reference?: string;
+}
+
+export interface FeePayment {
+  id: string;
+  studentCode: string;
+  amount: number;
+  type: "Inscription" | "Scolarité" | "Examen" | "Certificat" | "Autre";
+  status: "En attente" | "Payé" | "Annulé";
+  moyen: "Cash" | "Natcash" | "Moncash" | "Sogebank" | "Fonkoze";
+  description?: string;
+  academicYear: string; // Ex: "2024-2025"
+  academicYearId: string; // ID de l'année académique
+  paidDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Professeur {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  matricule: string;
+  phone?: string;
+  speciality?: string;
+  status: "Actif" | "Inactif";
+  _count?: {
+    assignments: number;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProfessorAssignment {
+  id: string;
+  professorId: string;
+  professor?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  ueId: string;
+  ue?: {
+    id: string;
+    code: string;
+    title: string;
+    credits: number;
+    faculty?: string;
+    level?: string;
+  };
+  academicYearId: string;
+  academicYear?: {
+    id: string;
+    year: string;
+    isCurrent: boolean;
+  };
+  hours: number;
+  type: "Cours" | "TD" | "TP";
+  status: "Active" | "Completed" | "Cancelled";
+  startDate?: string;
+  endDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Types pour les données de formulaire des professeurs
+export interface ProfessorFormData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  speciality?: string;
+  status: "Actif" | "Inactif";
+}
+
+interface CreateProfesseurData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  speciality?: string;
+  hireDate?: string;
+  userId?: string;
+}
+
+interface UpdateProfesseurData {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  speciality?: string;
+  hireDate?: string;
+  status?: "Actif" | "Inactif";
+  userId?: string;
+}
+
+// Types pour les affectations
+export interface CreateAssignmentData {
+  professorId: string;
+  ueId: string;
+  academicYearId: string;
+  hours: number;
+  type: "Cours" | "TD" | "TP";
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface UpdateAssignmentData {
+  ueId?: string;
+  academicYearId?: string;
+  hours?: number;
+  type?: "Cours" | "TD" | "TP";
+  status?: "Active" | "Completed" | "Cancelled";
+  startDate?: string;
+  endDate?: string;
+}
+
+// Types pour les statistiques des professeurs
+export interface ProfessorStats {
+  total: number;
+  active: number;
+  inactive: number;
+  totalAssignments: number;
+  bySpeciality: Record<string, number>;
+  byStatus: Record<string, number>;
+}
+
+// Types pour l'import des professeurs
+export interface ProfessorImportResult {
+  success: number;
+  errors: Array<{
+    row: number;
+    errors: string[];
+    data: any;
+  }>;
+}
+
+// Types pour la réponse des opérations en masse
+export interface BulkOperationResult {
+  success: number;
+  failed: number;
+  errors: Array<{
+    id: string;
+    error: string;
+  }>;
+}
+
+export interface ImportResult {
+  success: boolean;
+  message: string;
+  summary: {
+    total: number;
+    success: number;
+    errors: number;
+    skipped: number;
+  };
+  details: {
+    success: any[];
+    errors: {
+      row: number;
+      error: string;
+      data: any;
+    }[];
+    skipped: any[];
+  };
+}
+
+export interface Grade {
+  id: string;
+  studentId: string;
+  subjectId: string;
+  assignmentId: string;
+  grade: number;
+  status: GradeStatus;
+  session: GradeSession;
+  controlType: ControlType;
+  academicYearId: string;
+  classLevel: ClassLevel;
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+
+  // Relations optionnelles
+  student?: Student;
+  subject?: Subject;
+  classAssignment?: {
+    id: string;
+    professeur: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      matricule: string;
+    };
+  };
+  academicYear?: {
+    id: string;
+    year: string;
+    isCurrent: boolean;
+  };
+}
+// src/types/academic.ts
+export interface ClassAssignment {
+  id: string;
+  subjectId: string;
+  professeurId: string; // Note: "professeurId" avec "e" (français)
+  classLevel: ClassLevel;
+  academicYearId: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+
+  // Relations
+  academicYear?: AcademicYear;
+  professeur?: Professeur;
+  subject?: Subject;
+  schedules?: Schedule[];
+  grades?: Grade[];
+}
+
+export interface Schedule {
+  id: string;
+  classAssignmentId: string;
+  dayOfWeek: string; // Ex: "Lundi", "Mardi", etc.
+  startTime: string; // Ex: "08:00"
+  endTime: string; // Ex: "10:00"
+  location?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface GradeFilters {
+  academicYearId?: string;
+  classLevel?: string;
+  subjectId?: string;
+  controlType?: ControlType;
+  session?: GradeSession;
+  status?: GradeStatus;
+  studentId?: string;
+}
+
 export interface Expense {
   id: string;
   category: string;
@@ -670,350 +692,4 @@ export interface ExpenseFilters {
   page?: number;
   limit?: number;
   createdBy?: string;
-}
-
-export interface FeeStructure {
-  id: string;
-  name: string;
-  academicYear: string; // ex: "2023-2024"
-  amount: number; // ← Total des frais
-  description?: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Type pour la création (sans les champs optionnels)
-export type FeeStructureCreate = Omit<
-  FeeStructure,
-  "id" | "createdAt" | "updatedAt"
->;
-
-export interface StudentFee {
-  payments: any;
-  id: string;
-  studentId: string;
-  academicYearId: string;
-  feeStructureId: string;
-  totalAmount: number;
-  paidAmount: number;
-  remainingAmount: number;
-  status: "pending" | "partial" | "paid" | "overdue";
-  dueDate: string;
-  createdAt: string;
-  updatedAt: string;
-  student?: {
-    id: string;
-    studentId: string;
-    firstName: string;
-    lastName: string;
-  };
-  feeStructure?: FeeStructure;
-  academicYearRef?: AcademicYear;
-}
-
-export interface CreateFeeStructureInput {
-  academicYear: string;
-  name: string;
-  faculty: string;
-  level: string;
-  amount: number;
-  isActive?: boolean;
-}
-
-export interface AssignFeeToStudentInput {
-  studentId: string;
-  academicYear: string;
-  feeStructureId: string;
-}
-
-export interface UpdateFeePaymentInput {
-  amount: number;
-}
-
-export interface FeePayment {
-  id: string;
-  studentId: string;
-  amount: number;
-  type: "Inscription" | "Scolarité" | "Examen" | "Certificat" | "Autre";
-  status: "En attente" | "Payé" | "Annulé";
-  moyen: "Cash" | "Natcash" | "Moncash" | "Sogebank" | "Fonkoze";
-  description?: string;
-  academicYear: string; // Ex: "2024-2025"
-  academicYearId: string; // ID de l'année académique
-  paidDate?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export enum DocumentTypeI {
-  BULLETIN = "BULLETIN",
-  RELEVE = "RELEVE",
-  ATTESTATION_NIVEAU = "ATTESTATION_NIVEAU",
-  ATTESTATION_FIN_ETUDES = "ATTESTATION_FIN_ETUDES",
-  CERTIFICAT_SCOLARITE = "CERTIFICAT_SCOLARITE",
-}
-
-export interface DocumentGenerationOptions {
-  type: DocumentTypeI;
-  studentId: string;
-  academicYearId: string;
-  semester?: "S1" | "S2" | "all";
-  level: string;
-  includeAllGrades?: boolean;
-  language?: "fr" | "en";
-  withSignature?: boolean;
-  withStamp?: boolean;
-}
-
-export interface GeneratedDocument {
-  id: string;
-  type: DocumentType;
-  studentId: string;
-  fileName: string;
-  generatedAt: Date;
-  metadata: Record<string, any>;
-  // Ajoutez d'autres champs selon votre API
-}
-
-// Types pour les différents documents
-export type DocumentType =
-  | "transcript" // Bulletin de notes
-  | "level-certificate" // Attestation de niveau
-  | "completion-certificate"; // Attestation de fin d'études
-// | "grade-report" // Relevé de notes
-// | "diploma-certificate"; // Certificat de diplôme
-
-export interface DocumentConfig {
-  type: DocumentType;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  requiredFields: string[];
-}
-
-export interface DocumentData {
-  student: {
-    firstName: string;
-    lastName: string;
-    studentId: string;
-    placeOfBirth?: string;
-    dateOfBirth?: string;
-    cin?: string;
-  };
-  academicInfo: {
-    faculty: string;
-    level: string;
-    academicYear: string;
-    program?: string;
-    specialization?: string;
-    startDate: string; // Maintenant obligatoire
-    endDate: string; // Maintenant obligatoire
-  };
-  grades: any[];
-  summary?: {
-    gpa: number;
-    creditsEarned: number;
-    totalCredits: number;
-    mention: string;
-  };
-  issueDate: Date;
-  documentId: string;
-}
-
-// types/academic.ts - AJOUT DES TYPES PROFESSEUR COMPLETS
-
-// Types pour les professeurs
-export interface Professeur {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  speciality?: string;
-  status: "Actif" | "Inactif";
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-// Types pour les affectations des professeurs
-export interface ProfessorAssignment {
-  id: string;
-  professorId: string;
-  professor?: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-  };
-  ueId: string;
-  ue?: {
-    id: string;
-    code: string;
-    title: string;
-    credits: number;
-    faculty?: string;
-    level?: string;
-  };
-  academicYearId: string;
-  academicYear?: {
-    id: string;
-    year: string;
-    isCurrent: boolean;
-  };
-  hours: number;
-  type: "Cours" | "TD" | "TP";
-  status: "Active" | "Completed" | "Cancelled";
-  startDate?: string;
-  endDate?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-// Types pour les données de formulaire des professeurs
-export interface ProfessorFormData {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  speciality?: string;
-  status: "Actif" | "Inactif";
-}
-
-export interface CreateProfessorData {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  speciality?: string;
-  status?: "Actif" | "Inactif";
-}
-
-export interface UpdateProfessorData {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-  speciality?: string;
-  status?: "Actif" | "Inactif";
-}
-
-// Types pour les affectations
-export interface CreateAssignmentData {
-  professorId: string;
-  ueId: string;
-  academicYearId: string;
-  hours: number;
-  type: "Cours" | "TD" | "TP";
-  startDate?: string;
-  endDate?: string;
-}
-
-export interface UpdateAssignmentData {
-  ueId?: string;
-  academicYearId?: string;
-  hours?: number;
-  type?: "Cours" | "TD" | "TP";
-  status?: "Active" | "Completed" | "Cancelled";
-  startDate?: string;
-  endDate?: string;
-}
-
-// Types pour les statistiques des professeurs
-export interface ProfessorStats {
-  total: number;
-  active: number;
-  inactive: number;
-  totalAssignments: number;
-  bySpeciality: Record<string, number>;
-  byStatus: Record<string, number>;
-}
-
-// Types pour l'import des professeurs
-export interface ProfessorImportResult {
-  success: number;
-  errors: Array<{
-    row: number;
-    errors: string[];
-    data: any;
-  }>;
-}
-
-// Types pour la réponse des opérations en masse
-export interface BulkOperationResult {
-  success: number;
-  failed: number;
-  errors: Array<{
-    id: string;
-    error: string;
-  }>;
-}
-
-// Dans types/academic.ts
-export interface GradeWithDetails {
-  id: string;
-  studentId: string;
-  ueId: string;
-  ue?: {
-    id: string;
-    code: string;
-    title: string;
-    credits: number;
-    passingGrade: number;
-  };
-  grade: number;
-  status: string;
-  session: string;
-  semester: "S1" | "S2";
-  academicYearId: string;
-  isActive: boolean;
-  academicYear?: {
-    id: string;
-    year: string;
-  };
-  // Champs de secours
-  courseTitle?: string;
-  courseCode?: string;
-  credits?: number;
-  passingGrade?: number;
-  createdAt: string;
-}
-
-// Dans vos types
-export interface ExcelAssignmentRow {
-  codeUE: string;
-  nomUE: string;
-  nomProfesseur: string;
-  nomFaculte: string;
-  niveau: string;
-  anneeAcademique: string;
-  semestre: "S1" | "S2";
-  credits?: number;
-}
-
-export interface ImportResult {
-  success: boolean;
-  message: string;
-  summary: {
-    total: number;
-    success: number;
-    errors: number;
-    skipped: number;
-  };
-  details: {
-    success: any[];
-    errors: {
-      row: number;
-      error: string;
-      data: any;
-    }[];
-    skipped: any[];
-  };
-}
-
-export interface ResolutionMap {
-  faculties: Map<string, string>; // nom → id
-  academicYears: Map<string, string>; // année → id
-  professors: Map<string, string>; // nom → id
-  ues: Map<string, string>; // code → id
 }

@@ -1,10 +1,28 @@
-// controllers/studentFeeController.ts
+/**
+ * @file studentFeeController.ts
+ * @description Contrôleur pour la gestion des frais étudiants
+ * @module Controllers/StudentFees
+ *
+ * Ce contrôleur gère :
+ * - L'attribution de frais aux étudiants
+ * - La consultation des frais étudiants
+ * - La mise à jour du statut des frais
+ * - La suppression des frais
+ * - Le suivi des paiements
+ */
+
 import { Request, Response } from "express";
 import prisma from "../prisma";
 import { z } from "zod";
 import { createAuditLog } from "./auditController";
 
-// Fonction utilitaire pour gérer les erreurs unknown
+/**
+ * @function getErrorMessage
+ * @description Fonction utilitaire pour extraire le message d'erreur d'un type unknown
+ * @param {unknown} error - L'erreur à traiter
+ * @returns {string} Le message d'erreur formaté
+ * @private
+ */
 const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message;
@@ -17,13 +35,20 @@ const getErrorMessage = (error: unknown): string => {
   }
 };
 
-// Schémas de validation avec Zod
+/**
+ * @constant AssignFeeSchema
+ * @description Schéma Zod pour la validation de l'attribution de frais
+ */
 const AssignFeeSchema = z.object({
-  studentId: z.string().min(1, "L'ID étudiant est requis"),
+  studentCode: z.string().min(1, "L'ID étudiant est requis"),
   feeStructureId: z.string().min(1, "L'ID de structure de frais est requis"),
   academicYearId: z.string().min(1, "L'ID d'année académique est requis"),
 });
 
+/**
+ * @constant StudentFeeUpdateSchema
+ * @description Schéma Zod pour la validation de la mise à jour des frais étudiants
+ */
 const StudentFeeUpdateSchema = z
   .object({
     dueDate: z.string().datetime("Date d'échéance invalide").optional(),
@@ -31,6 +56,15 @@ const StudentFeeUpdateSchema = z
   })
   .partial();
 
+/**
+ * @function getAllStudentFees
+ * @description Récupère tous les frais étudiants avec filtres optionnels
+ * @route GET /api/student-fees
+ * @access Staff/Admin
+ * @query {string} [studentId] - ID de l'étudiant pour filtrer
+ * @query {string} [academicYear] - Année académique pour filtrer
+ * @returns {Promise<void>}
+ */
 export const getAllStudentFees = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -63,7 +97,7 @@ export const getAllStudentFees = async (req: Request, res: Response) => {
             id: true,
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
         payments: {
@@ -117,6 +151,14 @@ export const getAllStudentFees = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function getStudentFeeById
+ * @description Récupère les frais d'un étudiant par son ID
+ * @route GET /api/student-fees/:id
+ * @access Staff/Admin
+ * @param {string} id - ID des frais étudiants
+ * @returns {Promise<void>}
+ */
 export const getStudentFeeById = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -138,7 +180,7 @@ export const getStudentFeeById = async (req: Request, res: Response) => {
             id: true,
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
         payments: {
@@ -204,6 +246,17 @@ export const getStudentFeeById = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function updateStudentFee
+ * @description Met à jour les frais d'un étudiant
+ * @route PUT /api/student-fees/:id
+ * @access Admin
+ * @param {string} id - ID des frais à mettre à jour
+ * @body {Object} data - Données de mise à jour
+ * @body {string} [data.dueDate] - Nouvelle date d'échéance
+ * @body {string} [data.status] - Nouveau statut (pending/partial/paid/overdue)
+ * @returns {Promise<void>}
+ */
 export const updateStudentFee = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -300,7 +353,7 @@ export const updateStudentFee = async (req: Request, res: Response) => {
           select: {
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
       },
@@ -350,6 +403,14 @@ export const updateStudentFee = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function deleteStudentFee
+ * @description Supprime les frais d'un étudiant (si aucun paiement associé)
+ * @route DELETE /api/student-fees/:id
+ * @access Admin
+ * @param {string} id - ID des frais à supprimer
+ * @returns {Promise<void>}
+ */
 export const deleteStudentFee = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -411,7 +472,7 @@ export const deleteStudentFee = async (req: Request, res: Response) => {
           select: {
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
         feeStructure: {
@@ -481,6 +542,17 @@ export const deleteStudentFee = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function assignFeeToStudent
+ * @description Attribue une structure de frais à un étudiant pour une année académique
+ * @route POST /api/student-fees/assign
+ * @access Admin
+ * @body {Object} feeAssignment - Données d'attribution
+ * @body {string} feeAssignment.studentId - ID de l'étudiant
+ * @body {string} feeAssignment.feeStructureId - ID de la structure de frais
+ * @body {string} feeAssignment.academicYearId - ID de l'année académique
+ * @returns {Promise<void>}
+ */
 export const assignFeeToStudent = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -637,7 +709,7 @@ export const assignFeeToStudent = async (req: Request, res: Response) => {
             id: true,
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
         feeStructure: { select: { id: true, name: true, amount: true } },
@@ -656,7 +728,7 @@ export const assignFeeToStudent = async (req: Request, res: Response) => {
       description: "Frais attribués à l'étudiant avec succès",
       status: "SUCCESS",
       metadata: {
-        studentId: studentFee.studentId,
+        studentCode: studentFee.studentId,
         studentName: `${studentFee.student.firstName} ${studentFee.student.lastName}`,
         feeStructure: studentFee.feeStructure.name,
         academicYear: studentFee.academicYear.year,
@@ -689,6 +761,15 @@ export const assignFeeToStudent = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function getStudentFeeByStudentAndYear
+ * @description Récupère les frais d'un étudiant pour une année académique spécifique
+ * @route GET /api/student-fees/student/:studentId/year/:academicYear
+ * @access Staff/Admin
+ * @param {string} studentId - ID de l'étudiant
+ * @param {string} academicYear - ID de l'année académique
+ * @returns {Promise<void>}
+ */
 export const getStudentFeeByStudentAndYear = async (
   req: Request,
   res: Response
@@ -721,7 +802,7 @@ export const getStudentFeeByStudentAndYear = async (
             id: true,
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
         payments: {
@@ -792,6 +873,14 @@ export const getStudentFeeByStudentAndYear = async (
   }
 };
 
+/**
+ * @function getStudentFeesByStudent
+ * @description Récupère tous les frais d'un étudiant (toutes années confondues)
+ * @route GET /api/student-fees/student/:studentId
+ * @access Staff/Admin
+ * @param {string} studentId - ID de l'étudiant
+ * @returns {Promise<void>}
+ */
 export const getStudentFeesByStudent = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -813,7 +902,7 @@ export const getStudentFeesByStudent = async (req: Request, res: Response) => {
             id: true,
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
         payments: {

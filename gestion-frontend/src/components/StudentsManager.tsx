@@ -1,4 +1,4 @@
-// src/components/students/StudentsManager.tsx
+// components/students/StudentsManager.tsx - VERSION AMÉLIORÉE
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Plus,
@@ -19,8 +19,13 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Check,
+  Building,
+  Mail,
+  Phone,
+  Calendar,
+  MapPin,
   ChevronDown,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -49,15 +55,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAcademicStore } from "@/store/studentStore";
-// import { StudentForm } from "./StudentForm";
-// import { StudentDetails } from "./StudentDetails";
+import { useStudentStore } from "@/store/studentStore";
 import { Student } from "@/types/academic";
-import { getStudentEnrollmentInfo } from "@/utils/enrollmentUtils";
 import { toast } from "@/hooks/use-toast";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
 import * as XLSX from "xlsx";
-import { useAcademicYearStore } from "@/store/academicYearStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,12 +70,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { DialogDescription } from "@radix-ui/react-dialog";
-import { StudentDetails } from "./students/StudentDetails";
-import { StudentForm } from "./students/StudentForm";
 import { useAuthStore } from "@/store/authStore";
-import { ImportStudents } from "./students/ImportStudents";
-import { ExportStudents } from "./students/ExportStudents";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { StudentForm } from "./students/StudentForm";
+import { useClassStore } from "@/store/classStore";
+import { StudentDetails } from "./students/StudentDetails";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+// import { FormError } from "@/components/ui/form-error";
+
+// Constantes pour les valeurs "vides"
+const EMPTY_VALUES = {
+  ALL: "all",
+  NO_CLASS: "no-class",
+  NONE: "none",
+  NOT_ASSIGNED: "not-assigned",
+  NOT_SPECIFIED: "not-specified",
+} as const;
 
 // Composant Carte Étudiant
 const StudentCard = ({
@@ -93,15 +105,11 @@ const StudentCard = ({
   onSelect: (studentId: string) => void;
   isSelecting: boolean;
 }) => {
-  const { enrollments = [] } = useAcademicStore();
-  const { currentAcademicYear } = useAcademicYearStore();
-  const { user } = useAuthStore();
-  const academicYear = currentAcademicYear ? currentAcademicYear.year : "";
+  const { classes } = useClassStore();
 
-  const enrollmentInfo = useMemo(
-    () => getStudentEnrollmentInfo(student, enrollments, academicYear),
-    [student, enrollments, academicYear]
-  );
+  const studentClass = student.classId
+    ? classes.find((c) => c.id === student.classId)
+    : null;
 
   return (
     <Card className="mb-4 relative hover:shadow-md transition-shadow duration-200">
@@ -117,21 +125,37 @@ const StudentCard = ({
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3 flex-1">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-              {student.firstName?.[0] || ""}
-              {student.lastName?.[0] || ""}
-            </div>
+            <Avatar className="w-12 h-12 border-2 border-primary/20">
+              <AvatarImage src={student.photo} />
+              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white font-semibold text-sm">
+                {student.firstName?.[0] || ""}
+                {student.lastName?.[0] || ""}
+              </AvatarFallback>
+            </Avatar>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">
+              <div className="font-medium truncate flex items-center gap-2">
                 {student.firstName} {student.lastName}
+                {student.status === "Active" && (
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                )}
               </div>
               <div className="text-sm text-muted-foreground font-mono truncate">
-                {student.studentId}
+                {student.studentCode}
               </div>
-              <div className="text-sm text-muted-foreground truncate">
+              <div className="text-sm text-muted-foreground truncate flex items-center gap-1">
+                <Mail className="h-3 w-3" />
                 {student.email}
               </div>
-              <div className="mt-2">{getStatusBadge(student.status)}</div>
+              <div className="mt-2">
+                <Badge variant={getStatusBadgeVariant(student.status)}>
+                  {getStatusLabel(student.status)}
+                </Badge>
+                {studentClass && (
+                  <Badge variant="outline" className="ml-2">
+                    {studentClass.name}
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
 
@@ -164,20 +188,41 @@ const StudentCard = ({
 
         <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-4 text-sm">
           <div>
-            <div className="text-muted-foreground">Téléphone</div>
+            <div className="text-muted-foreground flex items-center gap-1">
+              <Phone className="h-3 w-3" />
+              Téléphone
+            </div>
             <div>{student.phone || "-"}</div>
           </div>
           <div>
-            <div className="text-muted-foreground">Programme</div>
-            <div className="truncate">
-              {enrollmentInfo?.faculty || "Non assigné"}
+            <div className="text-muted-foreground flex items-center gap-1">
+              <Building className="h-3 w-3" />
+              Classe
             </div>
-            <div className="text-muted-foreground text-xs">
-              {enrollmentInfo?.level || ""}{" "}
-              {enrollmentInfo?.level && enrollmentInfo?.academicYear ? "•" : ""}{" "}
-              {enrollmentInfo?.academicYear || ""}
+            <div className="truncate">
+              {studentClass?.name || "Non assigné"}
             </div>
           </div>
+          {student.dateOfBirth && (
+            <div>
+              <div className="text-muted-foreground flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                Date de naissance
+              </div>
+              <div>
+                {new Date(student.dateOfBirth).toLocaleDateString("fr-FR")}
+              </div>
+            </div>
+          )}
+          {student.address && (
+            <div>
+              <div className="text-muted-foreground flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                Adresse
+              </div>
+              <div className="truncate">{student.address}</div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -283,12 +328,14 @@ const BulkActionsBar = ({
   onBulkDelete,
   onBulkStatusChange,
   onBulkExport,
+  onBulkAssignClass,
 }: {
   selectedCount: number;
   onDeselectAll: () => void;
   onBulkDelete: () => void;
-  onBulkStatusChange: (status: string) => void;
+  onBulkStatusChange: (status: Student["status"]) => void;
   onBulkExport: () => void;
+  onBulkAssignClass: () => void;
 }) => {
   return (
     <Card className="bg-blue-50 border-blue-200 mb-4">
@@ -323,8 +370,23 @@ const BulkActionsBar = ({
                 >
                   Marquer comme diplômé
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onBulkStatusChange("Suspended")}
+                >
+                  Marquer comme suspendu
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={onBulkAssignClass}
+            >
+              <Building className="h-3 w-3 mr-1" />
+              Affecter classe
+            </Button>
 
             <Button
               variant="outline"
@@ -361,25 +423,30 @@ const BulkActionsBar = ({
   );
 };
 
-// Fonction utilitaire pour les badges de statut
-const getStatusBadge = (status: Student["status"]) => {
-  if (!status) return null;
-
-  const variants = {
-    Active: "default",
-    Inactive: "secondary",
-    Graduated: "outline",
-    Suspended: "destructive",
-  } as const;
-
-  const labels = {
+// Fonctions utilitaires
+const getStatusLabel = (status: Student["status"]) => {
+  const labels: Record<Student["status"], string> = {
     Active: "Actif",
     Inactive: "Inactif",
     Graduated: "Diplômé",
+    Transferred: "Transféré",
     Suspended: "Suspendu",
   };
+  return labels[status] || status;
+};
 
-  return <Badge variant={variants[status]}>{labels[status]}</Badge>;
+const getStatusBadgeVariant = (status: Student["status"]) => {
+  const variants: Record<
+    Student["status"],
+    "default" | "secondary" | "outline" | "destructive"
+  > = {
+    Active: "default",
+    Inactive: "secondary",
+    Graduated: "outline",
+    Transferred: "secondary",
+    Suspended: "destructive",
+  };
+  return variants[status] || "secondary";
 };
 
 // Squelette de chargement
@@ -396,114 +463,192 @@ const StudentSkeleton = () => (
   </Card>
 );
 
+// Interface pour l'état du formulaire
+interface FormState {
+  isOpen: boolean;
+  mode: "create" | "edit";
+  student: Student | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
 export const StudentsManager = () => {
   const {
-    students = [],
-    enrollments = [],
-    deleteStudent,
+    students,
     fetchStudents,
-    loading,
-    importStudents,
+    createStudent,
     updateStudent,
-    error,
+    deleteStudent,
+    updateStudentStatus,
+    assignStudentToClass,
+    loading,
+    error: globalError,
     clearError,
-  } = useAcademicStore();
+    filters,
+    setFilters,
+    pagination,
+  } = useStudentStore();
 
+  const { classes, fetchClasses } = useClassStore();
+  const { user } = useAuthStore();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
-  useEffect(() => {
-    fetchStudents();
-  }, [fetchStudents]);
-
-  // Gestion des erreurs globales
-  useEffect(() => {
-    if (error) {
-      toast({
-        title: "Erreur",
-        description: error,
-        variant: "destructive",
-      });
-      clearError();
-    }
-  }, [error, clearError]);
-
+  // État local
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "details">("list");
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [isSelecting, setIsSelecting] = useState(false);
-  const { currentAcademicYear } = useAcademicYearStore();
-  const { user } = useAuthStore();
-
-  const academicYear = currentAcademicYear ? currentAcademicYear.year : "";
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showAssignClassModal, setShowAssignClassModal] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState("");
+
+  // État du formulaire avec gestion d'erreur
+  const [formState, setFormState] = useState<FormState>({
+    isOpen: false,
+    mode: "create",
+    student: null,
+    isLoading: false,
+    error: null,
+  });
+
+  // État de l'étudiant sélectionné pour les détails
+  const [selectedStudentDetails, setSelectedStudentDetails] =
+    useState<Student | null>(null);
+
+  // Initialisation des données
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        await Promise.all([fetchStudents(), fetchClasses()]);
+      } catch (err) {
+        console.error("Erreur lors de l'initialisation:", err);
+        toast({
+          title: "Erreur d'initialisation",
+          description: "Impossible de charger les données initiales",
+          variant: "destructive",
+        });
+      }
+    };
+
+    initializeData();
+  }, [fetchStudents, fetchClasses]);
+
+  // Gestion des erreurs globales
+  useEffect(() => {
+    if (globalError) {
+      toast({
+        title: "Erreur",
+        description: globalError,
+        variant: "destructive",
+      });
+      clearError();
+    }
+  }, [globalError, clearError]);
 
   // Debounce search term
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
-      setCurrentPage(1); // Reset à la première page lors d'une nouvelle recherche
+      setCurrentPage(1);
     }, 300);
 
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Utiliser useMemo pour optimiser le filtrage
+  // Charger les étudiants avec recherche
+  useEffect(() => {
+    const loadStudents = async () => {
+      try {
+        await fetchStudents({
+          search: debouncedSearchTerm,
+          page: currentPage,
+          limit: itemsPerPage,
+        });
+      } catch (err) {
+        console.error("Erreur lors du chargement des étudiants:", err);
+        // L'erreur est déjà gérée par le store et affichée via le toast
+      }
+    };
+
+    loadStudents();
+  }, [debouncedSearchTerm, currentPage, itemsPerPage, fetchStudents]);
+
+  // Filtrage des étudiants
   const filteredStudents = useMemo(() => {
     return students.filter((student) => {
       if (!student || !student.id) return false;
 
-      const matchesSearch =
-        `${student.firstName || ""} ${student.lastName || ""}`
-          .toLowerCase()
-          .includes(debouncedSearchTerm.toLowerCase()) ||
-        (student.studentId || "")
-          .toLowerCase()
-          .includes(debouncedSearchTerm.toLowerCase()) ||
-        (student.email || "")
-          .toLowerCase()
-          .includes(debouncedSearchTerm.toLowerCase());
-
       const matchesStatus =
-        statusFilter === "all" || student.status === statusFilter;
+        filters.status === "" || student.status === filters.status;
 
-      return matchesSearch && matchesStatus;
+      const matchesClass =
+        filters.classId === "" || student.classId === filters.classId;
+
+      return matchesStatus && matchesClass;
     });
-  }, [students, debouncedSearchTerm, statusFilter]);
+  }, [students, filters.status, filters.classId]);
 
   // Pagination
-  const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+  const totalPages = Math.ceil(pagination.total / itemsPerPage);
   const paginatedStudents = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredStudents.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredStudents, currentPage, itemsPerPage]);
 
-  const handleEditStudent = useCallback((student: Student) => {
-    setSelectedStudent(student);
-    setIsFormOpen(true);
-  }, []);
+  // Gestion de l'édition d'un étudiant
+  const handleEditStudent = useCallback(
+    async (student: Student) => {
+      try {
+        // Définir l'état du formulaire avant l'ouverture
+        setFormState({
+          isOpen: true,
+          mode: "edit",
+          student: { ...student }, // Créer une copie pour éviter les mutations
+          isLoading: false,
+          error: null,
+        });
+
+        // Si l'étudiant est dans la vue détails, on ferme cette vue
+        if (viewMode === "details") {
+          setViewMode("list");
+        }
+
+        console.log("📝 Préparation de l'édition:", {
+          id: student.id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          email: student.email,
+          classId: student.classId,
+          guardians: student.guardians?.length || 0,
+        });
+      } catch (err) {
+        console.error("Erreur lors de la préparation de l'édition:", err);
+        setFormState((prev) => ({
+          ...prev,
+          error: "Impossible de charger les données de l'étudiant",
+        }));
+      }
+    },
+    [viewMode]
+  );
 
   const handleViewDetails = useCallback((student: Student) => {
-    setSelectedStudent(student);
+    setSelectedStudentDetails(student);
     setViewMode("details");
   }, []);
 
   const handleDeleteStudent = useCallback((studentId: string) => {
     setStudentToDelete(studentId);
-    setIsModalOpen(true);
   }, []);
 
   const handleBackToList = useCallback(() => {
     setViewMode("list");
-    setSelectedStudent(null);
+    setSelectedStudentDetails(null);
     setSelectedStudents([]);
     setIsSelecting(false);
   }, []);
@@ -530,12 +675,8 @@ export const StudentsManager = () => {
         });
       }
 
-      setIsModalOpen(false);
       setStudentToDelete(null);
       setSelectedStudents([]);
-
-      // Recharger les données
-      await fetchStudents();
     } catch (error) {
       console.error("Erreur lors de la suppression:", error);
       toast({
@@ -544,7 +685,7 @@ export const StudentsManager = () => {
         variant: "destructive",
       });
     }
-  }, [studentToDelete, deleteStudent, fetchStudents]);
+  }, [studentToDelete, deleteStudent]);
 
   // Sélection des étudiants
   const toggleStudentSelection = useCallback((studentId: string) => {
@@ -566,7 +707,6 @@ export const StudentsManager = () => {
   const handleBulkDelete = useCallback(() => {
     if (selectedStudents.length === 0) return;
     setStudentToDelete(selectedStudents.join(","));
-    setIsModalOpen(true);
   }, [selectedStudents]);
 
   const handleBulkStatusChange = useCallback(
@@ -575,11 +715,11 @@ export const StudentsManager = () => {
 
       try {
         const updatePromises = selectedStudents.map((studentId) => {
-          const student = students.find((s) => s.id === studentId);
-          if (student) {
-            return updateStudent(studentId, { ...student, status: newStatus });
-          }
-          return Promise.resolve();
+          return updateStudentStatus(
+            studentId,
+            newStatus,
+            "Modification groupée"
+          );
         });
 
         await Promise.all(updatePromises);
@@ -590,7 +730,6 @@ export const StudentsManager = () => {
         });
 
         setSelectedStudents([]);
-        await fetchStudents();
       } catch (error) {
         console.error("Erreur lors de la mise à jour groupée:", error);
         toast({
@@ -601,8 +740,42 @@ export const StudentsManager = () => {
         });
       }
     },
-    [selectedStudents, students, updateStudent, fetchStudents]
+    [selectedStudents, updateStudentStatus]
   );
+
+  const handleBulkAssignClass = useCallback(() => {
+    if (selectedStudents.length === 0) return;
+    setShowAssignClassModal(true);
+  }, [selectedStudents]);
+
+  const handleConfirmAssignClass = useCallback(async () => {
+    if (selectedStudents.length === 0 || !selectedClassId) return;
+
+    try {
+      const updatePromises = selectedStudents.map((studentId) => {
+        return assignStudentToClass(studentId, selectedClassId);
+      });
+
+      await Promise.all(updatePromises);
+
+      toast({
+        title: "Classe assignée",
+        description: `${selectedStudents.length} étudiants ont été affectés à la classe`,
+      });
+
+      setSelectedStudents([]);
+      setShowAssignClassModal(false);
+      setSelectedClassId("");
+    } catch (error) {
+      console.error("Erreur lors de l'affectation groupée:", error);
+      toast({
+        title: "Erreur",
+        description:
+          "Une erreur s'est produite lors de l'affectation à la classe",
+        variant: "destructive",
+      });
+    }
+  }, [selectedStudents, selectedClassId, assignStudentToClass]);
 
   const handleBulkExport = useCallback(() => {
     if (selectedStudents.length === 0) return;
@@ -613,28 +786,30 @@ export const StudentsManager = () => {
       );
 
       const data = selectedStudentsData.map((student) => {
-        const enrollmentInfo = getStudentEnrollmentInfo(
-          student,
-          enrollments,
-          academicYear
-        );
+        const studentClass = student.classId
+          ? classes.find((c) => c.id === student.classId)
+          : null;
+
         return {
-          "ID Étudiant": student.studentId || "",
+          "Code Étudiant": student.studentCode || "",
           Prénom: student.firstName || "",
           Nom: student.lastName || "",
           Email: student.email || "",
           Téléphone: student.phone || "",
-          Statut: student.status || "",
-          Faculté: enrollmentInfo?.faculty || "",
-          Niveau: enrollmentInfo?.level || "",
-          "Année Académique": enrollmentInfo?.academicYear || "",
+          Statut: getStatusLabel(student.status),
+          Classe: studentClass?.name || "Non assigné",
           "Date de Naissance": student.dateOfBirth
-            ? new Date(student.dateOfBirth).toLocaleDateString()
+            ? new Date(student.dateOfBirth).toLocaleDateString("fr-FR")
             : "",
           "Lieu de Naissance": student.placeOfBirth || "",
           Adresse: student.address || "",
+          CIN: student.cin || "",
+          "Groupe Sanguin": student.bloodGroup || "",
+          Allergies: student.allergies || "",
+          Handicaps: student.disabilities || "",
+          Sexe: student.sexe || "",
           "Date de Création": student.createdAt
-            ? new Date(student.createdAt).toLocaleDateString()
+            ? new Date(student.createdAt).toLocaleDateString("fr-FR")
             : "",
         };
       });
@@ -656,33 +831,35 @@ export const StudentsManager = () => {
         variant: "destructive",
       });
     }
-  }, [selectedStudents, students, enrollments, academicYear]);
+  }, [selectedStudents, students, classes]);
 
-  const exportToExcel = useCallback(() => {
+  const exportAllToExcel = useCallback(() => {
     try {
       const data = filteredStudents.map((student) => {
-        const enrollmentInfo = getStudentEnrollmentInfo(
-          student,
-          enrollments,
-          academicYear
-        );
+        const studentClass = student.classId
+          ? classes.find((c) => c.id === student.classId)
+          : null;
+
         return {
-          "ID Étudiant": student.studentId || "",
+          "Code Étudiant": student.studentCode || "",
           Prénom: student.firstName || "",
           Nom: student.lastName || "",
           Email: student.email || "",
           Téléphone: student.phone || "",
-          Statut: student.status || "",
-          Faculté: enrollmentInfo?.faculty || "",
-          Niveau: enrollmentInfo?.level || "",
-          "Année Académique": enrollmentInfo?.academicYear || "",
+          Statut: getStatusLabel(student.status),
+          Classe: studentClass?.name || "Non assigné",
           "Date de Naissance": student.dateOfBirth
-            ? new Date(student.dateOfBirth).toLocaleDateString()
+            ? new Date(student.dateOfBirth).toLocaleDateString("fr-FR")
             : "",
           "Lieu de Naissance": student.placeOfBirth || "",
           Adresse: student.address || "",
+          CIN: student.cin || "",
+          "Groupe Sanguin": student.bloodGroup || "",
+          Allergies: student.allergies || "",
+          Handicaps: student.disabilities || "",
+          Sexe: student.sexe || "",
           "Date de Création": student.createdAt
-            ? new Date(student.createdAt).toLocaleDateString()
+            ? new Date(student.createdAt).toLocaleDateString("fr-FR")
             : "",
         };
       });
@@ -704,45 +881,87 @@ export const StudentsManager = () => {
         variant: "destructive",
       });
     }
-  }, [filteredStudents, enrollments, academicYear]);
+  }, [filteredStudents, classes]);
 
-  const handleImport = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
+  // Gestion de la soumission du formulaire
+  const handleFormSubmit = useCallback(
+    async (studentData: any) => {
+      setFormState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       try {
-        const result = await importStudents(file);
+        if (formState.mode === "create") {
+          await createStudent(studentData);
+          toast({
+            title: "Étudiant créé",
+            description: "L'étudiant a été créé avec succès",
+          });
+        } else {
+          if (!formState.student?.id) {
+            throw new Error("ID de l'étudiant manquant");
+          }
 
-        toast({
-          title: "Import réussi",
-          description: result.message,
+          await updateStudent(formState.student.id, studentData);
+          toast({
+            title: "Étudiant mis à jour",
+            description: "L'étudiant a été modifié avec succès",
+          });
+        }
+
+        setFormState({
+          isOpen: false,
+          mode: "create",
+          student: null,
+          isLoading: false,
+          error: null,
         });
-
-        // Réinitialiser l'input file
-        event.target.value = "";
       } catch (error: any) {
-        console.error("Erreur import:", error);
+        console.error("Erreur lors de la soumission:", error);
+
+        let errorMessage = "Une erreur s'est produite lors de l'opération";
+        if (error.message) {
+          errorMessage = error.message;
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        }
+
+        setFormState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: errorMessage,
+        }));
+
         toast({
-          title: "Erreur d'import",
-          description: error.message || "Erreur lors de l'importation",
+          title: "Erreur",
+          description: errorMessage,
           variant: "destructive",
         });
       }
     },
-    [importStudents]
+    [formState.mode, formState.student?.id, createStudent, updateStudent]
   );
 
-  // Convertir le niveau en format texte
-  const getLevelText = (level: string) => {
-    const levelNum = parseInt(level);
-    if (isNaN(levelNum)) return level;
-    if (levelNum === 1) return "1ère année";
-    return `${levelNum}ème année`;
-  };
+  const handleOpenCreateForm = useCallback(() => {
+    setFormState({
+      isOpen: true,
+      mode: "create",
+      student: null,
+      isLoading: false,
+      error: null,
+    });
+  }, []);
+
+  const handleCloseForm = useCallback(() => {
+    setFormState({
+      isOpen: false,
+      mode: "create",
+      student: null,
+      isLoading: false,
+      error: null,
+    });
+  }, []);
 
   // Affichage des détails de l'étudiant
-  if (viewMode === "details" && selectedStudent) {
+  if (viewMode === "details" && selectedStudentDetails) {
     return (
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center gap-4">
@@ -757,36 +976,18 @@ export const StudentsManager = () => {
           <div>
             <h2 className="text-2xl font-bold">Détails de l'étudiant</h2>
             <p className="text-muted-foreground">
-              {selectedStudent.firstName} {selectedStudent.lastName}
+              {selectedStudentDetails.firstName}{" "}
+              {selectedStudentDetails.lastName}
             </p>
           </div>
         </div>
 
         <StudentDetails
-          student={selectedStudent}
+          student={selectedStudentDetails}
           onClose={handleBackToList}
           onEdit={handleEditStudent}
           onDelete={handleDeleteStudent}
         />
-
-        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Modifier Étudiant</DialogTitle>
-              <DialogDescription>
-                Modifier les informations de l'étudiant
-              </DialogDescription>
-            </DialogHeader>
-
-            <StudentForm
-              student={selectedStudent}
-              onClose={() => {
-                setIsFormOpen(false);
-                setSelectedStudent(null);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
       </div>
     );
   }
@@ -802,7 +1003,7 @@ export const StudentsManager = () => {
       );
     }
 
-    if (filteredStudents.length === 0) {
+    if (students.length === 0) {
       return (
         <div className="text-center py-12">
           <User className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
@@ -810,12 +1011,12 @@ export const StudentsManager = () => {
             Aucun étudiant trouvé
           </h3>
           <p className="text-muted-foreground mt-1">
-            {debouncedSearchTerm || statusFilter !== "all"
+            {debouncedSearchTerm || filters.status || filters.classId
               ? "Aucun étudiant ne correspond à vos critères de recherche"
               : "Aucun étudiant n'a été ajouté pour le moment"}
           </p>
-          {!debouncedSearchTerm && statusFilter === "all" && (
-            <Button onClick={() => setIsFormOpen(true)} className="mt-4">
+          {!debouncedSearchTerm && !filters.status && !filters.classId && (
+            <Button onClick={handleOpenCreateForm} className="mt-4">
               <Plus className="h-4 w-4 mr-2" />
               Ajouter le premier étudiant
             </Button>
@@ -840,8 +1041,8 @@ export const StudentsManager = () => {
                     aria-label="Sélectionner tous les étudiants"
                   />
                 </TableHead>
-                <TableHead key="id-header" className="w-[180px]">
-                  ID Étudiant
+                <TableHead key="code-header" className="w-[150px]">
+                  Code Étudiant
                 </TableHead>
                 <TableHead key="name-header" className="w-[200px]">
                   Nom Complet
@@ -855,8 +1056,8 @@ export const StudentsManager = () => {
                 <TableHead key="status-header" className="w-[120px]">
                   Statut
                 </TableHead>
-                <TableHead key="program-header" className="w-[200px]">
-                  Programme
+                <TableHead key="class-header" className="w-[150px]">
+                  Classe
                 </TableHead>
                 <TableHead
                   key="actions-header"
@@ -868,11 +1069,9 @@ export const StudentsManager = () => {
             </TableHeader>
             <TableBody>
               {paginatedStudents.map((student) => {
-                const enrollmentInfo = getStudentEnrollmentInfo(
-                  student,
-                  enrollments,
-                  academicYear
-                );
+                const studentClass = student.classId
+                  ? classes.find((c) => c.id === student.classId)
+                  : null;
 
                 return (
                   <TableRow
@@ -888,17 +1087,20 @@ export const StudentsManager = () => {
                         aria-label={`Sélectionner ${student.firstName} ${student.lastName}`}
                       />
                     </TableCell>
-                    <TableCell key={`${student.id}-id`}>
+                    <TableCell key={`${student.id}-code`}>
                       <div className="font-mono text-sm font-medium">
-                        {student.studentId}
+                        {student.studentCode}
                       </div>
                     </TableCell>
                     <TableCell key={`${student.id}-name`}>
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                          {student.firstName?.[0] || ""}
-                          {student.lastName?.[0] || ""}
-                        </div>
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={student.photo} />
+                          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs">
+                            {student.firstName?.[0] || ""}
+                            {student.lastName?.[0] || ""}
+                          </AvatarFallback>
+                        </Avatar>
                         <div>
                           <div className="font-medium">
                             {student.firstName} {student.lastName}
@@ -913,21 +1115,13 @@ export const StudentsManager = () => {
                       <div className="text-sm">{student.phone || "-"}</div>
                     </TableCell>
                     <TableCell key={`${student.id}-status`}>
-                      {getStatusBadge(student.status)}
+                      <Badge variant={getStatusBadgeVariant(student.status)}>
+                        {getStatusLabel(student.status)}
+                      </Badge>
                     </TableCell>
-                    <TableCell key={`${student.id}-program`}>
+                    <TableCell key={`${student.id}-class`}>
                       <div className="text-sm">
-                        <div className="font-medium">
-                          {enrollmentInfo?.faculty || "Non assigné"}
-                        </div>
-                        <div className="text-muted-foreground">
-                          {getLevelText(enrollmentInfo?.level) || ""}{" "}
-                          {getLevelText(enrollmentInfo?.level) &&
-                          enrollmentInfo?.academicYear
-                            ? "•"
-                            : ""}{" "}
-                          {enrollmentInfo?.academicYear || ""}
-                        </div>
+                        {studentClass?.name || "Non assigné"}
                       </div>
                     </TableCell>
                     <TableCell key={`${student.id}-actions`}>
@@ -942,7 +1136,8 @@ export const StudentsManager = () => {
                         >
                           <GraduationCap className="h-4 w-4" />
                         </Button>
-                        {user?.role === "Admin" && (
+                        {(user?.role === "Admin" ||
+                          user?.role === "Directeur") && (
                           <>
                             <Button
                               variant="ghost"
@@ -1026,7 +1221,7 @@ export const StudentsManager = () => {
             variant="outline"
             className="gap-2"
             onClick={() => setShowExportModal(true)}
-            disabled={filteredStudents.length === 0}
+            disabled={students.length === 0}
           >
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">Exporter</span>
@@ -1037,40 +1232,21 @@ export const StudentsManager = () => {
             variant="outline"
             className="gap-2"
             onClick={() => setIsSelecting(!isSelecting)}
-            disabled={filteredStudents.length === 0}
+            disabled={students.length === 0}
           >
             <CheckCircle className="h-4 w-4" />
             <span className="hidden sm:inline">Sélection</span>
           </Button>
 
           {/* Bouton Nouvel Étudiant */}
-          <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-            <DialogTrigger asChild>
-              <Button
-                onClick={() => setSelectedStudent(null)}
-                className="gap-2"
-                disabled={loading}
-              >
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Nouvel Étudiant</span>
-                <span className="sm:hidden">Nouveau</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>
-                  {selectedStudent ? "Modifier Étudiant" : "Nouvel Étudiant"}
-                </DialogTitle>
-              </DialogHeader>
-              <StudentForm
-                student={selectedStudent}
-                onClose={() => {
-                  setIsFormOpen(false);
-                  setSelectedStudent(null);
-                }}
-              />
-            </DialogContent>
-          </Dialog>
+          <Button
+            onClick={handleOpenCreateForm}
+            className="gap-2"
+            disabled={loading}
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Nouvel étudiant</span>
+          </Button>
         </div>
       </div>
 
@@ -1082,6 +1258,7 @@ export const StudentsManager = () => {
           onBulkDelete={handleBulkDelete}
           onBulkStatusChange={handleBulkStatusChange}
           onBulkExport={handleBulkExport}
+          onBulkAssignClass={handleBulkAssignClass}
         />
       )}
 
@@ -1092,7 +1269,7 @@ export const StudentsManager = () => {
             <div className="relative flex-1 w-full">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Rechercher par nom, ID étudiant ou email..."
+                placeholder="Rechercher par nom, code étudiant, email ou CIN..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 h-11 w-full"
@@ -1102,7 +1279,14 @@ export const StudentsManager = () => {
 
             <div className="flex items-center gap-2 w-full lg:w-auto">
               <Filter className="h-4 w-4 text-muted-foreground" />
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select
+                value={filters.status || EMPTY_VALUES.ALL}
+                onValueChange={(value) =>
+                  setFilters({
+                    status: value === EMPTY_VALUES.ALL ? "" : value,
+                  })
+                }
+              >
                 <SelectTrigger
                   className="w-full lg:w-32"
                   aria-label="Filtrer par statut"
@@ -1110,11 +1294,38 @@ export const StudentsManager = () => {
                   <SelectValue placeholder="Statut" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous statuts</SelectItem>
+                  <SelectItem value={EMPTY_VALUES.ALL}>Tous statuts</SelectItem>
                   <SelectItem value="Active">Actif</SelectItem>
                   <SelectItem value="Inactive">Inactif</SelectItem>
                   <SelectItem value="Graduated">Diplômé</SelectItem>
+                  <SelectItem value="Transferred">Transféré</SelectItem>
                   <SelectItem value="Suspended">Suspendu</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.classId || EMPTY_VALUES.ALL}
+                onValueChange={(value) =>
+                  setFilters({
+                    classId: value === EMPTY_VALUES.ALL ? "" : value,
+                  })
+                }
+              >
+                <SelectTrigger
+                  className="w-full lg:w-40"
+                  aria-label="Filtrer par classe"
+                >
+                  <SelectValue placeholder="Classe" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={EMPTY_VALUES.ALL}>
+                    Toutes les classes
+                  </SelectItem>
+                  {classes.map((cls) => (
+                    <SelectItem key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1131,8 +1342,8 @@ export const StudentsManager = () => {
               Liste des Étudiants
             </CardTitle>
             <span className="text-sm text-muted-foreground">
-              {filteredStudents.length} étudiant
-              {filteredStudents.length !== 1 ? "s" : ""}
+              {pagination.total} étudiant
+              {pagination.total !== 1 ? "s" : ""}
             </span>
           </div>
         </CardHeader>
@@ -1150,46 +1361,145 @@ export const StudentsManager = () => {
         </CardContent>
 
         {/* Pagination */}
-        {filteredStudents.length > 0 && (
+        {students.length > 0 && (
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={setCurrentPage}
             itemsPerPage={itemsPerPage}
             onItemsPerPageChange={setItemsPerPage}
-            totalItems={filteredStudents.length}
+            totalItems={pagination.total}
           />
         )}
       </Card>
+
+      {/* Modal du formulaire d'étudiant */}
+      <Dialog open={formState.isOpen} onOpenChange={handleCloseForm}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {formState.mode === "create"
+                ? "Nouvel Étudiant"
+                : "Modifier Étudiant"}
+            </DialogTitle>
+            <DialogDescription>
+              {formState.mode === "create"
+                ? "Ajouter un nouvel étudiant dans le système"
+                : `Modification de ${formState.student?.firstName} ${formState.student?.lastName}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Affichage des erreurs du formulaire */}
+          {formState.error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{formState.error}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Contenu du formulaire */}
+          {formState.isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : (
+            <StudentForm
+              student={formState.student || undefined}
+              onClose={handleCloseForm}
+              onSubmit={handleFormSubmit}
+              isLoading={formState.isLoading}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal d'importation */}
       <Dialog open={showImportModal} onOpenChange={setShowImportModal}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Importation des Étudiants</DialogTitle>
             <DialogDescription>
-              Importez des étudiants en lot via un fichier Excel ou JSON
+              Importez des étudiants depuis un fichier Excel
             </DialogDescription>
           </DialogHeader>
-          <ImportStudents />
+          {/* <ImportStudents
+            onSuccess={() => {
+              setShowImportModal(false);
+              fetchStudents();
+            }}
+          /> */}
         </DialogContent>
       </Dialog>
+
+      {/* Modal d'exportation */}
       <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Exportation des Étudiants</DialogTitle>
             <DialogDescription>
-              Exportez les données des étudiants dans le format d'importation
+              Exportez les données des étudiants au format Excel (.xlsx)
             </DialogDescription>
           </DialogHeader>
-          <ExportStudents
-            students={filteredStudents}
+          {/* <ExportStudents
+            students={students}
+            classes={classes}
             onClose={() => setShowExportModal(false)}
-          />
+            onExport={exportAllToExcel}
+          /> */}
         </DialogContent>
       </Dialog>
+
+      {/* Modal d'affectation à une classe */}
+      <Dialog
+        open={showAssignClassModal}
+        onOpenChange={setShowAssignClassModal}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Affecter à une classe</DialogTitle>
+            <DialogDescription>
+              Sélectionnez une classe pour affecter les étudiants sélectionnés
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner une classe" />
+              </SelectTrigger>
+              <SelectContent>
+                {classes.map((cls) => (
+                  <SelectItem key={cls.id} value={cls.id}>
+                    {cls.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="text-sm text-muted-foreground">
+              {selectedStudents.length} étudiant(s) seront affectés à cette
+              classe
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowAssignClassModal(false)}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleConfirmAssignClass}
+              disabled={!selectedClassId}
+            >
+              Confirmer
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal de confirmation de suppression */}
       <ConfirmationModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={!!studentToDelete}
+        onClose={() => setStudentToDelete(null)}
         onConfirm={handleConfirmDelete}
         title={
           studentToDelete && studentToDelete.includes(",")
@@ -1205,7 +1515,6 @@ export const StudentsManager = () => {
         }
         confirmLabel="Supprimer"
         cancelLabel="Annuler"
-        // variant="destructive"
       />
     </div>
   );

@@ -1,696 +1,539 @@
+/**
+ * @file gradeController.ts
+ * @description Contrôleurs pour la gestion des notes des étudiants
+ */
+
 import { Request, Response } from "express";
-import prisma from "../prisma";
-import { GradeSession, GradeStatus } from "../../generated/prisma";
+import { PrismaClient } from "../../generated/prisma";
+import { extractAuditData } from "./auth/authUtils";
 import { createAuditLog } from "./auditController";
 
-// ==================== TYPES ET INTERFACES ====================
-interface PrismaError extends Error {
+const prisma = new PrismaClient();
+
+// Interface pour les réponses API
+interface ApiResponse {
+  success: boolean;
+  message: string;
+  data?: any;
   code?: string;
-  meta?: {
-    target?: string[];
-    cause?: string;
-  };
 }
 
-interface GradeCreateData {
-  studentId: string;
-  ueId: string;
-  grade: number;
-  status?: GradeStatus;
-  session?: GradeSession;
-  semester: string;
-  level: string;
-  academicYearId: string;
-  professeurId?: string;
+// Interface pour les filtres de recherche des notes
+interface GradeFilters {
+  studentId?: string;
+  subjectId?: string;
+  assignmentId?: string;
+  academicYearId?: string;
+  classLevel?: string;
+  controlType?: string;
+  session?: string;
+  status?: string;
+  minGrade?: number;
+  maxGrade?: number;
+  startDate?: Date;
+  endDate?: Date;
 }
 
-interface GradeUpdateData {
-  grade?: number;
-  status?: GradeStatus;
-  session?: GradeSession;
-  isRetake?: boolean;
-  [key: string]: any;
-}
-// ==================== TYPES POUR IMPORT EXCEL NOTES ====================
-interface ExcelGradeRow {
-  matricule: string;
-  codeUE: string;
-  nomUE?: string;
-  note: number;
-  niveau: string;
-  anneeAcademique: string;
-  semestre: "S1" | "S2";
-  session?: "Normale" | "Reprise";
-}
-
-interface ProcessedGrade {
-  matricule: string;
-  codeUE: string;
-  nomUE?: string;
-  note: number;
-  niveau: string;
-  anneeAcademique: string;
-  semestre: "S1" | "S2";
-  session?: "Normale" | "Reprise";
-  resolvedIds?: {
-    studentId?: string;
-    ueId?: string;
-    academicYearId?: string;
-  };
-  errors?: string[];
-  status?: "PENDING" | "SUCCESS" | "ERROR";
-}
-// ==================== FONCTIONS UTILITAIRES ====================
-// Fonction utilitaire pour gérer les erreurs unknown
-const getErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  } else if (typeof error === "string") {
-    return error;
-  } else if (error && typeof error === "object" && "message" in error) {
-    return String((error as any).message);
-  } else {
-    return "Erreur inconnue";
-  }
-};
-
-function isPrismaError(error: unknown): error is PrismaError {
-  return error instanceof Error && "code" in error;
-}
-
-function calculateGradeStatus(
-  grade: number,
-  passingGrade: number
-): GradeStatus {
-  if (grade >= passingGrade) {
-    return GradeStatus.Valid_;
-  } else if (grade >= passingGrade * 0.7) {
-    return GradeStatus.reprendre;
-  } else {
-    return GradeStatus.Non_valid_;
-  }
-}
-
-function validateGradeInput(grade: number): {
-  isValid: boolean;
-  error?: string;
-} {
-  if (isNaN(grade) || grade < 0 || grade > 100) {
-    return {
-      isValid: false,
-      error: "La note doit être un nombre entre 0 et 100",
-    };
-  }
-
-  const decimalPlaces = grade.toString().split(".")[1]?.length || 0;
-  if (decimalPlaces > 2) {
-    return {
-      isValid: false,
-      error: "La note ne peut avoir plus de 2 décimales",
-    };
-  }
-
-  return { isValid: true };
-}
-
-function validateSession(session: string): boolean {
-  const validSessions = Object.values(GradeSession);
-  return validSessions.includes(session as GradeSession);
-}
-
-function validateStatus(status: string): boolean {
-  const validStatuses = Object.values(GradeStatus);
-  return validStatuses.includes(status as GradeStatus);
-}
-
-// ==================== MIDDLEWARE DE VALIDATION ====================
-const validateGradeCreation = (
-  data: any
-): { isValid: boolean; errors: string[] } => {
-  const errors: string[] = [];
-  const requiredFields = [
-    "studentId",
-    "ueId",
-    "grade",
-    "academicYearId",
-    "semester",
-    "level",
-  ];
-
-  requiredFields.forEach((field) => {
-    if (!data[field]) {
-      errors.push(`Le champ ${field} est requis`);
-    }
-  });
-
-  if (data.grade !== undefined) {
-    const gradeValidation = validateGradeInput(Number(data.grade));
-    if (!gradeValidation.isValid && gradeValidation.error) {
-      errors.push(gradeValidation.error);
-    }
-  }
-
-  if (data.session && !validateSession(data.session)) {
-    errors.push(`Session invalide: ${data.session}`);
-  }
-
-  if (data.status && !validateStatus(data.status)) {
-    errors.push(`Statut invalide: ${data.status}`);
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors,
-  };
-};
-
-// ==================== GESTIONNAIRE D'ERREURS UNIFIÉ ====================
-const handleControllerError = (
-  error: unknown,
-  res: Response,
-  context: string,
-  auditData: any
-) => {
-  console.error(`Error in ${context}:`, error);
-
-  let statusCode = 500;
-  let errorMessage = `Erreur lors de ${context}`;
-  let details: string | undefined;
-
-  if (isPrismaError(error)) {
-    switch (error.code) {
-      case "P2002":
-        statusCode = 409;
-        errorMessage = "Une contrainte d'unicité a été violée";
-        const target = error.meta?.target;
-        if (Array.isArray(target)) {
-          details = target.join(", ");
-        } else if (typeof target === "string") {
-          details = target;
-        } else {
-          details = "Combinaison déjà existante";
-        }
-        break;
-      case "P2003":
-        statusCode = 404;
-        errorMessage = "Référence étrangère non trouvée";
-        break;
-      case "P2025":
-        statusCode = 404;
-        errorMessage = "Enregistrement non trouvé";
-        break;
-      default:
-        errorMessage = `Erreur base de données: ${error.message}`;
-        break;
-    }
-  } else if (error instanceof Error) {
-    errorMessage = error.message;
-  }
-
-  // Log d'erreur d'audit
-  createAuditLog({
-    ...auditData,
-    action: `${auditData.action}_ERROR`,
-    description: `Erreur lors de ${context}`,
-    status: "ERROR",
-    errorMessage: errorMessage,
-  });
-
-  const response: any = { error: errorMessage };
-  if (details) {
-    response.details = details;
-  }
-
-  if (process.env.NODE_ENV === "development") {
-    response.debug = getErrorMessage(error);
-    if (isPrismaError(error) && error.meta) {
-      response.meta = error.meta;
-    }
-  }
-
-  res.status(statusCode).json(response);
-};
-
-// ==================== CONTRÔLEURS ====================
-export const getAllGrades = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).userId || "unknown",
-  };
+/**
+ * @desc Récupère la liste des notes avec filtres et pagination
+ */
+export const getGrades = async (req: Request, res: Response): Promise<void> => {
+  const auditData = extractAuditData(req);
 
   try {
     const {
+      page = 1,
+      limit = 20,
+      search,
       studentId,
-      ueId,
+      subjectId,
+      assignmentId,
       academicYearId,
-      semester,
-      level,
+      classLevel,
+      controlType,
       session,
       status,
+      minGrade,
+      maxGrade,
+      startDate,
+      endDate,
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = req.query;
 
-    console.log("🔍 GET All Grades - Query params:", req.query);
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    const skip = (pageNum - 1) * limitNum;
 
-    const whereClause: any = { isActive: true };
+    // Construction des filtres
+    const where: any = {};
 
-    // Filtres de base
-    if (studentId) whereClause.studentId = studentId as string;
-    if (ueId) whereClause.ueId = ueId as string;
-    if (academicYearId) whereClause.academicYearId = academicYearId as string;
-    if (semester) whereClause.semester = semester as string;
-    if (level) whereClause.level = level as string;
+    if (studentId) where.studentId = studentId;
+    if (subjectId) where.subjectId = subjectId;
+    if (assignmentId) where.assignmentId = assignmentId;
+    if (academicYearId) where.academicYearId = academicYearId;
+    if (classLevel) where.classLevel = classLevel;
+    if (controlType) where.controlType = controlType;
+    if (session) where.session = session;
+    if (status) where.status = status;
 
-    // Filtres avec validation
-    if (session) {
-      if (validateSession(session as string)) {
-        whereClause.session = session as GradeSession;
-      } else {
-        await createAuditLog({
-          ...auditData,
-          action: "GET_GRADES_LIST_ATTEMPT",
-          entity: "Grade",
-          description: "Tentative de récupération des notes - session invalide",
-          status: "ERROR",
-        });
-        return res.status(400).json({
-          error: "Session invalide",
-          validSessions: Object.values(GradeSession),
-        });
-      }
+    // Filtre par note
+    if (minGrade || maxGrade) {
+      where.grade = {};
+      if (minGrade) where.grade.gte = parseFloat(minGrade as string);
+      if (maxGrade) where.grade.lte = parseFloat(maxGrade as string);
     }
 
-    if (status) {
-      if (validateStatus(status as string)) {
-        whereClause.status = status as GradeStatus;
-      } else {
-        await createAuditLog({
-          ...auditData,
-          action: "GET_GRADES_LIST_ATTEMPT",
-          entity: "Grade",
-          description: "Tentative de récupération des notes - statut invalide",
-          status: "ERROR",
-        });
-        return res.status(400).json({
-          error: "Statut invalide",
-          validStatuses: Object.values(GradeStatus),
-        });
-      }
+    // Filtre par date
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate as string);
+      if (endDate) where.createdAt.lte = new Date(endDate as string);
     }
 
-    console.log("🔍 WHERE clause:", JSON.stringify(whereClause, null, 2));
-
-    // Requête principale avec les filtres
-    const grades = await prisma.grade.findMany({
-      where: whereClause,
-      include: {
-        student: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            studentId: true,
+    // Recherche par nom d'étudiant ou sujet (si search est fourni)
+    if (search) {
+      where.OR = [
+        {
+          student: {
+            OR: [
+              {
+                firstName: { contains: search as string, mode: "insensitive" },
+              },
+              { lastName: { contains: search as string, mode: "insensitive" } },
+              {
+                studentCode: {
+                  contains: search as string,
+                  mode: "insensitive",
+                },
+              },
+            ],
           },
         },
-        ue: {
-          select: {
-            id: true,
-            code: true,
-            title: true,
-            credits: true,
-            passingGrade: true,
+        {
+          subject: {
+            OR: [
+              { name: { contains: search as string, mode: "insensitive" } },
+              { code: { contains: search as string, mode: "insensitive" } },
+            ],
           },
         },
-        academicYear: {
-          select: {
-            id: true,
-            year: true,
+      ];
+    }
+
+    // Récupération avec pagination et relations
+    const [grades, total] = await Promise.all([
+      prisma.grade.findMany({
+        where,
+        include: {
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              studentCode: true,
+              email: true,
+              classId: true,
+              schoolClass: {
+                select: {
+                  name: true,
+                  level: true,
+                },
+              },
+            },
+          },
+          subject: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              coefficient: true,
+              type: true,
+              passingGrade: true,
+            },
+          },
+          classAssignment: {
+            include: {
+              professeur: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  matricule: true,
+                },
+              },
+              subject: {
+                select: {
+                  code: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          academicYear: {
+            select: {
+              id: true,
+              year: true,
+              isCurrent: true,
+            },
           },
         },
-      },
-      orderBy: [
-        { academicYearId: "desc" },
-        { semester: "desc" },
-        { createdAt: "desc" },
-      ],
-    });
+        orderBy: {
+          [sortBy as string]: sortOrder === "desc" ? "desc" : "asc",
+        },
+        skip,
+        take: limitNum,
+      }),
+      prisma.grade.count({ where }),
+    ]);
 
-    console.log("🔍 Main query result:", grades.length, "grades found");
+    // Calcul des statistiques
+    const statistics = {
+      totalGrades: total,
+      averageGrade:
+        grades.length > 0
+          ? grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length
+          : 0,
+      passedGrades: grades.filter((g) => g.grade >= g.subject.passingGrade)
+        .length,
+      failedGrades: grades.filter((g) => g.grade < g.subject.passingGrade)
+        .length,
+    };
 
-    // Log de consultation réussie
     await createAuditLog({
       ...auditData,
-      action: "GET_GRADES_LIST_SUCCESS",
+      action: "GRADES_LIST_REQUEST",
       entity: "Grade",
-      description: `Consultation de la liste des notes - ${grades.length} note(s) trouvée(s)`,
+      description: "Liste des notes récupérée",
       status: "SUCCESS",
+      metadata: { total, filters: where },
     });
 
-    res.json({
-      count: grades.length,
-      grades,
-      debug: {
-        queryParams: req.query,
-        whereClause,
+    const response: ApiResponse = {
+      success: true,
+      message: "Notes récupérées avec succès",
+      data: {
+        grades,
+        statistics,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
       },
-    });
-  } catch (error) {
-    console.error("❌ Error in getAllGrades:", error);
-    handleControllerError(error, res, "la récupération des notes", {
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("GradeController - getGrades error:", error);
+
+    await createAuditLog({
       ...auditData,
-      action: "GET_GRADES_LIST",
+      action: "GRADES_LIST_ERROR",
+      entity: "Grade",
+      description: "Erreur lors de la récupération des notes",
+      status: "ERROR",
+      errorMessage: error.message,
     });
+
+    const response: ApiResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-export const getGradeById = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).userId || "unknown",
-  };
+/**
+ * @desc Récupère une note par ID
+ */
+export const getGradeById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
 
   try {
     const { id } = req.params;
 
-    if (!id) {
-      await createAuditLog({
-        ...auditData,
-        action: "GET_GRADE_DETAILS_ATTEMPT",
-        entity: "Grade",
-        description: "Tentative de consultation de note - ID manquant",
-        status: "ERROR",
-      });
-      return res.status(400).json({ error: "ID de la note requis" });
-    }
-
-    const grade = await prisma.grade.findFirst({
-      where: {
-        id,
-        isActive: true,
-      },
+    const grade = await prisma.grade.findUnique({
+      where: { id },
       include: {
         student: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
+            email: true,
+            schoolClass: {
+              select: {
+                name: true,
+                level: true,
+              },
+            },
           },
         },
-        ue: {
+        subject: {
           select: {
             id: true,
             code: true,
-            title: true,
-            credits: true,
+            name: true,
+            coefficient: true,
+            type: true,
             passingGrade: true,
+            description: true,
+          },
+        },
+        classAssignment: {
+          include: {
+            professeur: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                matricule: true,
+              },
+            },
+            subject: {
+              select: {
+                code: true,
+                name: true,
+              },
+            },
+            academicYear: {
+              select: {
+                year: true,
+                isCurrent: true,
+              },
+            },
           },
         },
         academicYear: {
           select: {
             id: true,
             year: true,
+            startDate: true,
+            endDate: true,
+            isCurrent: true,
+          },
+        },
+        transcriptGrades: {
+          include: {
+            transcript: {
+              select: {
+                id: true,
+                documentType: true,
+                status: true,
+                generatedAt: true,
+              },
+            },
           },
         },
       },
     });
 
     if (!grade) {
-      await createAuditLog({
-        ...auditData,
-        action: "GET_GRADE_DETAILS_ATTEMPT",
-        entity: "Grade",
-        entityId: id,
-        description: "Tentative de consultation de note - non trouvée",
-        status: "ERROR",
-      });
-      return res.status(404).json({ error: "Note non trouvée" });
+      const response: ApiResponse = {
+        success: false,
+        message: "Note non trouvée",
+        code: "GRADE_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
 
-    // Log de consultation réussie
+    // Calculer si la note est validée
+    const isPassing = grade.grade >= grade.subject.passingGrade;
+
     await createAuditLog({
       ...auditData,
-      action: "GET_GRADE_DETAILS_SUCCESS",
+      action: "GRADE_DETAILS_REQUEST",
       entity: "Grade",
       entityId: id,
-      description: `Consultation de la note ${id} pour l'étudiant ${grade.student?.firstName} ${grade.student?.lastName}`,
+      description: "Détails de la note récupérés",
       status: "SUCCESS",
     });
 
-    res.json(grade);
-  } catch (error) {
-    handleControllerError(error, res, "la récupération de la note", {
+    const response: ApiResponse = {
+      success: true,
+      message: "Note récupérée avec succès",
+      data: {
+        grade,
+        evaluation: {
+          isPassing,
+          passingGrade: grade.subject.passingGrade,
+          difference: grade.grade - grade.subject.passingGrade,
+        },
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("GradeController - getGradeById error:", error);
+
+    await createAuditLog({
       ...auditData,
-      action: "GET_GRADE_DETAILS",
+      action: "GRADE_DETAILS_ERROR",
+      entity: "Grade",
+      description: "Erreur lors de la récupération de la note",
+      status: "ERROR",
+      errorMessage: error.message,
     });
+
+    const response: ApiResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-export const createGrade = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).userId || "unknown",
-  };
+/**
+ * @desc Crée une nouvelle note
+ */
+export const createGrade = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
 
   try {
-    const gradeData: GradeCreateData = req.body;
+    const {
+      studentId,
+      subjectId,
+      assignmentId,
+      grade: gradeValue,
+      status,
+      session,
+      controlType,
+      academicYearId,
+      classLevel,
+      notes,
+    } = req.body;
 
-    console.log("📝 Create Grade Request:", gradeData);
-
-    // Validation des données
-    const validation = validateGradeCreation(gradeData);
-    if (!validation.isValid) {
-      await createAuditLog({
-        ...auditData,
-        action: "CREATE_GRADE_ATTEMPT",
-        entity: "Grade",
-        description: "Tentative de création de note - données invalides",
-        status: "ERROR",
-        errorMessage: validation.errors.join(", "),
-      });
-      return res.status(400).json({
-        error: "Données invalides",
-        details: validation.errors,
-      });
+    // Validation des données requises
+    if (
+      !studentId ||
+      !subjectId ||
+      !assignmentId ||
+      gradeValue === undefined ||
+      !academicYearId
+    ) {
+      const response: ApiResponse = {
+        success: false,
+        message: "Données requises manquantes",
+        code: "MISSING_REQUIRED_FIELDS",
+      };
+      res.status(400).json(response);
+      return;
     }
 
-    const numericGrade = parseFloat(gradeData.grade.toString());
-
-    // Vérifications d'existence des entités liées
-    const [student, ue, academicYear] = await Promise.all([
-      prisma.student.findUnique({ where: { id: gradeData.studentId } }),
-      prisma.ue.findUnique({
-        where: { id: gradeData.ueId },
-        select: { id: true, passingGrade: true, code: true, title: true },
-      }),
-      prisma.academicYear.findUnique({
-        where: { id: gradeData.academicYearId },
-      }),
+    // Vérifier l'existence des entités liées
+    const [student, subject, assignment, academicYear] = await Promise.all([
+      prisma.student.findUnique({ where: { id: studentId } }),
+      prisma.subject.findUnique({ where: { id: subjectId } }),
+      prisma.classAssignment.findUnique({ where: { id: assignmentId } }),
+      prisma.academicYear.findUnique({ where: { id: academicYearId } }),
     ]);
 
     if (!student) {
-      await createAuditLog({
-        ...auditData,
-        action: "CREATE_GRADE_ATTEMPT",
-        entity: "Grade",
-        description: `Tentative de création de note - étudiant ${gradeData.studentId} non trouvé`,
-        status: "ERROR",
-      });
-      return res.status(404).json({ error: "Étudiant non trouvé" });
+      const response: ApiResponse = {
+        success: false,
+        message: "Étudiant non trouvé",
+        code: "STUDENT_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
-    if (!ue) {
-      await createAuditLog({
-        ...auditData,
-        action: "CREATE_GRADE_ATTEMPT",
-        entity: "Grade",
-        description: `Tentative de création de note - UE ${gradeData.ueId} non trouvée`,
-        status: "ERROR",
-      });
-      return res.status(404).json({ error: "Cours non trouvée" });
+
+    if (!subject) {
+      const response: ApiResponse = {
+        success: false,
+        message: "Matière non trouvée",
+        code: "SUBJECT_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
+
+    if (!assignment) {
+      const response: ApiResponse = {
+        success: false,
+        message: "Affectation de classe non trouvée",
+        code: "ASSIGNMENT_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
+    }
+
     if (!academicYear) {
-      await createAuditLog({
-        ...auditData,
-        action: "CREATE_GRADE_ATTEMPT",
-        entity: "Grade",
-        description: `Tentative de création de note - année académique ${gradeData.academicYearId} non trouvée`,
-        status: "ERROR",
-      });
-      return res.status(404).json({ error: "Année académique non trouvée" });
+      const response: ApiResponse = {
+        success: false,
+        message: "Année académique non trouvée",
+        code: "ACADEMIC_YEAR_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
 
-    // Déterminer la session finale
-    const finalSession = gradeData.session || GradeSession.Normale;
-
-    // Vérifier l'unicité en fonction de la session
-    const existingGrade = await prisma.grade.findFirst({
+    // Vérifier si une note existe déjà pour cette combinaison
+    const existingGrade = await prisma.grade.findUnique({
       where: {
-        studentId: gradeData.studentId,
-        ueId: gradeData.ueId,
-        academicYearId: gradeData.academicYearId,
-        semester: gradeData.semester,
-        session: finalSession,
-        isActive: finalSession === GradeSession.Normale ? true : undefined,
+        studentId_subjectId_academicYearId_controlType_session_assignmentId: {
+          studentId,
+          subjectId,
+          academicYearId,
+          controlType: controlType || "CONTROLE_1",
+          session: session || "Normale",
+          assignmentId,
+        },
       },
     });
 
     if (existingGrade) {
-      console.log("⚠️ Grade already exists:", existingGrade);
-
-      if (finalSession === GradeSession.Normale) {
-        // Pour la session normale, on ne peut avoir qu'une note active
-        if (existingGrade.isActive === false) {
-          console.log("🔄 Reactivating inactive normal grade");
-
-          const updatedGrade = await prisma.grade.update({
-            where: { id: existingGrade.id },
-            data: {
-              grade: numericGrade,
-              status:
-                gradeData.status ||
-                calculateGradeStatus(numericGrade, ue.passingGrade),
-              session: GradeSession.Normale,
-              isActive: true,
-              updatedAt: new Date(),
-            },
-            include: {
-              student: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  studentId: true,
-                },
-              },
-              ue: {
-                select: {
-                  code: true,
-                  title: true,
-                  passingGrade: true,
-                },
-              },
-              academicYear: {
-                select: {
-                  year: true,
-                },
-              },
-            },
-          });
-
-          // Log de réactivation
-          await createAuditLog({
-            ...auditData,
-            action: "REACTIVATE_GRADE_SUCCESS",
-            entity: "Grade",
-            entityId: existingGrade.id,
-            description: `Note réactivée et mise à jour pour l'étudiant ${student.firstName} ${student.lastName} en ${ue.code}`,
-            status: "SUCCESS",
-          });
-
-          return res.status(200).json({
-            message: "Note réactivée et mise à jour avec succès",
-            grade: updatedGrade,
-          });
-        }
-
-        // Note normale active existe déjà
-        await createAuditLog({
-          ...auditData,
-          action: "CREATE_GRADE_ATTEMPT",
-          entity: "Grade",
-          description: `Tentative de création de note - note normale déjà existante pour l'étudiant ${student.firstName} ${student.lastName} en ${ue.code}`,
-          status: "ERROR",
-        });
-
-        return res.status(409).json({
-          error: "Une note de session normale existe déjà",
-          existingGrade: {
-            id: existingGrade.id,
-            grade: existingGrade.grade,
-            status: existingGrade.status,
-            session: existingGrade.session,
-          },
-          suggestions: [
-            "Utilisez PUT /grades/:id pour mettre à jour la note existante",
-            "Utilisez PUT /grades/:id avec isRetake=true pour créer une note de reprise",
-          ],
-        });
-      } else {
-        // Pour les reprises, on peut mettre à jour la note existante
-        console.log("🔄 Updating existing retake grade");
-
-        const updatedGrade = await prisma.grade.update({
-          where: { id: existingGrade.id },
-          data: {
-            grade: numericGrade,
-            status:
-              gradeData.status ||
-              calculateGradeStatus(numericGrade, ue.passingGrade),
-            updatedAt: new Date(),
-          },
-          include: {
-            student: {
-              select: {
-                firstName: true,
-                lastName: true,
-                studentId: true,
-              },
-            },
-            ue: {
-              select: {
-                code: true,
-                title: true,
-                passingGrade: true,
-              },
-            },
-            academicYear: {
-              select: {
-                year: true,
-              },
-            },
-          },
-        });
-
-        // Log de mise à jour de reprise
-        await createAuditLog({
-          ...auditData,
-          action: "UPDATE_RETAKE_GRADE_SUCCESS",
-          entity: "Grade",
-          entityId: existingGrade.id,
-          description: `Note de reprise mise à jour pour l'étudiant ${student.firstName} ${student.lastName} en ${ue.code}`,
-          status: "SUCCESS",
-        });
-
-        return res.status(200).json({
-          message: "Note de reprise mise à jour avec succès",
-          grade: updatedGrade,
-        });
-      }
+      const response: ApiResponse = {
+        success: false,
+        message: "Une note existe déjà pour cette combinaison",
+        code: "GRADE_ALREADY_EXISTS",
+        data: { existingGradeId: existingGrade.id },
+      };
+      res.status(400).json(response);
+      return;
     }
 
-    // Calcul du statut automatique si non fourni
-    const finalStatus =
-      gradeData.status || calculateGradeStatus(numericGrade, ue.passingGrade);
+    // Vérifier que la note est dans les limites (0-20 ou 0-100)
+    const gradeNum = parseFloat(gradeValue);
+    if (isNaN(gradeNum) || gradeNum < 0 || gradeNum > 100) {
+      const response: ApiResponse = {
+        success: false,
+        message: "La note doit être comprise entre 0 et 100",
+        code: "INVALID_GRADE_RANGE",
+      };
+      res.status(400).json(response);
+      return;
+    }
 
-    console.log("✅ Creating new grade with:", {
-      studentId: gradeData.studentId,
-      ueId: gradeData.ueId,
-      grade: numericGrade,
-      status: finalStatus,
-      session: finalSession,
-    });
-
+    // Créer la note
     const newGrade = await prisma.grade.create({
       data: {
-        studentId: gradeData.studentId,
-        ueId: gradeData.ueId,
-        grade: numericGrade,
-        status: finalStatus,
-        session: finalSession,
-        semester: gradeData.semester,
-        level: gradeData.level,
-        academicYearId: gradeData.academicYearId,
+        studentId,
+        subjectId,
+        assignmentId,
+        grade: gradeNum,
+        status: status || "Valid_",
+        session: session || "Normale",
+        controlType: controlType || "CONTROLE_1",
+        academicYearId,
+        classLevel: classLevel || assignment.classLevel,
+        notes,
         isActive: true,
       },
       include: {
@@ -698,774 +541,763 @@ export const createGrade = async (req: Request, res: Response) => {
           select: {
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
-        ue: {
+        subject: {
           select: {
-            code: true,
-            title: true,
+            name: true,
             passingGrade: true,
-          },
-        },
-        academicYear: {
-          select: {
-            year: true,
           },
         },
       },
     });
 
-    console.log("🎉 Grade created successfully:", newGrade.id);
-
-    // Log de création réussie
     await createAuditLog({
       ...auditData,
-      action: "CREATE_GRADE_SUCCESS",
+      action: "GRADE_CREATED",
       entity: "Grade",
       entityId: newGrade.id,
-      description: `Nouvelle note créée pour l'étudiant ${student.firstName} ${student.lastName} en ${ue.code}: ${numericGrade}/100 (${finalStatus})`,
+      description: `Note créée pour l'étudiant ${newGrade.student.firstName} ${newGrade.student.lastName} en ${newGrade.subject.name}`,
       status: "SUCCESS",
+      metadata: {
+        studentId,
+        subjectId,
+        assignmentId,
+        grade: gradeNum,
+        academicYearId,
+        controlType,
+        session,
+      },
     });
 
-    res.status(201).json({
+    const response: ApiResponse = {
+      success: true,
       message: "Note créée avec succès",
-      grade: newGrade,
-    });
-  } catch (error) {
-    console.error("❌ Error in createGrade:", error);
-    handleControllerError(error, res, "la création de la note", {
+      data: { grade: newGrade },
+    };
+
+    res.status(201).json(response);
+  } catch (error: any) {
+    console.error("GradeController - createGrade error:", error);
+
+    await createAuditLog({
       ...auditData,
-      action: "CREATE_GRADE",
+      action: "GRADE_CREATION_ERROR",
+      entity: "Grade",
+      description: "Erreur lors de la création de la note",
+      status: "ERROR",
+      errorMessage: error.message,
     });
+
+    // Gestion des erreurs spécifiques Prisma
+    if (error.code === "P2002") {
+      const response: ApiResponse = {
+        success: false,
+        message: "Une note existe déjà pour cette combinaison",
+        code: "GRADE_ALREADY_EXISTS",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    const response: ApiResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-export const updateGrade = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).userId || "unknown",
-  };
+/**
+ * @desc Met à jour une note existante
+ */
+export const updateGrade = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
 
   try {
     const { id } = req.params;
-    const updateData = req.body;
-
-    console.log("📝 Update Grade Request:", { id, updateData });
-
-    if (!id) {
-      await createAuditLog({
-        ...auditData,
-        action: "UPDATE_GRADE_ATTEMPT",
-        entity: "Grade",
-        description: "Tentative de mise à jour de note - ID manquant",
-        status: "ERROR",
-      });
-      return res.status(400).json({ error: "ID de la note requis" });
-    }
+    const {
+      grade: gradeValue,
+      status,
+      session,
+      controlType,
+      notes,
+      isActive,
+    } = req.body;
 
     // Vérifier si la note existe
     const existingGrade = await prisma.grade.findUnique({
       where: { id },
       include: {
-        ue: {
-          select: {
-            passingGrade: true,
-          },
-        },
         student: {
           select: {
             firstName: true,
             lastName: true,
-            studentId: true,
+          },
+        },
+        subject: {
+          select: {
+            name: true,
           },
         },
       },
     });
 
     if (!existingGrade) {
-      console.log("❌ Grade not found:", id);
-      await createAuditLog({
-        ...auditData,
-        action: "UPDATE_GRADE_ATTEMPT",
-        entity: "Grade",
-        entityId: id,
-        description: "Tentative de mise à jour de note - non trouvée",
-        status: "ERROR",
-      });
-      return res.status(404).json({ error: "Note non trouvée" });
+      const response: ApiResponse = {
+        success: false,
+        message: "Note non trouvée",
+        code: "GRADE_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
 
-    // Validation de la nouvelle note si fournie
-    if (updateData.grade !== undefined) {
-      const gradeValue = Number(updateData.grade);
-      if (isNaN(gradeValue) || gradeValue < 0 || gradeValue > 100) {
-        await createAuditLog({
-          ...auditData,
-          action: "UPDATE_GRADE_ATTEMPT",
-          entity: "Grade",
-          entityId: id,
-          description: "Tentative de mise à jour de note - note invalide",
-          status: "ERROR",
-        });
-        return res
-          .status(400)
-          .json({ error: "La note doit être entre 0 et 100" });
+    // Préparer les données de mise à jour
+    const updateData: any = {};
+
+    if (gradeValue !== undefined) {
+      const gradeNum = parseFloat(gradeValue);
+      if (isNaN(gradeNum) || gradeNum < 0 || gradeNum > 100) {
+        const response: ApiResponse = {
+          success: false,
+          message: "La note doit être comprise entre 0 et 100",
+          code: "INVALID_GRADE_RANGE",
+        };
+        res.status(400).json(response);
+        return;
       }
+      updateData.grade = gradeNum;
     }
 
-    // Gestion des reprises
-    if (updateData.isRetake) {
-      console.log("🔄 Creating retake grade for:", id);
+    if (status !== undefined) updateData.status = status;
+    if (session !== undefined) updateData.session = session;
+    if (controlType !== undefined) updateData.controlType = controlType;
+    if (notes !== undefined) updateData.notes = notes;
+    if (isActive !== undefined) updateData.isActive = isActive;
 
-      // Vérifier s'il existe déjà une note de reprise pour cette combinaison
-      const existingRetake = await prisma.grade.findFirst({
-        where: {
-          studentId: existingGrade.studentId,
-          ueId: existingGrade.ueId,
-          academicYearId: existingGrade.academicYearId,
-          semester: existingGrade.semester,
-          session: "Reprise",
-          isActive: true,
-        },
-      });
-
-      if (existingRetake) {
-        await createAuditLog({
-          ...auditData,
-          action: "CREATE_RETAKE_ATTEMPT",
-          entity: "Grade",
-          entityId: id,
-          description: `Tentative de création de reprise - note de reprise déjà existante pour l'étudiant ${existingGrade.student?.firstName} ${existingGrade.student?.lastName}`,
-          status: "ERROR",
-        });
-        return res.status(409).json({
-          error: "Une note de reprise existe déjà pour cette UE",
-          existingRetake: {
-            id: existingRetake.id,
-            grade: existingRetake.grade,
-            status: existingRetake.status,
-          },
-          suggestions: [
-            "Mettez à jour la note de reprise existante",
-            "Supprimez d'abord la note de reprise existante",
-          ],
-        });
-      }
-
-      // Désactiver l'ancienne note (si elle est active)
-      if (existingGrade.isActive) {
-        await prisma.grade.update({
-          where: { id },
-          data: { isActive: false },
-        });
-      }
-
-      // Calculer le nouveau statut
-      const newGradeValue =
-        updateData.grade !== undefined
-          ? Number(updateData.grade)
-          : existingGrade.grade;
-
-      const newStatus = calculateGradeStatus(
-        newGradeValue,
-        existingGrade.ue.passingGrade
-      );
-
-      // Créer une nouvelle note pour la reprise
-      const retakeGrade = await prisma.grade.create({
-        data: {
-          studentId: existingGrade.studentId,
-          ueId: existingGrade.ueId,
-          grade: newGradeValue,
-          status: newStatus,
-          session: "Reprise",
-          semester: existingGrade.semester,
-          level: existingGrade.level,
-          academicYearId: existingGrade.academicYearId,
-          isActive: true,
-        },
-        include: {
-          student: {
-            select: {
-              firstName: true,
-              lastName: true,
-              studentId: true,
-            },
-          },
-          ue: {
-            select: {
-              code: true,
-              title: true,
-            },
-          },
-        },
-      });
-
-      console.log("✅ Retake grade created:", retakeGrade.id);
-
-      // Log de création de reprise réussie
-      await createAuditLog({
-        ...auditData,
-        action: "CREATE_RETAKE_SUCCESS",
-        entity: "Grade",
-        entityId: retakeGrade.id,
-        description: `Note de reprise créée pour l'étudiant ${existingGrade.student?.firstName} ${existingGrade.student?.lastName}: ${newGradeValue}/100 (${newStatus})`,
-        status: "SUCCESS",
-      });
-
-      return res.json({
-        message: "Note de reprise créée avec succès",
-        grade: retakeGrade,
-        previousGrade: {
-          id: existingGrade.id,
-          grade: existingGrade.grade,
-          session: existingGrade.session,
-          status: existingGrade.status,
-        },
-      });
-    }
-
-    // Mise à jour normale
-    const updatePayload: any = { ...updateData };
-
-    // Recalculer le statut si la note change
-    if (updateData.grade !== undefined) {
-      updatePayload.status = calculateGradeStatus(
-        Number(updateData.grade),
-        existingGrade.ue.passingGrade
-      );
-    }
-
-    // Ne pas permettre la modification de certaines propriétés
-    delete updatePayload.studentId;
-    delete updatePayload.ueId;
-    delete updatePayload.academicYearId;
-    delete updatePayload.semester;
-    delete updatePayload.isRetake;
-
-    console.log("📤 Update payload:", updatePayload);
-
+    // Mettre à jour la note
     const updatedGrade = await prisma.grade.update({
       where: { id },
-      data: updatePayload,
+      data: updateData,
       include: {
         student: {
           select: {
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
-        ue: {
+        subject: {
           select: {
-            code: true,
-            title: true,
+            name: true,
             passingGrade: true,
+          },
+        },
+        classAssignment: {
+          include: {
+            professeur: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         },
       },
     });
 
-    console.log("✅ Grade updated successfully:", updatedGrade.id);
-
-    // Log de mise à jour réussie
     await createAuditLog({
       ...auditData,
-      action: "UPDATE_GRADE_SUCCESS",
+      action: "GRADE_UPDATED",
       entity: "Grade",
       entityId: id,
-      description: `Note mise à jour pour l'étudiant ${existingGrade.student?.firstName} ${existingGrade.student?.lastName}: ${updatedGrade.grade}/100 (${updatedGrade.status})`,
+      description: `Note mise à jour pour l'étudiant ${existingGrade.student.firstName} ${existingGrade.student.lastName}`,
       status: "SUCCESS",
+      metadata: {
+        oldGrade: existingGrade.grade,
+        newGrade: updatedGrade.grade,
+        changes: Object.keys(updateData),
+      },
     });
 
-    res.json({
+    const response: ApiResponse = {
+      success: true,
       message: "Note mise à jour avec succès",
-      grade: updatedGrade,
-    });
-  } catch (error) {
-    console.error("❌ Error in updateGrade:", error);
-    handleControllerError(error, res, "la mise à jour de la note", {
+      data: { grade: updatedGrade },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("GradeController - updateGrade error:", error);
+
+    await createAuditLog({
       ...auditData,
-      action: "UPDATE_GRADE",
+      action: "GRADE_UPDATE_ERROR",
+      entity: "Grade",
+      description: "Erreur lors de la mise à jour de la note",
+      status: "ERROR",
+      errorMessage: error.message,
     });
+
+    if (error.code === "P2025") {
+      const response: ApiResponse = {
+        success: false,
+        message: "Note non trouvée",
+        code: "GRADE_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    const response: ApiResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-export const deleteGrade = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).userId || "unknown",
-  };
+/**
+ * @desc Supprime une note
+ */
+export const deleteGrade = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
 
   try {
     const { id } = req.params;
 
-    if (!id) {
-      await createAuditLog({
-        ...auditData,
-        action: "DELETE_GRADE_ATTEMPT",
-        entity: "Grade",
-        description: "Tentative de suppression de note - ID manquant",
-        status: "ERROR",
-      });
-      return res.status(400).json({ error: "ID de la note requis" });
-    }
-
     // Vérifier si la note existe
-    const existingGrade = await prisma.grade.findFirst({
-      where: {
-        id,
-        isActive: true,
-      },
+    const grade = await prisma.grade.findUnique({
+      where: { id },
       include: {
         student: {
           select: {
             firstName: true,
             lastName: true,
-            studentId: true,
           },
         },
-        ue: {
+        subject: {
           select: {
-            code: true,
-            title: true,
+            name: true,
+          },
+        },
+        transcriptGrades: {
+          select: {
+            id: true,
           },
         },
       },
     });
 
-    if (!existingGrade) {
-      await createAuditLog({
-        ...auditData,
-        action: "DELETE_GRADE_ATTEMPT",
-        entity: "Grade",
-        entityId: id,
-        description: "Tentative de suppression de note - non trouvée",
-        status: "ERROR",
-      });
-      return res.status(404).json({ error: "Note non trouvée" });
+    if (!grade) {
+      const response: ApiResponse = {
+        success: false,
+        message: "Note non trouvée",
+        code: "GRADE_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
 
-    // Soft delete (désactivation) au lieu de suppression physique
-    await prisma.grade.update({
+    // Vérifier si la note est utilisée dans des transcripts
+    if (grade.transcriptGrades.length > 0) {
+      const response: ApiResponse = {
+        success: false,
+        message:
+          "Cette note ne peut pas être supprimée car elle est utilisée dans des transcripts",
+        code: "GRADE_HAS_DEPENDENCIES",
+        data: {
+          transcriptCount: grade.transcriptGrades.length,
+        },
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Supprimer la note
+    await prisma.grade.delete({
       where: { id },
-      data: { isActive: false },
     });
 
-    // Log de suppression réussie
     await createAuditLog({
       ...auditData,
-      action: "DELETE_GRADE_SUCCESS",
+      action: "GRADE_DELETED",
       entity: "Grade",
       entityId: id,
-      description: `Note supprimée pour l'étudiant ${existingGrade.student?.firstName} ${existingGrade.student?.lastName} en ${existingGrade.ue?.code}`,
+      description: `Note supprimée pour l'étudiant ${grade.student.firstName} ${grade.student.lastName} en ${grade.subject.name}`,
       status: "SUCCESS",
     });
 
-    res.json({
+    const response: ApiResponse = {
+      success: true,
       message: "Note supprimée avec succès",
-      deletedGrade: {
-        id: existingGrade.id,
-        studentId: existingGrade.studentId,
-        ueId: existingGrade.ueId,
-        grade: existingGrade.grade,
-        session: existingGrade.session,
-      },
-    });
-  } catch (error) {
-    handleControllerError(error, res, "la suppression de la note", {
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("GradeController - deleteGrade error:", error);
+
+    await createAuditLog({
       ...auditData,
-      action: "DELETE_GRADE",
+      action: "GRADE_DELETION_ERROR",
+      entity: "Grade",
+      description: "Erreur lors de la suppression de la note",
+      status: "ERROR",
+      errorMessage: error.message,
     });
+
+    const response: ApiResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-// ==================== CONTRÔLEURS SUPPLÉMENTAIRES ====================
-export const getStudentGrades = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).userId || "unknown",
-  };
+/**
+ * @desc Récupère les notes d'un étudiant spécifique
+ */
+export const getStudentGrades = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
 
   try {
     const { studentId } = req.params;
-    const { academicYearId, semester } = req.query;
+    const { academicYearId, classLevel, controlType, session, subjectId } =
+      req.query;
 
-    if (!studentId) {
-      await createAuditLog({
-        ...auditData,
-        action: "GET_STUDENT_GRADES_ATTEMPT",
-        entity: "Grade",
-        description:
-          "Tentative de récupération des notes d'étudiant - ID manquant",
-        status: "ERROR",
-      });
-      return res.status(400).json({ error: "ID étudiant requis" });
-    }
-
-    const whereClause: any = {
-      studentId,
-      isActive: true,
-    };
-
-    if (academicYearId) whereClause.academicYearId = academicYearId as string;
-    if (semester) whereClause.semester = semester as string;
-
-    const grades = await prisma.grade.findMany({
-      where: whereClause,
-      include: {
-        ue: {
+    // Vérifier si l'étudiant existe
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        studentCode: true,
+        email: true,
+        schoolClass: {
           select: {
-            code: true,
-            title: true,
-            credits: true,
-            passingGrade: true,
-          },
-        },
-        academicYear: {
-          select: {
-            year: true,
+            name: true,
+            level: true,
           },
         },
       },
-      orderBy: [{ academicYearId: "desc" }, { semester: "desc" }],
     });
 
-    // Log de consultation réussie
-    await createAuditLog({
-      ...auditData,
-      action: "GET_STUDENT_GRADES_SUCCESS",
-      entity: "Grade",
-      description: `Consultation des notes de l'étudiant ${studentId} - ${grades.length} note(s) trouvée(s)`,
-      status: "SUCCESS",
-    });
-
-    res.json({
-      studentId,
-      count: grades.length,
-      grades,
-    });
-  } catch (error) {
-    handleControllerError(
-      error,
-      res,
-      "la récupération des notes de l'étudiant",
-      {
-        ...auditData,
-        action: "GET_STUDENT_GRADES",
-      }
-    );
-  }
-};
-
-export const getUEGrades = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).userId || "unknown",
-  };
-
-  try {
-    const { ueId } = req.params;
-    const { academicYearId, semester } = req.query;
-
-    if (!ueId) {
-      await createAuditLog({
-        ...auditData,
-        action: "GET_UE_GRADES_ATTEMPT",
-        entity: "Grade",
-        description: "Tentative de récupération des notes d'UE - ID manquant",
-        status: "ERROR",
-      });
-      return res.status(400).json({ error: "ID UE requis" });
+    if (!student) {
+      const response: ApiResponse = {
+        success: false,
+        message: "Étudiant non trouvé",
+        code: "STUDENT_NOT_FOUND",
+      };
+      res.status(404).json(response);
+      return;
     }
 
-    const whereClause: any = {
-      ueId,
-      isActive: true,
-    };
+    // Construction des filtres
+    const where: any = { studentId };
 
-    if (academicYearId) whereClause.academicYearId = academicYearId as string;
-    if (semester) whereClause.semester = semester as string;
+    if (academicYearId) where.academicYearId = academicYearId;
+    if (classLevel) where.classLevel = classLevel;
+    if (controlType) where.controlType = controlType;
+    if (session) where.session = session;
+    if (subjectId) where.subjectId = subjectId;
 
+    // Récupérer les notes de l'étudiant
     const grades = await prisma.grade.findMany({
-      where: whereClause,
+      where,
       include: {
-        student: {
+        subject: {
           select: {
-            firstName: true,
-            lastName: true,
-            studentId: true,
+            id: true,
+            code: true,
+            name: true,
+            coefficient: true,
+            type: true,
+            passingGrade: true,
+          },
+        },
+        classAssignment: {
+          include: {
+            professeur: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
           },
         },
         academicYear: {
           select: {
+            id: true,
             year: true,
+            isCurrent: true,
           },
         },
       },
       orderBy: [
-        { student: { lastName: "asc" } },
-        { student: { firstName: "asc" } },
+        { academicYearId: "desc" },
+        { controlType: "asc" },
+        { subject: { name: "asc" } },
       ],
     });
 
-    // Statistiques
-    const stats = {
-      total: grades.length,
-      valid: grades.filter((g) => g.status === GradeStatus.Valid_).length,
-      reprendre: grades.filter((g) => g.status === GradeStatus.reprendre)
-        .length,
-      nonValid: grades.filter((g) => g.status === GradeStatus.Non_valid_)
-        .length,
-      average:
+    // Calcul des statistiques par matière et par contrôle
+    const statistics = {
+      totalGrades: grades.length,
+      averageGrade:
         grades.length > 0
-          ? grades.reduce((sum, g) => sum + g.grade, 0) / grades.length
+          ? grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length
           : 0,
+      subjectsSummary: {} as Record<string, any>,
+      controlTypeSummary: {} as Record<string, any>,
     };
 
-    // Log de consultation réussie
+    // Organiser par matière
+    grades.forEach((grade) => {
+      const subjectName = grade.subject.name;
+      const controlType = grade.controlType;
+
+      // Statistiques par matière
+      if (!statistics.subjectsSummary[subjectName]) {
+        statistics.subjectsSummary[subjectName] = {
+          subject: grade.subject,
+          grades: [],
+          average: 0,
+          passed: 0,
+          failed: 0,
+          total: 0,
+        };
+      }
+
+      statistics.subjectsSummary[subjectName].grades.push(grade);
+      statistics.subjectsSummary[subjectName].total++;
+
+      if (grade.grade >= grade.subject.passingGrade) {
+        statistics.subjectsSummary[subjectName].passed++;
+      } else {
+        statistics.subjectsSummary[subjectName].failed++;
+      }
+
+      // Statistiques par type de contrôle
+      if (!statistics.controlTypeSummary[controlType]) {
+        statistics.controlTypeSummary[controlType] = {
+          grades: [],
+          average: 0,
+          total: 0,
+        };
+      }
+
+      statistics.controlTypeSummary[controlType].grades.push(grade);
+      statistics.controlTypeSummary[controlType].total++;
+    });
+
+    // Calculer les moyennes
+    Object.keys(statistics.subjectsSummary).forEach((subjectName) => {
+      const subjectData = statistics.subjectsSummary[subjectName];
+      subjectData.average =
+        subjectData.grades.length > 0
+          ? subjectData.grades.reduce(
+              (sum: number, g: any) => sum + g.grade,
+              0
+            ) / subjectData.grades.length
+          : 0;
+    });
+
+    Object.keys(statistics.controlTypeSummary).forEach((controlType) => {
+      const controlData = statistics.controlTypeSummary[controlType];
+      controlData.average =
+        controlData.grades.length > 0
+          ? controlData.grades.reduce(
+              (sum: number, g: any) => sum + g.grade,
+              0
+            ) / controlData.grades.length
+          : 0;
+    });
+
     await createAuditLog({
       ...auditData,
-      action: "GET_UE_GRADES_SUCCESS",
+      action: "STUDENT_GRADES_REQUEST",
       entity: "Grade",
-      description: `Consultation des notes de l'UE ${ueId} - ${grades.length} note(s) trouvée(s), moyenne: ${stats.average.toFixed(2)}`,
+      entityId: studentId,
+      description: `Notes de l'étudiant ${student.firstName} ${student.lastName} récupérées`,
       status: "SUCCESS",
     });
 
-    res.json({
-      ueId,
-      stats,
-      count: grades.length,
-      grades,
-    });
-  } catch (error) {
-    handleControllerError(error, res, "la récupération des notes de l'UE", {
+    const response: ApiResponse = {
+      success: true,
+      message: "Notes de l'étudiant récupérées avec succès",
+      data: {
+        student,
+        grades,
+        statistics,
+      },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error("GradeController - getStudentGrades error:", error);
+
+    await createAuditLog({
       ...auditData,
-      action: "GET_UE_GRADES",
+      action: "STUDENT_GRADES_ERROR",
+      entity: "Grade",
+      description: "Erreur lors de la récupération des notes de l'étudiant",
+      status: "ERROR",
+      errorMessage: error.message,
     });
+
+    const response: ApiResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-export const bulkCreateGrades = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).user?.id || (req as any).userId || null,
-  };
+/**
+ * @desc Importe des notes en masse
+ */
+export const bulkImportGrades = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
 
   try {
-    const { grades } = req.body;
+    const { grades, academicYearId, assignmentId } = req.body;
 
     if (!Array.isArray(grades) || grades.length === 0) {
-      await createAuditLog({
-        ...auditData,
-        action: "BULK_CREATE_GRADES_ATTEMPT",
-        entity: "Grade",
-        description: "Tentative de création en masse - données invalides",
-        status: "ERROR",
-      });
-      return res.status(400).json({
-        error: "Un tableau de notes est requis",
-      });
+      const response: ApiResponse = {
+        success: false,
+        message: "Aucune donnée de note fournie",
+        code: "NO_GRADES_DATA",
+      };
+      res.status(400).json(response);
+      return;
     }
 
-    // Limiter le nombre de notes par requête
-    if (grades.length > 100) {
-      await createAuditLog({
-        ...auditData,
-        action: "BULK_CREATE_GRADES_ATTEMPT",
-        entity: "Grade",
-        description: `Tentative de création en masse - trop de notes (${grades.length})`,
-        status: "ERROR",
-      });
-      return res.status(400).json({
-        error: "Trop de notes dans une seule requête (maximum 100)",
-      });
+    if (!academicYearId) {
+      const response: ApiResponse = {
+        success: false,
+        message: "Année académique requise",
+        code: "ACADEMIC_YEAR_REQUIRED",
+      };
+      res.status(400).json(response);
+      return;
     }
 
-    const results = {
-      success: [] as any[],
-      errors: [] as any[],
-    };
+    // Valider chaque note
+    const validatedGrades = [];
+    const errors = [];
 
-    // Traiter chaque note individuellement
     for (const [index, gradeData] of grades.entries()) {
       try {
-        const validation = validateGradeCreation(gradeData);
-        if (!validation.isValid) {
-          results.errors.push({
+        // Validation des données requises
+        if (
+          !gradeData.studentId ||
+          !gradeData.subjectId ||
+          gradeData.grade === undefined
+        ) {
+          errors.push({
             index,
-            error: "Données invalides",
-            details: validation.errors,
+            error: "Données requises manquantes",
             data: gradeData,
           });
           continue;
         }
 
-        // Vérifier l'existence des entités
-        const [student, ue] = await Promise.all([
+        // Vérifier l'existence de l'étudiant et de la matière
+        const [student, subject] = await Promise.all([
           prisma.student.findUnique({ where: { id: gradeData.studentId } }),
-          prisma.ue.findUnique({
-            where: { id: gradeData.ueId },
-            select: { passingGrade: true },
-          }),
+          prisma.subject.findUnique({ where: { id: gradeData.subjectId } }),
         ]);
 
         if (!student) {
-          results.errors.push({
+          errors.push({
             index,
             error: "Étudiant non trouvé",
-            studentId: gradeData.studentId,
+            data: gradeData,
           });
           continue;
         }
 
-        if (!ue) {
-          results.errors.push({
+        if (!subject) {
+          errors.push({
             index,
-            error: "UE non trouvée",
-            ueId: gradeData.ueId,
+            error: "Matière non trouvée",
+            data: gradeData,
           });
           continue;
         }
 
-        // Vérifier l'unicité
-        const existingGrade = await prisma.grade.findFirst({
-          where: {
-            studentId: gradeData.studentId,
-            ueId: gradeData.ueId,
-            academicYearId: gradeData.academicYearId,
-            semester: gradeData.semester,
-            session: gradeData.session || GradeSession.Normale,
-            isActive: true,
-          },
-        });
-
-        if (existingGrade) {
-          results.errors.push({
+        // Vérifier la plage de la note
+        const gradeNum = parseFloat(gradeData.grade);
+        if (isNaN(gradeNum) || gradeNum < 0 || gradeNum > 100) {
+          errors.push({
             index,
-            error: "Note déjà existante",
-            existingGradeId: existingGrade.id,
+            error: "Note invalide (doit être entre 0 et 100)",
+            data: gradeData,
           });
           continue;
         }
 
-        // Créer la note
-        const numericGrade = parseFloat(gradeData.grade.toString());
-        const status =
-          gradeData.status ||
-          calculateGradeStatus(numericGrade, ue.passingGrade);
-
-        const newGrade = await prisma.grade.create({
-          data: {
-            ...gradeData,
-            grade: numericGrade,
-            status,
-            session: gradeData.session || GradeSession.Normale,
-            isActive: true,
-          },
+        validatedGrades.push({
+          studentId: gradeData.studentId,
+          subjectId: gradeData.subjectId,
+          assignmentId: assignmentId || gradeData.assignmentId,
+          grade: gradeNum,
+          status: gradeData.status || "Valid_",
+          session: gradeData.session || "Normale",
+          controlType: gradeData.controlType || "CONTROLE_1",
+          academicYearId,
+          classLevel: gradeData.classLevel || "Sixieme",
+          notes: gradeData.notes,
+          isActive: true,
         });
-
-        results.success.push({
+      } catch (error: any) {
+        errors.push({
           index,
-          gradeId: newGrade.id,
-          studentId: newGrade.studentId,
-          ueId: newGrade.ueId,
-        });
-      } catch (error) {
-        results.errors.push({
-          index,
-          error: getErrorMessage(error),
+          error: error.message,
           data: gradeData,
         });
       }
     }
 
-    // Log de création en masse réussie
-    await createAuditLog({
-      ...auditData,
-      action: "BULK_CREATE_GRADES_SUCCESS",
-      entity: "Grade",
-      description: `Création en masse de notes terminée - ${results.success.length} succès, ${results.errors.length} erreurs`,
-      status: "SUCCESS",
+    if (validatedGrades.length === 0) {
+      const response: ApiResponse = {
+        success: false,
+        message: "Aucune note valide à importer",
+        code: "NO_VALID_GRADES",
+        data: { errors },
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Importer les notes en utilisant createMany
+    const result = await prisma.grade.createMany({
+      data: validatedGrades,
+      skipDuplicates: true, // Ignorer les doublons
     });
 
-    res.status(201).json({
-      message: `Traitement des notes terminé`,
-      summary: {
-        total: grades.length,
-        success: results.success.length,
-        errors: results.errors.length,
-      },
-      results,
-    });
-  } catch (error) {
-    handleControllerError(error, res, "la création des notes en masse", {
+    await createAuditLog({
       ...auditData,
-      action: "BULK_CREATE_GRADES",
+      action: "GRADES_BULK_IMPORT",
+      entity: "Grade",
+      description: `Importation en masse de ${result.count} notes`,
+      status: "SUCCESS",
+      metadata: {
+        importedCount: result.count,
+        totalAttempted: grades.length,
+        errorCount: errors.length,
+      },
     });
+
+    const response: ApiResponse = {
+      success: true,
+      message: `Importation réussie : ${result.count} notes importées`,
+      data: {
+        importedCount: result.count,
+        errors,
+        totalAttempted: grades.length,
+      },
+    };
+
+    res.status(201).json(response);
+  } catch (error: any) {
+    console.error("GradeController - bulkImportGrades error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: "GRADES_BULK_IMPORT_ERROR",
+      entity: "Grade",
+      description: "Erreur lors de l'importation en masse des notes",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: ApiResponse = {
+      success: false,
+      message: "Erreur lors de l'importation des notes",
+      code: "BULK_IMPORT_ERROR",
+    };
+
+    res.status(500).json(response);
   }
 };
 
-export const getGradeHistory = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).userId || "unknown",
-  };
+/**
+ * @desc Récupère les statistiques des notes
+ */
+export const getGradeStatistics = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
 
   try {
-    const { studentId, ueId, academicYearId, semester } = req.params;
-
-    console.log("🔍 getGradeHistory params:", {
-      studentId,
-      ueId,
+    const {
       academicYearId,
-      semester,
-    });
+      classLevel,
+      controlType,
+      subjectId,
+      startDate,
+      endDate,
+    } = req.query;
 
-    if (!studentId || !ueId || !academicYearId || !semester) {
-      await createAuditLog({
-        ...auditData,
-        action: "GET_GRADE_HISTORY_ATTEMPT",
-        entity: "Grade",
-        description:
-          "Tentative de consultation d'historique - paramètres manquants",
-        status: "ERROR",
-      });
-      return res.status(400).json({
-        error: "Paramètres manquants",
-        required: ["studentId", "ueId", "academicYearId", "semester"],
-      });
+    // Construction des filtres
+    const where: any = { isActive: true };
+
+    if (academicYearId) where.academicYearId = academicYearId;
+    if (classLevel) where.classLevel = classLevel;
+    if (controlType) where.controlType = controlType;
+    if (subjectId) where.subjectId = subjectId;
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate as string);
+      if (endDate) where.createdAt.lte = new Date(endDate as string);
     }
 
-    // Récupérer TOUTES les notes sans condition isActive
+    // Récupérer toutes les notes avec les données nécessaires
     const grades = await prisma.grade.findMany({
-      where: {
-        studentId,
-        ueId,
-        academicYearId,
-        semester,
-      },
+      where,
       include: {
         student: {
           select: {
-            firstName: true,
-            lastName: true,
-            studentId: true,
+            schoolClass: {
+              select: {
+                name: true,
+                level: true,
+              },
+            },
           },
         },
-        ue: {
+        subject: {
           select: {
-            code: true,
-            title: true,
-            credits: true,
+            name: true,
             passingGrade: true,
+            coefficient: true,
           },
         },
         academicYear: {
@@ -1474,521 +1306,134 @@ export const getGradeHistory = async (req: Request, res: Response) => {
           },
         },
       },
-      orderBy: [{ createdAt: "desc" }],
     });
 
-    console.log("🔍 Grades found in DB:", grades.length);
-
-    // Log de consultation d'historique réussie
-    await createAuditLog({
-      ...auditData,
-      action: "GET_GRADE_HISTORY_SUCCESS",
-      entity: "Grade",
-      description: `Consultation de l'historique des notes pour l'étudiant ${studentId} en ${ueId} - ${grades.length} note(s) trouvée(s)`,
-      status: "SUCCESS",
-    });
-
-    res.json({
-      studentId,
-      ueId,
-      academicYearId,
-      semester,
-      count: grades.length,
-      grades,
-    });
-  } catch (error) {
-    console.error("❌ Error in getGradeHistory:", error);
-    handleControllerError(
-      error,
-      res,
-      "la récupération de l'historique des notes",
-      {
-        ...auditData,
-        action: "GET_GRADE_HISTORY",
-      }
-    );
-  }
-};
-
-const resolveEntitiesForGrades = async (
-  grades: ExcelGradeRow[]
-): Promise<{
-  processed: ProcessedGrade[];
-}> => {
-  const processed: ProcessedGrade[] = [...grades];
-
-  console.log("📥 Données notes reçues de l'Excel:", grades);
-
-  // Récupérer tous les matricules et codes UE uniques
-  const matricules = [...new Set(grades.map((g) => g.matricule))];
-  const ueCodes = [...new Set(grades.map((g) => g.codeUE))];
-  const academicYears = [...new Set(grades.map((g) => g.anneeAcademique))];
-
-  console.log("🔍 Recherche des entités pour notes:", {
-    matricules,
-    ueCodes,
-    academicYears,
-  });
-
-  // Charger toutes les entités
-  const [students, ues, academicYearsData] = await Promise.all([
-    // Charger les étudiants par matricule
-    prisma.student.findMany({
-      where: {
-        studentId: {
-          in: matricules,
+    if (grades.length === 0) {
+      const response: ApiResponse = {
+        success: true,
+        message: "Aucune note trouvée pour les filtres spécifiés",
+        data: {
+          totalGrades: 0,
+          statistics: {},
         },
-      },
-      select: {
-        id: true,
-        studentId: true,
-        firstName: true,
-        lastName: true,
-      },
-    }),
-
-    // Charger les UEs par code
-    prisma.ue.findMany({
-      where: {
-        code: {
-          in: ueCodes,
-        },
-      },
-      select: {
-        id: true,
-        code: true,
-        title: true,
-        passingGrade: true,
-      },
-    }),
-
-    // Charger les années académiques
-    prisma.academicYear.findMany({
-      where: {
-        year: {
-          in: academicYears,
-        },
-      },
-      select: {
-        id: true,
-        year: true,
-      },
-    }),
-  ]);
-
-  console.log("📦 Entités trouvées pour notes:", {
-    students: students.map((s) => ({ matricule: s.studentId, id: s.id })),
-    ues: ues.map((u) => ({ code: u.code, id: u.id })),
-    academicYears: academicYearsData.map((ay) => ({
-      year: ay.year,
-      id: ay.id,
-    })),
-  });
-
-  // Créer des maps
-  const studentMap = new Map(
-    students.map((student) => [student.studentId, student])
-  );
-  const ueMap = new Map(ues.map((ue) => [ue.code, ue]));
-  const academicYearMap = new Map(academicYearsData.map((ay) => [ay.year, ay]));
-
-  // Résoudre les IDs pour chaque note
-  for (const grade of processed) {
-    const errors: string[] = [];
-    const resolvedIds: any = {};
-
-    console.log(
-      `\n🔍 Résolution pour note: ${grade.matricule} - ${grade.codeUE}`
-    );
-
-    // Résoudre l'étudiant
-    const student = studentMap.get(grade.matricule);
-    if (student) {
-      resolvedIds.studentId = student.id;
-      console.log(`✅ Étudiant trouvé: ${grade.matricule} -> ${student.id}`);
-    } else {
-      errors.push(`Étudiant non trouvé avec le matricule: ${grade.matricule}`);
-      console.log(`❌ Étudiant non trouvé: ${grade.matricule}`);
+      };
+      res.json(response);
+      return;
     }
 
-    // Résoudre l'UE
-    const ue = ueMap.get(grade.codeUE);
-    if (ue) {
-      resolvedIds.ueId = ue.id;
-      console.log(`✅ UE trouvée: ${grade.codeUE} -> ${ue.id}`);
-    } else {
-      errors.push(`UE non trouvée avec le code: ${grade.codeUE}`);
-      console.log(`❌ UE non trouvée: ${grade.codeUE}`);
-    }
+    // Calculer les statistiques générales
+    const totalGrades = grades.length;
+    const totalPoints = grades.reduce((sum, grade) => sum + grade.grade, 0);
+    const averageGrade = totalPoints / totalGrades;
 
-    // Résoudre l'année académique
-    const academicYear = academicYearMap.get(grade.anneeAcademique);
-    if (academicYear) {
-      resolvedIds.academicYearId = academicYear.id;
-      console.log(
-        `✅ Année académique trouvée: ${grade.anneeAcademique} -> ${academicYear.id}`
-      );
-    } else {
-      errors.push(`Année académique non trouvée: ${grade.anneeAcademique}`);
-      console.log(`❌ Année académique non trouvée: ${grade.anneeAcademique}`);
-    }
-
-    // Validation de la note
-    const gradeValidation = validateGradeInput(grade.note);
-    if (!gradeValidation.isValid && gradeValidation.error) {
-      errors.push(gradeValidation.error);
-      console.log(`❌ Note invalide: ${grade.note}`);
-    }
-
-    grade.resolvedIds = resolvedIds;
-    if (errors.length > 0) {
-      grade.errors = errors;
-      grade.status = "ERROR";
-      console.log(`❌ Erreurs pour cette ligne:`, errors);
-    } else {
-      grade.status = "PENDING";
-      console.log(`✅ Tous les IDs résolus pour cette note`);
-    }
-  }
-
-  return { processed };
-};
-
-// ==================== IMPORTATION DES NOTES DEPUIS EXCEL ====================
-export const importGradesFromExcel = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).user?.id || (req as any).userId || null,
-  };
-
-  try {
-    console.log("🟢 IMPORT NOTES EXCEL DÉBUT");
-
-    if (!req.file) {
-      console.log("❌ Aucun fichier reçu");
-      await createAuditLog({
-        ...auditData,
-        action: "IMPORT_GRADES_EXCEL_ATTEMPT",
-        entity: "Grade",
-        description: "Tentative d'import Excel notes - fichier manquant",
-        status: "ERROR",
-      });
-      return res.status(400).json({
-        success: false,
-        error: "Fichier Excel requis",
-      });
-    }
-
-    console.log("📁 Fichier notes reçu:", req.file.originalname);
-
-    const XLSX = await import("xlsx");
-    const workbook = XLSX.readFile(req.file.path);
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-
-    // Convertir en JSON
-    const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, {
-      header: [
-        "matricule",
-        "codeUE",
-        "nomUE",
-        "note",
-        "niveau",
-        "anneeAcademique",
-        "semestre",
-        "session",
-      ],
-      range: 1, // Ignorer la première ligne (en-têtes)
-    });
-
-    console.log("📋 Données brutes Excel notes:", jsonData);
-
-    // Transformer en format structuré
-    const excelGrades: ExcelGradeRow[] = jsonData
-      .filter(
-        (row: any) =>
-          row.matricule &&
-          row.codeUE &&
-          row.note !== undefined &&
-          row.niveau &&
-          row.anneeAcademique &&
-          row.semestre
-      )
-      .map((row: any) => ({
-        matricule: String(row.matricule).trim(),
-        codeUE: String(row.codeUE).trim(),
-        nomUE: row.nomUE ? String(row.nomUE).trim() : undefined,
-        note: parseFloat(String(row.note).replace(",", ".")),
-        niveau: String(row.niveau).trim(),
-        anneeAcademique: String(row.anneeAcademique).trim(),
-        semestre: String(row.semestre).trim().toUpperCase() as "S1" | "S2",
-        session: row.session
-          ? (String(row.session).trim() as "Normale" | "Reprise")
-          : "Normale",
-      }));
-
-    console.log("🔄 Notes traitées:", excelGrades);
-
-    if (excelGrades.length === 0) {
-      console.log("❌ Aucune donnée valide trouvée dans le fichier notes");
-      await createAuditLog({
-        ...auditData,
-        action: "IMPORT_GRADES_EXCEL_ATTEMPT",
-        entity: "Grade",
-        description:
-          "Tentative d'import Excel notes - aucune donnée valide trouvée",
-        status: "ERROR",
-      });
-      return res.status(400).json({
-        success: false,
-        error: "Aucune donnée valide trouvée dans le fichier Excel",
-      });
-    }
-
-    console.log("🔍 Résolution des entités pour notes...");
-    const { processed: gradesWithIds } =
-      await resolveEntitiesForGrades(excelGrades);
-
-    console.log("📊 Notes avec IDs résolus:", gradesWithIds);
-
-    const results = {
-      success: [] as any[],
-      errors: [] as any[],
-      created: 0,
-      failed: 0,
+    // Statistiques par statut
+    const statusStats = {
+      Valid_: grades.filter((g) => g.status === "Valid_").length,
+      Non_valid_: grades.filter((g) => g.status === "Non_valid_").length,
+      Reprendre: grades.filter((g) => g.status === "Reprendre").length,
     };
 
-    // Traiter chaque note
-    for (const [index, grade] of gradesWithIds.entries()) {
-      try {
-        if (grade.status === "ERROR") {
-          results.errors.push({
-            ligne: index + 2,
-            matricule: grade.matricule,
-            codeUE: grade.codeUE,
-            errors: grade.errors,
-          });
-          results.failed++;
-          continue;
-        }
+    // Statistiques par session
+    const sessionStats = {
+      Normale: grades.filter((g) => g.session === "Normale").length,
+      Reprise: grades.filter((g) => g.session === "Reprise").length,
+    };
 
-        if (!grade.resolvedIds) {
-          results.errors.push({
-            ligne: index + 2,
-            matricule: grade.matricule,
-            codeUE: grade.codeUE,
-            errors: ["Impossible de résoudre les IDs"],
-          });
-          results.failed++;
-          continue;
-        }
+    // Statistiques par type de contrôle
+    const controlTypeStats = {
+      CONTROLE_1: grades.filter((g) => g.controlType === "CONTROLE_1").length,
+      CONTROLE_2: grades.filter((g) => g.controlType === "CONTROLE_2").length,
+      CONTROLE_3: grades.filter((g) => g.controlType === "CONTROLE_3").length,
+      CONTROLE_4: grades.filter((g) => g.controlType === "CONTROLE_4").length,
+    };
 
-        const { studentId, ueId, academicYearId } = grade.resolvedIds;
+    // Statistiques par niveau de classe
+    const classLevelStats: Record<string, number> = {};
+    grades.forEach((grade) => {
+      const level = grade.classLevel;
+      classLevelStats[level] = (classLevelStats[level] || 0) + 1;
+    });
 
-        // Vérifier si la note existe déjà pour cette session
-        const existingGrade = await prisma.grade.findFirst({
-          where: {
-            studentId,
-            ueId,
-            academicYearId,
-            semester: grade.semestre,
-            session: grade.session || "Normale",
-            isActive: true,
-          },
+    // Taux de réussite global
+    const passedGrades = grades.filter(
+      (g) => g.grade >= g.subject.passingGrade
+    ).length;
+    const successRate = (passedGrades / totalGrades) * 100;
+
+    // Distribution des notes
+    const gradeDistribution = {
+      "0-39": grades.filter((g) => g.grade >= 0 && g.grade < 40).length,
+      "40-59": grades.filter((g) => g.grade >= 40 && g.grade < 60).length,
+      "60-69": grades.filter((g) => g.grade >= 60 && g.grade < 70).length,
+      "70-79": grades.filter((g) => g.grade >= 70 && g.grade < 80).length,
+      "80-89": grades.filter((g) => g.grade >= 80 && g.grade < 90).length,
+      "90-100": grades.filter((g) => g.grade >= 90 && g.grade <= 100).length,
+    };
+
+    const statistics = {
+      totalGrades,
+      averageGrade: parseFloat(averageGrade.toFixed(2)),
+      successRate: parseFloat(successRate.toFixed(2)),
+      passedGrades,
+      failedGrades: totalGrades - passedGrades,
+      statusStats,
+      sessionStats,
+      controlTypeStats,
+      classLevelStats,
+      gradeDistribution,
+      byMonth: {} as Record<string, number>,
+    };
+
+    // Calculer par mois (si plus d'un mois de données)
+    if (startDate && endDate) {
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      const monthDiff =
+        (end.getFullYear() - start.getFullYear()) * 12 +
+        end.getMonth() -
+        start.getMonth();
+
+      if (monthDiff > 0) {
+        grades.forEach((grade) => {
+          const month = grade.createdAt.toISOString().slice(0, 7); // Format YYYY-MM
+          statistics.byMonth[month] = (statistics.byMonth[month] || 0) + 1;
         });
-
-        if (existingGrade) {
-          results.errors.push({
-            ligne: index + 2,
-            matricule: grade.matricule,
-            codeUE: grade.codeUE,
-            errors: ["Note déjà existante pour cette session"],
-            existingGradeId: existingGrade.id,
-          });
-          results.failed++;
-          continue;
-        }
-
-        // Récupérer l'UE pour le calcul du statut
-        const ue = await prisma.ue.findUnique({
-          where: { id: ueId },
-          select: { passingGrade: true },
-        });
-
-        if (!ue) {
-          results.errors.push({
-            ligne: index + 2,
-            matricule: grade.matricule,
-            codeUE: grade.codeUE,
-            errors: ["UE non trouvée pour le calcul du statut"],
-          });
-          results.failed++;
-          continue;
-        }
-
-        // Calculer le statut automatique
-        const status = calculateGradeStatus(grade.note, ue.passingGrade);
-
-        console.log(
-          `➕ Création note: ${grade.matricule} - ${grade.codeUE} - ${grade.note}`
-        );
-
-        // Créer la note (sans professeurId)
-        const newGrade = await prisma.grade.create({
-          data: {
-            studentId: studentId!,
-            ueId: ueId!,
-            grade: grade.note,
-            status,
-            session: (grade.session || "Normale") as GradeSession,
-            semester: grade.semestre,
-            level: grade.niveau,
-            academicYearId: academicYearId!,
-            isActive: true,
-          },
-        });
-
-        results.success.push({
-          ligne: index + 2,
-          gradeId: newGrade.id,
-          details: `${grade.matricule} → ${grade.codeUE}: ${grade.note}/100 (${status})`,
-        });
-        results.created++;
-      } catch (error) {
-        console.error(`❌ Erreur ligne ${index + 2}:`, error);
-        results.errors.push({
-          ligne: index + 2,
-          matricule: grade.matricule,
-          codeUE: grade.codeUE,
-          errors: [getErrorMessage(error)],
-        });
-        results.failed++;
       }
     }
 
-    console.log("📈 Résultats finaux import notes:", results);
-
-    // Log d'audit
     await createAuditLog({
       ...auditData,
-      action: "IMPORT_GRADES_EXCEL_SUCCESS",
+      action: "GRADE_STATISTICS_REQUEST",
       entity: "Grade",
-      description: `Import Excel notes terminé - ${results.created} créées, ${results.failed} erreurs`,
+      description: "Statistiques des notes récupérées",
       status: "SUCCESS",
     });
 
-    // Nettoyer le fichier temporaire
-    const fs = await import("fs");
-    if (fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
-    console.log("🟢 IMPORT NOTES EXCEL TERMINÉ AVEC SUCCÈS");
-
-    res.json({
+    const response: ApiResponse = {
       success: true,
-      message: `Import Excel notes terminé`,
-      summary: {
-        total: excelGrades.length,
-        created: results.created,
-        failed: results.failed,
-        successRate: `${((results.created / excelGrades.length) * 100).toFixed(1)}%`,
-      },
-      details: {
-        reussites: results.success,
-        erreurs: results.errors,
-      },
-    });
-  } catch (error) {
-    console.error("🔴 ERREUR IMPORT NOTES EXCEL:", error);
+      message: "Statistiques récupérées avec succès",
+      data: { statistics },
+    };
 
-    // Nettoyer le fichier temporaire en cas d'erreur
-    if (req.file) {
-      const fs = await import("fs");
-      try {
-        if (fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
-        }
-      } catch (cleanupError) {
-        console.error("Erreur lors du nettoyage du fichier:", cleanupError);
-      }
-    }
+    res.json(response);
+  } catch (error: any) {
+    console.error("GradeController - getGradeStatistics error:", error);
 
-    // Log d'erreur
     await createAuditLog({
       ...auditData,
-      action: "IMPORT_GRADES_EXCEL_ERROR",
+      action: "GRADE_STATISTICS_ERROR",
       entity: "Grade",
-      description: `Erreur lors de l'import Excel notes: ${getErrorMessage(error)}`,
+      description: "Erreur lors de la récupération des statistiques",
       status: "ERROR",
+      errorMessage: error.message,
     });
 
-    res.status(500).json({
+    const response: ApiResponse = {
       success: false,
-      error: getErrorMessage(error),
-      message: "Erreur interne lors de l'importation des notes",
-    });
-  }
-};
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
 
-// Template pour l'importation des notes (sans nomProfesseur)
-export const downloadGradeTemplate = async (req: Request, res: Response) => {
-  try {
-    const XLSX = await import("xlsx");
-
-    // Créer un workbook
-    const workbook = XLSX.utils.book_new();
-
-    // Données d'exemple pour les notes (sans nomProfesseur)
-    const templateData = [
-      {
-        matricule: "ETU001",
-        codeUE: "BDD201",
-        nomUE: "Bases de Données",
-        note: 75.5,
-        niveau: "3",
-        anneeAcademique: "2025-2026",
-        semestre: "S1",
-        session: "Normale",
-      },
-      {
-        matricule: "ETU002",
-        codeUE: "ALGO102",
-        nomUE: "Algorithmique Avancée",
-        note: 82.0,
-        niveau: "3",
-        anneeAcademique: "2025-2026",
-        semestre: "S1",
-        session: "Normale",
-      },
-    ];
-
-    // Créer la feuille
-    const worksheet = XLSX.utils.json_to_sheet(templateData);
-
-    // Ajouter la feuille au workbook
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
-
-    // Générer le buffer
-    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
-
-    // Configurer la réponse
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=template_notes.xlsx"
-    );
-
-    res.send(buffer);
-  } catch (error) {
-    console.error("Error generating grade template:", error);
-    res.status(500).json({
-      success: false,
-      error: "Erreur lors de la génération du template notes",
-    });
+    res.status(500).json(response);
   }
 };

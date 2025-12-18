@@ -9,7 +9,11 @@ import {
   ToastIcon,
 } from "@/components/ui/toast";
 
-export function Toaster() {
+export function Toaster(p0: {
+  title: string;
+  description: string;
+  variant: string;
+}) {
   const { toasts } = useToast();
 
   return (

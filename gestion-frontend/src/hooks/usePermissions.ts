@@ -1,144 +1,84 @@
-// src/hooks/usePermissions.ts
-import { useAuthUser } from "./useAuthUser";
-import { useDeanStore } from "@/store/deanStore";
-import { useEffect } from "react";
+// hooks/usePermissions.ts
+import { useAuthStore } from "@/store/authStore";
+import { roleConfigurations } from "@/config/roleConfig";
+import { ActiveTab, UserRole, PERMISSIONS } from "@/types/navigation";
+import { rolePermissions } from "@/config/roleConfig"; // Importez également rolePermissions
 
 export const usePermissions = () => {
-  const { user, isDoyen } = useAuthUser();
-  const { faculty, fetchDeanFaculty, loading } = useDeanStore();
+  const { user } = useAuthStore();
 
-  // Charger la faculté du doyen si nécessaire
-  useEffect(() => {
-    if (isDoyen && user?.id && !faculty) {
-      fetchDeanFaculty(user.id);
-    }
-  }, [isDoyen, user?.id, faculty, fetchDeanFaculty]);
+  const hasPermission = (permission: string): boolean => {
+    if (!user) return false;
 
-  const hasPermission = (
-    requiredPermission: string,
-    resource?: any
-  ): boolean => {
-    // Admin a tous les accès
-    if (user?.role === "Admin") return true;
+    const userRole = user.role as UserRole;
 
-    // Vérifications pour les doyens
-    if (user?.role === "Doyen") {
-      switch (requiredPermission) {
-        case "view_faculty":
-          // Un doyen ne peut voir que sa propre faculté
-          return resource?.id ? resource.id === faculty?.id : true;
-
-        case "view_students":
-          // Un doyen ne peut voir que les étudiants de sa faculté
-          return true; // Le filtrage se fait côté backend
-        case "view_dashboard":
-          return true;
-
-        case "view_grades":
-          return true;
-
-        case "create_user":
-          // Un doyen ne peut créer que des professeurs et secrétaires
-          return resource?.role
-            ? ["Professeur", "Secretaire"].includes(resource.role)
-            : true;
-
-        case "delete_user":
-          // Un doyen ne peut pas supprimer des admins ou autres doyens
-          return resource?.role
-            ? !["Admin", "Doyen"].includes(resource.role)
-            : false;
-
-        default:
-          return false;
-      }
+    // 1. L'admin a TOUTES les permissions
+    if (userRole === "Admin") {
+      return true;
     }
 
-    // Permissions pour autres rôles
-    switch (user?.role) {
-      case "Professeur":
-        return ["view_courses", "view_students", "manage_grades"].includes(
-          requiredPermission
-        );
+    // 2. Vérifier les permissions spécifiques au rôle depuis roleConfig
+    const rolePerms = rolePermissions[userRole] || [];
 
-      case "Secrétaire":
-        return [
-          "view_students",
-          "manage_enrollments",
-          "view_payments",
-        ].includes(requiredPermission);
-
-      case "Directeur":
-        return ["view_reports", "view_analytics"].includes(requiredPermission);
-
-      default:
-        return false;
+    // 3. Si le rôle a "full_access", il a toutes les permissions
+    if (rolePerms.includes(PERMISSIONS.FULL_ACCESS)) {
+      return true;
     }
+
+    // 4. Vérifier si la permission spécifique existe
+    return rolePerms.includes(permission);
   };
 
-  const getAccessibleModules = (): string[] => {
-    const baseModules = ["dashboard", "settings", "profile"];
+  const getAccessibleModules = (): ActiveTab[] => {
+    if (!user) return ["dashboard"];
 
-    switch (user?.role) {
-      case "Admin":
-        return [
-          ...baseModules,
-          "students",
-          "enrollments",
-          "courses",
-          "professeurs",
-          "grades",
-          "retakes",
-          "guardians",
-          "expenses",
-          "fees",
-          "payments",
-          "student-cards",
-          "transcripts",
-          "users",
-          "faculties",
-          "analytics",
-          "audit-logs",
-          "backup",
-        ];
+    const userRole = user.role as UserRole;
+    const config = roleConfigurations[userRole] || roleConfigurations.Admin;
 
-      case "Doyen":
-        return [
-          ...baseModules,
-          "students",
-          "courses",
-          "grades",
-          "schedules",
-          "attendance",
-          "analytics",
-        ];
+    const allItems = [
+      ...config.mainItems,
+      ...config.academicItems,
+      ...config.documentItems,
+      ...config.adminItems,
+    ];
 
-      case "Professeur":
-        return [...baseModules, "courses", "grades", "attendance"];
+    // Filtrer les items pour lesquels l'utilisateur a la permission
+    return allItems
+      .filter((item) => hasPermission(item.permission))
+      .map((item) => item.id as ActiveTab);
+  };
 
-      case "Secrétaire":
-        return [
-          ...baseModules,
-          "students",
-          "courses",
-          "payments",
-          "enrollments",
-        ];
+  const getRoleConfig = () => {
+    if (!user) return roleConfigurations.Admin;
+    return (
+      roleConfigurations[user.role as UserRole] || roleConfigurations.Admin
+    );
+  };
 
-      case "Directeur":
-        return [...baseModules, "analytics", "reports"];
+  // Nouvelle fonction pour vérifier l'accès à un onglet spécifique
+  const canAccessTab = (tabId: ActiveTab): boolean => {
+    if (!user) return false;
 
-      default:
-        return baseModules;
-    }
+    const userRole = user.role as UserRole;
+    const config = roleConfigurations[userRole] || roleConfigurations.Admin;
+
+    const allItems = [
+      ...config.mainItems,
+      ...config.academicItems,
+      ...config.documentItems,
+      ...config.adminItems,
+    ];
+
+    const item = allItems.find((item) => item.id === tabId);
+    if (!item) return false;
+
+    return hasPermission(item.permission);
   };
 
   return {
     hasPermission,
     getAccessibleModules,
-    faculty,
-    loading,
-    isDoyen,
-    userRole: user?.role,
+    getRoleConfig,
+    canAccessTab,
   };
 };

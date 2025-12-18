@@ -1,9 +1,28 @@
-// controllers/feePaymentController.ts
+/**
+ * @file feePaymentController.ts
+ * @description Contrôleur pour la gestion des paiements de frais scolaires
+ * @module Controllers/FeePayments
+ *
+ * Ce contrôleur gère :
+ * - L'enregistrement des paiements
+ * - La consultation des historiques de paiement
+ * - La mise à jour des paiements
+ * - La suppression des paiements
+ * - Le recalcul automatique des soldes étudiants
+ */
+
 import { Request, Response } from "express";
 import prisma from "../prisma";
 import { z } from "zod";
+import { createAuditLog } from "./auditController";
 
-// Fonction utilitaire pour gérer les erreurs unknown
+/**
+ * @function getErrorMessage
+ * @description Fonction utilitaire pour extraire le message d'erreur d'un type unknown
+ * @param {unknown} error - L'erreur à traiter
+ * @returns {string} Le message d'erreur formaté
+ * @private
+ */
 const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message;
@@ -15,9 +34,11 @@ const getErrorMessage = (error: unknown): string => {
     return "Erreur inconnue";
   }
 };
-import { createAuditLog } from "./auditController";
 
-// Schémas de validation avec Zod
+/**
+ * @constant FeePaymentCreateSchema
+ * @description Schéma Zod pour la validation de la création de paiement
+ */
 const FeePaymentCreateSchema = z.object({
   studentFeeId: z.string().min(1, "L'ID des frais étudiant est requis"),
   amount: z.number().min(0.01, "Le montant doit être supérieur à 0"),
@@ -26,22 +47,33 @@ const FeePaymentCreateSchema = z.object({
   paymentDate: z.string().datetime("Date de paiement invalide").optional(),
 });
 
+/**
+ * @constant FeePaymentUpdateSchema
+ * @description Schéma Zod pour la validation de la mise à jour de paiement
+ */
 const FeePaymentUpdateSchema = FeePaymentCreateSchema.partial();
 
+/**
+ * @function getAllFeePayments
+ * @description Récupère tous les paiements avec filtres optionnels
+ * @route GET /api/fee-payments
+ * @access Staff/Admin
+ * @query {string} [studentFeeId] - ID des frais étudiants pour filtrer
+ * @returns {Promise<void>}
+ */
 export const getAllFeePayments = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
     userAgent: req.get("User-Agent") || "unknown",
     userId: (req as any).userId || "unknown",
   };
-  console.log("userId:", auditData.userId);
-  console.log("user:", req.user);
+
   try {
     const { studentFeeId } = req.query;
 
-    // console.log("📥 Consultation de tous les paiements - Filtre:", {
-    //   studentFeeId,
-    // });
+    console.log("📥 Consultation de tous les paiements - Filtre:", {
+      studentFeeId,
+    });
 
     const whereClause: any = {};
     if (studentFeeId) whereClause.studentFeeId = studentFeeId as string;
@@ -56,7 +88,7 @@ export const getAllFeePayments = async (req: Request, res: Response) => {
               select: {
                 firstName: true,
                 lastName: true,
-                studentId: true,
+                studentCode: true,
               },
             },
           },
@@ -102,6 +134,14 @@ export const getAllFeePayments = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function getFeePaymentById
+ * @description Récupère un paiement spécifique par son ID
+ * @route GET /api/fee-payments/:id
+ * @access Staff/Admin
+ * @param {string} id - ID du paiement
+ * @returns {Promise<void>}
+ */
 export const getFeePaymentById = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -124,7 +164,7 @@ export const getFeePaymentById = async (req: Request, res: Response) => {
               select: {
                 firstName: true,
                 lastName: true,
-                studentId: true,
+                studentCode: true,
               },
             },
           },
@@ -185,6 +225,19 @@ export const getFeePaymentById = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function createFeePayment
+ * @description Crée un nouveau paiement et met à jour automatiquement le solde de l'étudiant
+ * @route POST /api/fee-payments
+ * @access Admin
+ * @body {Object} paymentData - Données du paiement
+ * @body {string} paymentData.studentFeeId - ID des frais étudiants
+ * @body {number} paymentData.amount - Montant du paiement
+ * @body {string} paymentData.paymentMethod - Méthode de paiement
+ * @body {string} [paymentData.reference] - Référence du paiement
+ * @body {string} [paymentData.paymentDate] - Date du paiement
+ * @returns {Promise<void>}
+ */
 export const createFeePayment = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -270,7 +323,7 @@ export const createFeePayment = async (req: Request, res: Response) => {
           select: {
             firstName: true,
             lastName: true,
-            studentId: true,
+            studentCode: true,
           },
         },
       },
@@ -347,7 +400,7 @@ export const createFeePayment = async (req: Request, res: Response) => {
             select: {
               firstName: true,
               lastName: true,
-              studentId: true,
+              studentCode: true,
             },
           },
           payments: {
@@ -375,7 +428,7 @@ export const createFeePayment = async (req: Request, res: Response) => {
         paymentMethod,
         reference,
         studentName: `${result.studentFee.student.firstName} ${result.studentFee.student.lastName}`,
-        studentId: result.studentFee.student.studentId,
+        studentId: result.studentFee.student.studentCode,
         newStatus: result.studentFee.status,
         newPaidAmount: result.studentFee.paidAmount,
       },
@@ -405,6 +458,14 @@ export const createFeePayment = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function getFeePayments
+ * @description Récupère les paiements avec filtres
+ * @route GET /api/fee-payments/filtered
+ * @access Staff/Admin
+ * @query {string} [studentFeeId] - ID des frais étudiants pour filtrer
+ * @returns {Promise<void>}
+ */
 export const getFeePayments = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -429,7 +490,7 @@ export const getFeePayments = async (req: Request, res: Response) => {
               select: {
                 firstName: true,
                 lastName: true,
-                studentId: true,
+                studentCode: true,
               },
             },
             feeStructure: true,
@@ -476,6 +537,19 @@ export const getFeePayments = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function updateFeePayment
+ * @description Met à jour un paiement existant et recalcule automatiquement le solde
+ * @route PUT /api/fee-payments/:id
+ * @access Admin
+ * @param {string} id - ID du paiement à mettre à jour
+ * @body {Object} data - Données de mise à jour
+ * @body {number} [data.amount] - Nouveau montant
+ * @body {string} [data.paymentMethod] - Nouvelle méthode de paiement
+ * @body {string} [data.reference] - Nouvelle référence
+ * @body {string} [data.paymentDate] - Nouvelle date de paiement
+ * @returns {Promise<void>}
+ */
 export const updateFeePayment = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -493,7 +567,35 @@ export const updateFeePayment = async (req: Request, res: Response) => {
     try {
       FeePaymentUpdateSchema.parse(data);
     } catch (validationError) {
-      // ... gestion erreur validation ...
+      if (validationError instanceof z.ZodError) {
+        console.error("❌ Erreur validation Zod:", validationError.issues);
+
+        await createAuditLog({
+          ...auditData,
+          action: "UPDATE_FEE_PAYMENT_ATTEMPT",
+          entity: "FeePayment",
+          entityId: id,
+          description:
+            "Tentative de mise à jour de paiement - validation des données échouée",
+          status: "ERROR",
+          errorMessage: "Données de validation invalides",
+          metadata: {
+            errors: validationError.issues.map((issue) => ({
+              field: issue.path.join("."),
+              message: issue.message,
+            })),
+          },
+        });
+
+        return res.status(400).json({
+          error: "Données de validation invalides",
+          details: validationError.issues.map((issue) => ({
+            field: issue.path.join("."),
+            message: issue.message,
+          })),
+        });
+      }
+      throw validationError;
     }
 
     // Récupérer l'ancien paiement AVANT modification
@@ -509,6 +611,15 @@ export const updateFeePayment = async (req: Request, res: Response) => {
     });
 
     if (!oldPayment) {
+      await createAuditLog({
+        ...auditData,
+        action: "UPDATE_FEE_PAYMENT_ATTEMPT",
+        entity: "FeePayment",
+        entityId: id,
+        description: "Tentative de mise à jour de paiement - non trouvé",
+        status: "ERROR",
+      });
+
       return res.status(404).json({ error: "Paiement non trouvé" });
     }
 
@@ -581,7 +692,7 @@ export const updateFeePayment = async (req: Request, res: Response) => {
               select: {
                 firstName: true,
                 lastName: true,
-                studentId: true,
+                studentCode: true,
               },
             },
           },
@@ -629,6 +740,14 @@ export const updateFeePayment = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function deleteFeePayment
+ * @description Supprime un paiement et met à jour le solde de l'étudiant
+ * @route DELETE /api/fee-payments/:id
+ * @access Admin
+ * @param {string} id - ID du paiement à supprimer
+ * @returns {Promise<void>}
+ */
 export const deleteFeePayment = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -661,7 +780,7 @@ export const deleteFeePayment = async (req: Request, res: Response) => {
               select: {
                 firstName: true,
                 lastName: true,
-                studentId: true,
+                studentCode: true,
               },
             },
           },
@@ -733,7 +852,7 @@ export const deleteFeePayment = async (req: Request, res: Response) => {
         amount: feePayment.amount,
         paymentMethod: feePayment.paymentMethod,
         studentName: `${feePayment.studentFee.student.firstName} ${feePayment.studentFee.student.lastName}`,
-        studentId: feePayment.studentFee.student.studentId,
+        studentCode: feePayment.studentFee.student.studentCode,
       },
     });
 
@@ -762,6 +881,14 @@ export const deleteFeePayment = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @function getPaymentHistory
+ * @description Récupère l'historique complet des paiements pour des frais étudiants spécifiques
+ * @route GET /api/fee-payments/history/:studentFeeId
+ * @access Staff/Admin
+ * @param {string} studentFeeId - ID des frais étudiants
+ * @returns {Promise<void>}
+ */
 export const getPaymentHistory = async (req: Request, res: Response) => {
   const auditData = {
     ipAddress: req.ip || "unknown",
@@ -784,7 +911,7 @@ export const getPaymentHistory = async (req: Request, res: Response) => {
               select: {
                 firstName: true,
                 lastName: true,
-                studentId: true,
+                studentCode: true,
               },
             },
           },

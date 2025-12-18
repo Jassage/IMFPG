@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { SidebarTrigger, SidebarInset, Sidebar } from "@/components/ui/sidebar";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "../components/AppSidebar";
 import {
   Bell,
@@ -9,7 +9,6 @@ import {
   LogOut,
   Moon,
   Sun,
-  ArrowLeft,
   BookOpen,
   GraduationCap,
   Shield,
@@ -27,6 +26,17 @@ import {
   FileText,
   UserPlus,
   RotateCcw,
+  Calendar,
+  Bookmark,
+  ChartBar,
+  Megaphone,
+  ShieldAlert,
+  Key,
+  HelpCircle,
+  Globe,
+  Briefcase,
+  FileCheck,
+  Award,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,93 +50,520 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { SettingsPage } from "./SettingsPage";
-
-import { StudentsManager } from "../components/StudentsManager";
-import { CoursesManager } from "../components/CoursesManager";
-import { GradesBulkEditor } from "../components/grades/GradesBulkEditor";
 import { UsersManager } from "../components/UsersManager";
-import { FacultiesManager } from "../components/FacultiesManager";
-import { GuardiansManager } from "../components/GuardiansManager";
-import { Dashboard } from "../components/Dashboard";
-import { AttendanceManager } from "../components/AttendanceManager";
-import { PaymentManager } from "../components/PaymentManager";
 import { AnalyticsDashboard } from "../components/AnalyticsDashboard";
-import { StudentCardGenerator } from "../components/StudentCardGenerator";
-import { TranscriptGenerator } from "../components/TranscriptGenerator";
-import { EnrollmentManager } from "../components/students/EnrollmentManager";
-import { CourseAssignmentManager } from "@/components/CourseAssignmentManager";
-import { ProfesseurManager } from "@/components/ProfesseurManager";
-import { LogoutButton } from "@/components/ui/LogoutButton";
-import { useAuthUser } from "@/hooks/useAuthUser";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuthStore } from "@/store/authStore";
 import { ExpenseManager } from "@/components/ExpenseManager";
 import { FeeStructureManager } from "@/components/FeeStructureManager";
 import { AuditLogsManager } from "@/components/AuditLogsManager";
-import { SystemBackupManager } from "@/components/SystemBackupManager";
+// import { SystemBackupManager } from "@/components/SystemBackupManager";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { DeanGradesView } from "@/components/GradesManager";
+// import { DeanGradesView } from "@/components/GradesManager";
 import { SearchResults } from "@/components/SearchResults";
 import { ActiveTab } from "@/types/navigation";
 import { useAcademicYearStore } from "@/store/academicYearStore";
+import { RoleBasedDashboard } from "@/components/RoleBasedDashboard";
+import { ProfesseursManager } from "@/components/ProfesseurManager";
+import { ClassesManager } from "@/components/ClassesManager";
+import { SubjectsManager } from "@/components/SubjectsManager";
+import roleConfigurations from "@/config/roleConfig";
+import EnrollmentManager from "@/components/students/EnrollmentManager";
+import { StudentsManager } from "@/components/StudentsManager";
+// import { ClassAssignmentManager } from "@/components/ClassAssignmentManager";
+import { SystemBackupManager } from "@/components/SystemBackupManager";
+import { GuardiansManager } from "@/components/GuardiansManager";
+import ClassAssignmentManager from "@/components/ClassAssignmentManager";
+import AnnouncementsPage from "./AnnouncementsPage";
+import EventManager from "@/components/EventManager";
+import { ClassTimetable } from "@/components/ClassTimetable";
+// import { ScheduleManager } from "@/components/TimetableManager";
+import { PaymentManager } from "@/components/PaymentManager";
+import { ScheduleManager } from "@/components/ScheduleManager";
+import { TimetableManager } from "@/components/TimetableManager";
+import { GradeManager } from "@/components/GradesManager";
+// import GradeManager from "@/components/GradeManager";
 
-// Ajoutez ces constantes APRÈS les imports et AVANT le composant Index
+// Types pour les rôles
+type UserRole =
+  | "Admin"
+  | "Secretaire"
+  | "Parent"
+  | "Student"
+  | "Professeur"
+  | "Directeur";
 
-const menuItems = [
-  { id: "dashboard", label: "Accueil", icon: Home },
-  { id: "students", label: "Étudiants", icon: Users },
-  { id: "enrollments", label: "Immatriculations", icon: UserPlus },
-  { id: "courses", label: "Les cours", icon: BookOpen },
-  { id: "grades", label: "Notes", icon: FileText },
-  { id: "retakes", label: "Catalogues", icon: RotateCcw },
-  { id: "professeurs", label: "Professeurs", icon: Users },
-  { id: "guardians", label: "Parent", icon: Users },
-];
+// Configuration des menus par rôle
+// const roleConfigurations = {
+//   Admin: {
+//     mainItems: [
+//       {
+//         id: "dashboard",
+//         label: "Accueil",
+//         icon: Home,
+//         permission: "view_dashboard",
+//       },
+//       {
+//         id: "students",
+//         label: "ELEVES",
+//         icon: Users,
+//         permission: "view_students",
+//       },
+//       {
+//         id: "enrollments",
+//         label: "INSCRIPTIONS",
+//         icon: UserPlus,
+//         permission: "manage_enrollments",
+//       },
+//       {
+//         id: "courses",
+//         label: "MATIERES",
+//         icon: BookOpen,
+//         permission: "view_courses",
+//       },
+//       {
+//         id: "grades",
+//         label: "NOTES",
+//         icon: FileText,
+//         permission: "manage_grades",
+//       },
+//       {
+//         id: "professeurs",
+//         label: "PROFESSEURS",
+//         icon: Users,
+//         permission: "view_professeurs",
+//       },
+//       {
+//         id: "guardians",
+//         label: "PARENTS",
+//         icon: Users,
+//         permission: "view_guardians",
+//       },
+//     ],
+//     academicItems: [
+//       {
+//         id: "payments",
+//         label: "PAIEMENTS",
+//         icon: DollarSign,
+//         permission: "view_payments",
+//       },
+//       {
+//         id: "expenses",
+//         label: "DEPENSES",
+//         icon: DollarSign,
+//         permission: "view_expenses",
+//       },
+//       {
+//         id: "fees",
+//         label: "FRAIS SCOLAIRES",
+//         icon: DollarSign,
+//         permission: "manage_fees",
+//       },
+//     ],
+//     documentItems: [
+//       {
+//         id: "student-cards",
+//         label: "CARTES ELEVES",
+//         icon: CreditCard,
+//         permission: "generate_cards",
+//       },
+//       {
+//         id: "transcripts",
+//         label: "BULLETINS",
+//         icon: ScrollText,
+//         permission: "generate_transcripts",
+//       },
+//     ],
+//     adminItems: [
+//       {
+//         id: "users",
+//         label: "UTILISATEURS",
+//         icon: UserCog,
+//         permission: "view_users",
+//       },
+//       {
+//         id: "classes",
+//         label: "CLASSES",
+//         icon: Building2,
+//         permission: "view_classes",
+//       },
+//       {
+//         id: "settings",
+//         label: "Paramètres",
+//         icon: Settings,
+//         permission: "view_settings",
+//       },
+//       {
+//         id: "audit-logs",
+//         label: "Journal d'Audit",
+//         icon: FileText,
+//         permission: "view_audit_logs",
+//       },
+//       {
+//         id: "backup",
+//         label: "Sauvegardes",
+//         icon: Shield,
+//         permission: "manage_backup",
+//       },
+//     ],
+//   },
+//   Secretaire: {
+//     mainItems: [
+//       {
+//         id: "dashboard",
+//         label: "Accueil",
+//         icon: Home,
+//         permission: "view_dashboard",
+//       },
+//       {
+//         id: "students",
+//         label: "Eleves",
+//         icon: Users,
+//         permission: "view_students",
+//       },
+//       {
+//         id: "enrollments",
+//         label: "Inscriptions",
+//         icon: UserPlus,
+//         permission: "manage_enrollments",
+//       },
+//       {
+//         id: "payments",
+//         label: "Paiements",
+//         icon: DollarSign,
+//         permission: "view_payments",
+//       },
+//       {
+//         id: "guardians",
+//         label: "Parents",
+//         icon: Users,
+//         permission: "view_guardians",
+//       },
+//     ],
+//     academicItems: [
+//       {
+//         id: "student-cards",
+//         label: "Cartes Eleves",
+//         icon: CreditCard,
+//         permission: "generate_cards",
+//       },
+//       {
+//         id: "transcripts",
+//         label: "Bulletins",
+//         icon: ScrollText,
+//         permission: "generate_transcripts",
+//       },
+//     ],
+//     documentItems: [],
+//     adminItems: [
+//       {
+//         id: "settings",
+//         label: "Paramètres",
+//         icon: Settings,
+//         permission: "view_settings",
+//       },
+//     ],
+//   },
+//   Parent: {
+//     mainItems: [
+//       {
+//         id: "dashboard",
+//         label: "Accueil",
+//         icon: Home,
+//         permission: "view_dashboard",
+//       },
+//       {
+//         id: "grades",
+//         label: "Notes des enfants",
+//         icon: FileText,
+//         permission: "view_grades",
+//       },
 
-const academicItems = [
-  { id: "payments", label: "Paiements", icon: DollarSign },
-  { id: "expenses", label: "Dépenses", icon: DollarSign },
-  { id: "fees", label: "Frais Scolarite", icon: DollarSign },
-];
+//       {
+//         id: "payments",
+//         label: "Paiements",
+//         icon: DollarSign,
+//         permission: "view_own_payments",
+//       },
+//     ],
+//     academicItems: [],
+//     documentItems: [
+//       {
+//         id: "transcripts",
+//         label: "Bulletins",
+//         icon: ScrollText,
+//         permission: "view_transcripts",
+//       },
+//     ],
+//     adminItems: [
+//       {
+//         id: "settings",
+//         label: "Paramètres",
+//         icon: Settings,
+//         permission: "view_settings",
+//       },
+//     ],
+//   },
+//   Student: {
+//     mainItems: [
+//       {
+//         id: "dashboard",
+//         label: "Accueil",
+//         icon: Home,
+//         permission: "view_dashboard",
+//       },
+//       {
+//         id: "grades",
+//         label: "Mes Notes",
+//         icon: FileText,
+//         permission: "view_own_grades",
+//       },
+//       {
+//         id: "attendance",
+//         label: "Mes Présences",
+//         icon: Calendar,
+//         permission: "view_own_attendance",
+//       },
+//       {
+//         id: "courses",
+//         label: "Mes Cours",
+//         icon: BookOpen,
+//         permission: "view_own_courses",
+//       },
+//       {
+//         id: "schedule",
+//         label: "Emploi du temps",
+//         icon: Calendar,
+//         permission: "view_schedule",
+//       },
+//     ],
+//     academicItems: [
+//       {
+//         id: "payments",
+//         label: "Mes Paiements",
+//         icon: DollarSign,
+//         permission: "view_own_payments",
+//       },
+//     ],
+//     documentItems: [
+//       {
+//         id: "student-cards",
+//         label: "Ma Carte",
+//         icon: CreditCard,
+//         permission: "view_own_card",
+//       },
+//       {
+//         id: "transcripts",
+//         label: "Mes Bulletins",
+//         icon: ScrollText,
+//         permission: "view_own_transcripts",
+//       },
+//     ],
+//     adminItems: [
+//       {
+//         id: "settings",
+//         label: "Paramètres",
+//         icon: Settings,
+//         permission: "view_settings",
+//       },
+//     ],
+//   },
+//   Professeur: {
+//     mainItems: [
+//       {
+//         id: "dashboard",
+//         label: "Accueil",
+//         icon: Home,
+//         permission: "view_dashboard",
+//       },
+//       {
+//         id: "courses",
+//         label: "Mes Cours",
+//         icon: BookOpen,
+//         permission: "view_own_courses",
+//       },
+//       {
+//         id: "grades",
+//         label: "Saisie Notes",
+//         icon: FileText,
+//         permission: "manage_own_grades",
+//       },
+//       {
+//         id: "students",
+//         label: "Mes Eleves",
+//         icon: Users,
+//         permission: "view_own_students",
+//       },
+//     ],
+//     academicItems: [
+//       {
+//         id: "schedule",
+//         label: "Mon emploi du temps",
+//         icon: Calendar,
+//         permission: "view_schedule",
+//       },
+//     ],
+//     documentItems: [],
+//     adminItems: [
+//       {
+//         id: "settings",
+//         label: "Paramètres",
+//         icon: Settings,
+//         permission: "view_settings",
+//       },
+//     ],
+//   },
+//   Direction: {
+//     mainItems: [
+//       {
+//         id: "dashboard",
+//         label: "Accueil",
+//         icon: Home,
+//         permission: "view_dashboard",
+//       },
+//       {
+//         id: "analytics",
+//         label: "Analytiques",
+//         icon: ChartBar,
+//         permission: "view_analytics",
+//       },
+//       {
+//         id: "students",
+//         label: "Eleves",
+//         icon: Users,
+//         permission: "view_students",
+//       },
+//       {
+//         id: "professeurs",
+//         label: "Professeurs",
+//         icon: Users,
+//         permission: "view_professeurs",
+//       },
+//       {
+//         id: "grades",
+//         label: "Notes",
+//         icon: FileText,
+//         permission: "view_grades",
+//       },
+//     ],
+//     academicItems: [
+//       {
+//         id: "payments",
+//         label: "Finances",
+//         icon: DollarSign,
+//         permission: "view_finances",
+//       },
+//       {
+//         id: "expenses",
+//         label: "Dépenses",
+//         icon: DollarSign,
+//         permission: "view_expenses",
+//       },
+//       {
+//         id: "announcements",
+//         label: "Annonces",
+//         icon: Megaphone,
+//         permission: "manage_announcements",
+//       },
+//     ],
+//     documentItems: [
+//       {
+//         id: "reports",
+//         label: "Rapports",
+//         icon: FileText,
+//         permission: "generate_reports",
+//       },
+//     ],
+//     adminItems: [
+//       {
+//         id: "settings",
+//         label: "Paramètres",
+//         icon: Settings,
+//         permission: "view_settings",
+//       },
+//       {
+//         id: "audit-logs",
+//         label: "Audit",
+//         icon: ShieldAlert,
+//         permission: "view_audit_logs",
+//       },
+//     ],
+//   },
+// };
 
-const documentItems = [
-  { id: "student-cards", label: "Cartes Étudiants", icon: CreditCard },
-  { id: "transcripts", label: "Bulletins", icon: ScrollText },
-];
-
-const adminItems = [
-  { id: "users", label: "Utilisateurs", icon: UserCog },
-  { id: "faculties", label: "Les Facultés", icon: Building2 },
-  { id: "settings", label: "Paramètres", icon: Settings },
-  { id: "audit-logs", label: "Journal d'Audit", icon: FileText },
-  { id: "backup", label: "Sauvegardes", icon: Shield },
-];
-
-// COMPOSANT MOBILE SIDEBAR - STYLE APPSIDEBAR
-// COMPOSANT MOBILE SIDEBAR - AVEC PROPS
 const MobileSidebar = ({
   activeTab,
   onTabChange,
   hasPermission,
-  isTabAccessible,
   user,
+  currentAcademicYear,
 }: {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   hasPermission: (permission: string) => boolean;
-  isTabAccessible: (tab: ActiveTab) => boolean;
   user: any;
+  currentAcademicYear: any;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const { currentAcademicYear } = useAcademicYearStore();
+
+  if (!user) return null;
+
+  const userRole = user.role as UserRole;
+  const config = roleConfigurations[userRole] || roleConfigurations.Admin;
+
+  const renderMenuSection = (
+    items: {
+      id: ActiveTab | string;
+      label: string;
+      icon: any;
+      permission: string;
+    }[],
+    title: string
+  ) => {
+    const filteredItems = items.filter((item) =>
+      hasPermission(item.permission)
+    );
+    if (filteredItems.length === 0) return null;
+
+    return (
+      <div className="mb-6">
+        <h3 className="text-sm font-medium text-sidebar-foreground/70 mb-2">
+          {title}
+        </h3>
+        <div className="space-y-1">
+          {filteredItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === (item.id as ActiveTab);
+
+            return (
+              <Button
+                key={item.id}
+                variant={isActive ? "secondary" : "ghost"}
+                className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                onClick={() => {
+                  onTabChange(item.id as ActiveTab);
+                  setIsOpen(false);
+                }}
+              >
+                <Icon className="h-4 w-4 mr-2" />
+                {item.label}
+                {isActive && (
+                  <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
+                )}
+              </Button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
-      {/* Bouton hamburger */}
       <Button
         variant="ghost"
         size="icon"
@@ -136,11 +573,9 @@ const MobileSidebar = ({
         <Menu className="h-5 w-5" />
       </Button>
 
-      {/* Sheet avec état local */}
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetContent side="left" className="w-80 p-0 bg-sidebar">
           <div className="flex flex-col h-full">
-            {/* Header - Même style que AppSidebar */}
             <div className="p-4 ujeph-header border-b">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -152,12 +587,9 @@ const MobileSidebar = ({
                     />
                   </div>
                   <div className="flex flex-col text-white">
-                    <h3 className="text-lg font-bold">UJEPH</h3>
-                    <span className="sr-only">
-                      Navigation principale de l'application
-                    </span>
+                    <h3 className="text-lg font-bold">IMFP</h3>
                     <span className="text-xs opacity-90">
-                      Université Jerusalem
+                      Institution Mixte Faustin 1er
                     </span>
                   </div>
                 </div>
@@ -172,140 +604,13 @@ const MobileSidebar = ({
               </div>
             </div>
 
-            {/* Content - Même structure que AppSidebar */}
             <div className="flex-1 overflow-auto p-4 bg-sidebar">
-              {/* Navigation Principale */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-sidebar-foreground/70 mb-2">
-                  Navigation Principale
-                </h3>
-                <div className="space-y-1">
-                  {menuItems.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeTab === item.id;
-                    if (!isTabAccessible(item.id as ActiveTab)) return null;
-
-                    return (
-                      <Button
-                        key={item.id}
-                        variant={isActive ? "secondary" : "ghost"}
-                        className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                        onClick={() => {
-                          onTabChange(item.id as ActiveTab);
-                          setIsOpen(false);
-                        }}
-                      >
-                        <Icon className="h-4 w-4 mr-2" />
-                        {item.label}
-                        {isActive && (
-                          <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
-                        )}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Gestion Académique */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-sidebar-foreground/70 mb-2">
-                  Gestion Académique
-                </h3>
-                <div className="space-y-1">
-                  {academicItems.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeTab === item.id;
-                    if (!isTabAccessible(item.id as ActiveTab)) return null;
-
-                    return (
-                      <Button
-                        key={item.id}
-                        variant={isActive ? "secondary" : "ghost"}
-                        className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                        onClick={() => {
-                          onTabChange(item.id as ActiveTab);
-                          setIsOpen(false);
-                        }}
-                      >
-                        <Icon className="h-4 w-4 mr-2" />
-                        {item.label}
-                        {isActive && (
-                          <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
-                        )}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Documents */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-sidebar-foreground/70 mb-2">
-                  Documents
-                </h3>
-                <div className="space-y-1">
-                  {documentItems.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeTab === item.id;
-                    if (!isTabAccessible(item.id as ActiveTab)) return null;
-
-                    return (
-                      <Button
-                        key={item.id}
-                        variant={isActive ? "secondary" : "ghost"}
-                        className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                        onClick={() => {
-                          onTabChange(item.id as ActiveTab);
-                          setIsOpen(false);
-                        }}
-                      >
-                        <Icon className="h-4 w-4 mr-2" />
-                        {item.label}
-                        {isActive && (
-                          <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
-                        )}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Administration */}
-              {hasPermission("view_admin") && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-medium text-sidebar-foreground/70 mb-2">
-                    Administration
-                  </h3>
-                  <div className="space-y-1">
-                    {adminItems.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = activeTab === item.id;
-                      if (!isTabAccessible(item.id as ActiveTab)) return null;
-
-                      return (
-                        <Button
-                          key={item.id}
-                          variant={isActive ? "secondary" : "ghost"}
-                          className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                          onClick={() => {
-                            onTabChange(item.id as ActiveTab);
-                            setIsOpen(false);
-                          }}
-                        >
-                          <Icon className="h-4 w-4 mr-2" />
-                          {item.label}
-                          {isActive && (
-                            <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
-                          )}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              {renderMenuSection(config.mainItems, "Navigation Principale")}
+              {renderMenuSection(config.academicItems, "Gestion Académique")}
+              {renderMenuSection(config.documentItems, "Documents")}
+              {renderMenuSection(config.adminItems, "Administration")}
             </div>
 
-            {/* Footer - Même style que AppSidebar */}
             <div className="p-4 border-t border-sidebar-border bg-sidebar">
               <div className="text-xs text-sidebar-foreground/70">
                 <div className="font-medium mb-1">Année Académique</div>
@@ -340,26 +645,20 @@ const MobileSidebar = ({
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
-  const [isSchedulerOpen, setIsSchedulerOpen] = useState(false);
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(
-    null
-  );
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  // const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false); // NOUVEAU ÉTAT
   const searchRef = useRef<HTMLDivElement>(null);
-  const notificationRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const location = useLocation();
-  const { user, isAuthenticated, loading } = useAuthStore();
-  const { hasPermission, getAccessibleModules, faculty, isDoyen } =
+  const { user, isAuthenticated, logout } = useAuthStore();
+  // const { hasPermission, getAccessibleModules } = usePermissions();
+  const { hasPermission, getAccessibleModules, canAccessTab } =
     usePermissions();
+  const { currentAcademicYear } = useAcademicYearStore();
 
-  // Gestion du thème avec persistance
+  // Gestion du thème
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
     const prefersDark = window.matchMedia(
@@ -369,13 +668,9 @@ const Index = () => {
     if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
       setIsDarkMode(true);
       document.documentElement.classList.add("dark");
-    } else {
-      setIsDarkMode(false);
-      document.documentElement.classList.remove("dark");
     }
   }, []);
 
-  // Mise à jour du thème
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add("dark");
@@ -395,19 +690,13 @@ const Index = () => {
       ) {
         setShowSearchResults(false);
       }
-      if (
-        notificationRef.current &&
-        !notificationRef.current.contains(event.target as Node)
-      ) {
-        setShowNotifications(false);
-      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Vérifier les permissions lors du changement d'onglet
+  // Vérifier les permissions
   useEffect(() => {
     if (user && !hasPermission(`view_${activeTab}`)) {
       toast({
@@ -429,27 +718,23 @@ const Index = () => {
     if (!hasPermission("view_students")) {
       toast({
         title: "Accès non autorisé",
-        description:
-          "Vous n'avez pas les permissions pour accéder aux étudiants",
+        description: "Vous n'avez pas les permissions pour accéder aux Eleves",
         variant: "destructive",
       });
       return;
     }
 
-    setSelectedStudentId(studentId);
     setActiveTab("students");
     setIsMobileMenuOpen(false);
-    // setIsMobileSidebarOpen(false); // Fermer aussi la sidebar mobile
     toast({
-      title: "Étudiant sélectionné",
-      description: "Redirection vers la page des étudiants",
+      title: "Redirection",
+      description: "Navigation vers la section Eleves",
     });
   };
 
   const handleSettingsClick = () => {
     setActiveTab("settings");
     setIsMobileMenuOpen(false);
-    // setIsMobileSidebarOpen(false);
   };
 
   const handleProfileClick = () => {
@@ -458,11 +743,10 @@ const Index = () => {
       description: "Page de profil en développement",
     });
     setIsMobileMenuOpen(false);
-    // setIsMobileSidebarOpen(false);
   };
 
   const handleLogout = () => {
-    useAuthStore.getState().logout();
+    logout();
     toast({
       title: "Déconnexion",
       description: "Vous avez été déconnecté avec succès",
@@ -470,33 +754,16 @@ const Index = () => {
     navigate("/login");
   };
 
-  const handleOpenScheduler = (studentId?: string) => {
-    if (!hasPermission("manage_schedules")) {
-      toast({
-        title: "Accès non autorisé",
-        description:
-          "Vous n'avez pas les permissions pour gérer les emplois du temps",
-        variant: "destructive",
-      });
-      return;
+  const isTabAccessible = (tab: ActiveTab): boolean => {
+    // L'admin a toujours accès à tout
+    if (user?.role === "Admin") {
+      return true;
     }
 
-    setSelectedStudentId(studentId || null);
-    setIsSchedulerOpen(true);
+    return canAccessTab(tab);
   };
 
-  const handleCloseScheduler = () => {
-    setIsSchedulerOpen(false);
-    setSelectedStudentId(null);
-  };
-
-  // Fonction pour vérifier si un onglet est accessible
-  const isTabAccessible = (tab: ActiveTab): boolean => {
-    const accessibleModules = getAccessibleModules();
-    return accessibleModules.includes(tab);
-  };
-
-  // Fonction pour gérer le changement d'onglet avec vérification des permissions
+  // Fonction pour changer d'onglet avec vérification de permission
   const handleTabChange = (tab: ActiveTab) => {
     if (!isTabAccessible(tab)) {
       toast({
@@ -507,89 +774,120 @@ const Index = () => {
       });
       return;
     }
+
     setActiveTab(tab);
     setIsMobileMenuOpen(false);
-    // setIsMobileSidebarOpen(false); // Fermer la sidebar mobile après sélection
   };
 
   const renderContent = () => {
-    // Vérifier les permissions avant de rendre le contenu
+    if (user?.role === "Admin") {
+      switch (activeTab) {
+        case "dashboard":
+          return <RoleBasedDashboard role={user.role as UserRole} />;
+        case "students":
+          return <StudentsManager />;
+        case "enrollments":
+          return <EnrollmentManager />;
+        case "subject":
+          return <SubjectsManager />;
+        case "professeurs":
+          return <ProfesseursManager />;
+        case "guardians":
+          return <GuardiansManager />;
+        case "class_assignment": // ou "retakes" selon votre ID
+          return <ClassAssignmentManager />;
+        case "expenses":
+          return <ExpenseManager />;
+        case "users":
+          return <UsersManager />;
+        case "classes":
+          return <ClassesManager />;
+        case "fees":
+          return <FeeStructureManager />;
+        case "payments":
+          return <PaymentManager />;
+        case "settings":
+          return <SettingsPage />;
+        case "audit-logs":
+          return <AuditLogsManager />;
+        case "analytics":
+          return <AnalyticsDashboard />;
+        case "announcements":
+          return <AnnouncementsPage />;
+        case "events":
+          return <EventManager />;
+        case "schedule":
+          return <TimetableManager />;
+        case "grades":
+          return <GradeManager />;
+        default:
+          return <RoleBasedDashboard role={user.role as UserRole} />;
+      }
+    }
+
+    // Pour les autres rôles, vérifier les permissions
     if (!isTabAccessible(activeTab)) {
-      return (
-        <div className="p-4 md:p-6">
-          <Card className="border-destructive/20 bg-destructive/5 dark:bg-destructive/10">
-            <CardContent className="p-6 text-center">
-              <Shield className="h-12 w-12 mx-auto mb-4 text-destructive" />
-              <h2 className="text-xl font-bold text-destructive mb-2">
-                Accès non autorisé
-              </h2>
-              <p className="text-muted-foreground">
-                Vous n'avez pas les permissions nécessaires pour accéder à cette
-                section.
-              </p>
-              <Button
-                onClick={() => setActiveTab("dashboard")}
-                className="mt-4"
-              >
-                Retour au tableau de bord
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      );
+      return <UnauthorizedView />;
     }
 
     switch (activeTab) {
-      case "dashboard":
-        return <Dashboard />;
+      // case "dashboard":
+      //   return <Dashboard />;
       case "students":
         return hasPermission("view_students") ? (
-          <StudentsManager />
+          <ClassAssignmentManager />
         ) : (
           <UnauthorizedView />
         );
       case "enrollments":
-        return hasPermission("manage_enrollments") ? (
+        return hasPermission("manage_enrollments") ||
+          hasPermission("view_enrollments") ? (
           <EnrollmentManager />
         ) : (
           <UnauthorizedView />
         );
-      case "courses":
-        return hasPermission("view_courses") ? (
-          <CoursesManager />
+      case "subject":
+        return hasPermission("view_subject") ? (
+          <SubjectsManager />
         ) : (
           <UnauthorizedView />
         );
       case "professeurs":
         return hasPermission("view_professeurs") ? (
-          <ProfesseurManager />
+          <ProfesseursManager />
         ) : (
           <UnauthorizedView />
         );
-      case "grades":
-        return hasPermission("manage_grades") ? (
-          <GradesBulkEditor />
-        ) : (
-          <DeanGradesView />
-        );
-      case "retakes":
-        return hasPermission("manage_retakes") ? (
-          <CourseAssignmentManager />
+      case "classes":
+        return hasPermission("view_subject") ? (
+          <ClassesManager />
         ) : (
           <UnauthorizedView />
         );
+      // case "retakes":
+      //   return hasPermission("manage_subject") ? (
+      //     <ClassAssignmentManager />
+      //   ) : (
+      //     <UnauthorizedView />
+      //   );
+      // case "grades":
+      //   return hasPermission("manage_grades") ? (
+      //     <GradesBulkEditor />
+      //   ) : (
+      //     <DeanGradesView />
+      //   );
       case "guardians":
         return hasPermission("view_guardians") ? (
           <GuardiansManager />
         ) : (
           <UnauthorizedView />
         );
-      case "payments":
-        return hasPermission("view_payments") ? (
-          <PaymentManager />
-        ) : (
-          <UnauthorizedView />
-        );
+      // case "payments":
+      //   return hasPermission("view_payments") ? (
+      //     <PaymentManager />
+      //   ) : (
+      //     <UnauthorizedView />
+      //   );
       case "expenses":
         return hasPermission("view_expenses") ? (
           <ExpenseManager />
@@ -602,9 +900,9 @@ const Index = () => {
         ) : (
           <UnauthorizedView />
         );
-      case "faculties":
+      case "classes":
         return hasPermission("view_faculties") ? (
-          <FacultiesManager />
+          <ClassesManager />
         ) : (
           <UnauthorizedView />
         );
@@ -614,18 +912,18 @@ const Index = () => {
         ) : (
           <UnauthorizedView />
         );
-      case "student-cards":
-        return hasPermission("generate_cards") ? (
-          <StudentCardGenerator />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "transcripts":
-        return hasPermission("generate_transcripts") ? (
-          <TranscriptGenerator />
-        ) : (
-          <UnauthorizedView />
-        );
+      // case "student-cards":
+      //   return hasPermission("generate_cards") ? (
+      //     <StudentCardGenerator />
+      //   ) : (
+      //     <UnauthorizedView />
+      //   );
+      // case "transcripts":
+      //   return hasPermission("generate_transcripts") ? (
+      //     <TranscriptGenerator />
+      //   ) : (
+      //     <UnauthorizedView />
+      //   );
       case "settings":
         return <SettingsPage />;
       case "audit-logs":
@@ -640,12 +938,17 @@ const Index = () => {
         ) : (
           <UnauthorizedView />
         );
-      default:
-        return <Dashboard />;
+      case "analytics":
+        return hasPermission("view_analytics") ? (
+          <AnalyticsDashboard />
+        ) : (
+          <UnauthorizedView />
+        );
+      // default:
+      //   return <Dashboard />;
     }
   };
 
-  // Composant pour les vues non autorisées
   const UnauthorizedView = () => (
     <div className="p-4 md:p-6">
       <Card className="border-destructive/20 bg-destructive/5 dark:bg-destructive/10">
@@ -663,25 +966,25 @@ const Index = () => {
     </div>
   );
 
-  // Fonction pour obtenir l'icône du rôle
   const getRoleIcon = (role: string) => {
     switch (role?.toLowerCase()) {
       case "admin":
-        return <Shield className="h-3 w-3 text-red-500" />;
-      case "doyen":
-        return <GraduationCap className="h-3 w-3 text-purple-500" />;
+        return <Shield className="h-4 w-4 text-red-500" />;
+      case "direction":
+        return <GraduationCap className="h-4 w-4 text-purple-500" />;
       case "professeur":
-        return <GraduationCap className="h-3 w-3 text-blue-500" />;
+        return <Award className="h-4 w-4 text-blue-500" />;
       case "secretaire":
-        return <User className="h-3 w-3 text-green-500" />;
-      case "directeur":
-        return <Shield className="h-3 w-3 text-orange-500" />;
+        return <Briefcase className="h-4 w-4 text-green-500" />;
+      case "parent":
+        return <Users className="h-4 w-4 text-orange-500" />;
+      case "student":
+        return <GraduationCap className="h-4 w-4 text-indigo-500" />;
       default:
-        return <User className="h-3 w-3" />;
+        return <User className="h-4 w-4" />;
     }
   };
 
-  // Fonction pour obtenir les initiales du nom
   const getInitials = (name?: string) => {
     if (!name || typeof name !== "string") return "";
     return name
@@ -691,25 +994,6 @@ const Index = () => {
       .join("");
   };
 
-  // Afficher un indicateur pour les doyens
-  const DeanIndicator = () => {
-    if (!isDoyen || !faculty) return null;
-
-    return (
-      <Card className="mb-4 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-2 text-sm">
-            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <span className="text-blue-700 dark:text-blue-300 font-medium">
-              Vue limitée à la faculté: <strong>{faculty.name}</strong>
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  // Menu utilisateur pour mobile
   const MobileUserMenu = () => (
     <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
       <SheetTrigger asChild>
@@ -719,7 +1003,6 @@ const Index = () => {
       </SheetTrigger>
       <SheetContent side="right" className="w-[280px] sm:w-[350px]">
         <div className="flex flex-col h-full">
-          {/* En-tête du menu mobile */}
           <div className="flex items-center gap-3 p-4 border-b">
             <Avatar className="h-10 w-10">
               <AvatarImage src={user?.avatar} />
@@ -735,14 +1018,13 @@ const Index = () => {
               <span className="font-semibold text-sm">
                 {user?.firstName} {user?.lastName}
               </span>
-              <span className="text-xs text-muted-foreground capitalize">
+              <span className="text-xs text-muted-foreground capitalize flex items-center gap-1">
+                {getRoleIcon(user?.role)}
                 {user?.role}
-                {isDoyen && faculty && ` - ${faculty.name}`}
               </span>
             </div>
           </div>
 
-          {/* Actions rapides */}
           <div className="p-4 space-y-2">
             <Button
               variant="outline"
@@ -774,7 +1056,6 @@ const Index = () => {
             </Button>
           </div>
 
-          {/* Indicateur de statut */}
           <div className="px-4 py-2">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <div
@@ -786,7 +1067,6 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Déconnexion */}
           <div className="p-4 mt-auto border-t">
             <Button
               variant="destructive"
@@ -802,6 +1082,15 @@ const Index = () => {
     </Sheet>
   );
 
+  const getCurrentConfig = () => {
+    if (!user) return roleConfigurations.Admin;
+    return (
+      roleConfigurations[user.role as UserRole] || roleConfigurations.Admin
+    );
+  };
+
+  const config = getCurrentConfig();
+
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground w-full">
       {/* Sidebar pour desktop */}
@@ -809,44 +1098,45 @@ const Index = () => {
         <AppSidebar
           activeTab={activeTab}
           onTabChange={handleTabChange}
-          userRole={user?.role}
-          isDoyen={isDoyen}
+          config={config}
+          hasPermission={hasPermission}
+          user={user}
         />
       </div>
 
       <div className="flex flex-col flex-1 overflow-hidden w-full min-w-0">
         {/* Header responsive */}
         <header className="flex-shrink-0 z-40 flex h-16 items-center gap-2 md:gap-4 px-3 md:px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 w-full">
-          {/* Sidebar trigger pour desktop, sidebar mobile pour mobile */}
           <div className="flex items-center gap-2">
             <SidebarTrigger className="-ml-1 hidden md:flex" />
-            {/* <MobileSidebar />{" "} */}
-            {/* REMPLACÉ : Maintenant c'est la sidebar mobile */}
+            <MobileSidebar
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              hasPermission={hasPermission}
+              user={user}
+              currentAcademicYear={currentAcademicYear}
+            />
           </div>
 
-          {/* Titre principal */}
           <div className="flex flex-col flex-1 min-w-0">
             <h1 className="text-lg font-semibold text-foreground truncate">
               {activeTab === "settings"
                 ? "Paramètres"
-                : "Système de Gestion Universitaire"}
+                : `${user?.role} Dashboard - ${user?.firstName} ${user?.lastName}`}
             </h1>
             <p className="text-sm text-muted-foreground truncate">
               {activeTab === "settings"
                 ? "Configuration et préférences"
-                : `Université Jerusalem de Pignon${
-                    isDoyen && faculty ? ` - ${faculty.name}` : ""
-                  }`}
+                : "Institution Mixte Faustin 1er - Année Académique"}
             </p>
           </div>
 
-          {/* Barre de recherche - cachée sur mobile petit et page settings */}
           {activeTab !== "settings" && hasPermission("use_search") && (
             <div className="hidden sm:flex items-center gap-2 flex-1 max-w-md">
               <div className="relative flex-1" ref={searchRef}>
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Rechercher des étudiants, cours..."
+                  placeholder="Rechercher des Eleves, cours..."
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
                   onFocus={() =>
@@ -865,29 +1155,7 @@ const Index = () => {
             </div>
           )}
 
-          {/* Actions côté droit - version desktop */}
           <div className="hidden md:flex items-center gap-2">
-            {/* Notifications */}
-            {/* {hasPermission("view_notifications") && (
-              <div className="relative" ref={notificationRef}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative"
-                  onClick={() => setShowNotifications(!showNotifications)}
-                >
-                  <Bell className="h-4 w-4" />
-                  <Badge
-                    variant="destructive"
-                    className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 text-xs"
-                  >
-                    3
-                  </Badge>
-                </Button>
-              </div>
-            )} */}
-
-            {/* Thème */}
             <Button
               variant="ghost"
               size="icon"
@@ -900,12 +1168,10 @@ const Index = () => {
               )}
             </Button>
 
-            {/* Paramètres */}
             <Button variant="ghost" size="icon" onClick={handleSettingsClick}>
               <Settings className="h-4 w-4" />
             </Button>
 
-            {/* Menu utilisateur desktop */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="rounded-full gap-2">
@@ -924,9 +1190,9 @@ const Index = () => {
                       <span className="text-sm font-medium">
                         {user.firstName} {user.lastName}
                       </span>
-                      <span className="text-xs text-muted-foreground capitalize">
+                      <span className="text-xs text-muted-foreground capitalize flex items-center gap-1">
+                        {getRoleIcon(user.role)}
                         {user.role}
-                        {isDoyen && faculty && ` - ${faculty.name}`}
                       </span>
                     </div>
                   )}
@@ -950,7 +1216,6 @@ const Index = () => {
                           <span className="text-sm text-muted-foreground flex items-center gap-1">
                             {getRoleIcon(user.role)}
                             {user.role}
-                            {isDoyen && faculty && ` (${faculty.name})`}
                           </span>
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Mail className="h-3 w-3" />
@@ -995,14 +1260,13 @@ const Index = () => {
             </DropdownMenu>
           </div>
 
-          {/* Version mobile simplifiée CORRIGÉE */}
           <div className="flex md:hidden items-center gap-1">
             <MobileSidebar
               activeTab={activeTab}
               onTabChange={handleTabChange}
               hasPermission={hasPermission}
-              isTabAccessible={isTabAccessible}
               user={user}
+              currentAcademicYear={currentAcademicYear}
             />
             <Button
               variant="ghost"
@@ -1019,7 +1283,6 @@ const Index = () => {
           </div>
         </header>
 
-        {/* Barre de recherche mobile */}
         {activeTab !== "settings" && hasPermission("use_search") && (
           <div className="sm:hidden p-2 border-b bg-background/80">
             <div className="relative" ref={searchRef}>
@@ -1041,10 +1304,8 @@ const Index = () => {
             </div>
           </div>
         )}
-        {/* Contenu principal */}
+
         <main className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 w-full bg-background">
-          {/* Indicateur pour les doyens */}
-          {isDoyen && <DeanIndicator />}
           {renderContent()}
         </main>
       </div>

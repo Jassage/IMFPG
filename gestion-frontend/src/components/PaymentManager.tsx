@@ -62,7 +62,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { useAcademicStore } from "@/store/studentStore";
+// import { useAcademicStore } from "@/store/studentStore";
 import { useAcademicYearStore } from "@/store/academicYearStore";
 import { useFeeStructureStore } from "@/store/feeStructureStore";
 import { cn } from "@/lib/utils";
@@ -108,6 +108,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DateRange } from "react-day-picker";
 import { addDays, format } from "date-fns";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import useStudentStore from "@/store/studentStore";
 
 interface FeePayment {
   description: string;
@@ -122,7 +123,7 @@ interface FeePayment {
 }
 
 export const PaymentManager = () => {
-  const { students, fetchStudents } = useAcademicStore();
+  const { students, fetchStudents } = useStudentStore();
   const { academicYears, fetchAcademicYears } = useAcademicYearStore();
   const {
     studentFees,
@@ -159,6 +160,11 @@ export const PaymentManager = () => {
     to: new Date(),
   });
 
+  const [feeStructures, setFeeStructures] = useState([]);
+  const [showFeeSelection, setShowFeeSelection] = useState(false);
+  const [selectedFeeStructures, setSelectedFeeStructures] = useState<string[]>(
+    []
+  );
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -221,7 +227,7 @@ export const PaymentManager = () => {
   const filteredStudents = useMemo(() => {
     if (!searchTerm) return students;
     return students.filter((student) =>
-      `${student.firstName} ${student.lastName} ${student.studentId}`
+      `${student.firstName} ${student.lastName} ${student.studentCode}`
         .toLowerCase()
         .includes(searchTerm.toLowerCase())
     );
@@ -504,7 +510,7 @@ export const PaymentManager = () => {
         const student = students.find((s) => s.id === fee.studentId);
         if (!student) return false;
 
-        return `${student.firstName} ${student.lastName} ${student.studentId}`
+        return `${student.firstName} ${student.lastName} ${student.studentCode}`
           .toLowerCase()
           .includes(searchTerm.toLowerCase());
       });
@@ -897,7 +903,7 @@ export const PaymentManager = () => {
                             <div className="text-xs text-muted-foreground">
                               {
                                 students.find((s) => s.id === fee.studentId)
-                                  ?.studentId
+                                  ?.studentCode
                               }
                             </div>
                           </div>
@@ -1194,7 +1200,7 @@ export const PaymentManager = () => {
                                 )}
                               />
                               {student.firstName} {student.lastName} (
-                              {student.studentId})
+                              {student.studentCode})
                             </CommandItem>
                           ))}
                         </CommandGroup>

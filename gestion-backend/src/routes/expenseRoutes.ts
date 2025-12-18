@@ -8,13 +8,11 @@ import {
   deleteExpense,
   getExpenseStats,
 } from "../controllers/expenseController";
-import { validateExpense } from "../middleware/validation";
 import { authenticateToken } from "../middleware/auth.middleware";
-import { deanPermissions } from "../middleware/deanPermissions";
 
 const router = express.Router();
-router.use(authenticateToken, deanPermissions);
-router.post("/", validateExpense, createExpense);
+router.use(authenticateToken);
+router.post("/", createExpense);
 router.get("/", getExpenses);
 router.get("/stats", getExpenseStats);
 router.get("/:id", getExpenseById);

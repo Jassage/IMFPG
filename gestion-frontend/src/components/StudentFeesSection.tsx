@@ -1,4 +1,3 @@
-// components/StudentFeesSection.tsx
 import React, { useState, useEffect } from "react";
 import {
   Card,
@@ -34,7 +33,6 @@ import {
   Edit,
   Trash2,
   Loader2,
-  MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
@@ -55,12 +53,6 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useAuthStore } from "@/store/authStore";
 
 interface StudentFeesSectionProps {
@@ -78,7 +70,6 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
     getStudentFees,
     recordPayment,
     getPaymentHistory,
-    getStudentFeeByYear,
   } = useFeeStructureStore();
 
   const [selectedFee, setSelectedFee] = useState<string>("");
@@ -90,20 +81,34 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
   });
   const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [editingPayment, setEditingPayment] = useState<any>(null);
-  const [deletingPayment, setDeletingPayment] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuthStore();
 
+  // État pour stocker les années académiques des frais (si besoin d'aller les chercher)
+  const [academicYearsMap, setAcademicYearsMap] = useState<Record<string, any>>(
+    {}
+  );
+
   useEffect(() => {
-    loadStudentFees();
-  }, [student.id]);
+    if (student?.id) {
+      loadStudentFees();
+    }
+  }, [student?.id]);
 
   const loadStudentFees = async () => {
     try {
-      await getStudentFees(student.id);
+      // Log chaque frais pour voir sa structure
+      studentFees.forEach((fee: any, index: number) => {
+        console.log(` Frais ${index + 1}:`, {
+          id: fee.id,
+          name: fee.feeStructure?.name,
+          academicYear: fee.academicYear,
+          academicYearId: fee.academicYearId,
+          academicYearObject: fee.academicYearObject, // Vérifiez si ça existe
+        });
+      });
     } catch (error) {
-      console.log("Erreur loading student fees:", error);
+      console.error(" Erreur loading student fees:", error);
       toast.error("Erreur lors du chargement des frais");
     }
   };
@@ -127,9 +132,8 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
         paymentDate: new Date().toISOString().split("T")[0],
       });
       setShowPaymentForm(false);
-      loadStudentFees(); // Recharger les frais
+      loadStudentFees();
 
-      // Recharger l'historique si c'est pour les frais sélectionnés
       if (selectedFee) {
         loadPaymentHistory(selectedFee);
       }
@@ -143,7 +147,7 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
   const loadPaymentHistory = async (feeId: string) => {
     try {
       const history = await getPaymentHistory(feeId);
-      setPaymentHistory(history);
+      setPaymentHistory(Array.isArray(history) ? history : []);
     } catch (error) {
       console.error("Error loading payment history:", error);
       toast.error("Erreur lors du chargement de l'historique");
@@ -151,14 +155,17 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
   };
 
   const getStatusBadge = (fee: any) => {
-    if (fee.paidAmount >= fee.totalAmount) {
+    const paidAmount = fee.paidAmount || 0;
+    const totalAmount = fee.totalAmount || 0;
+
+    if (paidAmount >= totalAmount) {
       return (
         <Badge className="bg-green-100 text-green-800 border-green-200 flex items-center gap-1">
           <CheckCircle className="h-3 w-3" />
           Payé
         </Badge>
       );
-    } else if (fee.paidAmount > 0) {
+    } else if (paidAmount > 0) {
       return (
         <Badge className="bg-amber-100 text-amber-800 border-amber-200 flex items-center gap-1">
           <Clock className="h-3 w-3" />
@@ -176,37 +183,103 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
   };
 
   const getPaymentMethodBadge = (method: string) => {
-    const colors = {
+    const colors: Record<string, string> = {
       cash: "bg-blue-100 text-blue-800 border-blue-200",
       transfer: "bg-purple-100 text-purple-800 border-purple-200",
       card: "bg-orange-100 text-orange-800 border-orange-200",
       check: "bg-green-100 text-green-800 border-green-200",
     };
 
+    const methodLabels: Record<string, string> = {
+      cash: "Espèces",
+      transfer: "Virement",
+      card: "Carte",
+      check: "Chèque",
+    };
+
     return (
       <Badge
         variant="outline"
-        className={colors[method as keyof typeof colors]}
+        className={
+          colors[method] || "bg-gray-100 text-gray-800 border-gray-200"
+        }
       >
-        {method === "cash" && "Espèces"}
-        {method === "transfer" && "Virement"}
-        {method === "card" && "Carte"}
-        {method === "check" && "Chèque"}
+        {methodLabels[method] || method}
       </Badge>
     );
   };
 
-  // Filtrer les frais pour l'année académique actuelle
-  const currentYearFees = studentFees.filter(
-    (fee: any) => fee.academicYearId === currentEnrollment?.academicYearId
-  );
+  //  Récupère l'année académique d'un frais (version améliorée)
+  const getFeeAcademicYearInfo = (fee: any): { year?: string; id?: string } => {
+    // Si academicYear est un objet avec une propriété 'year'
+    if (
+      fee.academicYear &&
+      typeof fee.academicYear === "object" &&
+      fee.academicYear.year
+    ) {
+      return { year: fee.academicYear.year, id: fee.academicYear.id };
+    }
 
-  const totalDue = currentYearFees.reduce(
-    (sum: number, fee: any) => sum + fee.totalAmount,
+    // Si academicYear est directement une string (l'année)
+    if (typeof fee.academicYear === "string") {
+      return { year: fee.academicYear };
+    }
+
+    // Sinon, on a seulement l'ID
+    return { id: fee.academicYearId };
+  };
+
+  //  Récupère l'année académique de l'enrollment
+  const getEnrollmentAcademicYearInfo = (): { year?: string; id?: string } => {
+    if (!currentEnrollment) return {};
+
+    if (
+      currentEnrollment.academicYear &&
+      typeof currentEnrollment.academicYear === "object"
+    ) {
+      return {
+        year: currentEnrollment.academicYear.year,
+        id: currentEnrollment.academicYear.id,
+      };
+    }
+
+    if (typeof currentEnrollment.academicYear === "string") {
+      return { year: currentEnrollment.academicYear };
+    }
+
+    return { id: currentEnrollment.academicYearId };
+  };
+
+  const enrollmentInfo = getEnrollmentAcademicYearInfo();
+
+  const currentYearFees = studentFees.filter((fee: any) => {
+    const feeInfo = getFeeAcademicYearInfo(fee);
+
+    if (enrollmentInfo.id && feeInfo.id) {
+      const matchById = feeInfo.id === enrollmentInfo.id;
+      return matchById;
+    }
+
+    if (enrollmentInfo.year && feeInfo.year) {
+      const matchByYear = feeInfo.year === enrollmentInfo.year;
+      console.log("   Match par année:", matchByYear);
+      return matchByYear;
+    }
+
+    return false;
+  });
+
+  // SI AUCUN FRAIS N'EST TROUVÉ - afficher tous les frais pour déboguer
+  const displayFees =
+    currentYearFees.length > 0 ? currentYearFees : studentFees;
+  const isFiltered = currentYearFees.length > 0;
+
+  const totalDue = displayFees.reduce(
+    (sum: number, fee: any) => sum + (fee.totalAmount || 0),
     0
   );
-  const totalPaid = currentYearFees.reduce(
-    (sum: number, fee: any) => sum + fee.paidAmount,
+  const totalPaid = displayFees.reduce(
+    (sum: number, fee: any) => sum + (fee.paidAmount || 0),
     0
   );
   const totalRemaining = totalDue - totalPaid;
@@ -222,9 +295,16 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
         </h3>
         <p className="text-muted-foreground">
           Gestion des frais pour {student.firstName} {student.lastName} -{" "}
-          {currentEnrollment?.academicYear}
+          {enrollmentInfo.year || enrollmentInfo.id || "Année non spécifiée"}
+          {!isFiltered && studentFees.length > 0 && (
+            <span className="text-amber-600 ml-2">
+              (Affichage de tous les frais )
+            </span>
+          )}
         </p>
       </div>
+
+      {/* Bouton de débogage */}
 
       {/* Cartes de résumé des frais */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -304,14 +384,23 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
-              Détail des frais
+              Détail des frais{" "}
+              {displayFees.length > 0 && `(${displayFees.length})`}
+              {!isFiltered && studentFees.length > 0 && (
+                <Badge
+                  variant="outline"
+                  className="ml-2 bg-yellow-100 text-yellow-800"
+                >
+                  Tous les frais
+                </Badge>
+              )}
             </CardTitle>
             {user?.role === "Admin" && (
               <>
                 <Button
                   size="sm"
                   onClick={() => setShowPaymentForm(true)}
-                  disabled={currentYearFees.length === 0}
+                  disabled={displayFees.length === 0}
                 >
                   <Plus className="h-4 w-4 mr-1" />
                   Nouveau paiement
@@ -320,8 +409,16 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
             )}
           </div>
           <CardDescription>
-            Frais de scolarité pour l'année académique{" "}
-            {currentEnrollment?.academicYear}
+            {isFiltered ? (
+              <>
+                Frais de scolarité pour l'année académique{" "}
+                <span className="font-semibold">
+                  {enrollmentInfo.year || enrollmentInfo.id}
+                </span>
+              </>
+            ) : (
+              <>Tous les frais de l'éleve</>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -330,130 +427,145 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
               <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
               <span>Chargement des frais...</span>
             </div>
-          ) : currentYearFees.length === 0 ? (
+          ) : displayFees.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Aucun frais défini pour cette année académique</p>
-              <p className="text-sm mt-2">
-                Contactez l'administration pour définir les frais
-              </p>
+              <p>Aucun frais trouvé pour cet étudiant</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {currentYearFees.map((fee: any) => (
-                <Card key={fee.id} className="overflow-hidden">
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h4 className="font-semibold text-lg">
-                          {fee.feeStructure.name}
-                        </h4>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Échéance: {new Date(fee.dueDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                      {getStatusBadge(fee)}
-                    </div>
+              {displayFees.map((fee: any) => {
+                const paidAmount = fee.paidAmount || 0;
+                const totalAmount = fee.totalAmount || 0;
+                const remainingAmount = totalAmount - paidAmount;
+                const progress =
+                  totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
+                const feeInfo = getFeeAcademicYearInfo(fee);
 
-                    <div className="grid grid-cols-2 gap-4 mb-3">
-                      <div>
-                        <span className="text-sm text-muted-foreground">
-                          Total:{" "}
-                        </span>
-                        <span className="font-semibold">
-                          {fee.totalAmount.toLocaleString()} HTG
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">
-                          Payé:{" "}
-                        </span>
-                        <span className="font-semibold text-green-600">
-                          {fee.paidAmount.toLocaleString()} HTG
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">
-                          Reste:{" "}
-                        </span>
-                        <span className="font-semibold text-amber-600">
-                          {(fee.totalAmount - fee.paidAmount).toLocaleString()}{" "}
-                          HTG
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">
-                          Progression:{" "}
-                        </span>
-                        <span className="font-semibold">
-                          {((fee.paidAmount / fee.totalAmount) * 100).toFixed(
-                            0
+                return (
+                  <Card key={fee.id} className="overflow-hidden">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-semibold text-lg">
+                            {fee.feeStructure?.name || "Frais non spécifiés"}
+                          </h4>
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {feeInfo.year && (
+                              <Badge variant="outline" className="text-xs">
+                                Année: {feeInfo.year}
+                              </Badge>
+                            )}
+                            {feeInfo.id && (
+                              <Badge variant="outline" className="text-xs">
+                                ID: {feeInfo.id.substring(0, 8)}...
+                              </Badge>
+                            )}
+                          </div>
+                          {fee.dueDate && (
+                            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                              <Calendar className="h-3 w-3" />
+                              Échéance:{" "}
+                              {new Date(fee.dueDate).toLocaleDateString()}
+                            </p>
                           )}
-                          %
-                        </span>
+                        </div>
+                        {getStatusBadge(fee)}
                       </div>
-                    </div>
 
-                    <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
-                      <div
-                        className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                        style={{
-                          width: `${(fee.paidAmount / fee.totalAmount) * 100}%`,
-                        }}
-                      />
-                    </div>
+                      <div className="grid grid-cols-2 gap-4 mb-3">
+                        <div>
+                          <span className="text-sm text-muted-foreground">
+                            Total:{" "}
+                          </span>
+                          <span className="font-semibold">
+                            {totalAmount.toLocaleString()} HTG
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-sm text-muted-foreground">
+                            Payé:{" "}
+                          </span>
+                          <span className="font-semibold text-green-600">
+                            {paidAmount.toLocaleString()} HTG
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-sm text-muted-foreground">
+                            Reste:{" "}
+                          </span>
+                          <span className="font-semibold text-amber-600">
+                            {remainingAmount.toLocaleString()} HTG
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-sm text-muted-foreground">
+                            Progression:{" "}
+                          </span>
+                          <span className="font-semibold">
+                            {progress.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
 
-                    <div className="flex gap-2">
-                      {user?.role === "Admin" && (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedFee(fee.id);
-                              loadPaymentHistory(fee.id);
-                              setPaymentData({
-                                amount: fee.totalAmount - fee.paidAmount,
-                                paymentMethod: "cash",
-                                reference: "",
-                                paymentDate: new Date()
-                                  .toISOString()
-                                  .split("T")[0],
-                              });
-                            }}
-                            className="flex items-center gap-1"
-                          >
-                            <History className="h-3 w-3" />
-                            Historique
-                          </Button>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedFee(fee.id);
-                              setPaymentData({
-                                amount: fee.totalAmount - fee.paidAmount,
-                                paymentMethod: "cash",
-                                reference: "",
-                                paymentDate: new Date()
-                                  .toISOString()
-                                  .split("T")[0],
-                              });
-                              setShowPaymentForm(true);
-                            }}
-                            disabled={fee.paidAmount >= fee.totalAmount}
-                            className="flex items-center gap-1"
-                          >
-                            <DollarSign className="h-3 w-3" />
-                            Payer
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                        <div
+                          className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        {user?.role === "Admin" && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedFee(fee.id);
+                                loadPaymentHistory(fee.id);
+                                setPaymentData({
+                                  amount: remainingAmount,
+                                  paymentMethod: "cash",
+                                  reference: "",
+                                  paymentDate: new Date()
+                                    .toISOString()
+                                    .split("T")[0],
+                                });
+                              }}
+                              className="flex items-center gap-1"
+                            >
+                              <History className="h-3 w-3" />
+                              Historique
+                            </Button>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedFee(fee.id);
+                                setPaymentData({
+                                  amount: remainingAmount,
+                                  paymentMethod: "cash",
+                                  reference: "",
+                                  paymentDate: new Date()
+                                    .toISOString()
+                                    .split("T")[0],
+                                });
+                                setShowPaymentForm(true);
+                              }}
+                              disabled={remainingAmount <= 0}
+                              className="flex items-center gap-1"
+                            >
+                              <DollarSign className="h-3 w-3" />
+                              Payer
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -465,35 +577,33 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <DollarSign className="h-5 w-5" />
-              {editingPayment
-                ? "Modifier le paiement"
-                : "Enregistrer un paiement"}
+              Enregistrer un paiement
             </DialogTitle>
             <DialogDescription>
-              {editingPayment
-                ? "Modifiez les détails du paiement existant"
-                : "Remplissez les informations pour enregistrer un nouveau paiement"}
+              Remplissez les informations pour enregistrer un nouveau paiement
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Sélectionner les frais</Label>
-              <Select
-                value={selectedFee}
-                onValueChange={setSelectedFee}
-                disabled={!!editingPayment}
-              >
+              <Select value={selectedFee} onValueChange={setSelectedFee}>
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner des frais" />
                 </SelectTrigger>
                 <SelectContent>
-                  {currentYearFees.map((fee: any) => (
-                    <SelectItem key={fee.id} value={fee.id}>
-                      {fee.feeStructure.name} - Restant:{" "}
-                      {(fee.totalAmount - fee.paidAmount).toLocaleString()} HTG
-                    </SelectItem>
-                  ))}
+                  {displayFees.map((fee: any) => {
+                    const paidAmount = fee.paidAmount || 0;
+                    const totalAmount = fee.totalAmount || 0;
+                    const remainingAmount = totalAmount - paidAmount;
+
+                    return (
+                      <SelectItem key={fee.id} value={fee.id}>
+                        {fee.feeStructure?.name || "Frais"} - Restant:{" "}
+                        {remainingAmount.toLocaleString()} HTG
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -576,11 +686,23 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
               variant="outline"
               onClick={() => {
                 setShowPaymentForm(false);
-                setEditingPayment(null);
               }}
               disabled={isSubmitting}
             >
               Annuler
+            </Button>
+            <Button
+              onClick={handleRecordPayment}
+              disabled={!selectedFee || paymentData.amount <= 0 || isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Enregistrement...
+                </>
+              ) : (
+                "Enregistrer le paiement"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -617,26 +739,27 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
                     <TableHead>Méthode</TableHead>
                     <TableHead className="text-right">Montant</TableHead>
                     <TableHead>Référence</TableHead>
+                    <TableHead>Description</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paymentHistory.map((payment) => (
                     <TableRow key={payment.id}>
                       <TableCell>
-                        {new Date(payment.paymentDate).toLocaleDateString()}
+                        {payment.paymentDate
+                          ? new Date(payment.paymentDate).toLocaleDateString()
+                          : "-"}
                       </TableCell>
                       <TableCell>
                         {getPaymentMethodBadge(payment.paymentMethod)}
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        {payment.amount.toLocaleString()} HTG
+                        {(payment.amount || 0).toLocaleString()} HTG
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {payment.reference || "-"}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {payment.description || "-"}
-                      </TableCell>
+                      <TableCell>{payment.description || "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -645,58 +768,6 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
           </CardContent>
         </Card>
       )}
-
-      {/* Modal de confirmation de suppression */}
-      <Dialog
-        open={!!deletingPayment}
-        onOpenChange={(open) => !open && setDeletingPayment(null)}
-      >
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
-              <Trash2 className="h-5 w-5" />
-              Supprimer le paiement
-            </DialogTitle>
-            <DialogDescription>
-              Êtes-vous sûr de vouloir supprimer ce paiement ? Cette action est
-              irréversible.
-            </DialogDescription>
-          </DialogHeader>
-
-          {deletingPayment && (
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Montant:</Label>
-                <div className="col-span-3 font-medium">
-                  {deletingPayment.amount.toLocaleString()} HTG
-                </div>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Date:</Label>
-                <div className="col-span-3">
-                  {new Date(deletingPayment.paymentDate).toLocaleDateString()}
-                </div>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Méthode:</Label>
-                <div className="col-span-3">
-                  {getPaymentMethodBadge(deletingPayment.paymentMethod)}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeletingPayment(null)}
-              disabled={isSubmitting}
-            >
-              Annuler
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

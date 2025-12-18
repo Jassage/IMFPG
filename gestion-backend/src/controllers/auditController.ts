@@ -1,225 +1,395 @@
-// controllers/auditController.ts
+/**
+ * @file auditController.ts
+ * @description Contrôleur pour la gestion des logs d'audit
+ * @version 1.0.0
+ */
+
 import { Request, Response } from "express";
-import prisma from "../prisma";
-// import { AuthenticatedRequest } from "../middleware/auth.middleware";
+import { PrismaClient } from "../../generated/prisma";
+import { CreateAuditLogParams } from "../types/auth";
+import { asyncErrorHandler } from "../middleware/asyncHandler";
 
-// FONCTION CORRIGÉE : Fonction utilitaire pour créer des logs d'audit
+const prisma = new PrismaClient();
 
-// src/controllers/auditController.ts
-export const createAuditLog = async (data: {
-  ipAddress: string;
-  userAgent: string;
-  userId: string | null;
-  action: string;
-  entity: string;
-  entityId?: string;
-  description: string;
-  metadata?: Record<string, any>;
-  status: "SUCCESS" | "ERROR";
-  errorMessage?: string;
-}) => {
+/**
+ * @function createAuditLog
+ * @description Crée un log d'audit dans la base de données
+ * @param {CreateAuditLogParams} data - Données du log d'audit
+ * @returns {Promise<void>}
+ */
+export const createAuditLog = async (
+  data: CreateAuditLogParams
+): Promise<void> => {
   try {
-    // Tronquer les champs si nécessaire
-    const truncatedData = {
-      ipAddress: data.ipAddress.substring(0, 45),
-      userAgent: data.userAgent.substring(0, 500),
-      action: data.action.substring(0, 100),
-      entity: data.entity.substring(0, 50),
-      entityId: data.entityId ? data.entityId.substring(0, 50) : undefined,
-      description: data.description.substring(0, 1000),
-      errorMessage: data.errorMessage
-        ? data.errorMessage.substring(0, 500)
-        : undefined,
-      metadata: data.metadata ? data.metadata : undefined,
-      userId: data.userId ? data.userId : undefined,
-      status: data.status,
-    };
+    // Tronquer les champs texte trop longs pour la base de données
+    const truncatedErrorMessage = data.errorMessage
+      ? data.errorMessage.substring(0, 1000)
+      : undefined;
+
+    const truncatedDescription = data.description
+      ? data.description.substring(0, 500)
+      : data.description;
+
+    const truncatedUserAgent = data.userAgent
+      ? data.userAgent.substring(0, 500)
+      : data.userAgent;
 
     await prisma.auditLog.create({
-      data: truncatedData,
+      data: {
+        ipAddress: data.ipAddress,
+        userAgent: truncatedUserAgent,
+        userId: data.userId,
+        action: data.action,
+        entity: data.entity,
+        entityId: data.entityId,
+        description: truncatedDescription,
+        metadata: data.metadata,
+        status: data.status,
+        errorMessage: truncatedErrorMessage,
+      },
     });
   } catch (error) {
     console.error("❌ Erreur création audit log:", error);
-    // Ne pas throw l'erreur pour ne pas interrompre le flux principal
+
+    // Fallback: logger dans la console si la DB échoue
+    console.error("📋 Audit Log (Fallback):", {
+      action: data.action,
+      entity: data.entity,
+      description: data.description,
+      userId: data.userId,
+      ipAddress: data.ipAddress,
+      status: data.status,
+      error: data.errorMessage,
+    });
   }
 };
-// Dans auditController.ts
-export const getUserIdFromRequest = (req: any): string | null => {
-  return req.user?.id || req.userId || null;
-};
 
-export const getAuditLogs = async (req: Request, res: Response) => {
-  try {
-    const {
-      page = "1",
-      limit = "50",
-      action,
-      entity,
-      userId,
-      startDate,
-      endDate,
-      search,
-    } = req.query;
+/**
+ * @controller getAuditLogs
+ * @description Récupère les logs d'audit avec pagination et filtres
+ * @route GET /api/audit-logs
+ * @access Admin seulement
+ */
+export const getAuditLogs = asyncErrorHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const {
+        page = "1",
+        limit = "50",
+        action,
+        entity,
+        userId,
+        startDate,
+        endDate,
+        status,
+      } = req.query;
 
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
-    const skip = (pageNum - 1) * limitNum;
+      const pageNum = parseInt(page as string, 10);
+      const limitNum = parseInt(limit as string, 10);
+      const skip = (pageNum - 1) * limitNum;
 
-    const where: any = {};
+      // Construction du filtre
+      const where: any = {};
 
-    if (action) where.action = action;
-    if (entity) where.entity = entity;
-    if (userId) where.userId = userId;
+      if (action)
+        where.action = { contains: action as string, mode: "insensitive" };
+      if (entity)
+        where.entity = { contains: entity as string, mode: "insensitive" };
+      if (userId) where.userId = userId as string;
+      if (status) where.status = status as string;
 
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate as string);
-      if (endDate) where.createdAt.lte = new Date(endDate as string);
+      // Filtre par date
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate as string);
+        if (endDate) where.createdAt.lte = new Date(endDate as string);
+      }
+
+      // Récupération des logs avec pagination
+      const [auditLogs, totalCount] = await Promise.all([
+        prisma.auditLog.findMany({
+          where,
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                role: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          skip,
+          take: limitNum,
+        }),
+        prisma.auditLog.count({ where }),
+      ]);
+
+      const totalPages = Math.ceil(totalCount / limitNum);
+
+      res.json({
+        success: true,
+        data: auditLogs,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          totalCount,
+          totalPages,
+          hasNext: pageNum < totalPages,
+          hasPrev: pageNum > 1,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Erreur récupération logs audit:", error);
+      throw error;
     }
+  }
+);
 
-    if (search) {
-      where.OR = [
-        { description: { contains: search as string, mode: "insensitive" } },
-        { entityId: { contains: search as string } },
-      ];
-    }
+/**
+ * @controller getAuditLogById
+ * @description Récupère un log d'audit spécifique par son ID
+ * @route GET /api/audit-logs/:id
+ * @access Admin seulement
+ */
+export const getAuditLogById = asyncErrorHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
 
-    const [logs, total] = await Promise.all([
-      prisma.auditLog.findMany({
-        where,
+      const auditLog = await prisma.auditLog.findUnique({
+        where: { id },
         include: {
           user: {
             select: {
+              id: true,
               firstName: true,
               lastName: true,
               email: true,
+              role: true,
             },
           },
         },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limitNum,
-      }),
-      prisma.auditLog.count({ where }),
-    ]);
+      });
 
-    res.json({
-      logs,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        pages: Math.ceil(total / limitNum),
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Erreur lors de la récupération des logs" });
-  }
-};
+      if (!auditLog) {
+        return res.status(404).json({
+          success: false,
+          message: "Log d'audit non trouvé",
+          code: "AUDIT_LOG_NOT_FOUND",
+        });
+      }
 
-export const getAuditStatistics = async (req: Request, res: Response) => {
-  try {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const stats = await prisma.auditLog.groupBy({
-      by: ["action", "entity"],
-      where: {
-        createdAt: { gte: thirtyDaysAgo },
-      },
-      _count: { id: true },
-    });
-
-    const dailyActivity = await prisma.auditLog.groupBy({
-      by: ["createdAt"],
-      where: {
-        createdAt: { gte: thirtyDaysAgo },
-      },
-      _count: { id: true },
-      orderBy: { createdAt: "asc" },
-    });
-
-    res.json({ stats, dailyActivity });
-  } catch (error) {
-    res.status(500).json({ error: "Erreur statistiques" });
-  }
-};
-
-// controllers/auditController.ts - Ajoutez cette fonction
-export const exportAuditLogs = async (req: Request, res: Response) => {
-  try {
-    const { format = "json", action, entity, status, search } = req.query;
-
-    const where: any = {};
-
-    if (action && action !== "all") where.action = action;
-    if (entity && entity !== "all") where.entity = entity;
-    if (status && status !== "all") where.status = status;
-
-    if (search) {
-      where.OR = [
-        { description: { contains: search as string, mode: "insensitive" } },
-        { entityId: { contains: search as string } },
-      ];
+      res.json({
+        success: true,
+        data: auditLog,
+      });
+    } catch (error) {
+      console.error("❌ Erreur récupération log audit:", error);
+      throw error;
     }
+  }
+);
 
-    const logs = await prisma.auditLog.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            firstName: true,
-            lastName: true,
-            email: true,
+/**
+ * @controller getUserAuditLogs
+ * @description Récupère les logs d'audit d'un utilisateur spécifique
+ * @route GET /api/audit-logs/user/:userId
+ * @access Admin seulement
+ */
+export const getUserAuditLogs = asyncErrorHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const {
+        page = "1",
+        limit = "50",
+        action,
+        entity,
+        startDate,
+        endDate,
+      } = req.query;
+
+      const pageNum = parseInt(page as string, 10);
+      const limitNum = parseInt(limit as string, 10);
+      const skip = (pageNum - 1) * limitNum;
+
+      // Construction du filtre
+      const where: any = { userId };
+
+      if (action)
+        where.action = { contains: action as string, mode: "insensitive" };
+      if (entity)
+        where.entity = { contains: entity as string, mode: "insensitive" };
+
+      // Filtre par date
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate as string);
+        if (endDate) where.createdAt.lte = new Date(endDate as string);
+      }
+
+      // Récupération des logs avec pagination
+      const [auditLogs, totalCount] = await Promise.all([
+        prisma.auditLog.findMany({
+          where,
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                role: true,
+              },
+            },
           },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (format === "csv") {
-      // Conversion en CSV
-      const csvHeaders = [
-        "Date",
-        "Action",
-        "Entité",
-        "Utilisateur",
-        "Description",
-        "Statut",
-        "IP",
-      ];
-      const csvRows = logs.map((log) => [
-        new Date(log.createdAt).toISOString(),
-        log.action,
-        log.entity,
-        log.user ? `${log.user.firstName} ${log.user.lastName}` : "Système",
-        `"${log.description.replace(/"/g, '""')}"`, // Échapper les guillemets
-        log.status || "SUCCESS",
-        log.ipAddress,
+          orderBy: {
+            createdAt: "desc",
+          },
+          skip,
+          take: limitNum,
+        }),
+        prisma.auditLog.count({ where }),
       ]);
 
-      const csvContent = [
-        csvHeaders.join(","),
-        ...csvRows.map((row) => row.join(",")),
-      ].join("\n");
+      const totalPages = Math.ceil(totalCount / limitNum);
 
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename=audit-logs-${new Date().toISOString().split("T")[0]}.csv`
-      );
-      res.send(csvContent);
-    } else {
-      // JSON par défaut
-      res.setHeader("Content-Type", "application/json");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename=audit-logs-${new Date().toISOString().split("T")[0]}.json`
-      );
-      res.json(logs);
+      res.json({
+        success: true,
+        data: auditLogs,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          totalCount,
+          totalPages,
+          hasNext: pageNum < totalPages,
+          hasPrev: pageNum > 1,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Erreur récupération logs audit utilisateur:", error);
+      throw error;
     }
-  } catch (error) {
-    console.error("Erreur export logs:", error);
-    res.status(500).json({ error: "Erreur lors de l'export des logs" });
   }
+);
+
+/**
+ * @controller getAuditStats
+ * @description Récupère des statistiques sur les logs d'audit
+ * @route GET /api/audit-logs/stats
+ * @access Admin seulement
+ */
+export const getAuditStats = asyncErrorHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      // Construction du filtre de date
+      const dateFilter: any = {};
+      if (startDate) dateFilter.gte = new Date(startDate as string);
+      if (endDate) dateFilter.lte = new Date(endDate as string);
+
+      const where =
+        Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {};
+
+      // Récupération des statistiques
+      const [
+        totalLogs,
+        successLogs,
+        errorLogs,
+        topActions,
+        topEntities,
+        recentActivity,
+      ] = await Promise.all([
+        // Total des logs
+        prisma.auditLog.count({ where }),
+
+        // Logs de succès
+        prisma.auditLog.count({
+          where: { ...where, status: "SUCCESS" },
+        }),
+
+        // Logs d'erreur
+        prisma.auditLog.count({
+          where: { ...where, status: "ERROR" },
+        }),
+
+        // Actions les plus fréquentes
+        prisma.auditLog.groupBy({
+          by: ["action"],
+          where,
+          _count: {
+            action: true,
+          },
+          orderBy: {
+            _count: {
+              action: "desc",
+            },
+          },
+          take: 10,
+        }),
+
+        // Entités les plus actives
+        prisma.auditLog.groupBy({
+          by: ["entity"],
+          where,
+          _count: {
+            entity: true,
+          },
+          orderBy: {
+            _count: {
+              entity: "desc",
+            },
+          },
+          take: 10,
+        }),
+
+        // Activité récente (7 derniers jours)
+        prisma.auditLog.groupBy({
+          by: ["createdAt"],
+          where: {
+            createdAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 derniers jours
+            },
+          },
+          _count: {
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+        }),
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          totalLogs,
+          successLogs,
+          errorLogs,
+          successRate: totalLogs > 0 ? (successLogs / totalLogs) * 100 : 0,
+          topActions,
+          topEntities,
+          recentActivity,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Erreur récupération statistiques audit:", error);
+      throw error;
+    }
+  }
+);
+
+// Export des contrôleurs
+export default {
+  createAuditLog,
+  getAuditLogs,
+  getAuditLogById,
+  getUserAuditLogs,
+  getAuditStats,
 };

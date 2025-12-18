@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,32 +10,88 @@ import { useDataContext } from "./contexts/DataContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { AppInitializer } from "./components/AppInitializer";
-// import { LoginPage } from "./components/login";
 import { initializeAuthStore, useAuthStore } from "./store/authStore";
-import { initializeFacultyStore, useFacultyStore } from "./store/facultyStore";
 import { useEnrollmentStore } from "./store/enrollmentStore";
-import { useAcademicStore } from "./store/studentStore";
-
+// import { useAcademicStore } from "./store/studentStore";
 import { useAcademicYearStore } from "./store/academicYearStore";
-import { useUEStore } from "./store/courseStore";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { ForgotPassword } from "./components/ForgotPassword";
 import { LoginPage } from "./components/login";
 import { useBackupStore } from "./store/backupStore";
-// import LoginPage from "./components/login";
+
+// Import des dashboards par rôle
+import AdminDashboard from "./components/dashboards/AdminDashboard";
+import SecretaryDashboard from "./components/dashboards/SecretaryDashboard";
+import ParentDashboard from "./components/dashboards/ParentDashboard";
+import StudentDashboard from "./components/dashboards/StudentDashboard";
+import ProfessorDashboard from "./components/dashboards/ProfessorDashboard";
+import DirectorDashboard from "./components/dashboards/DirectorDashboard";
+
+// Import des composants partagés
+
+import { UnauthorizedPage } from "./components/UnauthorizedPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import useStudentStore from "./store/studentStore";
+import ProfesseurDetails from "./components/professorDetails";
 
 const queryClient = new QueryClient();
 
+// Composant pour les routes protégées par rôle
+const ProtectedRoute = ({
+  children,
+  allowedRoles,
+}: {
+  children: React.ReactNode;
+  allowedRoles: string[];
+}) => {
+  const { isAuthenticated, user } = useAuthStore();
+  const { isLoading } = useDataContext();
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!allowedRoles.includes(user?.role || "")) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// Composant pour rediriger vers le dashboard approprié
+const RoleBasedRedirect = () => {
+  const { user } = useAuthStore();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  switch (user.role) {
+    case "Admin":
+      return <Navigate to="/admin/dashboard" replace />;
+    case "Secretaire":
+      return <Navigate to="/secretary/dashboard" replace />;
+    case "Parent":
+      return <Navigate to="/parent/dashboard" replace />;
+    case "Student":
+      return <Navigate to="/student/dashboard" replace />;
+    case "Professeur":
+      return <Navigate to="/professor/dashboard" replace />;
+    case "Directeur":
+      return <Navigate to="/director/dashboard" replace />;
+    default:
+      return <Navigate to="/login" replace />;
+  }
+};
+
 const AppContent = () => {
   const { isLoading, error } = useDataContext();
-  const { isAuthenticated, loading: authLoading } = useAuthStore();
-  // const { isLocked } = useAuth();
+  const { isAuthenticated, loading: authLoading, user } = useAuthStore();
 
-  // if (isLocked) {
-  //   return <AppLock />;
-  // }
-
-  // Afficher le loading pendant le chargement initial
   if (authLoading || isLoading) {
     return <LoadingScreen />;
   }
@@ -48,24 +104,184 @@ const AppContent = () => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-          {/* Routes protégées - Rediriger vers /login si non authentifié */}
+          {/* Route racine - redirection selon le rôle */}
           <Route
             path="/"
             element={
-              isAuthenticated ? <Index /> : <Navigate to="/login" replace />
+              isAuthenticated ? (
+                <RoleBasedRedirect />
+              ) : (
+                <Navigate to="/login" replace />
+              )
             }
           />
 
-          <Route
+          {/* SUPPRIMEZ cette route, elle est inutile */}
+          {/* <Route
             path="/dashboard"
             element={
               isAuthenticated ? <Index /> : <Navigate to="/login" replace />
             }
+          /> */}
+
+          {/* Routes ADMIN */}
+          <Route
+            path="/admin/*"
+            element={
+              <ProtectedRoute allowedRoles={["Admin"]}>
+                <Index />
+              </ProtectedRoute>
+            }
           />
 
-          {/* Redirection par défaut */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          {/* Routes SECRETAIRE */}
+          <Route
+            path="/secretary/*"
+            element={
+              <ProtectedRoute allowedRoles={["Secretaire"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Routes PARENT */}
+          <Route
+            path="/parent/*"
+            element={
+              <ProtectedRoute allowedRoles={["Parent"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Routes STUDENT */}
+          <Route
+            path="/student/*"
+            element={
+              <ProtectedRoute allowedRoles={["Student"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Routes PROFESSEUR */}
+          <Route
+            path="/professor/*"
+            element={
+              <ProtectedRoute allowedRoles={["Professeur"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Routes DIRECTION */}
+          <Route
+            path="/director/*"
+            element={
+              <ProtectedRoute allowedRoles={["Direction"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Dashboards spécifiques par rôle */}
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["Admin"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/secretary/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["Secretaire"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/parent/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["Parent"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/student/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["Student"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/professor/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["Professeur"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/director/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["Direction"]}>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/professeurs/:id"
+            element={
+              <ProtectedRoute
+                allowedRoles={["Admin", "Secretaire", "Direction"]}
+              >
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Routes partagées pour tous les rôles
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "Admin",
+                  "Secretaire",
+                  "Parent",
+                  "Student",
+                  "Professeur",
+                  "Direction",
+                ]}
+              >
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          /> */}
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "Admin",
+                  "Secretaire",
+                  "Parent",
+                  "Student",
+                  "Professeur",
+                  "Direction",
+                ]}
+              >
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Route 404 */}
           <Route path="*" element={<NotFound />} />
@@ -78,57 +294,52 @@ const AppContent = () => {
 const cleanupAuth = () => {
   const token = localStorage.getItem("authToken");
   if (!token) {
-    // Nettoyer les données obsolètes
     localStorage.removeItem("userData");
   }
 };
 
+// Variable pour suivre l'initialisation
+let isInitializing = false;
+
 const App = () => {
-  const [isInitializing, setIsInitializing] = useState(true);
+  const [initializationState, setInitializationState] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
   const [initializationError, setInitializationError] = useState<string | null>(
     null
   );
+  const initializationRef = useRef(false);
 
   // Initialisation des stores
   useEffect(() => {
+    // Éviter les initialisations multiples
+    if (initializationRef.current) return;
+    initializationRef.current = true;
+
     cleanupAuth();
+
     const initializeStores = async () => {
       try {
-        // console.log("🚀 Initialisation de l'application...");
+        setInitializationState("loading");
+        console.log("🚀 Initialisation de l'application...");
 
-        // 1. D'abord initialiser l'auth pour avoir le token
+        // 1. Initialiser l'auth UNE SEULE FOIS
         await initializeAuthStore();
 
-        // 2. Attendre un peu pour laisser l'auth se terminer
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // 3. Vérifier si l'utilisateur est authentifié avant de charger les données
-        const { isAuthenticated, token } = useAuthStore.getState();
+        // 2. Vérifier l'authentification
+        const { isAuthenticated, token, user } = useAuthStore.getState();
 
         // console.log("🔐 Statut authentification:", {
         //   isAuthenticated,
         //   token: !!token,
+        //   userRole: user?.role,
         // });
 
-        if (isAuthenticated && token) {
-          // console.log("📦 Chargement des données...");
-          // Charger les stores seulement si authentifié
-          await Promise.all([
-            initializeFacultyStore().catch((err) =>
-              console.warn("Erreur facultés:", err)
-            ),
-            useEnrollmentStore
-              .getState()
-              .fetchEnrollments()
-              .catch((err) => console.warn("Erreur inscriptions:", err)),
-            useAcademicStore
-              .getState()
-              .fetchStudents()
-              .catch((err) => console.warn("Erreur étudiants:", err)),
-            useUEStore
-              .getState()
-              .fetchUEs()
-              .catch((err) => console.warn("Erreur UEs:", err)),
+        if (isAuthenticated && token && user) {
+          // console.log("📦 Chargement des données pour:", user.role);
+
+          // Charger les données de base pour tous les rôles
+          const baseLoaders = [
             useAcademicYearStore
               .getState()
               .fetchAcademicYears()
@@ -137,19 +348,98 @@ const App = () => {
               .getState()
               .loadBackups()
               .catch((err) => console.warn("Erreur sauvegardes:", err)),
-          ]);
+          ];
+
+          // Chargement supplémentaire selon le rôle
+          switch (user.role) {
+            case "Admin":
+              await Promise.all([
+                ...baseLoaders,
+                useEnrollmentStore
+                  .getState()
+                  .fetchEnrollments()
+                  .catch((err) => console.warn("Erreur inscriptions:", err)),
+                useStudentStore
+                  .getState()
+                  .fetchStudents()
+                  .catch((err) => console.warn("Erreur étudiants:", err)),
+              ]);
+              break;
+
+            case "Secretaire":
+              await Promise.all([
+                ...baseLoaders,
+                useEnrollmentStore
+                  .getState()
+                  .fetchEnrollments()
+                  .catch((err) => console.warn("Erreur inscriptions:", err)),
+                useStudentStore
+                  .getState()
+                  .fetchStudents()
+                  .catch((err) => console.warn("Erreur étudiants:", err)),
+              ]);
+              break;
+
+            // case "Professeur":
+            //   await Promise.all([
+            //     ...baseLoaders,
+            //     useUEStore
+            //       .getState()
+            //       .fetchProfessorUEs(user.id)
+            //       .catch((err) => console.warn("Erreur UEs professeur:", err)),
+            //     useAcademicStore
+            //       .getState()
+            //       .fetchProfessorStudents(user.id)
+            //       .catch((err) => console.warn("Erreur étudiants professeur:", err)),
+            //   ]);
+            //   break;
+
+            // case "Parent":
+            //   await Promise.all([
+            //     ...baseLoaders,
+            //     useAcademicStore
+            //       .getState()
+            //       .fetchParentStudents(user.id)
+            //       .catch((err) => console.warn("Erreur enfants:", err)),
+            //   ]);
+            //   break;
+
+            // case "Student":
+            //   await Promise.all([
+            //     ...baseLoaders,
+            //     useAcademicStore
+            //       .getState()
+            //       .fetchStudentData(user.id)
+            //       .catch((err) => console.warn("Erreur données étudiant:", err)),
+            //     useUEStore
+            //       .getState()
+            //       .fetchStudentCourses(user.id)
+            //       .catch((err) => console.warn("Erreur cours étudiant:", err)),
+            //   ]);
+            //   break;
+
+            case "Directeur":
+              await Promise.all([
+                ...baseLoaders,
+                useStudentStore
+                  .getState()
+                  .fetchStudents()
+                  .catch((err) => console.warn("Erreur étudiants:", err)),
+              ]);
+              break;
+          }
         } else {
-          // console.log(
-          //   "👤 Utilisateur non authentifié, chargement des données différé"
-          // );
+          console.log(
+            "👤 Utilisateur non authentifié, chargement des données différé"
+          );
         }
 
-        // console.log("✅ Initialisation terminée");
-        setIsInitializing(false);
+        console.log("✅ Initialisation terminée");
+        setInitializationState("success");
       } catch (error: any) {
-        // console.error("❌ Erreur lors de l'initialisation:", error);
+        console.error("❌ Erreur lors de l'initialisation:", error);
         setInitializationError(error.message);
-        setIsInitializing(false);
+        setInitializationState("error");
       }
     };
 
@@ -157,7 +447,7 @@ const App = () => {
   }, []);
 
   // Afficher l'écran de chargement pendant l'initialisation
-  if (isInitializing) {
+  if (initializationState === "loading" || initializationState === "idle") {
     return (
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
@@ -168,7 +458,7 @@ const App = () => {
   }
 
   // Afficher une erreur si l'initialisation a échoué
-  if (initializationError) {
+  if (initializationState === "error") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center p-8 max-w-md">
@@ -197,7 +487,7 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
+        <Toaster title={""} description={""} variant={""} />
         <Sonner />
         <AppInitializer>
           <BrowserRouter>

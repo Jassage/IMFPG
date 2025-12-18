@@ -1,17 +1,69 @@
-// routes/audit.routes.ts
-import express from "express";
+/**
+ * @file auditRoutes.ts
+ * @description Routes pour la gestion des logs d'audit
+ * @version 1.0.0
+ */
+
+import { Router } from "express";
 import {
-  exportAuditLogs,
   getAuditLogs,
-  getAuditStatistics,
+  getAuditLogById,
+  getUserAuditLogs,
+  getAuditStats,
 } from "../controllers/auditController";
-import { exportSQL } from "../controllers/backupController";
+import { requireAuth, requireAdmin } from "../middleware";
+import { validatePagination } from "../middleware/validationMiddleware";
 
-const router = express.Router();
+const router = Router();
 
-router.get("/audit-logs", getAuditLogs);
-router.get("/audit-statistics", getAuditStatistics);
-router.get("/backup/sql", exportSQL);
-router.get("/audit-logs/export", exportAuditLogs); // Ajoutez cette route
+/**
+ * @route GET /api/audit-logs
+ * @description Récupère les logs d'audit avec pagination
+ * @access Admin seulement
+ */
+router.get(
+  "/",
+  requireAuth,
+  requireAdmin,
+  validatePagination,
+  getAuditLogs // CORRIGÉ : fonction directe, pas d'appel
+);
+
+/**
+ * @route GET /api/audit-logs/stats
+ * @description Récupère les statistiques des logs d'audit
+ * @access Admin seulement
+ */
+router.get(
+  "/stats",
+  requireAuth,
+  requireAdmin,
+  getAuditStats // CORRIGÉ : fonction directe
+);
+
+/**
+ * @route GET /api/audit-logs/:id
+ * @description Récupère un log d'audit spécifique
+ * @access Admin seulement
+ */
+router.get(
+  "/:id",
+  requireAuth,
+  requireAdmin,
+  getAuditLogById // CORRIGÉ : fonction directe
+);
+
+/**
+ * @route GET /api/audit-logs/user/:userId
+ * @description Récupère les logs d'audit d'un utilisateur
+ * @access Admin seulement
+ */
+router.get(
+  "/user/:userId",
+  requireAuth,
+  requireAdmin,
+  validatePagination,
+  getUserAuditLogs // CORRIGÉ : fonction directe
+);
 
 export default router;

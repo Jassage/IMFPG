@@ -1,10 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -12,1055 +7,1118 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
-  Search,
-  Filter,
-  Download,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
+import {
   Users,
   BookOpen,
-  BarChart3,
-  Award,
-  TrendingUp,
-  Target,
-  Crown,
+  GraduationCap,
+  Save,
+  Edit,
+  Trash2,
+  Calendar,
+  Filter,
+  Plus,
+  Upload,
+  Download,
   FileText,
   ChevronDown,
-  Sparkles,
-  School,
-  UserCheck,
+  ChevronUp,
+  Search,
+  BarChart3,
   CheckCircle,
   XCircle,
   Clock,
   Loader2,
   ShieldAlert,
-  RefreshCw,
-  BookMarked,
-  UserCog,
+  User,
+  Book,
+  FileSpreadsheet,
 } from "lucide-react";
-import { useAcademicStore } from "@/store/studentStore";
 import { useAcademicYearStore } from "@/store/academicYearStore";
-import { useFacultyStore } from "@/store/facultyStore";
-import { useUEStore } from "@/store/courseStore";
+import { useSubjectStore } from "@/store/subjectStore";
 import { useGradeStore } from "@/store/gradeStore";
-import { useEnrollmentStore } from "@/store/enrollmentStore";
-import { useAuthStore } from "@/store/authStore";
-import { useCourseAssignmentStore } from "@/store/courseAssignmentStore";
-import { useToast } from "@/components/ui/use-toast";
-import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
-import { UE } from "@/types/academic";
+import { useStudentStore } from "@/store/studentStore";
+import { useClassStore } from "@/store/classStore";
+import { useAssignmentStore } from "@/store/assignmentStore";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
+import {
+  Grade,
+  GradeStatus,
+  ControlType,
+  ClassLevel,
+  Student,
+  Subject,
+  AcademicYear,
+  SchoolClass,
+  ClassAssignment,
+} from "@/types/academic";
 
-// Composant de statistiques
-const DeanStatCard = ({
+// Types simplifiés
+interface GradeInput {
+  grade: string;
+  status: GradeStatus;
+  controlType: ControlType;
+  notes?: string;
+}
+
+interface Statistics {
+  totalGrades: number;
+  averageGrade: number;
+  successRate: number;
+  passedGrades: number;
+  failedGrades: number;
+  bySubject: Record<string, any>;
+  byControlType: Record<string, any>;
+}
+
+// Composant de chargement
+const LoadingSpinner = ({
+  message = "Chargement...",
+}: {
+  message?: string;
+}) => (
+  <div className="flex flex-col items-center justify-center py-8 space-y-3">
+    <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+    <p className="text-sm text-muted-foreground">{message}</p>
+  </div>
+);
+
+// Composant d'état vide
+const EmptyState = ({
+  icon: Icon = BookOpen,
+  title,
+  description,
+}: {
+  icon?: any;
+  title: string;
+  description: string;
+}) => (
+  <div className="text-center py-12">
+    <Icon className="h-16 w-16 mx-auto mb-4 text-muted-foreground/40" />
+    <h3 className="text-lg font-medium text-foreground mb-2">{title}</h3>
+    <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+      {description}
+    </p>
+  </div>
+);
+
+// Carte de statistiques
+const StatCard = ({
   icon: Icon,
   value,
   label,
-  description,
-  gradient = "from-blue-500/10 to-indigo-500/10",
-  borderColor = "border-blue-200",
+  gradient = "from-blue-100 to-blue-200",
+  iconBg = "bg-blue-600",
 }: {
   icon: any;
   value: string | number;
   label: string;
-  description?: string;
   gradient?: string;
-  borderColor?: string;
+  iconBg?: string;
 }) => (
   <Card
-    className={cn(
-      "border-2 bg-gradient-to-br backdrop-blur-sm",
-      gradient,
-      borderColor
-    )}
+    className={`border-0 shadow-md bg-gradient-to-br ${gradient} overflow-hidden`}
   >
-    <CardContent className="p-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-white/50 dark:bg-gray-800/50 shadow-sm">
-              <Icon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-              {label}
-            </p>
-          </div>
-          <p className="text-3xl font-bold text-gray-900 dark:text-white">
-            {value}
-          </p>
-          {description && (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {description}
-            </p>
-          )}
+    <CardContent className="p-5 relative">
+      <div className="absolute top-3 right-3 opacity-20">
+        <Icon className="h-8 w-8 text-foreground" />
+      </div>
+      <div className="flex items-center gap-3">
+        <div className={`p-2 rounded-full ${iconBg} shadow-sm`}>
+          <Icon className="h-5 w-5 text-white" />
+        </div>
+        <div>
+          <p className="text-2xl font-bold text-foreground">{value}</p>
+          <p className="text-xs text-muted-foreground font-medium">{label}</p>
         </div>
       </div>
     </CardContent>
   </Card>
 );
 
-// Indicateur de note
-const GradeIndicator = ({
-  grade,
-  passingGrade = 70,
+// Composant pour l'input de note inline
+const GradeInputInline = ({
+  student,
+  subject,
+  existingGrade,
+  onSave,
+  isLoading = false,
 }: {
-  grade: number;
-  passingGrade?: number;
+  student: Student;
+  subject: Subject;
+  existingGrade?: Grade;
+  onSave: (gradeData: {
+    grade: number;
+    status: GradeStatus;
+    controlType: ControlType;
+    notes?: string;
+  }) => Promise<void>;
+  isLoading?: boolean;
 }) => {
-  const percentage = (grade / 100) * 100;
-  const isPassing = grade >= passingGrade;
+  const [grade, setGrade] = useState(existingGrade?.grade?.toString() || "");
+  const [status, setStatus] = useState<GradeStatus>(
+    existingGrade?.status || "Valid_"
+  );
+  const [controlType, setControlType] = useState<ControlType>(
+    existingGrade?.controlType || "CONTROLE_1"
+  );
+  const [notes, setNotes] = useState(existingGrade?.notes || "");
+  const [errors, setErrors] = useState<{ grade?: string }>({});
+
+  useEffect(() => {
+    if (existingGrade) {
+      setGrade(existingGrade.grade.toString());
+      setStatus(existingGrade.status);
+      setControlType(existingGrade.controlType);
+      setNotes(existingGrade.notes || "");
+    } else {
+      setGrade("");
+      setStatus("Valid_");
+      setControlType("CONTROLE_1");
+      setNotes("");
+    }
+    setErrors({});
+  }, [existingGrade]);
+
+  const validateGrade = (value: string): string | null => {
+    const numericValue = parseFloat(value);
+    if (value.trim() === "") return "La note est requise";
+    if (isNaN(numericValue)) return "La note doit être un nombre valide";
+    if (numericValue < 0 || numericValue > 100)
+      return "La note doit être entre 0 et 100";
+    return null;
+  };
+
+  const handleGradeChange = (value: string) => {
+    setGrade(value);
+    const error = validateGrade(value);
+    setErrors((prev) => ({ ...prev, grade: error || undefined }));
+  };
+
+  const handleSave = async () => {
+    const gradeError = validateGrade(grade);
+    if (gradeError) {
+      setErrors({ grade: gradeError });
+      toast.error(gradeError);
+      return;
+    }
+
+    const numericGrade = parseFloat(grade);
+    await onSave({
+      grade: numericGrade,
+      status,
+      controlType,
+      notes: notes || undefined,
+    });
+  };
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 p-4 border rounded-lg hover:bg-gray-50">
       <div className="flex-1">
-        <div className="flex justify-between text-sm mb-1">
-          <span className="font-medium">{grade}/100</span>
-          <span
-            className={cn(
-              "font-semibold",
-              isPassing ? "text-green-600" : "text-red-600"
-            )}
-          >
-            {isPassing ? "Validé" : "Non validé"}
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+            <User className="h-5 w-5 text-blue-600" />
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">
+              {student.firstName} {student.lastName}
+            </p>
+            <p className="text-xs text-gray-500">
+              {student.studentCode}
+              {student.schoolClass && ` • ${student.schoolClass.name}`}
+            </p>
+          </div>
         </div>
-        <Progress
-          value={percentage}
-          className={cn("h-2", isPassing ? "bg-green-100" : "bg-red-100")}
-        />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className="space-y-1 w-24">
+          <Input
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            placeholder="Note"
+            value={grade}
+            onChange={(e) => handleGradeChange(e.target.value)}
+            className={`h-9 ${errors.grade ? "border-destructive" : ""}`}
+            disabled={isLoading}
+          />
+          {errors.grade && (
+            <p className="text-xs text-destructive">{errors.grade}</p>
+          )}
+        </div>
+
+        <div className="w-32">
+          <Select
+            value={controlType}
+            onValueChange={(value: ControlType) => setControlType(value)}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="CONTROLE_1">Contrôle 1</SelectItem>
+              <SelectItem value="CONTROLE_2">Contrôle 2</SelectItem>
+              <SelectItem value="CONTROLE_3">Contrôle 3</SelectItem>
+              <SelectItem value="CONTROLE_4">Contrôle 4</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-28">
+          <Select
+            value={status}
+            onValueChange={(value: GradeStatus) => setStatus(value)}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Valid_">Validé</SelectItem>
+              <SelectItem value="Non_valid_">Non validé</SelectItem>
+              <SelectItem value="Reprendre">À reprendre</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-48">
+          <Input
+            placeholder="Remarques"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="h-9"
+            disabled={isLoading}
+          />
+        </div>
+
+        <Button
+          onClick={handleSave}
+          size="sm"
+          className="h-9"
+          disabled={!!errors.grade || isLoading}
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : existingGrade ? (
+            "Mettre à jour"
+          ) : (
+            "Enregistrer"
+          )}
+        </Button>
+
+        {existingGrade && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-9 w-9 p-0 text-red-600 hover:bg-red-100"
+            onClick={async () => {
+              if (confirm("Supprimer cette note ?")) {
+                // Vous aurez besoin d'une fonction de suppression
+                // await onDelete(existingGrade.id);
+              }
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </div>
   );
 };
 
-const Pagination = ({
-  currentPage,
-  totalItems,
-  itemsPerPage,
-  onPageChange,
+// Contrôles en masse simplifiés
+const BulkControls = ({
+  selectedCount,
+  onSave,
+  onCancel,
+  isLoading = false,
+  bulkGrades,
+  setBulkGrades,
 }: {
-  currentPage: number;
-  totalItems: number;
-  itemsPerPage: number;
-  onPageChange: (page: number) => void;
+  selectedCount: number;
+  onSave: () => Promise<void>;
+  onCancel: () => void;
+  isLoading?: boolean;
+  bulkGrades: { [key: string]: GradeInput };
+  setBulkGrades: React.Dispatch<
+    React.SetStateAction<{ [key: string]: GradeInput }>
+  >;
 }) => {
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const [grade, setGrade] = useState("");
+  const [status, setStatus] = useState<GradeStatus>("Valid_");
+  const [controlType, setControlType] = useState<ControlType>("CONTROLE_1");
 
-  if (totalPages <= 1) return null;
+  const handleApply = () => {
+    if (grade.trim()) {
+      const newBulkGrades = { ...bulkGrades };
+
+      Object.keys(newBulkGrades).forEach((studentId) => {
+        newBulkGrades[studentId] = {
+          grade,
+          status,
+          controlType,
+        };
+      });
+
+      setBulkGrades(newBulkGrades);
+      toast.success("Notes appliquées aux étudiants sélectionnés");
+    }
+  };
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-      <div className="text-sm text-gray-700 dark:text-gray-300">
-        Page {currentPage} sur {totalPages}
+    <div className="flex flex-col gap-3 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl mb-4 border border-blue-200 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+            ✅ {selectedCount} étudiant(s) sélectionné(s)
+          </Badge>
+        </div>
       </div>
-      <div className="flex gap-2">
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="space-y-2">
+          <Label className="text-xs font-medium">Note (/100)</Label>
+          <Input
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            placeholder="Note"
+            value={grade}
+            onChange={(e) => setGrade(e.target.value)}
+            className="h-9 border-blue-300 focus:border-blue-500"
+            disabled={isLoading}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-xs font-medium">Statut</Label>
+          <Select
+            value={status}
+            onValueChange={(value: GradeStatus) => setStatus(value)}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Valid_">Validé</SelectItem>
+              <SelectItem value="Non_valid_">Non validé</SelectItem>
+              <SelectItem value="Reprendre">À reprendre</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-xs font-medium">Contrôle</Label>
+          <Select
+            value={controlType}
+            onValueChange={(value: ControlType) => setControlType(value)}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="CONTROLE_1">Contrôle 1</SelectItem>
+              <SelectItem value="CONTROLE_2">Contrôle 2</SelectItem>
+              <SelectItem value="CONTROLE_3">Contrôle 3</SelectItem>
+              <SelectItem value="CONTROLE_4">Contrôle 4</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2 flex items-end">
+          <Button
+            onClick={handleApply}
+            className="h-9 bg-blue-600 hover:bg-blue-700 w-full"
+            disabled={!grade.trim() || isLoading}
+          >
+            Appliquer aux sélectionnés
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 justify-end">
         <Button
           variant="outline"
-          size="sm"
-          disabled={currentPage === 1}
-          onClick={() => onPageChange(currentPage - 1)}
+          onClick={onCancel}
+          className="h-9 border-blue-300 text-blue-700 hover:bg-blue-50"
+          disabled={isLoading}
         >
-          Précédent
+          Annuler
         </Button>
         <Button
-          variant="outline"
-          size="sm"
-          disabled={currentPage === totalPages}
-          onClick={() => onPageChange(currentPage + 1)}
+          onClick={onSave}
+          className="h-9 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700"
+          disabled={isLoading}
         >
-          Suivant
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+          ) : (
+            <Save className="h-4 w-4 mr-1" />
+          )}
+          Sauvegarder tout
         </Button>
       </div>
     </div>
   );
 };
 
-export const DeanGradesView = () => {
+// Composant principal
+export const GradeManager = () => {
+  const { students, fetchStudents } = useStudentStore();
+  const { academicYears, fetchAcademicYears } = useAcademicYearStore();
+  const { subjects, fetchSubjects } = useSubjectStore();
   const {
-    user,
-    isAuthenticated,
-    loading: authLoading,
-    initialize,
-  } = useAuthStore();
-  const { toast } = useToast();
-  const { students } = useAcademicStore();
-  const { academicYears } = useAcademicYearStore();
-  const { faculties } = useFacultyStore();
-  const { ues: allUes } = useUEStore();
-  const { grades, fetchGrades } = useGradeStore();
-  const { enrollments } = useEnrollmentStore();
+    grades,
+    fetchGrades,
+    addGrade,
+    updateGrade,
+    deleteGrade,
+    bulkAddGrades,
+  } = useGradeStore();
+  const { classes, fetchClasses } = useClassStore();
+  const { assignments, fetchAssignments } = useAssignmentStore();
 
-  // Utilisation du store d'affectations
-  const {
-    assignments,
-    fetchAssignmentsByFaculty,
-    loading: assignmentsLoading,
-  } = useCourseAssignmentStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Filtres simplifiés (sans session)
   const [filters, setFilters] = useState({
-    level: "all",
     academicYearId: "",
-    semester: "S1" as "S1" | "S2",
+    classLevel: "" as ClassLevel | "",
+    subjectId: "",
+    controlType: "" as ControlType | "",
+    status: "" as GradeStatus | "",
   });
 
-  const [selectedUE, setSelectedUE] = useState<any>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
+  const [selectedAcademicYear, setSelectedAcademicYear] =
+    useState<AcademicYear | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [loading, setLoading] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-
-  // Initialisation de l'authentification
-  useEffect(() => {
-    console.log("🔄 Initialisation de l'authentification...");
-    initialize();
-  }, [initialize]);
-
-  // Recherche de la faculté du doyen
-  const deanFaculty = useMemo(() => {
-    if (authLoading) return null;
-    if (!user?.id) return null;
-    if (!faculties.length) return null;
-
-    // Méthode principale : Recherche par deanId
-    const facultyByDeanId = faculties.find((f) => f.deanId === user.id);
-    if (facultyByDeanId) {
-      console.log("✅ Faculté trouvée par deanId:", facultyByDeanId.name);
-      return facultyByDeanId;
-    }
-
-    // Méthode secondaire : Si l'user a un facultyId direct
-    if (user.facultyId) {
-      const facultyById = faculties.find((f) => f.id === user.facultyId);
-      if (facultyById) return facultyById;
-    }
-
-    return null;
-  }, [faculties, user, authLoading]);
+  const [bulkEditMode, setBulkEditMode] = useState(false);
+  const [bulkGrades, setBulkGrades] = useState<{
+    [key: string]: GradeInput;
+  }>({});
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [statistics, setStatistics] = useState<Statistics | null>(null);
+  const [availableAssignments, setAvailableAssignments] = useState<
+    ClassAssignment[]
+  >([]);
+  const [availableStudents, setAvailableStudents] = useState<Student[]>([]);
 
   // Chargement initial des données
   useEffect(() => {
-    const loadInitialData = async () => {
-      if (!deanFaculty || authLoading) return;
-
-      console.log("🚀 Chargement des données initiales...");
+    const loadAllData = async () => {
       setLoading(true);
-
       try {
-        // Charger les affectations si nécessaire
-        if (filters.academicYearId && filters.level !== "all") {
-          await loadAssignments();
-        }
+        await Promise.all([
+          fetchAcademicYears(),
+          fetchSubjects(),
+          fetchStudents(),
+          fetchClasses(),
+        ]);
 
-        // Charger les notes si une UE est sélectionnée
-        if (selectedUE) {
-          await loadGrades();
+        if (academicYears.length > 0) {
+          const currentAcademicYear =
+            academicYears.find((ay) => ay.isCurrent) || academicYears[0];
+          if (currentAcademicYear) {
+            setFilters((prev) => ({
+              ...prev,
+              academicYearId: currentAcademicYear.id,
+            }));
+            setSelectedAcademicYear(currentAcademicYear);
+          }
         }
-
-        console.log("✅ Données initiales chargées");
       } catch (error) {
-        console.error("❌ Erreur chargement données initiales:", error);
+        console.error("Erreur chargement données initiales:", error);
+        toast.error("Erreur lors du chargement des données");
       } finally {
         setLoading(false);
       }
     };
 
-    loadInitialData();
-  }, [deanFaculty, authLoading, filters.academicYearId, filters.level]);
+    loadAllData();
+  }, []);
 
-  // AJOUTEZ CE DEBUG DANS DeanGradesView
-  useEffect(() => {
-    console.log("🔍 DEBUG DES DONNÉES UE:", {
-      totalUEs: allUes.length,
-      assignmentsCount: assignments.length,
-      facultyId: deanFaculty?.id,
-      ueIdsInAssignments: [...new Set(assignments.map((a) => a.ueId))],
-      ueIdsInAllUes: allUes.map((ue) => ue.id),
-      matchingUEs: allUes.filter((ue) =>
-        assignments.some(
-          (a) => a.ueId === ue.id && a.facultyId === deanFaculty?.id
-        )
-      ).length,
-    });
-
-    // Vérifier l'UE spécifique de l'affectation
-    if (assignments.length > 0) {
-      const assignment = assignments[0];
-      console.log("📋 Détail de l'affectation:", {
-        ueId: assignment.ueId,
-        ueInAllUes: allUes.find((ue) => ue.id === assignment.ueId),
-        ueData: assignment.ue, // Vérifier si l'UE est incluse dans l'affectation
-      });
-    }
-  }, [allUes, assignments, deanFaculty]);
-
-  // Initialisation des filtres
-  useEffect(() => {
-    if (
-      deanFaculty &&
-      academicYears.length > 0 &&
-      !initialized &&
-      !authLoading
-    ) {
-      const currentAcademicYear =
-        academicYears.find((ay) => ay.isCurrent) || academicYears[0];
-
-      setFilters((prev) => ({
-        ...prev,
-        academicYearId: currentAcademicYear?.id || "",
-      }));
-      setInitialized(true);
-      console.log("✅ Filtres initialisés pour la faculté:", deanFaculty.name);
-    }
-  }, [deanFaculty, academicYears, initialized, authLoading]);
-
-  // Chargement des affectations pour la faculté du doyen
-  useEffect(() => {
-    if (
-      deanFaculty &&
-      filters.academicYearId &&
-      filters.semester &&
-      filters.level !== "all"
-    ) {
-      loadAssignments();
-    }
-  }, [deanFaculty, filters.academicYearId, filters.semester, filters.level]);
-
-  const getAssignmentsByFilters = useCallback(
-    (filters: {
-      facultyId?: string;
-      level?: string;
-      academicYearId?: string;
-      semester?: string;
-      ueId?: string;
-    }) => {
-      console.log("🔍 Filtrage des assignments avec:", filters);
-
-      const filtered = assignments.filter((assignment) => {
-        // Debug chaque assignment
-        const matches = {
-          facultyId:
-            !filters.facultyId || assignment.facultyId === filters.facultyId,
-          level: !filters.level || assignment.level === filters.level,
-          academicYearId:
-            !filters.academicYearId ||
-            assignment.academicYearId === filters.academicYearId,
-          semester:
-            !filters.semester || assignment.semester === filters.semester,
-          ueId: !filters.ueId || assignment.ueId === filters.ueId,
-        };
-
-        const isMatch = Object.values(matches).every(Boolean);
-
-        if (isMatch) {
-          console.log("✅ Assignment correspondant:", {
-            id: assignment.id,
-            ueId: assignment.ueId,
-            ue: assignment.ue,
-            level: assignment.level,
-            facultyId: assignment.facultyId,
-          });
-        }
-
-        return isMatch;
-      });
-
-      console.log("📋 Résultat du filtrage:", filtered.length, "assignments");
-      return filtered;
-    },
-    [assignments]
-  );
-  const loadAssignments = async () => {
-    if (
-      !deanFaculty ||
-      !filters.academicYearId ||
-      !filters.semester ||
-      filters.level === "all"
-    ) {
-      console.log("⏸️  Paramètres manquants pour charger les affectations");
-      return;
-    }
-
+  // Fonction pour valider et convertir un ClassAssignment
+  const validateClassAssignment = (data: any): ClassAssignment | null => {
     try {
-      console.log("📚 Chargement des affectations pour:", {
-        faculty: deanFaculty.name,
-        facultyId: deanFaculty.id,
-        level: filters.level,
-        academicYear: filters.academicYearId,
-        semester: filters.semester,
-      });
-
-      const assignmentsData = await fetchAssignmentsByFaculty(
-        deanFaculty.id,
-        filters.level,
-        filters.academicYearId,
-        filters.semester
-      );
-
-      console.log(
-        "✅ Affectations chargées avec succès:",
-        assignmentsData.length
-      );
-
-      if (assignmentsData.length === 0) {
-        console.log("ℹ️  Aucune affectation trouvée pour ces critères");
+      if (!data.id || !data.classLevel || !data.academicYearId) {
+        return null;
       }
-    } catch (error) {
-      console.error("❌ Erreur chargement affectations:", error);
 
-      // CORRECTION : Afficher un toast plus informatif
-      toast({
-        title: "Information sur les affectations",
-        description:
-          "Aucune affectation trouvée ou erreur de chargement. Les UE affichées sont celles de la faculté.",
-        variant: "default",
-      });
+      const validClassLevels: ClassLevel[] = [
+        "CP1",
+        "CP2",
+        "CE1",
+        "CE2",
+        "CM1",
+        "CM2",
+        "Sixieme",
+        "Cinquieme",
+        "Quatrieme",
+        "Troisieme",
+        "Seconde",
+        "Premiere",
+        "Terminale",
+      ];
+
+      if (!validClassLevels.includes(data.classLevel as ClassLevel)) {
+        return null;
+      }
+
+      return {
+        id: data.id,
+        subjectId: data.subjectId,
+        professeurId: data.professeurId || data.professorId,
+        classLevel: data.classLevel as ClassLevel,
+        academicYearId: data.academicYearId,
+        status: data.status || "Active",
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        academicYear: data.academicYear,
+        professeur: data.professeur,
+        subject: data.subject,
+        schedules: data.schedules,
+        grades: data.grades,
+      };
+    } catch (error) {
+      return null;
     }
   };
 
-  // DEBUG des structures de données
+  // Charger les données filtrées
   useEffect(() => {
-    console.log("🔍 ANALYSE DES DONNÉES:", {
-      // Faculté
-      deanFaculty: deanFaculty,
+    const loadFilteredData = async () => {
+      if (!filters.academicYearId || !filters.classLevel) return;
 
-      // Étudiants
-      studentsSample: students.slice(0, 2).map((s) => ({
-        id: s.id,
-        name: `${s.firstName} ${s.lastName}`,
-        status: s.status,
-      })),
-
-      // Inscriptions
-      enrollmentsSample: enrollments.slice(0, 3).map((e) => ({
-        id: e.id,
-        studentId: e.studentId,
-        faculty: e.faculty,
-        level: e.level,
-        academicYearId: e.academicYearId,
-      })),
-
-      // Structure complète d'une inscription
-      firstEnrollment: enrollments[0]
-        ? {
-            ...enrollments[0],
-            facultyType: typeof enrollments[0].faculty,
-            facultyValue: enrollments[0].faculty,
-          }
-        : null,
-    });
-  }, [deanFaculty, students, enrollments]);
-
-  // CORRECTION pour les UE
-  const facultyUEs = useMemo(() => {
-    if (!deanFaculty) return [];
-
-    console.log("🔄 Extraction des UE pour la faculté:", deanFaculty.name);
-
-    // Méthode directe : utiliser les UE qui ont le bon facultyId
-    const directUEs = allUes.filter((ue) => {
-      const matches = ue.facultyId === deanFaculty.id;
-      if (matches) {
-        console.log("✅ UE directe:", ue.title);
-      }
-      return matches;
-    });
-
-    // Méthode via les affectations
-    const uesFromAssignments = assignments
-      .map((assignment) => {
-        const matchesFilters =
-          assignment.facultyId === deanFaculty.id &&
-          (!filters.level ||
-            filters.level === "all" ||
-            assignment.level === filters.level) &&
-          (!filters.academicYearId ||
-            assignment.academicYearId === filters.academicYearId) &&
-          (!filters.semester || assignment.semester === filters.semester);
-
-        if (matchesFilters && assignment.ue) {
-          console.log("✅ UE via affectation:", assignment.ue.title);
-          return assignment.ue;
-        }
-        return null;
-      })
-      .filter((ue): ue is UE => ue !== null)
-      .filter(
-        (ue, index, self) => index === self.findIndex((u) => u.id === ue.id)
-      );
-
-    const result = [...directUEs, ...uesFromAssignments];
-    console.log("🎯 UE finales:", result.length, result);
-    return result;
-  }, [allUes, assignments, deanFaculty, filters]);
-
-  // Charger les notes quand une UE est sélectionnée
-  useEffect(() => {
-    if (selectedUE?.id && filters.academicYearId && deanFaculty) {
-      console.log("🔄 Chargement des notes pour UE:", selectedUE.title);
-      loadGrades();
-    }
-  }, [selectedUE?.id, filters.academicYearId, filters.semester, deanFaculty]);
-
-  // Sélection automatique de la première UE quand elles sont chargées
-  useEffect(() => {
-    if (facultyUEs.length > 0 && !selectedUE) {
-      const firstUE = facultyUEs[0];
-      setSelectedUE(firstUE);
-      console.log("🎯 UE sélectionnée automatiquement:", firstUE.title);
-    }
-  }, [facultyUEs, selectedUE]);
-
-  const loadGrades = useCallback(async () => {
-    if (!selectedUE?.id || !filters.academicYearId) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      await fetchGrades({
-        academicYear: filters.academicYearId,
-        semester: filters.semester,
-        ueId: selectedUE.id,
-      });
-      console.log("✅ Notes chargées avec succès");
-    } catch (error) {
-      const errorMessage = "Impossible de charger les notes";
-      console.error("❌ Erreur chargement notes:", error);
-      setError(errorMessage);
-      toast({
-        title: "Erreur",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    selectedUE?.id,
-    filters.academicYearId,
-    filters.semester,
-    fetchGrades,
-    toast,
-  ]);
-
-  // Filtrer les étudiants de la faculté du doyen - VERSION CORRIGÉE
-  const facultyStudents = useMemo(() => {
-    if (!deanFaculty || !Array.isArray(enrollments)) return [];
-
-    console.log("🎯 Filtrage des étudiants pour:", deanFaculty.name);
-    console.log("📊 Données disponibles:", {
-      totalStudents: students.length,
-      totalEnrollments: enrollments.length,
-      deanFacultyId: deanFaculty.id,
-      deanFacultyName: deanFaculty.name,
-    });
-
-    const filteredStudents = students.filter((student) => {
-      // Vérifier que l'étudiant est actif
-      if (student.status !== "Active") {
-        console.log(`❌ Étudiant ${student.id} non actif`);
-        return false;
-      }
-
-      // Trouver les inscriptions de cet étudiant
-      const studentEnrollments = enrollments.filter(
-        (enrollment) => enrollment.studentId === student.id
-      );
-
-      console.log(
-        `📝 Étudiant ${student.id}: ${studentEnrollments.length} inscriptions`
-      );
-
-      // Vérifier si au moins une inscription correspond aux critères
-      const hasValidEnrollment = studentEnrollments.some((enrollment) => {
-        // CORRECTION : Comparer avec le NOM de la faculté au lieu de l'ID
-        let facultyIdentifier: string | undefined;
-
-        if (enrollment.faculty == null) {
-          console.log(`❌ Inscription ${enrollment.id} sans faculté`);
-          return false;
-        }
-
-        if (typeof enrollment.faculty === "object") {
-          facultyIdentifier =
-            (enrollment.faculty as any).name || (enrollment.faculty as any).id;
-        } else {
-          facultyIdentifier = enrollment.faculty;
-        }
-
-        // CORRECTION : Comparer avec le nom de la faculté
-        const matchesFaculty =
-          facultyIdentifier === deanFaculty.name ||
-          facultyIdentifier === deanFaculty.id;
-        const matchesLevel =
-          filters.level === "all" || enrollment.level === filters.level;
-        const matchesYear =
-          !filters.academicYearId ||
-          enrollment.academicYearId === filters.academicYearId;
-
-        console.log(`🔍 Vérification inscription ${enrollment.id}:`, {
-          facultyIdentifier,
-          deanFacultyName: deanFaculty.name,
-          deanFacultyId: deanFaculty.id,
-          matchesFaculty,
-          enrollmentLevel: enrollment.level,
-          filterLevel: filters.level,
-          matchesLevel,
-          enrollmentYear: enrollment.academicYearId,
-          filterYear: filters.academicYearId,
-          matchesYear,
-        });
-
-        return matchesFaculty && matchesLevel && matchesYear;
-      });
-
-      if (hasValidEnrollment) {
-        console.log(
-          `✅ Étudiant ${student.firstName} ${student.lastName} inclus`
-        );
-      } else {
-        console.log(
-          `❌ Étudiant ${student.firstName} ${student.lastName} exclus - aucune inscription valide`
-        );
-      }
-
-      return hasValidEnrollment;
-    });
-
-    console.log(
-      "👥 Étudiants filtrés:",
-      filteredStudents.length,
-      filteredStudents
-    );
-    return filteredStudents;
-  }, [
-    students,
-    enrollments,
-    deanFaculty,
-    filters.academicYearId,
-    filters.level,
-  ]);
-
-  // Filtrer avec la recherche
-  const filteredStudents = useMemo(() => {
-    let result = facultyStudents;
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter(
-        (student) =>
-          student.firstName.toLowerCase().includes(term) ||
-          student.lastName.toLowerCase().includes(term) ||
-          student.studentId.toLowerCase().includes(term)
-      );
-    }
-
-    return result;
-  }, [facultyStudents, searchTerm]);
-
-  // Pagination des étudiants
-  const paginatedStudents = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredStudents.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredStudents, currentPage]);
-
-  // Réinitialiser la page quand les filtres changent
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filters, searchTerm, selectedUE]);
-
-  // Obtenir une note existante
-  const getExistingGrade = useCallback(
-    (studentId: string, ueId: string) => {
+      setLoading(true);
       try {
-        if (!Array.isArray(grades)) return undefined;
+        await fetchAssignments();
+        const allAssignments = useAssignmentStore.getState().assignments;
 
-        const grade = grades.find(
-          (grade) =>
-            grade &&
-            typeof grade === "object" &&
-            grade.studentId === studentId &&
-            grade.ueId === ueId &&
-            grade.academicYearId === filters.academicYearId &&
-            grade.semester === filters.semester
-        );
+        const filteredAssignments = allAssignments
+          .filter(
+            (assignment) =>
+              assignment.academicYearId === filters.academicYearId &&
+              assignment.classLevel === filters.classLevel &&
+              assignment.status === "Active"
+          )
+          .map(validateClassAssignment)
+          .filter(Boolean) as ClassAssignment[];
 
-        return grade;
+        setAvailableAssignments(filteredAssignments);
+
+        const filtersToSend = {
+          academicYearId: filters.academicYearId,
+          classLevel: filters.classLevel || undefined,
+          subjectId: filters.subjectId || undefined,
+          controlType: filters.controlType || undefined,
+          status: filters.status || undefined,
+        };
+
+        await fetchGrades(filtersToSend);
+
+        if (filters.classLevel) {
+          const classStudents = students.filter(
+            (student) =>
+              student.status === "Active" &&
+              student.schoolClass?.level === filters.classLevel
+          );
+          setAvailableStudents(classStudents);
+        } else {
+          setAvailableStudents(students.filter((s) => s.status === "Active"));
+        }
+
+        calculateStatistics();
       } catch (error) {
-        console.error("❌ Erreur dans getExistingGrade:", error);
-        return undefined;
+        console.error("Erreur chargement données filtrées:", error);
+        toast.error("Erreur lors du chargement des données filtrées");
+      } finally {
+        setLoading(false);
       }
-    },
-    [grades, filters.academicYearId, filters.semester]
-  );
-
-  // Fonction : Obtenir le professeur assigné à une UE
-  const getAssignedProfessor = useCallback(
-    (ueId: string) => {
-      if (!assignments.length) return null;
-
-      const assignment = assignments.find(
-        (a) =>
-          a.ueId === ueId &&
-          a.facultyId === deanFaculty?.id &&
-          a.level === filters.level &&
-          a.academicYearId === filters.academicYearId &&
-          a.semester === filters.semester
-      );
-
-      return assignment?.professeur || null;
-    },
-    [assignments, deanFaculty, filters]
-  );
-
-  // Calcul des statistiques amélioré avec les affectations
-  const stats = useMemo(() => {
-    if (!selectedUE) return null;
-
-    const studentsWithGrades = filteredStudents.filter((s) =>
-      getExistingGrade(s.id, selectedUE.id)
-    );
-
-    const gradesList = studentsWithGrades
-      .map((s) => getExistingGrade(s.id, selectedUE.id)?.grade)
-      .filter(
-        (grade): grade is number => grade !== undefined && grade !== null
-      );
-
-    const averageGrade =
-      gradesList.length > 0
-        ? gradesList.reduce((sum, grade) => sum + grade, 0) / gradesList.length
-        : 0;
-
-    const passingStudents = studentsWithGrades.filter((s) => {
-      const grade = getExistingGrade(s.id, selectedUE.id);
-      return grade && grade.status === "Valid_";
-    }).length;
-
-    const successRate =
-      studentsWithGrades.length > 0
-        ? (passingStudents / studentsWithGrades.length) * 100
-        : 0;
-
-    // Nouvelle stat : Professeur assigné
-    const assignedProfessor = getAssignedProfessor(selectedUE.id);
-
-    // Statistiques de répartition des notes
-    const gradesBelow10 = studentsWithGrades.filter((s) => {
-      const grade = getExistingGrade(s.id, selectedUE.id);
-      return grade && grade.grade < 10;
-    }).length;
-
-    const grades10to12 = studentsWithGrades.filter((s) => {
-      const grade = getExistingGrade(s.id, selectedUE.id);
-      return grade && grade.grade >= 10 && grade.grade < 12;
-    }).length;
-
-    const grades12to14 = studentsWithGrades.filter((s) => {
-      const grade = getExistingGrade(s.id, selectedUE.id);
-      return grade && grade.grade >= 12 && grade.grade < 14;
-    }).length;
-
-    const gradesAbove14 = studentsWithGrades.filter((s) => {
-      const grade = getExistingGrade(s.id, selectedUE.id);
-      return grade && grade.grade >= 14;
-    }).length;
-
-    return {
-      totalStudents: filteredStudents.length,
-      studentsWithGrades: studentsWithGrades.length,
-      averageGrade: Math.round(averageGrade * 100) / 100,
-      successRate: Math.round(successRate),
-      passingStudents,
-      excellentStudents: studentsWithGrades.filter((s) => {
-        const grade = getExistingGrade(s.id, selectedUE.id);
-        return grade && grade.grade >= 16;
-      }).length,
-      assignedProfessor,
-      hasAssignment: !!assignedProfessor,
-      gradesBelow10,
-      grades10to12,
-      grades12to14,
-      gradesAbove14,
     };
-  }, [filteredStudents, selectedUE, getExistingGrade, getAssignedProfessor]);
 
-  const toggleStudentExpansion = useCallback((studentId: string) => {
-    setExpandedStudent((prev) => (prev === studentId ? null : studentId));
-  }, []);
+    loadFilteredData();
+  }, [filters]);
 
-  const exportResults = useCallback(() => {
-    if (!selectedUE || !stats) {
-      toast({
-        title: "Action impossible",
-        description: "Veuillez sélectionner une UE d'abord",
-        variant: "destructive",
+  // Calculer les statistiques
+  const calculateStatistics = () => {
+    const filtered = getFilteredGrades();
+    const total = filtered.length;
+
+    if (total === 0) {
+      setStatistics({
+        totalGrades: 0,
+        averageGrade: 0,
+        successRate: 0,
+        passedGrades: 0,
+        failedGrades: 0,
+        bySubject: {},
+        byControlType: {},
       });
       return;
     }
 
-    try {
-      const headers = [
-        "Nom",
-        "Prénom",
-        "Matricule",
-        "Note",
-        "Statut",
-        "UE",
-        "Semestre",
-        "Professeur",
-      ];
-      const assignedProfessor = getAssignedProfessor(selectedUE.id);
-      const professorName = assignedProfessor
-        ? `${assignedProfessor.firstName} ${assignedProfessor.lastName}`
-        : "Non assigné";
+    const average = filtered.reduce((sum, g) => sum + g.grade, 0) / total;
+    const passed = filtered.filter((g) => {
+      const subject = subjects.find((s) => s.id === g.subjectId);
+      return subject ? g.grade >= subject.passingGrade : false;
+    }).length;
+    const successRate = (passed / total) * 100;
 
-      const csvData = filteredStudents.map((student) => {
-        const grade = getExistingGrade(student.id, selectedUE.id);
-        return [
-          student.lastName,
-          student.firstName,
-          student.studentId,
-          grade?.grade || "Non noté",
-          grade?.status?.replace("_", " ") || "En attente",
-          selectedUE.title,
-          filters.semester,
-          professorName,
-        ];
-      });
+    setStatistics({
+      totalGrades: total,
+      averageGrade: parseFloat(average.toFixed(2)),
+      successRate: parseFloat(successRate.toFixed(2)),
+      passedGrades: passed,
+      failedGrades: total - passed,
+      bySubject: {},
+      byControlType: {},
+    });
+  };
 
-      const csvContent = [headers, ...csvData]
-        .map((row) => row.map((field) => `"${field}"`).join(","))
-        .join("\n");
+  // Obtenir les notes filtrées
+  const getFilteredGrades = () => {
+    return grades.filter((grade) => {
+      const matchesAcademicYear =
+        !filters.academicYearId ||
+        grade.academicYearId === filters.academicYearId;
+      const matchesClassLevel =
+        !filters.classLevel || grade.classLevel === filters.classLevel;
+      const matchesSubject =
+        !filters.subjectId || grade.subjectId === filters.subjectId;
+      const matchesControlType =
+        !filters.controlType || grade.controlType === filters.controlType;
+      const matchesStatus = !filters.status || grade.status === filters.status;
 
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `notes-${selectedUE.code}-${filters.semester}-${
-        new Date().toISOString().split("T")[0]
-      }.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      return (
+        matchesAcademicYear &&
+        matchesClassLevel &&
+        matchesSubject &&
+        matchesControlType &&
+        matchesStatus
+      );
+    });
+  };
 
-      toast({
-        title: "Export réussi",
-        description: "Les données ont été exportées en CSV",
-      });
-    } catch (error) {
-      console.error("❌ Erreur d'export:", error);
-      toast({
-        title: "Erreur d'export",
-        description: "Impossible d'exporter les données",
-        variant: "destructive",
-      });
+  // Obtenir les affectations pour la matière sélectionnée
+  const getAssignmentsForSelectedSubject = () => {
+    if (!selectedSubject || !filters.academicYearId || !filters.classLevel)
+      return [];
+
+    return availableAssignments.filter(
+      (assignment) =>
+        assignment.subjectId === selectedSubject.id &&
+        assignment.classLevel === filters.classLevel &&
+        assignment.academicYearId === filters.academicYearId
+    );
+  };
+
+  // Obtenir les étudiants sans note pour la matière sélectionnée
+  const getStudentsWithoutGrade = () => {
+    if (!selectedSubject) return availableStudents;
+
+    const studentsWithGrade = new Set(
+      getFilteredGrades()
+        .filter((g) => g.subjectId === selectedSubject.id)
+        .map((g) => g.studentId)
+    );
+
+    return availableStudents.filter(
+      (student) => !studentsWithGrade.has(student.id)
+    );
+  };
+
+  // Sauvegarder une note individuelle
+  const handleSaveGrade = async (
+    studentId: string,
+    subjectId: string,
+    gradeData: {
+      grade: number;
+      status: GradeStatus;
+      controlType: ControlType;
+      notes?: string;
     }
-  }, [
-    selectedUE,
-    stats,
-    filteredStudents,
-    getExistingGrade,
-    filters.semester,
-    getAssignedProfessor,
-    toast,
-  ]);
+  ) => {
+    setIsSaving(true);
+    try {
+      const assignments = getAssignmentsForSelectedSubject();
+      const assignment = assignments[0];
 
-  const getGradeColor = useCallback((grade: number) => {
-    if (grade >= 16)
-      return "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400";
-    if (grade >= 14)
-      return "text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400";
-    if (grade >= 12)
-      return "text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400";
-    return "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400";
-  }, []);
+      if (!assignment) {
+        toast.error("Aucune affectation trouvée pour cette matière");
+        return;
+      }
 
-  const getGradeStatusIcon = useCallback((status: string) => {
+      const existingGrade = grades.find(
+        (g) =>
+          g.studentId === studentId &&
+          g.subjectId === subjectId &&
+          g.academicYearId === filters.academicYearId &&
+          g.controlType === gradeData.controlType
+      );
+
+      const gradeToSend = {
+        studentId,
+        subjectId,
+        assignmentId: assignment.id,
+        grade: gradeData.grade,
+        status: gradeData.status,
+        session: "Normale" as any, // Toujours normale maintenant
+        controlType: gradeData.controlType,
+        academicYearId: filters.academicYearId,
+        classLevel: filters.classLevel as ClassLevel,
+        notes: gradeData.notes,
+        isActive: true,
+      };
+
+      if (existingGrade) {
+        await updateGrade(existingGrade.id, {
+          grade: gradeData.grade,
+          status: gradeData.status,
+          controlType: gradeData.controlType,
+          notes: gradeData.notes,
+        });
+        toast.success("Note modifiée avec succès");
+      } else {
+        await addGrade(gradeToSend);
+        toast.success("Note ajoutée avec succès");
+      }
+
+      await loadGrades();
+    } catch (error) {
+      console.error("Erreur sauvegarde note:", error);
+      toast.error("Erreur lors de la sauvegarde de la note");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Charger les notes
+  const loadGrades = async () => {
+    try {
+      const filtersToSend = {
+        academicYearId: filters.academicYearId,
+        classLevel: filters.classLevel || undefined,
+        subjectId: filters.subjectId || undefined,
+        controlType: filters.controlType || undefined,
+        status: filters.status || undefined,
+      };
+
+      await fetchGrades(filtersToSend);
+      calculateStatistics();
+    } catch (error) {
+      console.error("Erreur chargement notes:", error);
+      toast.error("Erreur lors du chargement des notes");
+    }
+  };
+
+  // Sauvegarder les notes en masse
+  const saveBulkGrades = async () => {
+    if (!selectedSubject || !selectedAcademicYear || !filters.classLevel) {
+      toast.error(
+        "Veuillez sélectionner une matière, une année académique et un niveau"
+      );
+      return;
+    }
+
+    const assignments = getAssignmentsForSelectedSubject();
+    const assignment = assignments[0];
+
+    if (!assignment) {
+      toast.error("Aucune affectation trouvée pour cette matière");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const gradesToAdd = Object.entries(bulkGrades)
+        .filter(
+          ([studentId, data]) =>
+            data.grade.trim() !== "" && selectedStudents.includes(studentId)
+        )
+        .map(([studentId, data]) => {
+          const gradeValue = parseFloat(data.grade);
+          return {
+            studentId,
+            subjectId: selectedSubject.id,
+            assignmentId: assignment.id,
+            grade: gradeValue,
+            status: data.status,
+            session: "Normale" as any,
+            controlType: data.controlType,
+            academicYearId: selectedAcademicYear.id,
+            classLevel: filters.classLevel as ClassLevel,
+            notes: data.notes,
+            isActive: true,
+          };
+        });
+
+      if (gradesToAdd.length > 0) {
+        await bulkAddGrades(gradesToAdd);
+        toast.success(`${gradesToAdd.length} notes ajoutées avec succès`);
+      } else {
+        toast.info("Aucune note à sauvegarder");
+      }
+
+      setBulkGrades({});
+      setBulkEditMode(false);
+      setSelectedStudents([]);
+      await loadGrades();
+    } catch (error) {
+      console.error("Erreur sauvegarde en masse:", error);
+      toast.error("Erreur lors de la sauvegarde des notes");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Export Excel
+  const handleExportExcel = () => {
+    try {
+      const dataToExport = getFilteredGrades().map((grade) => {
+        const student = students.find((s) => s.id === grade.studentId);
+        const subject = subjects.find((s) => s.id === grade.subjectId);
+
+        return {
+          Matricule: student?.studentCode,
+          Nom: student?.lastName,
+          Prénom: student?.firstName,
+          Matière: subject?.name,
+          Code: subject?.code,
+          Note: grade.grade,
+          Statut: grade.status,
+          "Type contrôle": grade.controlType,
+          Niveau: grade.classLevel,
+          "Année académique": selectedAcademicYear?.year,
+          Date: new Date(grade.createdAt).toLocaleDateString(),
+          Remarques: grade.notes || "",
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Notes");
+
+      const excelBuffer = XLSX.write(workbook, {
+        bookType: "xlsx",
+        type: "array",
+      });
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      saveAs(
+        blob,
+        `notes-export-${new Date().toISOString().split("T")[0]}.xlsx`
+      );
+      toast.success("Export Excel réussi");
+    } catch (error) {
+      toast.error("Erreur lors de l'export Excel");
+    }
+  };
+
+  // Toggle sélection étudiant
+  const toggleStudentSelection = (studentId: string) => {
+    setSelectedStudents((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId]
+    );
+  };
+
+  const selectAllStudents = () => {
+    const studentsToGrade = getStudentsWithoutGrade();
+    if (selectedStudents.length === studentsToGrade.length) {
+      setSelectedStudents([]);
+    } else {
+      setSelectedStudents(studentsToGrade.map((s) => s.id));
+    }
+  };
+
+  // Fonctions utilitaires
+  const getStatusBadge = (status: GradeStatus) => {
     switch (status) {
       case "Valid_":
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
+        return (
+          <Badge className="bg-green-100 text-green-800 border-green-300">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Validé
+          </Badge>
+        );
       case "Non_valid_":
-        return <XCircle className="h-4 w-4 text-red-600" />;
-      default:
-        return <Clock className="h-4 w-4 text-amber-600" />;
+        return (
+          <Badge className="bg-red-100 text-red-800 border-red-300">
+            <XCircle className="h-3 w-3 mr-1" />
+            Non validé
+          </Badge>
+        );
+      case "Reprendre":
+        return (
+          <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
+            <Clock className="h-3 w-3 mr-1" />À reprendre
+          </Badge>
+        );
     }
-  }, []);
+  };
 
-  // États de chargement combinés
-  const isLoading = authLoading || loading || assignmentsLoading;
+  const getControlTypeLabel = (type: ControlType) => {
+    switch (type) {
+      case "CONTROLE_1":
+        return "Contrôle 1";
+      case "CONTROLE_2":
+        return "Contrôle 2";
+      case "CONTROLE_3":
+        return "Contrôle 3";
+      case "CONTROLE_4":
+        return "Contrôle 4";
+    }
+  };
 
-  // Affichage des états de chargement et erreurs
-  if (authLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-6">
-        <div className="text-center max-w-md">
-          <Loader2 className="h-16 w-16 animate-spin text-blue-600 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Chargement...
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Initialisation de votre session...
-          </p>
-        </div>
-      </div>
+  const getClassLevelDisplay = (level: ClassLevel | "") => {
+    if (!level) return "Tous les niveaux";
+    const levels: Record<ClassLevel, string> = {
+      CP1: "CP1",
+      CP2: "CP2",
+      CE1: "CE1",
+      CE2: "CE2",
+      CM1: "CM1",
+      CM2: "CM2",
+      Sixieme: "Sixième",
+      Cinquieme: "Cinquième",
+      Quatrieme: "Quatrième",
+      Troisieme: "Troisième",
+      Seconde: "Seconde",
+      Premiere: "Première",
+      Terminale: "Terminale",
+    };
+    return levels[level] || level;
+  };
+
+  const getAvailableSubjects = () => {
+    if (!filters.classLevel || !filters.academicYearId) return subjects;
+
+    const assignmentsForLevel = availableAssignments.filter(
+      (assignment) =>
+        assignment.classLevel === filters.classLevel &&
+        assignment.academicYearId === filters.academicYearId
     );
-  }
 
-  if (!isAuthenticated || !user) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-6">
-        <div className="text-center max-w-md">
-          <ShieldAlert className="h-16 w-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Session expirée
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Votre session a expiré ou vous n'êtes pas connecté.
-          </p>
-          <div className="flex gap-2 justify-center">
-            <Button
-              onClick={() => (window.location.href = "/login")}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              Se connecter
-            </Button>
-            <Button variant="outline" onClick={() => window.location.reload()}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Actualiser
-            </Button>
-          </div>
-        </div>
-      </div>
+    const subjectIds = assignmentsForLevel.map(
+      (assignment) => assignment.subjectId
     );
-  }
-
-  if (!deanFaculty) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-6">
-        <div className="text-center max-w-md">
-          <Crown className="h-16 w-16 text-amber-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Accès restreint
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Vous n'êtes pas assigné comme doyen d'une faculté.
-          </p>
-
-          {/* Informations de debug */}
-          <div className="text-left bg-gray-100 dark:bg-gray-800 p-4 rounded-lg text-sm mb-4">
-            <p>
-              <strong>User ID:</strong> {user?.id}
-            </p>
-            <p>
-              <strong>Nom:</strong> {user?.firstName} {user?.lastName}
-            </p>
-            <p>
-              <strong>Email:</strong> {user?.email}
-            </p>
-            <p>
-              <strong>Rôle:</strong> {user?.role}
-            </p>
-            <p>
-              <strong>Faculté ID:</strong> {user?.facultyId || "Aucune"}
-            </p>
-            <p>
-              <strong>Facultés disponibles:</strong> {faculties.length}
-            </p>
-            <p>
-              <strong>Authentifié:</strong> {isAuthenticated ? "Oui" : "Non"}
-            </p>
-          </div>
-
-          <div className="flex gap-2 justify-center">
-            <Button onClick={() => window.location.reload()}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Actualiser
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => (window.location.href = "/dashboard")}
-            >
-              Tableau de bord
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    return subjects.filter((subject) => subjectIds.includes(subject.id));
+  };
 
   return (
-    <div className="space-y-6 p-6 bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-gray-900 dark:via-gray-800 dark:to-blue-950/30 min-h-screen">
+    <div className="space-y-6 p-6 bg-gradient-to-b from-blue-50 to-indigo-50 min-h-screen">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 p-6 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-lg border border-blue-100 dark:border-gray-700">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl shadow-lg">
-            <Crown className="h-8 w-8 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
-              Tableau de Bord des Notes
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Consultation des résultats - {deanFaculty.name}
-            </p>
-            <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-              {facultyStudents.length} étudiants • {facultyUEs.length} UE
-              disponibles
-              {assignments.length > 0 &&
-                ` • ${assignments.length} affectations`}
-            </p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-6 bg-white rounded-xl shadow-lg border border-blue-100">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            📊 Gestion des Notes
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Gestion simplifiée des notes par matière et niveau
+          </p>
         </div>
 
-        <Button
-          onClick={exportResults}
-          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md"
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Exporter les résultats
-        </Button>
+        <div className="flex gap-2 flex-wrap">
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".xlsx,.xls"
+            className="hidden"
+          />
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Importer Excel
+          </Button>
+          <Button
+            onClick={handleExportExcel}
+            variant="outline"
+            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Exporter Excel
+          </Button>
+          <Button
+            onClick={() => setBulkEditMode(true)}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            disabled={!selectedSubject}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Ajouter des notes en masse
+          </Button>
+        </div>
       </div>
 
-      {/* Bannière information doyen */}
-      <Card className="border-2 border-amber-200 dark:border-amber-800 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/50 dark:to-yellow-950/50">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
-            <Sparkles className="h-5 w-5 text-amber-600" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                Doyen de la Faculté des {deanFaculty.name}
-              </p>
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                Accès aux notes et aux informations d'affectation des cours
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Filtres */}
-      <Card className="border-2 border-blue-100 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
+      {/* Filtres simplifiés */}
+      <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-blue-50">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
-            <Filter className="h-5 w-5" />
-            Filtres de consultation
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Filter className="h-5 w-5 text-blue-600" />
+              <CardTitle className="text-lg font-semibold text-blue-800">
+                Filtres
+              </CardTitle>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className="h-8 px-2 text-blue-600 hover:bg-blue-100"
+            >
+              {showFilters ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </CardHeader>
+
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Année académique */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Année académique</Label>
+              <Label htmlFor="academicYear" className="text-sm font-medium">
+                Année académique
+              </Label>
               <Select
                 value={filters.academicYearId}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, academicYearId: value }))
-                }
+                onValueChange={(value) => {
+                  setFilters((prev) => ({ ...prev, academicYearId: value }));
+                  const year = academicYears.find((ay) => ay.id === value);
+                  setSelectedAcademicYear(year || null);
+                  setSelectedSubject(null);
+                }}
+                disabled={loading}
               >
-                <SelectTrigger className="border-blue-200 dark:border-blue-700">
+                <SelectTrigger
+                  id="academicYear"
+                  className="h-10 border-blue-300 focus:border-blue-500"
+                >
                   <SelectValue placeholder="Sélectionner une année" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1074,507 +1132,479 @@ export const DeanGradesView = () => {
               </Select>
             </div>
 
-            {/* Semestre */}
+            {/* Niveau de classe */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Semestre</Label>
+              <Label htmlFor="classLevel" className="text-sm font-medium">
+                Niveau
+              </Label>
               <Select
-                value={filters.semester}
-                onValueChange={(value: "S1" | "S2") =>
-                  setFilters((prev) => ({ ...prev, semester: value }))
-                }
+                value={filters.classLevel}
+                onValueChange={(value) => {
+                  setFilters((prev) => ({
+                    ...prev,
+                    classLevel: value as ClassLevel | "",
+                  }));
+                  setSelectedSubject(null);
+                }}
+                disabled={loading}
               >
-                <SelectTrigger className="border-blue-200 dark:border-blue-700">
-                  <SelectValue placeholder="Sélectionner un semestre" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="S1">Semestre 1</SelectItem>
-                  <SelectItem value="S2">Semestre 2</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Niveau */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Niveau</Label>
-              <Select
-                value={filters.level}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, level: value }))
-                }
-              >
-                <SelectTrigger className="border-blue-200 dark:border-blue-700">
-                  <SelectValue placeholder="Tous les niveaux" />
+                <SelectTrigger
+                  id="classLevel"
+                  className="h-10 border-blue-300 focus:border-blue-500"
+                >
+                  <SelectValue placeholder="Sélectionner un niveau" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous les niveaux</SelectItem>
-                  <SelectItem value="1">Licence 1</SelectItem>
-                  <SelectItem value="2">Licence 2</SelectItem>
-                  <SelectItem value="3">Licence 3</SelectItem>
-                  <SelectItem value="4">Licence 4</SelectItem>
-                  <SelectItem value="5">Licence 5</SelectItem>
+                  <SelectItem value="CP1">CP1</SelectItem>
+                  <SelectItem value="CP2">CP2</SelectItem>
+                  <SelectItem value="CE1">CE1</SelectItem>
+                  <SelectItem value="CE2">CE2</SelectItem>
+                  <SelectItem value="CM1">CM1</SelectItem>
+                  <SelectItem value="CM2">CM2</SelectItem>
+                  <SelectItem value="Sixieme">Sixième</SelectItem>
+                  <SelectItem value="Cinquieme">Cinquième</SelectItem>
+                  <SelectItem value="Quatrieme">Quatrième</SelectItem>
+                  <SelectItem value="Troisieme">Troisième</SelectItem>
+                  <SelectItem value="Seconde">Seconde</SelectItem>
+                  <SelectItem value="Premiere">Première</SelectItem>
+                  <SelectItem value="Terminale">Terminale</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* UE */}
+            {/* Matière */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                Unité d'Enseignement
+              <Label htmlFor="subject" className="text-sm font-medium">
+                Matière
               </Label>
               <Select
-                value={selectedUE?.id || ""}
+                value={filters.subjectId}
                 onValueChange={(value) => {
-                  const ue = facultyUEs.find((u) => u.id === value);
-                  setSelectedUE(ue);
-                  console.log("🎯 UE sélectionnée:", ue?.title);
+                  setFilters((prev) => ({ ...prev, subjectId: value }));
+                  const subject = subjects.find((s) => s.id === value);
+                  setSelectedSubject(subject || null);
                 }}
-                disabled={facultyUEs.length === 0}
+                disabled={!filters.classLevel || loading}
               >
-                <SelectTrigger className="border-blue-200 dark:border-blue-700">
+                <SelectTrigger
+                  id="subject"
+                  className="h-10 border-blue-300 focus:border-blue-500"
+                >
                   <SelectValue
                     placeholder={
-                      facultyUEs.length === 0
-                        ? "Chargement des UE..."
-                        : "Sélectionner une UE"
+                      filters.classLevel
+                        ? "Choisir une matière"
+                        : "Sélectionnez d'abord un niveau"
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {facultyUEs.map((ue) => (
-                    <SelectItem key={ue.id} value={ue.id}>
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{ue.code}</span>
-                          <span className="text-gray-600 dark:text-gray-400">
-                            - {ue.title}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {getAssignedProfessor(ue.id) && (
-                            <UserCog className="h-3 w-3 text-green-600" />
-                          )}
-                          <Badge variant="outline" className="text-xs">
-                            {ue.credits} crédits
-                          </Badge>
-                        </div>
-                      </div>
+                  <SelectItem value="all">Toutes les matières</SelectItem>
+                  {getAvailableSubjects().map((subject) => (
+                    <SelectItem key={subject.id} value={subject.id}>
+                      {subject.code} - {subject.name} (Coef.{" "}
+                      {subject.coefficient})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
 
-              {/* Messages d'information */}
-              {facultyUEs.length === 0 && (
-                <p className="text-xs text-amber-600">
-                  Aucune Cours disponible pour les critères sélectionnés
-                </p>
-              )}
-              {facultyUEs.length > 0 && (
-                <p className="text-xs text-green-600">
-                  {facultyUEs.length} UE(s) disponible(s)
-                </p>
-              )}
+          {showFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              {/* Type de contrôle */}
+              <div className="space-y-2">
+                <Label htmlFor="controlType" className="text-sm font-medium">
+                  Type de contrôle
+                </Label>
+                <Select
+                  value={filters.controlType}
+                  onValueChange={(value) => {
+                    setFilters((prev) => ({
+                      ...prev,
+                      controlType: value as ControlType | "",
+                    }));
+                  }}
+                >
+                  <SelectTrigger
+                    id="controlType"
+                    className="h-10 border-blue-300 focus:border-blue-500"
+                  >
+                    <SelectValue placeholder="Tous les contrôles" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous</SelectItem>
+                    <SelectItem value="CONTROLE_1">Contrôle 1</SelectItem>
+                    <SelectItem value="CONTROLE_2">Contrôle 2</SelectItem>
+                    <SelectItem value="CONTROLE_3">Contrôle 3</SelectItem>
+                    <SelectItem value="CONTROLE_4">Contrôle 4</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Statut */}
+              <div className="space-y-2">
+                <Label htmlFor="status" className="text-sm font-medium">
+                  Statut
+                </Label>
+                <Select
+                  value={filters.status}
+                  onValueChange={(value) => {
+                    setFilters((prev) => ({
+                      ...prev,
+                      status: value as GradeStatus | "",
+                    }));
+                  }}
+                >
+                  <SelectTrigger
+                    id="status"
+                    className="h-10 border-blue-300 focus:border-blue-500"
+                  >
+                    <SelectValue placeholder="Tous les statuts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous</SelectItem>
+                    <SelectItem value="Valid_">Validé</SelectItem>
+                    <SelectItem value="Non_valid_">Non validé</SelectItem>
+                    <SelectItem value="Reprendre">À reprendre</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {/* Recherche */}
+          <div className="mt-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Rechercher un étudiant..."
+                className="pl-9 h-10 border-blue-300 focus:border-blue-400"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Section : Informations d'affectation */}
-      {selectedUE && stats && (
-        <Card className="border-2 border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/20">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <BookMarked className="h-5 w-5 text-green-600" />
-                <div>
-                  <h4 className="font-semibold text-green-900 dark:text-green-100">
-                    {selectedUE.code} - {selectedUE.title}
-                  </h4>
-                  <p className="text-sm text-green-700 dark:text-green-300">
-                    {stats.hasAssignment ? (
-                      <span>
-                        Enseigné par{" "}
-                        <strong>
-                          {stats.assignedProfessor?.firstName}{" "}
-                          {stats.assignedProfessor?.lastName}
-                        </strong>
-                      </span>
-                    ) : (
-                      <span className="text-amber-600">
-                        Aucun professeur assigné
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-              <Badge
-                variant={stats.hasAssignment ? "default" : "secondary"}
-                className={
-                  stats.hasAssignment
-                    ? "bg-green-100 text-green-800 border-green-200"
-                    : "bg-amber-100 text-amber-800 border-amber-200"
-                }
-              >
-                {stats.hasAssignment ? "Assigné" : "Non assigné"}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Chargement */}
+      {loading && <LoadingSpinner message="Chargement des données..." />}
 
-      {/* Statistiques principales */}
-      {selectedUE && stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <DeanStatCard
-            icon={Users}
-            value={stats.totalStudents}
-            label="Étudiants inscrits"
-            description="Total dans la sélection"
-            gradient="from-blue-500/10 to-indigo-500/10"
-            borderColor="border-blue-200"
+      {/* Statistiques */}
+      {!loading && statistics && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatCard
+            icon={FileText}
+            value={statistics.totalGrades}
+            label="Notes totales"
+            gradient="from-blue-100 to-blue-200"
+            iconBg="bg-blue-600"
           />
-          <DeanStatCard
-            icon={UserCheck}
-            value={stats.studentsWithGrades}
-            label="Notes saisies"
-            description={`${Math.round(
-              (stats.studentsWithGrades / stats.totalStudents) * 100
-            )}% de complétion`}
-            gradient="from-green-500/10 to-emerald-500/10"
-            borderColor="border-green-200"
-          />
-          <DeanStatCard
-            icon={Target}
-            value={`${stats.averageGrade}/20`}
+          <StatCard
+            icon={BarChart3}
+            value={statistics.averageGrade.toFixed(1)}
             label="Moyenne générale"
-            description="Moyenne de tous les étudiants"
-            gradient="from-purple-500/10 to-pink-500/10"
-            borderColor="border-purple-200"
+            gradient="from-green-100 to-green-200"
+            iconBg="bg-green-600"
           />
-          <DeanStatCard
-            icon={Award}
-            value={`${stats.successRate}%`}
+          <StatCard
+            icon={CheckCircle}
+            value={`${statistics.successRate.toFixed(1)}%`}
             label="Taux de réussite"
-            description={`${stats.passingStudents} étudiants validés`}
-            gradient="from-amber-500/10 to-orange-500/10"
-            borderColor="border-amber-200"
+            gradient="from-purple-100 to-purple-200"
+            iconBg="bg-purple-600"
+          />
+          <StatCard
+            icon={Users}
+            value={availableStudents.length}
+            label="Étudiants actifs"
+            gradient="from-amber-100 to-amber-200"
+            iconBg="bg-amber-600"
           />
         </div>
       )}
 
-      {/* Statistiques de répartition des notes */}
-      {selectedUE && stats && (
-        <Card className="border-2 border-purple-200 dark:border-purple-800">
+      {/* Interface principale */}
+      {!loading && selectedSubject && !bulkEditMode && (
+        <Card className="border-0 shadow-lg bg-white">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Répartition des notes
-            </CardTitle>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+              <div>
+                <CardTitle className="text-xl font-bold text-gray-800">
+                  Saisie des notes - {selectedSubject.name}
+                </CardTitle>
+                <p className="text-sm text-gray-600">
+                  Saisissez les notes directement pour chaque étudiant
+                </p>
+              </div>
+              <div className="text-sm text-gray-600">
+                Seuil de validation: {selectedSubject.passingGrade}/100
+              </div>
+            </div>
           </CardHeader>
+
           <CardContent>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-red-600">
-                  {stats.gradesBelow10}
-                </div>
-                <div className="text-sm text-red-500">{"< 25/100"}</div>
-              </div>
-              <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-yellow-600">
-                  {stats.grades10to12}
-                </div>
-                <div className="text-sm text-yellow-500">25-50/100</div>
-              </div>
-              <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">
-                  {stats.grades12to14}
-                </div>
-                <div className="text-sm text-blue-500">50-75/100</div>
-              </div>
-              <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">
-                  {stats.gradesAbove14}
-                </div>
-                <div className="text-sm text-green-500">{"> 75/100"}</div>
-              </div>
+            {/* En-tête des colonnes */}
+            <div className="grid grid-cols-12 gap-3 mb-4 p-3 bg-gray-50 rounded-lg font-medium text-sm text-gray-700">
+              <div className="col-span-4">Étudiant</div>
+              <div className="col-span-2">Note (/100)</div>
+              <div className="col-span-2">Type de contrôle</div>
+              <div className="col-span-2">Statut</div>
+              <div className="col-span-2">Actions</div>
             </div>
-          </CardContent>
-        </Card>
-      )}
 
-      {/* Recherche */}
-      {selectedUE && (
-        <Card className="border-2 border-indigo-100 dark:border-indigo-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
-          <CardContent className="p-4">
-            <div className="flex flex-col sm:flex-row gap-4 items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Rechercher un étudiant par nom, prénom ou matricule..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 border-indigo-200 dark:border-indigo-700"
+            {/* Liste des étudiants avec notes existantes */}
+            {getFilteredGrades()
+              .filter((g) => g.subjectId === selectedSubject.id)
+              .filter((grade) => {
+                if (!searchTerm) return true;
+                const student = students.find((s) => s.id === grade.studentId);
+                return (
+                  student?.firstName
+                    .toLowerCase()
+                    .includes(searchTerm.toLowerCase()) ||
+                  student?.lastName
+                    .toLowerCase()
+                    .includes(searchTerm.toLowerCase()) ||
+                  student?.studentCode
+                    .toLowerCase()
+                    .includes(searchTerm.toLowerCase())
+                );
+              })
+              .map((grade) => {
+                const student = students.find((s) => s.id === grade.studentId);
+                if (!student) return null;
+
+                return (
+                  <GradeInputInline
+                    key={grade.id}
+                    student={student}
+                    subject={selectedSubject}
+                    existingGrade={grade}
+                    onSave={(gradeData) =>
+                      handleSaveGrade(student.id, selectedSubject.id, gradeData)
+                    }
+                    isLoading={isSaving}
+                  />
+                );
+              })}
+
+            {/* Séparateur */}
+            <div className="my-6 border-t border-gray-200 relative">
+              <span className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-sm text-gray-500">
+                Étudiants sans note
+              </span>
+            </div>
+
+            {/* Étudiants sans note */}
+            {getStudentsWithoutGrade()
+              .filter((student) => {
+                if (!searchTerm) return true;
+                return (
+                  student.firstName
+                    .toLowerCase()
+                    .includes(searchTerm.toLowerCase()) ||
+                  student.lastName
+                    .toLowerCase()
+                    .includes(searchTerm.toLowerCase()) ||
+                  student.studentCode
+                    .toLowerCase()
+                    .includes(searchTerm.toLowerCase())
+                );
+              })
+              .map((student) => (
+                <GradeInputInline
+                  key={student.id}
+                  student={student}
+                  subject={selectedSubject}
+                  onSave={(gradeData) =>
+                    handleSaveGrade(student.id, selectedSubject.id, gradeData)
+                  }
+                  isLoading={isSaving}
                 />
-              </div>
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                {filteredStudents.length} étudiant(s) trouvé(s)
-              </div>
-            </div>
+              ))}
+
+            {getStudentsWithoutGrade().length === 0 &&
+              getFilteredGrades().filter(
+                (g) => g.subjectId === selectedSubject.id
+              ).length === 0 && (
+                <EmptyState
+                  icon={Book}
+                  title="Aucun étudiant trouvé"
+                  description="Aucun étudiant correspond aux critères de recherche."
+                />
+              )}
           </CardContent>
         </Card>
       )}
 
-      {/* Liste des étudiants */}
-      {selectedUE && paginatedStudents.length > 0 && (
-        <div className="space-y-4">
-          {paginatedStudents.map((student) => {
-            const existingGrade = getExistingGrade(student.id, selectedUE.id);
-            const isExpanded = expandedStudent === student.id;
+      {/* Mode édition en masse */}
+      {!loading && bulkEditMode && selectedSubject && (
+        <Card className="border-0 shadow-lg bg-white">
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+              <div>
+                <CardTitle className="text-xl font-bold text-gray-800">
+                  Ajout en masse - {selectedSubject.name}
+                </CardTitle>
+                <p className="text-sm text-gray-600">
+                  Sélectionnez les étudiants et appliquez des notes en masse
+                </p>
+              </div>
+            </div>
+          </CardHeader>
 
-            return (
-              <motion.div
-                key={student.id}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Card
-                  className={cn(
-                    "border-2 transition-all hover:shadow-lg cursor-pointer",
-                    isExpanded
-                      ? "border-blue-300 dark:border-blue-600 bg-blue-50/50 dark:bg-blue-900/20"
-                      : "border-gray-200 dark:border-gray-700 hover:border-blue-200 dark:hover:border-blue-700"
-                  )}
-                >
-                  <CardContent className="p-0">
-                    {/* En-tête de la carte */}
+          <CardContent>
+            <BulkControls
+              selectedCount={selectedStudents.length}
+              onSave={saveBulkGrades}
+              onCancel={() => {
+                setBulkEditMode(false);
+                setSelectedStudents([]);
+                setBulkGrades({});
+              }}
+              isLoading={isSaving}
+              bulkGrades={bulkGrades}
+              setBulkGrades={setBulkGrades}
+            />
+
+            <div className="space-y-3">
+              {getStudentsWithoutGrade()
+                .filter((student) => {
+                  if (!searchTerm) return true;
+                  return (
+                    student.firstName
+                      .toLowerCase()
+                      .includes(searchTerm.toLowerCase()) ||
+                    student.lastName
+                      .toLowerCase()
+                      .includes(searchTerm.toLowerCase()) ||
+                    student.studentCode
+                      .toLowerCase()
+                      .includes(searchTerm.toLowerCase())
+                  );
+                })
+                .map((student) => {
+                  const isSelected = selectedStudents.includes(student.id);
+                  const bulkGrade = bulkGrades[student.id];
+
+                  return (
                     <div
-                      className="p-6"
-                      onClick={() => toggleStudentExpansion(student.id)}
+                      key={student.id}
+                      className={`flex items-center justify-between p-4 border rounded-xl transition-all ${
+                        isSelected
+                          ? "bg-blue-50 border-blue-400 shadow-sm"
+                          : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/50"
+                      }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4 flex-1">
-                          <div className="p-3 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-xl shadow-md">
-                            <UserCheck className="h-6 w-6 text-white" />
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {
+                          toggleStudentSelection(student.id);
+                          if (!bulkGrades[student.id]) {
+                            setBulkGrades((prev) => ({
+                              ...prev,
+                              [student.id]: {
+                                grade: "",
+                                status: "Valid_",
+                                controlType: "CONTROLE_1",
+                              },
+                            }));
+                          }
+                        }}
+                        className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-white"
+                      />
+
+                      <div className="flex-1 ml-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <User className="h-5 w-5 text-blue-600" />
                           </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3 mb-2 flex-wrap">
-                              <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
-                                {student.firstName} {student.lastName}
-                              </h3>
-                              <Badge variant="secondary" className="text-xs">
-                                {student.studentId}
-                              </Badge>
-                            </div>
-
-                            <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 flex-wrap">
-                              <span className="flex items-center gap-1">
-                                <School className="h-3 w-3" />
-                                Niveau{" "}
-                                {student.enrollments?.[0]?.level || "N/A"}
-                              </span>
-                            </div>
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {student.firstName} {student.lastName}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {student.studentCode}
+                              {student.schoolClass &&
+                                ` • ${student.schoolClass.name}`}
+                            </p>
                           </div>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                          {/* Note principale */}
-                          {existingGrade ? (
-                            <div className="text-right">
-                              <Badge
-                                className={cn(
-                                  "text-lg px-3 py-2",
-                                  getGradeColor(existingGrade.grade)
-                                )}
-                              >
-                                {existingGrade.grade}/100
-                              </Badge>
-                              <div className="flex items-center gap-1 mt-1 justify-end">
-                                {getGradeStatusIcon(existingGrade.status)}
-                                <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">
-                                  {existingGrade.status?.replace("_", " ") ||
-                                    "En attente"}
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="text-gray-500 border-gray-300"
-                            >
-                              <Clock className="h-3 w-3 mr-1" />
-                              Non noté
-                            </Badge>
-                          )}
-
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn(
-                              "transition-transform",
-                              isExpanded && "rotate-180"
-                            )}
-                          >
-                            <ChevronDown className="h-4 w-4" />
-                          </Button>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Détails expansibles */}
-                    <AnimatePresence>
-                      {isExpanded && existingGrade && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.3 }}
-                        >
-                          <div className="px-6 pb-6 border-t border-gray-200 dark:border-gray-700 pt-4">
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                              {/* Détails de la note */}
-                              <div className="space-y-4">
-                                <h4 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                                  <FileText className="h-4 w-4" />
-                                  Détails de l'évaluation
-                                </h4>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <span className="text-gray-500 dark:text-gray-400">
-                                      Cours:
-                                    </span>
-                                    <p className="font-medium">
-                                      {selectedUE.code} - {selectedUE.title}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-500 dark:text-gray-400">
-                                      Session:
-                                    </span>
-                                    <p className="font-medium">
-                                      {existingGrade.session}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-500 dark:text-gray-400">
-                                      Semestre:
-                                    </span>
-                                    <p className="font-medium">
-                                      {filters.semester}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-500 dark:text-gray-400">
-                                      Statut:
-                                    </span>
-                                    <div className="flex items-center gap-1">
-                                      {getGradeStatusIcon(existingGrade.status)}
-                                      <span className="font-medium capitalize">
-                                        {existingGrade.status?.replace(
-                                          "_",
-                                          " "
-                                        )}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Indicateur de performance */}
-                              <div className="space-y-4">
-                                <h4 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                                  <TrendingUp className="h-4 w-4" />
-                                  Performance
-                                </h4>
-                                <GradeIndicator
-                                  grade={existingGrade.grade}
-                                  passingGrade={selectedUE.passingGrade || 70}
-                                />
-                                <div className="text-xs text-gray-500 dark:text-gray-400">
-                                  Seuil de validation:{" "}
-                                  {selectedUE.passingGrade || 70}/100
-                                </div>
-                              </div>
-                            </div>
+                      <div className="flex items-center gap-3">
+                        {bulkGrade ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-bold text-gray-900">
+                              {bulkGrade.grade || "0"}
+                            </span>
+                            <Badge className="text-xs">
+                              {bulkGrade.status === "Valid_"
+                                ? "Validé"
+                                : bulkGrade.status === "Non_valid_"
+                                ? "Non validé"
+                                : "À reprendre"}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {getControlTypeLabel(bulkGrade.controlType)}
+                            </Badge>
                           </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-gray-500 border-gray-300"
+                          >
+                            À noter
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
 
-          {/* Pagination */}
-          <Pagination
-            currentPage={currentPage}
-            totalItems={filteredStudents.length}
-            itemsPerPage={itemsPerPage}
-            onPageChange={setCurrentPage}
-          />
-        </div>
-      )}
-
-      {/* États vides */}
-      {!selectedUE && (
-        <Card className="border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white/50 dark:bg-gray-800/50">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <BookOpen className="h-16 w-16 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              Sélectionnez une Cours
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400 text-center max-w-sm">
-              Choisissez un Cours dans la liste pour consulter les notes des
-              étudiants.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedUE && filteredStudents.length === 0 && (
-        <Card className="border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white/50 dark:bg-gray-800/50">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <Users className="h-16 w-16 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              Aucun étudiant trouvé
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400 text-center max-w-sm">
-              {searchTerm
-                ? "Aucun étudiant ne correspond à votre recherche. Essayez d'autres termes."
-                : "Aucun étudiant n'est inscrit pour les critères sélectionnés."}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Indicateur de chargement */}
-      {isLoading && (
-        <Card className="border-2 border-blue-200 dark:border-blue-700">
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Chargement des données...
-              </p>
+            <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200">
+              <Button
+                variant="outline"
+                onClick={selectAllStudents}
+                className="border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                {selectedStudents.length === getStudentsWithoutGrade().length
+                  ? "Tout désélectionner"
+                  : "Tout sélectionner"}
+              </Button>
+              <div className="text-sm text-gray-600">
+                {selectedStudents.length} étudiant(s) sélectionné(s) sur{" "}
+                {getStudentsWithoutGrade().length}
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Affichage des erreurs */}
-      {error && (
-        <Card className="border-2 border-red-200 dark:border-red-700">
-          <CardContent className="flex items-center justify-center py-6">
-            <div className="flex flex-col items-center gap-2 text-red-600 dark:text-red-400">
-              <XCircle className="h-6 w-6" />
-              <p className="text-sm">{error}</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Messages d'état */}
+      {!loading && !filters.classLevel && (
+        <EmptyState
+          icon={BookOpen}
+          title="Sélectionnez un niveau"
+          description="Veuillez sélectionner un niveau de classe pour afficher les notes."
+        />
+      )}
+
+      {!loading && filters.classLevel && !selectedSubject && !bulkEditMode && (
+        <EmptyState
+          icon={Book}
+          title="Sélectionnez une matière"
+          description="Veuillez sélectionner une matière pour afficher les notes."
+        />
       )}
     </div>
   );
 };
+
+export default GradeManager;

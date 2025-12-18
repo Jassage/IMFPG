@@ -7,10 +7,9 @@ import {
   deletePayment,
 } from "../controllers/paymentController";
 import { authenticateToken } from "../middleware/auth.middleware";
-import { deanPermissions } from "../middleware/deanPermissions";
 
 const router = Router();
-router.use(authenticateToken, deanPermissions);
+router.use(authenticateToken);
 
 router.get("/", getAllPayments);
 router.get("/:id", getPaymentById);

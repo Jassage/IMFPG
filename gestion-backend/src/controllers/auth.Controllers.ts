@@ -1,11 +1,19 @@
+/**
+ * @file auth.controller.ts
+ * @description Contrôleur d'authentification principal
+ * @version 1.0.0
+ */
+
 import { Request, Response } from "express";
 import { PrismaClient, UserRole } from "../../generated/prisma";
 import bcrypt from "bcryptjs";
-import jwt, { SignOptions } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { sendEmail } from "../services/emailService";
 import rateLimit from "express-rate-limit";
 import { createAuditLog } from "./auditController";
+import { createSafeAuditData, extractAuditData } from "./auth/authUtils";
+import { UserService } from "../services/userService";
 
 const prisma = new PrismaClient();
 const JWT_SECRET =
@@ -35,7 +43,8 @@ const VALID_ROLES: UserRole[] = [
   "Professeur",
   "Secretaire",
   "Directeur",
-  "Doyen",
+  "Student",
+  "Parent",
 ];
 
 const validateUserRole = (role: string): UserRole => {
@@ -72,16 +81,19 @@ export const verifyToken = async (token: string) => {
   }
 };
 
-export const login = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).user?.id || (req as any).userId || null,
-  };
+/**
+ * @controller login
+ * @description Authentifie un utilisateur et retourne un token JWT
+ * @route POST /api/auth/login
+ * @access Public
+ */
+export const login = async (req: Request, res: Response): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const { email, password } = req.body;
 
+    // ==================== VALIDATION DES DONNÉES ====================
     if (!email || !password) {
       await createAuditLog({
         ...auditData,
@@ -92,13 +104,14 @@ export const login = async (req: Request, res: Response) => {
         metadata: { missingFields: { email: !email, password: !password } },
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Email et mot de passe requis",
         code: "MISSING_CREDENTIALS",
       });
+      return;
     }
 
-    // Nettoyer les données
+    // ==================== NETTOYAGE DES DONNÉES ====================
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
@@ -112,17 +125,18 @@ export const login = async (req: Request, res: Response) => {
         metadata: { email: cleanEmail },
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Format d'email invalide",
         code: "INVALID_EMAIL_FORMAT",
       });
+      return;
     }
 
-    // Récupérer l'utilisateur AVEC ses LoginAttempts
+    // ==================== RÉCUPÉRATION UTILISATEUR ====================
     const user = await prisma.user.findUnique({
       where: { email: cleanEmail },
       include: {
-        loginattempt: {
+        loginAttempts: {
           orderBy: {
             attemptTime: "desc",
           },
@@ -141,13 +155,14 @@ export const login = async (req: Request, res: Response) => {
         metadata: { email: cleanEmail },
       });
 
-      return res.status(401).json({
+      res.status(401).json({
         message: "Email ou mot de passe incorrect",
         code: "INVALID_CREDENTIALS",
       });
+      return;
     }
 
-    // VÉRIFICATION 1: Statut du compte
+    // ==================== VÉRIFICATIONS DE SÉCURITÉ ====================
     if (user.status !== "Actif") {
       await createAuditLog({
         ...auditData,
@@ -160,14 +175,15 @@ export const login = async (req: Request, res: Response) => {
         metadata: { status: user.status },
       });
 
-      return res.status(403).json({
+      res.status(403).json({
         message: "Votre compte est désactivé. Contactez l'administrateur.",
         code: "ACCOUNT_DISABLED",
       });
+      return;
     }
 
-    // VÉRIFICATION 2: Verrouillage du compte
-    const latestAttempt = user.loginattempt[0];
+    // Vérification du verrouillage du compte
+    const latestAttempt = user.loginAttempts[0];
     const currentFailedAttempts = latestAttempt?.failedAttempts || 0;
     const maxAttempts = 5;
     const lockTime = 30 * 60 * 1000; // 30 minutes
@@ -192,16 +208,17 @@ export const login = async (req: Request, res: Response) => {
           },
         });
 
-        return res.status(423).json({
+        res.status(423).json({
           message: `Trop de tentatives échouées. Compte verrouillé pour ${remainingMinutes} minute(s).`,
           code: "ACCOUNT_LOCKED",
           remainingTime: remainingMinutes,
           lockUntil: new Date(Date.now() + (lockTime - timeSinceLock)),
         });
+        return;
       } else {
         // Réinitialiser les tentatives si le verrouillage a expiré
         await prisma.loginAttempt.delete({
-          where: { id: latestAttempt.id },
+          where: { userId: user.id },
         });
       }
     }
@@ -218,10 +235,11 @@ export const login = async (req: Request, res: Response) => {
         status: "ERROR",
       });
 
-      return res.status(401).json({
+      res.status(401).json({
         message: "Email ou mot de passe incorrect",
         code: "INVALID_CREDENTIALS",
       });
+      return;
     }
 
     const isPasswordValid = await bcrypt.compare(cleanPassword, user.password);
@@ -265,12 +283,13 @@ export const login = async (req: Request, res: Response) => {
           },
         });
 
-        return res.status(423).json({
+        res.status(423).json({
           message:
             "Trop de tentatives échouées. Compte verrouillé pendant 30 minutes.",
           code: "ACCOUNT_LOCKED",
           lockUntil: new Date(Date.now() + lockTime),
         });
+        return;
       }
 
       // Mettre à jour les tentatives échouées
@@ -310,7 +329,7 @@ export const login = async (req: Request, res: Response) => {
         },
       });
 
-      return res.status(401).json({
+      res.status(401).json({
         message: "Email ou mot de passe incorrect",
         code: "INVALID_CREDENTIALS",
         remainingAttempts: remainingAttempts,
@@ -318,9 +337,11 @@ export const login = async (req: Request, res: Response) => {
           warning: `Il vous reste ${remainingAttempts} tentative(s)`,
         }),
       });
+      return;
     }
 
-    // CONNEXION RÉUSSIE - Nettoyer les tentatives
+    // ==================== CONNEXION RÉUSSIE ====================
+    // Nettoyer les tentatives échouées
     if (latestAttempt) {
       await prisma.loginAttempt.delete({
         where: { id: latestAttempt.id },
@@ -330,12 +351,13 @@ export const login = async (req: Request, res: Response) => {
     // Mettre à jour la dernière connexion
     await prisma.user.update({
       where: { id: user.id },
-      data: {
-        lastLogin: new Date(),
-      },
+      data: { lastLogin: new Date() },
     });
 
-    // Générer le token
+    // Récupérer le profil complet
+    const userProfile = await UserService.getUserProfileWithRoleData(user.id);
+
+    // Générer le token JWT
     const token = jwt.sign(
       {
         id: user.id,
@@ -345,12 +367,12 @@ export const login = async (req: Request, res: Response) => {
       JWT_SECRET,
       {
         expiresIn: "24h",
-        issuer: "ujeph-auth",
-        audience: "ujeph-app",
+        issuer: "school-auth",
+        audience: "school-app",
       }
     );
 
-    // Log d'audit pour connexion réussie
+    // Log d'audit de succès
     await createAuditLog({
       ...auditData,
       action: "LOGIN_SUCCESS",
@@ -365,23 +387,20 @@ export const login = async (req: Request, res: Response) => {
       },
     });
 
+    // ==================== RÉPONSE DE SUCCÈS ====================
     res.json({
       message: "Connexion réussie",
       token,
-      user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        avatar: user.avatar,
-        lastLogin: user.lastLogin,
-      },
+      user: userProfile,
       expiresIn: "24h",
     });
   } catch (error: any) {
     console.error("❌ Erreur login:", error);
+
+    // Message d'erreur court pour éviter les problèmes de longueur
+    const shortError = error.message
+      ? error.message.substring(0, 100)
+      : "Erreur inconnue";
 
     await createAuditLog({
       ...auditData,
@@ -389,7 +408,7 @@ export const login = async (req: Request, res: Response) => {
       entity: "Auth",
       description: "Erreur interne lors de la connexion",
       status: "ERROR",
-      errorMessage: error.message,
+      errorMessage: shortError,
     });
 
     res.status(500).json({
@@ -399,11 +418,17 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
-export const verifyPassword = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller verifyPassword
+ * @description Vérifie le mot de passe actuel de l'utilisateur
+ * @route POST /api/auth/verify-password
+ * @access Private
+ */
+export const verifyPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const { password } = req.body;
@@ -415,10 +440,19 @@ export const verifyPassword = async (req: Request, res: Response) => {
       token === "null" ||
       token === "undefined"
     ) {
-      return res.status(401).json({
+      await createAuditLog({
+        ...auditData,
+        action: "PASSWORD_VERIFICATION_ATTEMPT",
+        entity: "Auth",
+        description: "Tentative de vérification sans token",
+        status: "ERROR",
+      });
+
+      res.status(401).json({
         message: "Token d'authentification manquant ou invalide",
         code: "MISSING_TOKEN",
       });
+      return;
     }
 
     if (
@@ -426,10 +460,19 @@ export const verifyPassword = async (req: Request, res: Response) => {
       typeof password !== "string" ||
       password.trim().length === 0
     ) {
-      return res.status(400).json({
+      await createAuditLog({
+        ...auditData,
+        action: "PASSWORD_VERIFICATION_ATTEMPT",
+        entity: "Auth",
+        description: "Tentative de vérification sans mot de passe",
+        status: "ERROR",
+      });
+
+      res.status(400).json({
         message: "Un mot de passe valide est requis",
         code: "PASSWORD_REQUIRED",
       });
+      return;
     }
 
     const cleanPassword = password.trim();
@@ -443,7 +486,6 @@ export const verifyPassword = async (req: Request, res: Response) => {
     } catch (jwtError) {
       console.error("❌ Erreur JWT:", jwtError);
 
-      // ✅ CORRECTION: Gestion propre de l'erreur unknown
       const errorMessage =
         jwtError instanceof Error ? jwtError.message : "Erreur JWT inconnue";
       const errorName =
@@ -458,17 +500,73 @@ export const verifyPassword = async (req: Request, res: Response) => {
         status: "ERROR",
         errorMessage: errorMessage,
         metadata: { errorType: errorName },
-        userId: null,
       });
 
-      return res.status(401).json({
+      res.status(401).json({
         message: "Session expirée ou invalide",
         code: "INVALID_TOKEN",
         redirectTo: "/login",
       });
+      return;
     }
 
-    // ... reste du code inchangé ...
+    // Récupérer l'utilisateur
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+    });
+
+    if (!user || !user.password) {
+      await createAuditLog({
+        ...auditData,
+        action: "PASSWORD_VERIFICATION_ATTEMPT",
+        entity: "User",
+        description: "Utilisateur non trouvé lors de la vérification",
+        status: "ERROR",
+        metadata: { userId: decoded.id },
+      });
+
+      res.status(401).json({
+        message: "Utilisateur non trouvé",
+        code: "USER_NOT_FOUND",
+      });
+      return;
+    }
+
+    // Vérifier le mot de passe
+    const isPasswordValid = await bcrypt.compare(cleanPassword, user.password);
+
+    if (!isPasswordValid) {
+      await createAuditLog({
+        ...auditData,
+        action: "PASSWORD_VERIFICATION_FAILED",
+        entity: "User",
+        entityId: user.id,
+        userId: user.id,
+        description: "Échec de la vérification du mot de passe",
+        status: "ERROR",
+      });
+
+      res.status(401).json({
+        message: "Mot de passe incorrect",
+        code: "INVALID_PASSWORD",
+      });
+      return;
+    }
+
+    await createAuditLog({
+      ...auditData,
+      action: "PASSWORD_VERIFICATION_SUCCESS",
+      entity: "User",
+      entityId: user.id,
+      userId: user.id,
+      description: "Mot de passe vérifié avec succès",
+      status: "SUCCESS",
+    });
+
+    res.json({
+      message: "Mot de passe vérifié avec succès",
+      valid: true,
+    });
   } catch (error: any) {
     console.error("❌ Erreur vérification mot de passe:", error);
 
@@ -479,7 +577,6 @@ export const verifyPassword = async (req: Request, res: Response) => {
       description: "Erreur interne lors de la vérification de mot de passe",
       status: "ERROR",
       errorMessage: error.message,
-      userId: null,
     });
 
     res.status(500).json({
@@ -489,11 +586,14 @@ export const verifyPassword = async (req: Request, res: Response) => {
   }
 };
 
-export const register = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller register
+ * @description Crée un nouvel utilisateur dans le système
+ * @route POST /api/auth/register
+ * @access Public (en production, restreindre aux administrateurs)
+ */
+export const register = async (req: Request, res: Response): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const { email, password, role, firstName, lastName, phone } = req.body;
@@ -517,10 +617,9 @@ export const register = async (req: Request, res: Response) => {
             lastName: !lastName,
           },
         },
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Tous les champs obligatoires doivent être remplis",
         required: ["email", "password", "role", "firstName", "lastName"],
         received: {
@@ -531,6 +630,7 @@ export const register = async (req: Request, res: Response) => {
           lastName: !!lastName,
         },
       });
+      return;
     }
 
     // Valider que le rôle est acceptable
@@ -550,12 +650,12 @@ export const register = async (req: Request, res: Response) => {
         description: "Tentative d'inscription avec email déjà existant",
         status: "ERROR",
         metadata: { email },
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Un utilisateur avec cet email existe déjà",
       });
+      return;
     }
 
     // Hasher le mot de passe
@@ -585,6 +685,16 @@ export const register = async (req: Request, res: Response) => {
     });
 
     console.log("✅ Utilisateur créé:", user.id);
+
+    // Si c'est un parent, créer également l'entrée Parent
+    if (validatedRole === "Parent") {
+      await prisma.parent.create({
+        data: {
+          userId: user.id,
+        },
+      });
+      console.log("✅ Compte parent créé pour:", user.id);
+    }
 
     await createAuditLog({
       ...auditData,
@@ -617,7 +727,6 @@ export const register = async (req: Request, res: Response) => {
       metadata: {
         stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
       },
-      userId: null,
     });
 
     res.status(400).json({
@@ -627,11 +736,14 @@ export const register = async (req: Request, res: Response) => {
   }
 };
 
-export const getMe = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller getMe
+ * @description Récupère le profil de l'utilisateur connecté
+ * @route GET /api/auth/me
+ * @access Private
+ */
+export const getMe = async (req: Request, res: Response): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const userId = (req as any).userId;
@@ -643,53 +755,25 @@ export const getMe = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Tentative d'accès au profil sans userId",
         status: "ERROR",
-        userId: null,
       });
 
-      return res.status(401).json({ message: "Non autorisé" });
+      res.status(401).json({ message: "Non autorisé" });
+      return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        role: true,
-        status: true,
-        lastLogin: true,
-        createdAt: true,
-        avatar: true,
-      },
-    });
-
-    if (!user) {
-      await createAuditLog({
-        ...auditData,
-        action: "GET_PROFILE_ATTEMPT",
-        entity: "User",
-        description: "Utilisateur non trouvé lors de la récupération du profil",
-        status: "ERROR",
-        metadata: { userId },
-        userId: null,
-      });
-
-      return res.status(404).json({ message: "Utilisateur non trouvé" });
-    }
+    const userProfile = await UserService.getUserProfileWithRoleData(userId);
 
     await createAuditLog({
       ...auditData,
       action: "GET_PROFILE_SUCCESS",
       entity: "User",
-      entityId: user.id,
-      userId: user.id,
+      entityId: userId,
+      userId: userId,
       description: "Profil utilisateur récupéré avec succès",
       status: "SUCCESS",
     });
 
-    res.json(user);
+    res.json(userProfile);
   } catch (error: any) {
     console.error("Get me error:", error);
 
@@ -700,18 +784,20 @@ export const getMe = async (req: Request, res: Response) => {
       description: "Erreur lors de la récupération du profil",
       status: "ERROR",
       errorMessage: error.message,
-      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
   }
 };
 
-export const verify = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller verify
+ * @description Vérifie la validité d'un token JWT
+ * @route GET /api/auth/verify
+ * @access Public
+ */
+export const verify = async (req: Request, res: Response): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const token = req.header("Authorization")?.replace("Bearer ", "");
@@ -721,12 +807,12 @@ export const verify = async (req: Request, res: Response) => {
         ...auditData,
         action: "TOKEN_VERIFICATION_ATTEMPT",
         entity: "Auth",
-        description: "Tentative de vérification de token sans token",
+        description: "Tentative de vérification sans token",
         status: "ERROR",
-        userId: null,
       });
 
-      return res.status(401).json({ message: "Token manquant" });
+      res.status(401).json({ message: "Token manquant" });
+      return;
     }
 
     const user = await verifyToken(token);
@@ -750,18 +836,23 @@ export const verify = async (req: Request, res: Response) => {
       description: "Échec de la vérification du token",
       status: "ERROR",
       errorMessage: error.message,
-      userId: null,
     });
 
     res.status(401).json({ valid: false, message: error.message });
   }
 };
 
-export const forgotPassword = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller forgotPassword
+ * @description Envoie un email de réinitialisation de mot de passe
+ * @route POST /api/auth/forgot-password
+ * @access Public
+ */
+export const forgotPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const { email } = req.body;
@@ -773,12 +864,12 @@ export const forgotPassword = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Demande de réinitialisation de mot de passe sans email",
         status: "ERROR",
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Email requis",
       });
+      return;
     }
 
     // Trouver l'utilisateur
@@ -796,12 +887,12 @@ export const forgotPassword = async (req: Request, res: Response) => {
           "Demande de réinitialisation de mot de passe pour email non trouvé",
         status: "SUCCESS",
         metadata: { email },
-        userId: null,
       });
 
-      return res.json({
+      res.json({
         message: "Si l'email existe, un lien de réinitialisation a été envoyé",
       });
+      return;
     }
 
     // Générer un token de réinitialisation
@@ -882,18 +973,23 @@ export const forgotPassword = async (req: Request, res: Response) => {
         "Erreur lors de la demande de réinitialisation de mot de passe",
       status: "ERROR",
       errorMessage: error.message,
-      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
   }
 };
 
-export const resetPassword = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller resetPassword
+ * @description Réinitialise le mot de passe avec un token valide
+ * @route POST /api/auth/reset-password
+ * @access Public
+ */
+export const resetPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const { token, password } = req.body;
@@ -907,12 +1003,12 @@ export const resetPassword = async (req: Request, res: Response) => {
           "Tentative de réinitialisation de mot de passe avec données manquantes",
         status: "ERROR",
         metadata: { missing: { token: !token, password: !password } },
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Token et nouveau mot de passe requis",
       });
+      return;
     }
 
     if (password.length < 6) {
@@ -924,12 +1020,12 @@ export const resetPassword = async (req: Request, res: Response) => {
           "Tentative de réinitialisation avec mot de passe trop court",
         status: "ERROR",
         metadata: { passwordLength: password.length },
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Le mot de passe doit contenir au moins 6 caractères",
       });
+      return;
     }
 
     // Trouver l'utilisateur avec un token valide
@@ -951,12 +1047,12 @@ export const resetPassword = async (req: Request, res: Response) => {
           "Tentative de réinitialisation avec token invalide ou expiré",
         status: "ERROR",
         metadata: { token },
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Token invalide ou expiré",
       });
+      return;
     }
 
     // Hasher le nouveau mot de passe
@@ -995,18 +1091,23 @@ export const resetPassword = async (req: Request, res: Response) => {
       description: "Erreur lors de la réinitialisation du mot de passe",
       status: "ERROR",
       errorMessage: error.message,
-      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
   }
 };
 
-export const verifyResetToken = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller verifyResetToken
+ * @description Vérifie la validité d'un token de réinitialisation
+ * @route GET /api/auth/verify-reset-token/:token
+ * @access Public
+ */
+export const verifyResetToken = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const { token } = req.params;
@@ -1018,12 +1119,12 @@ export const verifyResetToken = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Tentative de vérification de token sans token",
         status: "ERROR",
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Token requis",
       });
+      return;
     }
 
     // Vérifier la validité du token
@@ -1048,13 +1149,13 @@ export const verifyResetToken = async (req: Request, res: Response) => {
         description: "Token de réinitialisation invalide ou expiré",
         status: "ERROR",
         metadata: { token },
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         valid: false,
         message: "Token invalide ou expiré",
       });
+      return;
     }
 
     await createAuditLog({
@@ -1082,18 +1183,23 @@ export const verifyResetToken = async (req: Request, res: Response) => {
         "Erreur lors de la vérification du token de réinitialisation",
       status: "ERROR",
       errorMessage: error.message,
-      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
   }
 };
 
-export const getResetPasswordPage = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller getResetPasswordPage
+ * @description Récupère les informations pour la page de réinitialisation
+ * @route GET /api/auth/reset-password/:token
+ * @access Public
+ */
+export const getResetPasswordPage = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const { token } = req.params;
@@ -1106,12 +1212,12 @@ export const getResetPasswordPage = async (req: Request, res: Response) => {
         description:
           "Tentative d'accès à la page de réinitialisation sans token",
         status: "ERROR",
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Token requis",
       });
+      return;
     }
 
     // Vérifier la validité du token
@@ -1137,13 +1243,13 @@ export const getResetPasswordPage = async (req: Request, res: Response) => {
         description: "Token invalide pour accès à la page de réinitialisation",
         status: "ERROR",
         metadata: { token },
-        userId: null,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         valid: false,
         message: "Token invalide ou expiré",
       });
+      return;
     }
 
     await createAuditLog({
@@ -1174,18 +1280,23 @@ export const getResetPasswordPage = async (req: Request, res: Response) => {
       description: "Erreur lors de l'accès à la page de réinitialisation",
       status: "ERROR",
       errorMessage: error.message,
-      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
   }
 };
 
-export const updateProfile = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller updateProfile
+ * @description Met à jour le profil de l'utilisateur connecté
+ * @route PUT /api/auth/profile
+ * @access Private
+ */
+export const updateProfile = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const userId = (req as any).userId;
@@ -1198,10 +1309,10 @@ export const updateProfile = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Tentative de mise à jour de profil sans userId",
         status: "ERROR",
-        userId: null,
       });
 
-      return res.status(401).json({ message: "Non autorisé" });
+      res.status(401).json({ message: "Non autorisé" });
+      return;
     }
 
     const user = await prisma.user.update({
@@ -1256,18 +1367,23 @@ export const updateProfile = async (req: Request, res: Response) => {
       description: "Erreur lors de la mise à jour du profil",
       status: "ERROR",
       errorMessage: error.message,
-      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });
   }
 };
 
-export const changePassword = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-  };
+/**
+ * @controller changePassword
+ * @description Change le mot de passe de l'utilisateur connecté
+ * @route PUT /api/auth/change-password
+ * @access Private
+ */
+export const changePassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = createSafeAuditData(extractAuditData(req));
 
   try {
     const userId = (req as any).userId;
@@ -1280,10 +1396,10 @@ export const changePassword = async (req: Request, res: Response) => {
         entity: "Auth",
         description: "Tentative de changement de mot de passe sans userId",
         status: "ERROR",
-        userId: null,
       });
 
-      return res.status(401).json({ message: "Non autorisé" });
+      res.status(401).json({ message: "Non autorisé" });
+      return;
     }
 
     if (!currentPassword || !newPassword) {
@@ -1304,9 +1420,10 @@ export const changePassword = async (req: Request, res: Response) => {
         },
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Mot de passe actuel et nouveau mot de passe requis",
       });
+      return;
     }
 
     if (newPassword.length < 6) {
@@ -1321,9 +1438,10 @@ export const changePassword = async (req: Request, res: Response) => {
         metadata: { newPasswordLength: newPassword.length },
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Le nouveau mot de passe doit contenir au moins 6 caractères",
       });
+      return;
     }
 
     // Récupérer l'utilisateur avec le mot de passe
@@ -1340,10 +1458,10 @@ export const changePassword = async (req: Request, res: Response) => {
           "Utilisateur non trouvé lors du changement de mot de passe",
         status: "ERROR",
         metadata: { userId },
-        userId: null,
       });
 
-      return res.status(404).json({ message: "Utilisateur non trouvé" });
+      res.status(404).json({ message: "Utilisateur non trouvé" });
+      return;
     }
 
     // Vérifier le mot de passe actuel
@@ -1364,9 +1482,10 @@ export const changePassword = async (req: Request, res: Response) => {
         status: "ERROR",
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         message: "Mot de passe actuel incorrect",
       });
+      return;
     }
 
     // Hasher le nouveau mot de passe
@@ -1403,7 +1522,6 @@ export const changePassword = async (req: Request, res: Response) => {
       description: "Erreur lors du changement de mot de passe",
       status: "ERROR",
       errorMessage: error.message,
-      userId: null,
     });
 
     res.status(500).json({ message: "Erreur interne du serveur" });

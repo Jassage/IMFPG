@@ -1,11 +1,20 @@
-// src/components/students/StudentForm.tsx
-import { useState, useEffect, useRef } from "react";
+// components/students/StudentForm.tsx - VERSION AMÉLIORÉE
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
@@ -13,894 +22,891 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { Student } from "@/types/academic";
+import { useClassStore } from "@/store/classStore";
+import { useAcademicYearStore } from "@/store/academicYearStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Plus,
   Trash2,
-  User,
-  Users,
-  Phone,
-  Mail,
-  MapPin,
-  GraduationCap,
-  ScrollText,
-  Upload,
-  X,
+  UserPlus,
+  AlertCircle,
+  Check,
+  ChevronRight,
+  ChevronLeft,
+  Loader2,
+  ShieldAlert,
 } from "lucide-react";
-import { useAcademicStore } from "@/store/studentStore";
-import {
-  Student,
-  Guardian,
-  StudentFormData,
-  StudentStatus,
-  StudentSexe,
-  BloodGroup,
-  GuardianFormData,
-} from "@/types/academic";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { toast } from "@/hooks/use-toast";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import useStudentStore from "@/store/studentStore";
+import { toast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-// Fonction pour vérifier si l'étudiant a au moins 18 ans
-const isAtLeast16YearsOld = (dateString: string): boolean => {
-  if (!dateString) return true;
+// Constantes pour les valeurs "vides"
+const EMPTY_VALUES = {
+  NOT_SPECIFIED: "not-specified",
+  NO_CLASS: "no-class",
+  NO_SEX: "no-sex",
+  NO_BLOOD_GROUP: "no-blood-group",
+  NO_ACADEMIC_YEAR: "no-academic-year",
+  NO_RELATIONSHIP: "no-relationship",
+} as const;
 
-  const today = new Date();
-  const birthDate = new Date(dateString);
-  const age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
-
-  if (
-    monthDiff < 0 ||
-    (monthDiff === 0 && today.getDate() < birthDate.getDate())
-  ) {
-    return age - 1 >= 18;
-  }
-
-  return age >= 18;
+// Fonction utilitaire pour valider les dates
+const isValidDate = (dateString: string): boolean => {
+  if (!dateString) return false;
+  const date = new Date(dateString);
+  return !isNaN(date.getTime()) && date <= new Date();
 };
 
-// Schémas de validation avec Zod - CORRIGÉ
-const GuardianSchema = z.object({
+// Fonction pour formater les dates
+const formatDateForInput = (dateString?: string | Date): string => {
+  if (!dateString) return "";
+
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+
+    return date.toISOString().split("T")[0];
+  } catch {
+    return "";
+  }
+};
+
+// Schéma pour un parent/tuteur avec validation améliorée
+const guardianSchema = z.object({
   firstName: z
     .string()
     .min(2, "Le prénom doit contenir au moins 2 caractères")
-    .max(100),
+    .max(50, "Le prénom ne peut pas dépasser 50 caractères")
+    .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, "Le prénom contient des caractères invalides"),
+
   lastName: z
     .string()
     .min(2, "Le nom doit contenir au moins 2 caractères")
-    .max(100),
-  relationship: z.string().min(1, "La relation est requise").max(50),
+    .max(50, "Le nom ne peut pas dépasser 50 caractères")
+    .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, "Le nom contient des caractères invalides"),
+
+  relationship: z
+    .string()
+    .min(1, "La relation est requise")
+    .refine((value) => value !== EMPTY_VALUES.NO_RELATIONSHIP, {
+      message: "Veuillez sélectionner une relation",
+    }),
+
   phone: z
     .string()
-    .min(8, "Le téléphone doit contenir au moins 8 caractères")
-    .max(20),
+    .min(1, "Le téléphone est requis")
+    .refine(
+      (phone) => {
+        if (!phone) return false;
+        const cleaned = phone.replace(/[\s\-()]/g, "");
+        // Format Haïtien: +509XXXXXXXX
+        const phoneRegex = /^(\+509)\d{8}$/;
+        return cleaned.length === 12 && phoneRegex.test(cleaned);
+      },
+      {
+        message:
+          "Format téléphone invalide. Utilisez +509XXXXXXXX (ex: +50944556677)",
+      }
+    ),
+
   email: z.string().email("Email invalide").optional().or(z.literal("")),
-  address: z.string().max(500).optional(),
+
+  address: z
+    .string()
+    .max(200, "L'adresse ne peut pas dépasser 200 caractères")
+    .optional()
+    .or(z.literal("")),
+
   isPrimary: z.boolean().default(false),
 });
 
-// Définir les valeurs possibles pour les enums
-const StudentStatusValues = [
-  "Active",
-  "Inactive",
-  "Graduated",
-  "Suspended",
-] as const;
-const StudentSexeValues = ["Masculin", "Feminin", "Autre"] as const;
-const BloodGroupValues = [
-  "A_POSITIVE",
-  "A_NEGATIVE",
-  "B_POSITIVE",
-  "B_NEGATIVE",
-  "AB_POSITIVE",
-  "AB_NEGATIVE",
-  "O_POSITIVE",
-  "O_NEGATIVE",
-] as const;
-
-const StudentCreateSchema = z.object({
+// Schéma principal de l'étudiant avec validation complète
+const studentSchema = z.object({
+  // Informations personnelles
   firstName: z
     .string()
     .min(2, "Le prénom doit contenir au moins 2 caractères")
-    .max(100),
+    .max(50, "Le prénom ne peut pas dépasser 50 caractères")
+    .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, "Le prénom contient des caractères invalides"),
+
   lastName: z
     .string()
     .min(2, "Le nom doit contenir au moins 2 caractères")
-    .max(100),
-  studentId: z.string().min(1, "L'ID étudiant est requis").max(50),
-  email: z.string().email("Email invalide").max(255),
-  phone: z.string().max(20).optional(),
+    .max(50, "Le nom ne peut pas dépasser 50 caractères")
+    .regex(/^[a-zA-ZÀ-ÿ\s'-]+$/, "Le nom contient des caractères invalides"),
+
+  email: z
+    .string()
+    .min(1, "L'email est requis")
+    .email("Email invalide")
+    .refine((email) => email.includes("@"), "Email invalide"),
+
+  phone: z
+    .string()
+    .optional()
+    .refine(
+      (phone) => {
+        if (!phone) return true;
+        const cleaned = phone.replace(/[\s\-()]/g, "");
+        // Format Haïtien: +509XXXXXXXX
+        const phoneRegex = /^(\+509)\d{8}$/;
+        return cleaned.length === 12 && phoneRegex.test(cleaned);
+      },
+      {
+        message:
+          "Format téléphone invalide. Utilisez +509XXXXXXXX (ex: +50944556677)",
+      }
+    ),
+
   dateOfBirth: z
     .string()
-    .min(1, "La date de naissance est requise")
-    .refine((date) => isAtLeast16YearsOld(date), {
-      message: "L'étudiant doit avoir au moins 16 ans",
+    .optional()
+    .refine(
+      (date) => {
+        if (!date) return true;
+        if (!isValidDate(date)) return false;
+
+        const birthDate = new Date(date);
+        const today = new Date();
+        const age = today.getFullYear() - birthDate.getFullYear();
+
+        // Vérifier si l'étudiant a au moins 3 ans
+        if (age < 3) return false;
+
+        // Vérifier si l'étudiant n'a pas plus de 100 ans
+        if (age > 100) return false;
+
+        return true;
+      },
+      {
+        message:
+          "Date de naissance invalide. L'étudiant doit avoir entre 3 et 100 ans",
+      }
+    ),
+
+  placeOfBirth: z
+    .string()
+    .max(100, "Le lieu de naissance ne peut pas dépasser 100 caractères")
+    .optional()
+    .or(z.literal("")),
+
+  address: z
+    .string()
+    .max(200, "L'adresse ne peut pas dépasser 200 caractères")
+    .optional()
+    .or(z.literal("")),
+
+  photo: z.string().optional(),
+
+  bloodGroup: z.string().optional(),
+
+  allergies: z
+    .string()
+    .max(500, "Les allergies ne peuvent pas dépasser 500 caractères")
+    .optional()
+    .or(z.literal("")),
+
+  disabilities: z
+    .string()
+    .max(500, "Les handicaps ne peuvent pas dépasser 500 caractères")
+    .optional()
+    .or(z.literal("")),
+
+  status: z.enum(["Active", "Inactive", "Graduated", "Suspended"]),
+
+  sexe: z.string().optional(),
+
+  cin: z
+    .string()
+    .max(20, "Le CIN ne peut pas dépasser 20 caractères")
+    .optional()
+    .or(z.literal("")),
+
+  // Inscription à la classe
+  classId: z
+    .string()
+    .min(1, "La classe est requise")
+    .refine((value) => value !== EMPTY_VALUES.NO_CLASS, {
+      message: "Veuillez sélectionner une classe",
     }),
-  placeOfBirth: z.string().max(100).optional(),
-  address: z.string().max(500).optional(),
-  bloodGroup: z.enum(BloodGroupValues).optional(),
-  allergies: z.string().max(500).optional(),
-  disabilities: z.string().max(500).optional(),
-  cin: z.string().max(20).optional(),
-  sexe: z.enum(StudentSexeValues).optional(),
-  status: z.enum(StudentStatusValues).default("Active"),
+
+  academicYearId: z
+    .string()
+    .min(1, "L'année académique est requise")
+    .refine((value) => value !== EMPTY_VALUES.NO_ACADEMIC_YEAR, {
+      message: "Veuillez sélectionner une année académique",
+    }),
+
+  // Parents/tuteurs
+  guardians: z
+    .array(guardianSchema)
+    .min(1, "Au moins un parent/tuteur est requis")
+    .refine((guardians) => guardians.some((g) => g.isPrimary), {
+      message: "Un parent/tuteur principal doit être désigné",
+    }),
+
+  // Création de compte utilisateur
+  createUserAccount: z.boolean().default(false),
+  sendWelcomeEmail: z.boolean().default(false),
 });
 
-const StudentUpdateSchema = StudentCreateSchema.partial();
-
-// Type pour les données du formulaire
-type StudentFormValues = z.infer<typeof StudentCreateSchema>;
+type StudentFormData = z.infer<typeof studentSchema>;
+type GuardianData = z.infer<typeof guardianSchema>;
 
 interface StudentFormProps {
   student?: Student | null;
   onClose: () => void;
+  onSubmit: (data: StudentFormData) => Promise<void>;
+  isLoading?: boolean;
 }
 
-export const StudentForm = ({ student, onClose }: StudentFormProps) => {
-  const { addStudent, updateStudent, loading } = useAcademicStore();
-  const formRef = useRef<HTMLFormElement>(null);
-  const [activeTab, setActiveTab] = useState("student");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isGeneratingId, setIsGeneratingId] = useState(false);
+// Options pour les relations parentales
+const RELATIONSHIP_OPTIONS = [
+  { value: EMPTY_VALUES.NO_RELATIONSHIP, label: "Sélectionner une relation" },
+  { value: "Père", label: "Père" },
+  { value: "Mère", label: "Mère" },
+  { value: "Tuteur", label: "Tuteur" },
+  { value: "Grand-père", label: "Grand-père" },
+  { value: "Grand-mère", label: "Grand-mère" },
+  { value: "Oncle", label: "Oncle" },
+  { value: "Tante", label: "Tante" },
+  { value: "Frère", label: "Frère" },
+  { value: "Sœur", label: "Sœur" },
+  { value: "Autre", label: "Autre" },
+];
 
-  const form = useForm<StudentFormValues>({
-    resolver: zodResolver(student ? StudentUpdateSchema : StudentCreateSchema),
-    defaultValues: {
+// Options pour le groupe sanguin
+const BLOOD_GROUP_OPTIONS = [
+  { value: EMPTY_VALUES.NO_BLOOD_GROUP, label: "Non spécifié" },
+  { value: "A_POSITIVE", label: "A+" },
+  { value: "A_NEGATIVE", label: "A-" },
+  { value: "B_POSITIVE", label: "B+" },
+  { value: "B_NEGATIVE", label: "B-" },
+  { value: "AB_POSITIVE", label: "AB+" },
+  { value: "AB_NEGATIVE", label: "AB-" },
+  { value: "O_POSITIVE", label: "O+" },
+  { value: "O_NEGATIVE", label: "O-" },
+];
+
+// Options pour le sexe
+const SEXE_OPTIONS = [
+  { value: EMPTY_VALUES.NO_SEX, label: "Non spécifié" },
+  { value: "M", label: "Masculin" },
+  { value: "F", label: "Féminin" },
+  { value: "Autre", label: "Autre" },
+];
+
+export const StudentForm = ({
+  student,
+  onClose,
+  onSubmit,
+  isLoading = false,
+}: StudentFormProps) => {
+  const { classes, fetchClasses } = useClassStore();
+  const { academicYears, fetchAcademicYears } = useAcademicYearStore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [currentTab, setCurrentTab] = useState("student-info");
+  const formRef = useRef<HTMLFormElement>(null);
+  const { fetchStudentById } = useStudentStore();
+
+  // États pour le tracking de la complétion
+  const [completedTabs, setCompletedTabs] = useState<Set<string>>(
+    new Set(["student-info"])
+  );
+
+  // Initialiser les données
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        await Promise.all([fetchClasses(), fetchAcademicYears()]);
+      } catch (err) {
+        console.error("Erreur lors de l'initialisation:", err);
+        toast({
+          title: "Erreur d'initialisation",
+          description: "Impossible de charger les données initiales",
+          variant: "destructive",
+        });
+      }
+    };
+
+    initializeData();
+  }, [fetchClasses, fetchAcademicYears]);
+
+  // Préparer les valeurs par défaut du formulaire
+  const getDefaultValues = useCallback((): StudentFormData => {
+    const defaultValues: StudentFormData = {
       firstName: "",
       lastName: "",
-      studentId: "",
       email: "",
       phone: "",
       dateOfBirth: "",
       placeOfBirth: "",
       address: "",
-      bloodGroup: undefined,
+      photo: "",
+      bloodGroup: EMPTY_VALUES.NO_BLOOD_GROUP,
       allergies: "",
       disabilities: "",
-      cin: "",
-      sexe: undefined,
       status: "Active",
-    },
+      sexe: EMPTY_VALUES.NO_SEX,
+      cin: "",
+      classId: "",
+      academicYearId: "",
+      guardians: [
+        {
+          firstName: "",
+          lastName: "",
+          relationship: EMPTY_VALUES.NO_RELATIONSHIP,
+          phone: "",
+          email: "",
+          address: "",
+          isPrimary: true,
+        },
+      ],
+      createUserAccount: false,
+      sendWelcomeEmail: false,
+    };
+
+    return defaultValues;
+  }, []);
+
+  const form = useForm<StudentFormData>({
+    resolver: zodResolver(studentSchema),
+    defaultValues: getDefaultValues(),
+    mode: "onChange",
   });
 
-  // Alternative sans appel à la base de données
-  const generateStudentId = (): string => {
-    const year = new Date().getFullYear();
-
-    const random = Math.floor(100 + Math.random() * 900);
-    const random1 = Math.floor(100000 + Math.random() * 900000);
-
-    return `${random}-${random1}`; // Limiter à 15 caractères
-  };
-
-  // CORRECTION : Génération automatique de l'ID étudiant
-  // const generateStudentId = async (): Promise<string> => {
-  //   setIsGeneratingId(true);
-
-  //   try {
-  //     // Récupérer l'année courante
-  //     const year = new Date().getFullYear();
-
-  //     // Chercher le dernier ID étudiant de cette année
-  //     const lastStudent = await prisma.student.findFirst({
-  //       where: {
-  //         studentId: {
-  //           startsWith: `STU${year}`,
-  //         },
-  //       },
-  //       orderBy: {
-  //         studentId: "desc",
-  //       },
-  //       select: {
-  //         studentId: true,
-  //       },
-  //     });
-
-  //     let sequence = 1;
-
-  //     if (lastStudent?.studentId) {
-  //       // Extraire la séquence du dernier ID
-  //       const lastSequence = parseInt(lastStudent.studentId.slice(-4));
-  //       sequence = lastSequence + 1;
-  //     }
-
-  //     // Formater la séquence sur 4 chiffres (0001, 0002, etc.)
-  //     const formattedSequence = sequence.toString().padStart(4, "0");
-
-  //     return `STU${year}${formattedSequence}`;
-  //   } catch (error) {
-  //     console.error("Erreur génération ID étudiant:", error);
-  //     // Fallback : génération aléatoire
-  //     const year = new Date().getFullYear();
-  //     const random = Math.floor(1000 + Math.random() * 9000);
-  //     return `STU${year}${random}`;
-  //   } finally {
-  //     setIsGeneratingId(false);
-  //   }
-  // };
-
-  // CORRECTION : Fonction pour régénérer l'ID
-  const handleRegenerateId = async () => {
-    if (student) return; // Ne pas régénérer pour la modification
-
-    try {
-      const newStudentId = await generateStudentId();
-      form.setValue("studentId", newStudentId);
-    } catch (error) {
-      console.error("Erreur régénération ID:", error);
-      toast({
-        title: "Erreur",
-        description: "Impossible de générer un nouvel ID étudiant",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // CORRECTION : Générer l'ID automatiquement au chargement pour les nouveaux étudiants
+  // Charger les données de l'étudiant pour l'édition
   useEffect(() => {
-    const initializeStudentId = async () => {
-      if (!student) {
-        try {
-          const newStudentId = await generateStudentId();
-          form.setValue("studentId", newStudentId);
-        } catch (error) {
-          console.error("Erreur initialisation ID étudiant:", error);
-        }
-      }
-    };
-
-    initializeStudentId();
-  }, [student, form]);
-
-  const [guardians, setGuardians] = useState<GuardianFormData[]>([
-    {
-      firstName: "",
-      lastName: "",
-      relationship: "Père",
-      phone: "",
-      email: "",
-      address: "",
-      isPrimary: true,
-    },
-  ]);
-
-  const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [profileFile, setProfileFile] = useState<File | null>(null);
-  const [imageError, setImageError] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  // Réinitialiser le formulaire
-  const resetForm = () => {
-    form.reset();
-    setGuardians([
-      {
-        firstName: "",
-        lastName: "",
-        relationship: "Père",
-        phone: "",
-        email: "",
-        address: "",
-        isPrimary: true,
-      },
-    ]);
-    setProfileImage(null);
-    setProfileFile(null);
-    setImageError(false);
-    setFormError(null);
-  };
-
-  useEffect(() => {
-    if (student) {
-      // Vérifier si l'étudiant a au moins 16 ans
-      const isAdult = student.dateOfBirth
-        ? isAtLeast16YearsOld(student.dateOfBirth.split("T")[0])
-        : true;
-
-      form.reset({
-        firstName: student.firstName || "",
-        lastName: student.lastName || "",
-        studentId: student.studentId || "",
-        email: student.email || "",
-        phone: student.phone || "",
-        dateOfBirth: student.dateOfBirth?.split("T")[0] || "",
-        placeOfBirth: student.placeOfBirth || "",
-        address: student.address || "",
-        bloodGroup: student.bloodGroup || undefined, // ⚠️ Doit correspondre aux valeurs de l'enum
-        allergies: student.allergies || "",
-        disabilities: student.disabilities || "",
-        cin: student.cin || "",
-        sexe: student.sexe || undefined, // ⚠️ Doit correspondre aux valeurs de l'enum
-        status: student.status || "Active",
-      });
-
-      // Debug pour vérifier les valeurs
-      console.log("🔍 Données étudiant chargées:", {
-        bloodGroup: student.bloodGroup,
-        sexe: student.sexe,
-        formValues: {
-          bloodGroup: student.bloodGroup || undefined,
-          sexe: student.sexe || undefined,
-        },
-      });
-
-      // Avertir si l'étudiant a moins de 16 ans
-      if (!isAdult) {
-        toast({
-          title: "Attention",
-          description:
-            "Cet étudiant a moins de 16 ans. Veuillez vérifier les informations.",
-          variant: "destructive",
-        });
-      }
-
-      // Charger la photo existante
-      if (student.photo) {
-        setIsLoading(true);
-        setImageError(false);
-        // Simulation de chargement d'image
-        setTimeout(() => {
-          setProfileImage(null); // À remplacer par l'URL réelle
-          setIsLoading(false);
-        }, 1000);
-      } else {
-        setIsLoading(false);
-      }
-
-      if (student.guardians && student.guardians.length > 0) {
-        setGuardians(
-          student.guardians.map((g) => ({
-            firstName: g.firstName,
-            lastName: g.lastName,
-            relationship: g.relationship,
-            phone: g.phone,
-            email: g.email || "",
-            address: g.address || "",
-            isPrimary: g.isPrimary,
-          }))
-        );
-      } else {
-        setGuardians([
-          {
-            firstName: "",
-            lastName: "",
-            relationship: "Père",
-            phone: "",
-            email: "",
-            address: "",
-            isPrimary: true,
-          },
-        ]);
-      }
-    }
-  }, [student, form]);
-
-  const addGuardian = () => {
-    const newGuardian: GuardianFormData = {
-      firstName: "",
-      lastName: "",
-      relationship: "Mère",
-      phone: "",
-      email: "",
-      address: "",
-      isPrimary: false,
-    };
-    setGuardians([...guardians, newGuardian]);
-  };
-
-  const removeGuardian = (index: number) => {
-    if (guardians.length > 1) {
-      const updatedGuardians = guardians.filter((_, i) => i !== index);
-
-      // Si on supprime le responsable principal, désigner le premier comme principal
-      if (guardians[index].isPrimary && updatedGuardians.length > 0) {
-        updatedGuardians[0].isPrimary = true;
-      }
-
-      setGuardians(updatedGuardians);
-    } else {
-      toast({
-        title: "Attention",
-        description: "Au moins un responsable est requis",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const updateGuardian = (
-    index: number,
-    field: keyof GuardianFormData,
-    value: string | boolean
-  ) => {
-    const updatedGuardians = [...guardians];
-    updatedGuardians[index] = {
-      ...updatedGuardians[index],
-      [field]: value,
-    };
-    setGuardians(updatedGuardians);
-  };
-
-  const setPrimaryGuardian = (index: number) => {
-    const updatedGuardians = guardians.map((guardian, i) => ({
-      ...guardian,
-      isPrimary: i === index,
-    }));
-    setGuardians(updatedGuardians);
-  };
-
-  const validateGuardians = (): string[] => {
-    const errors: string[] = [];
-
-    if (guardians.length === 0) {
-      errors.push("Au moins un responsable est requis");
-      return errors;
-    }
-
-    // Vérifier qu'il y a exactement un responsable principal
-    const primaryGuardians = guardians.filter((g) => g.isPrimary);
-    if (primaryGuardians.length !== 1) {
-      errors.push(
-        "Un et un seul responsable doit être désigné comme principal"
-      );
-    }
-
-    // Valider chaque gardien
-    guardians.forEach((guardian, index) => {
-      if (!guardian.firstName?.trim()) {
-        errors.push(`Responsable ${index + 1}: Le prénom est requis`);
-      }
-      if (!guardian.lastName?.trim()) {
-        errors.push(`Responsable ${index + 1}: Le nom est requis`);
-      }
-      if (!guardian.phone?.trim()) {
-        errors.push(`Responsable ${index + 1}: Le téléphone est requis`);
-      } else if (guardian.phone.length < 8) {
-        errors.push(
-          `Responsable ${
-            index + 1
-          }: Le téléphone doit contenir au moins 8 caractères`
-        );
-      }
-      if (
-        guardian.email &&
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guardian.email)
-      ) {
-        errors.push(`Responsable ${index + 1}: Format d'email invalide`);
-      }
-    });
-
-    return errors;
-  };
-
-  const handleImageUpload = (file: File) => {
-    const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    const maxSize = 5 * 1024 * 1024; // 5MB
-
-    if (!validTypes.includes(file.type)) {
-      toast({
-        title: "Format non supporté",
-        description: "Seuls les formats JPEG, PNG, GIF et WebP sont autorisés",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (file.size > maxSize) {
-      toast({
-        title: "Fichier trop volumineux",
-        description: "La photo ne doit pas dépasser 5MB",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setProfileImage(e.target?.result as string);
-      setImageError(false);
-    };
-    reader.onerror = () => {
-      setImageError(true);
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger l'image",
-        variant: "destructive",
-      });
-    };
-    reader.readAsDataURL(file);
-    setProfileFile(file);
-  };
-
-  const removeImage = () => {
-    setProfileImage(null);
-    setProfileFile(null);
-    setImageError(false);
-  };
-
-  const handleImageError = () => {
-    setImageError(true);
-    toast({
-      title: "Erreur",
-      description: "Impossible d'afficher l'image",
-      variant: "destructive",
-    });
-  };
-
-  const onSubmit = async (data: StudentFormValues) => {
-    setIsSubmitting(true);
-    setFormError(null);
-
-    try {
-      // Validation des responsables
-      const guardianErrors = validateGuardians();
-      if (guardianErrors.length > 0) {
-        setFormError(guardianErrors.join(", "));
-        setActiveTab("guardians");
-        setIsSubmitting(false);
+    const loadStudentData = async () => {
+      if (!student?.id) {
+        console.log("Mode création - Aucun étudiant à charger");
         return;
       }
 
-      // Préparer les données pour le store - CORRIGÉ
-      const studentData: StudentFormData = {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        studentId: data.studentId,
-        email: data.email,
-        phone: data.phone || "",
-        dateOfBirth: data.dateOfBirth,
-        placeOfBirth: data.placeOfBirth || "",
-        address: data.address || "",
-        bloodGroup: data.bloodGroup,
-        allergies: data.allergies || "",
-        disabilities: data.disabilities || "",
-        cin: data.cin || "",
-        sexe: data.sexe,
-        status: data.status,
-        guardians: guardians
-          .filter((g) => g.firstName && g.lastName && g.phone)
-          .map((g) => ({
-            firstName: g.firstName,
-            lastName: g.lastName,
-            relationship: g.relationship,
-            phone: g.phone,
-            email: g.email || undefined,
-            address: g.address || undefined,
-            isPrimary: g.isPrimary,
-          })),
-      };
+      console.log(
+        "Mode édition - Chargement des données de l'étudiant:",
+        student.id
+      );
+      setIsLoadingDetails(true);
+      setServerError(null);
 
-      if (student) {
-        await updateStudent(student.id, studentData, profileFile || undefined);
-        toast({
-          title: "Succès",
-          description: "Étudiant modifié avec succès",
+      try {
+        // Charger les données complètes de l'étudiant
+        const fullStudent = await fetchStudentById(student.id);
+
+        if (!fullStudent) {
+          throw new Error("Impossible de charger les données de l'étudiant");
+        }
+
+        console.log("✅ Étudiant chargé avec succès:", {
+          id: fullStudent.id,
+          name: `${fullStudent.firstName} ${fullStudent.lastName}`,
+          hasGuardians: fullStudent.guardians?.length > 0,
+          hasEnrollments: fullStudent.enrollments?.length > 0,
+          classId: fullStudent.classId,
         });
-      } else {
-        await addStudent(studentData, profileFile || undefined);
-        toast({
-          title: "Succès",
-          description: "Étudiant créé avec succès",
+
+        // Préparer les données pour le formulaire
+        const studentData: Partial<StudentFormData> = {
+          firstName: fullStudent.firstName || "",
+          lastName: fullStudent.lastName || "",
+          email: fullStudent.email || "",
+          phone: fullStudent.phone || "",
+          dateOfBirth: formatDateForInput(fullStudent.dateOfBirth),
+          placeOfBirth: fullStudent.placeOfBirth || "",
+          address: fullStudent.address || "",
+          photo: fullStudent.photo || "",
+          bloodGroup: fullStudent.bloodGroup || EMPTY_VALUES.NO_BLOOD_GROUP,
+          allergies: fullStudent.allergies || "",
+          disabilities: fullStudent.disabilities || "",
+          status: (fullStudent.status as "Active") || "Active",
+          sexe: fullStudent.sexe || EMPTY_VALUES.NO_SEX,
+          cin: fullStudent.cin || "",
+          classId: fullStudent.classId || EMPTY_VALUES.NO_CLASS,
+        };
+
+        // Gestion des gardiens
+        if (fullStudent.guardians && fullStudent.guardians.length > 0) {
+          studentData.guardians = fullStudent.guardians.map((guardian) => ({
+            firstName: guardian.firstName || "",
+            lastName: guardian.lastName || "",
+            relationship: guardian.relationship || EMPTY_VALUES.NO_RELATIONSHIP,
+            phone: guardian.phone || "",
+            email: guardian.email || "",
+            address: guardian.address || "",
+            isPrimary: guardian.isPrimary || false,
+          }));
+        } else {
+          studentData.guardians = [
+            {
+              firstName: "",
+              lastName: "",
+              relationship: EMPTY_VALUES.NO_RELATIONSHIP,
+              phone: "",
+              email: "",
+              address: "",
+              isPrimary: true,
+            },
+          ];
+        }
+
+        // Gestion de l'inscription
+        if (fullStudent.enrollments && fullStudent.enrollments.length > 0) {
+          const latestEnrollment = fullStudent.enrollments[0];
+          studentData.academicYearId =
+            latestEnrollment.academicYearId || EMPTY_VALUES.NO_ACADEMIC_YEAR;
+
+          // Utiliser l'ID de classe de l'inscription si disponible
+          if (latestEnrollment.classId) {
+            studentData.classId = latestEnrollment.classId;
+          }
+        }
+
+        // Trouver l'année académique courante si aucune n'est spécifiée
+        if (!studentData.academicYearId && academicYears.length > 0) {
+          const currentYear = academicYears.find((year) => year.isCurrent);
+          if (currentYear) {
+            studentData.academicYearId = currentYear.id;
+          }
+        }
+
+        console.log("📋 Données préparées pour le formulaire:", {
+          ...studentData,
+          guardiansCount: studentData.guardians?.length,
+          hasClass: !!studentData.classId,
+          hasAcademicYear: !!studentData.academicYearId,
         });
+
+        // Réinitialiser le formulaire avec les données chargées
+        form.reset(studentData as StudentFormData);
+
+        // Marquer les onglets comme visités
+        setCompletedTabs(new Set(["student-info", "guardians", "enrollment"]));
+
+        toast({
+          title: "Données chargées",
+          description: "Les données de l'étudiant ont été chargées avec succès",
+        });
+      } catch (error: any) {
+        console.error("❌ Erreur lors du chargement des données:", error);
+
+        const errorMessage =
+          error.message || "Erreur lors du chargement des données";
+        setServerError(errorMessage);
+
+        toast({
+          title: "Erreur de chargement",
+          description: errorMessage,
+          variant: "destructive",
+        });
+
+        // Réinitialiser avec les valeurs par défaut
+        form.reset(getDefaultValues());
+      } finally {
+        setIsLoadingDetails(false);
       }
+    };
 
-      onClose();
-    } catch (error: any) {
-      console.error("Erreur:", error);
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        "Une erreur est survenue lors de l'enregistrement";
+    loadStudentData();
+  }, [student?.id, fetchStudentById, academicYears, form, getDefaultValues]);
 
-      setFormError(errorMessage);
+  // Calcul du pourcentage de complétion
+  const calculateCompletion = () => {
+    const values = form.getValues();
+    let completed = 0;
+    let total = 0;
 
+    // Champs obligatoires de base
+    const requiredFields = [
+      { key: "firstName", value: values.firstName },
+      { key: "lastName", value: values.lastName },
+      { key: "email", value: values.email },
+      { key: "classId", value: values.classId },
+      { key: "academicYearId", value: values.academicYearId },
+    ];
+
+    requiredFields.forEach(({ value }) => {
+      total++;
+      if (value && value.trim()) completed++;
+    });
+
+    // Gardiens
+    if (values.guardians && values.guardians.length > 0) {
+      const guardian = values.guardians[0];
+      const guardianFields = [
+        guardian.firstName,
+        guardian.lastName,
+        guardian.relationship,
+        guardian.phone,
+      ];
+
+      guardianFields.forEach((value) => {
+        total++;
+        if (value && value !== EMPTY_VALUES.NO_RELATIONSHIP) completed++;
+      });
+    }
+
+    return Math.round((completed / total) * 100);
+  };
+
+  // Validation de l'onglet actuel
+  const validateCurrentTab = async (): Promise<boolean> => {
+    const tabValidations: Record<string, (keyof StudentFormData)[]> = {
+      "student-info": [
+        "firstName",
+        "lastName",
+        "email",
+        "phone",
+        "dateOfBirth",
+      ],
+      guardians: ["guardians"],
+      enrollment: ["classId", "academicYearId", "status"],
+    };
+
+    const fields = tabValidations[currentTab];
+    if (!fields) return true;
+
+    const result = await form.trigger(fields as any);
+
+    if (result) {
+      // Marquer l'onglet comme complété
+      setCompletedTabs((prev) => new Set([...prev, currentTab]));
+    }
+
+    return result;
+  };
+
+  // Navigation entre onglets
+  const handleTabChange = async (value: string) => {
+    if (value === currentTab) return;
+
+    const isValid = await validateCurrentTab();
+    if (!isValid) {
       toast({
-        title: "Erreur",
-        description: errorMessage,
+        title: "Erreur de validation",
+        description: "Veuillez corriger les erreurs avant de continuer",
         variant: "destructive",
       });
+      return;
+    }
+
+    setCurrentTab(value);
+  };
+
+  // Soumission du formulaire
+  const handleSubmit = async (data: StudentFormData) => {
+    console.log("📤 Soumission du formulaire:", {
+      mode: student ? "Édition" : "Création",
+      data: {
+        ...data,
+        guardiansCount: data.guardians.length,
+      },
+    });
+
+    setIsSubmitting(true);
+    setValidationErrors([]);
+    setServerError(null);
+
+    try {
+      // Nettoyer les données
+      const cleanData = {
+        ...data,
+        firstName: data.firstName.trim(),
+        lastName: data.lastName.trim(),
+        email: data.email.trim().toLowerCase(),
+        phone: data.phone ? data.phone.trim() : "",
+        dateOfBirth: data.dateOfBirth || undefined,
+        placeOfBirth: data.placeOfBirth ? data.placeOfBirth.trim() : "",
+        address: data.address ? data.address.trim() : "",
+        cin: data.cin ? data.cin.trim() : "",
+        allergies: data.allergies ? data.allergies.trim() : "",
+        disabilities: data.disabilities ? data.disabilities.trim() : "",
+        bloodGroup:
+          data.bloodGroup === EMPTY_VALUES.NO_BLOOD_GROUP
+            ? undefined
+            : data.bloodGroup,
+        sexe: data.sexe === EMPTY_VALUES.NO_SEX ? undefined : data.sexe,
+        guardians: data.guardians.map((guardian) => ({
+          ...guardian,
+          firstName: guardian.firstName.trim(),
+          lastName: guardian.lastName.trim(),
+          phone: guardian.phone.trim(),
+          email: guardian.email ? guardian.email.trim().toLowerCase() : "",
+          address: guardian.address ? guardian.address.trim() : "",
+        })),
+      };
+
+      console.log("✅ Données nettoyées pour soumission:", cleanData);
+
+      await onSubmit(cleanData);
+
+      // Le toast de succès est géré par le parent
+    } catch (error: any) {
+      console.error("❌ Erreur lors de la soumission:", error);
+
+      // Gestion des erreurs de validation du serveur
+      if (error.response?.data?.errors) {
+        const errors = Object.values(
+          error.response.data.errors
+        ).flat() as string[];
+        setValidationErrors(errors);
+
+        toast({
+          title: "Erreur de validation",
+          description: "Veuillez vérifier les données saisies",
+          variant: "destructive",
+        });
+      } else {
+        const errorMessage =
+          error.message || "Une erreur s'est produite lors de la soumission";
+        setServerError(errorMessage);
+
+        toast({
+          title: "Erreur",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const bloodGroupOptions = [
-    { value: "A_POSITIVE", label: "A+" },
-    { value: "A_NEGATIVE", label: "A-" },
-    { value: "B_POSITIVE", label: "B+" },
-    { value: "B_NEGATIVE", label: "B-" },
-    { value: "AB_POSITIVE", label: "AB+" },
-    { value: "AB_NEGATIVE", label: "AB-" },
-    { value: "O_POSITIVE", label: "O+" },
-    { value: "O_NEGATIVE", label: "O-" },
-  ] as const;
+  // Gestion des parents/tuteurs
+  const guardians = form.watch("guardians");
 
-  const relationshipOptions = [
-    "Père",
-    "Mère",
-    "Tuteur",
-    "Tutrice",
-    "Frère",
-    "Sœur",
-    "Oncle",
-    "Tante",
-    "Grand-père",
-    "Grand-mère",
-    "Autre",
-  ];
+  const addGuardian = () => {
+    const currentGuardians = form.getValues("guardians");
+    if (currentGuardians.length >= 5) {
+      toast({
+        title: "Limite atteinte",
+        description: "Vous ne pouvez ajouter que 5 parents/tuteurs maximum",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    form.setValue("guardians", [
+      ...currentGuardians,
+      {
+        firstName: "",
+        lastName: "",
+        relationship: EMPTY_VALUES.NO_RELATIONSHIP,
+        phone: "",
+        email: "",
+        address: "",
+        isPrimary: false,
+      },
+    ]);
+  };
+
+  const removeGuardian = (index: number) => {
+    const currentGuardians = form.getValues("guardians");
+    if (currentGuardians.length <= 1) {
+      toast({
+        title: "Action impossible",
+        description: "Au moins un parent/tuteur est requis",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const guardianToRemove = currentGuardians[index];
+    const newGuardians = currentGuardians.filter((_, i) => i !== index);
+
+    // Si on supprime le parent principal, désigner le premier comme principal
+    if (guardianToRemove.isPrimary && newGuardians.length > 0) {
+      newGuardians[0].isPrimary = true;
+    }
+
+    form.setValue("guardians", newGuardians);
+    form.trigger("guardians");
+  };
+
+  const setPrimaryGuardian = (index: number) => {
+    const currentGuardians = form.getValues("guardians");
+    const newGuardians = currentGuardians.map((guardian, i) => ({
+      ...guardian,
+      isPrimary: i === index,
+    }));
+    form.setValue("guardians", newGuardians);
+  };
+
+  // Filtrer les classes actives
+  const activeClasses = classes.filter((cls) => cls.status === "Active");
+
+  // Fonction pour formater le téléphone
+  const formatPhoneNumber = (phone: string) => {
+    if (!phone) return "";
+
+    const cleaned = phone.replace(/[\s\-()]/g, "");
+
+    // Format Haïtien: +509 XX XX XX XX
+    if (cleaned.startsWith("+509") && cleaned.length === 12) {
+      return `+509 ${cleaned.slice(4, 6)} ${cleaned.slice(
+        6,
+        8
+      )} ${cleaned.slice(8, 10)} ${cleaned.slice(10)}`;
+    }
+
+    return phone;
+  };
+
+  // Gestionnaire de changement de téléphone
+  const handlePhoneChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    onChange: (value: string) => void
+  ) => {
+    const value = e.target.value;
+    const formatted = formatPhoneNumber(value);
+    if (formatted !== value) {
+      e.target.value = formatted;
+    }
+    onChange(e.target.value);
+  };
+
+  // Affichage du chargement
+  if (isLoadingDetails) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col items-center justify-center py-12">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p className="text-lg font-medium text-gray-700 mb-2">
+            Chargement des données de l'étudiant...
+          </p>
+          <p className="text-sm text-gray-500">
+            Veuillez patienter pendant le chargement des informations
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Affichage de l'erreur de chargement
+  if (serverError) {
+    return (
+      <div className="space-y-6">
+        <Alert variant="destructive">
+          <ShieldAlert className="h-4 w-4" />
+          <AlertDescription>
+            <p className="font-medium mb-2">
+              Impossible de charger les données
+            </p>
+            <p className="text-sm">{serverError}</p>
+          </AlertDescription>
+        </Alert>
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={onClose}>
+            Fermer
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full flex flex-col">
-      <Tabs
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="flex-1 flex flex-col"
-      >
-        <TabsList className="grid grid-cols-2 mb-4">
-          <TabsTrigger value="student" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            Étudiant
-          </TabsTrigger>
+    <div className="space-y-6">
+      {/* En-tête avec progression */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">
+            {student ? "Modifier l'étudiant" : "Nouvel étudiant"}
+          </h3>
+          <Badge variant={completedTabs.size === 3 ? "default" : "outline"}>
+            {calculateCompletion()}% complété
+          </Badge>
+        </div>
+        <Progress value={calculateCompletion()} className="h-2" />
+      </div>
 
-          <TabsTrigger value="guardians" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Responsables
-            <Badge variant="secondary" className="ml-1">
-              {guardians.length}
-            </Badge>
+      {/* Messages d'erreur globaux */}
+      {validationErrors.length > 0 && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <ul className="list-disc list-inside space-y-1">
+              {validationErrors.map((error, index) => (
+                <li key={index} className="text-sm">
+                  {error}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Onglets */}
+      <Tabs
+        value={currentTab}
+        onValueChange={handleTabChange}
+        className="w-full"
+      >
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="student-info" className="relative">
+            Informations étudiant
+            {completedTabs.has("student-info") &&
+              !form.formState.errors.firstName &&
+              !form.formState.errors.lastName &&
+              !form.formState.errors.email && (
+                <Check className="h-3 w-3 ml-1 text-green-500" />
+              )}
+          </TabsTrigger>
+          <TabsTrigger value="guardians" className="relative">
+            Parents/Tuteurs
+            {completedTabs.has("guardians") &&
+              !form.formState.errors.guardians && (
+                <Check className="h-3 w-3 ml-1 text-green-500" />
+              )}
+          </TabsTrigger>
+          <TabsTrigger value="enrollment" className="relative">
+            Inscription
+            {completedTabs.has("enrollment") &&
+              !form.formState.errors.classId &&
+              !form.formState.errors.academicYearId && (
+                <Check className="h-3 w-3 ml-1 text-green-500" />
+              )}
           </TabsTrigger>
         </TabsList>
 
         <Form {...form}>
           <form
             ref={formRef}
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex-1 flex flex-col"
+            onSubmit={form.handleSubmit(handleSubmit)}
+            className="space-y-6"
           >
-            <ScrollArea className="flex-1 pr-4">
-              {formError && (
-                <Alert variant="destructive" className="mb-4">
-                  <AlertDescription>{formError}</AlertDescription>
-                </Alert>
-              )}
-
-              <TabsContent value="student" className="m-0 space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Informations personnelles</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {/* Photo de profil */}
-                    <div className="space-y-3">
-                      <Label htmlFor="photo">Photo de profil</Label>
-                      <div className="flex items-start gap-6">
-                        <div className="relative">
-                          <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-300 relative group">
-                            {isLoading ? (
-                              <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
-                              </div>
-                            ) : profileImage && !imageError ? (
-                              <>
-                                <img
-                                  src={profileImage}
-                                  alt="Profile preview"
-                                  className="w-full h-full object-cover"
-                                  onError={handleImageError}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={removeImage}
-                                  className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </>
-                            ) : (
-                              <User className="h-10 w-10 text-gray-400" />
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex-1 space-y-3">
-                          <div>
-                            <Input
-                              id="photo"
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleImageUpload(file);
-                                }
-                              }}
-                              className="max-w-xs"
-                              disabled={isSubmitting}
-                            />
-                            <p className="text-sm text-muted-foreground mt-1">
-                              Formats supportés: JPEG, PNG, GIF, WebP (max 5MB)
-                            </p>
-                            {student && (
-                              <p className="text-sm text-muted-foreground">
-                                Laisser vide pour conserver la photo actuelle.
-                              </p>
-                            )}
-                          </div>
-                          {imageError && (
-                            <p className="text-sm text-destructive">
-                              Impossible de charger l'image. Veuillez en
-                              sélectionner une nouvelle.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="firstName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Prénom *</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="Jean"
-                                disabled={isSubmitting}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="lastName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Nom *</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="Dupont"
-                                disabled={isSubmitting}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="studentId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="flex items-center gap-2">
-                              ID Étudiant *
-                              {isGeneratingId && (
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
-                              )}
-                            </FormLabel>
-                            <div className="flex gap-2">
-                              <FormControl>
-                                <Input
-                                  {...field}
-                                  readOnly
-                                  className="bg-muted font-mono"
-                                  disabled={isSubmitting || isGeneratingId}
-                                  placeholder="Génération automatique..."
-                                />
-                              </FormControl>
-                              {!student && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={handleRegenerateId}
-                                  disabled={isSubmitting || isGeneratingId}
-                                  className="whitespace-nowrap"
-                                >
-                                  {isGeneratingId ? (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                                  ) : (
-                                    "🔄"
-                                  )}
-                                </Button>
-                              )}
-                            </div>
-                            <FormMessage />
-                            {!student && (
-                              <p className="text-sm text-muted-foreground mt-1">
-                                ID généré automatiquement. Cliquez sur 🔄 pour
-                                en générer un nouveau.
-                              </p>
-                            )}
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="email"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Email *</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="email"
-                                {...field}
-                                placeholder="jean.dupont@example.com"
-                                disabled={isSubmitting}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="phone"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Téléphone</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="+33 1 23 45 67 89"
-                                disabled={isSubmitting}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="dateOfBirth"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Date de Naissance *</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="date"
-                                {...field}
-                                max={new Date().toISOString().split("T")[0]}
-                                disabled={isSubmitting}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
+            {/* Onglet Informations étudiant */}
+            <TabsContent value="student-info" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Informations personnelles</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name="address"
+                      name="firstName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Adresse</FormLabel>
+                          <FormLabel>Prénom *</FormLabel>
                           <FormControl>
-                            <Textarea
+                            <Input
                               {...field}
-                              placeholder="123 Rue de l'Exemple, 75000 Paris"
+                              placeholder="Prénom"
                               disabled={isSubmitting}
+                              className={
+                                form.formState.errors.firstName
+                                  ? "border-red-500"
+                                  : ""
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -908,379 +914,787 @@ export const StudentForm = ({ student, onClose }: StudentFormProps) => {
                       )}
                     />
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="placeOfBirth"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Lieu de Naissance</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="Paris"
-                                disabled={isSubmitting}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="bloodGroup"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Groupe Sanguin</FormLabel>
-                            <Select
-                              onValueChange={field.onChange}
-                              value={field.value}
+                    <FormField
+                      control={form.control}
+                      name="lastName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nom *</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="Nom"
                               disabled={isSubmitting}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Sélectionner un groupe" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {bloodGroupOptions.map((option) => (
-                                  <SelectItem
-                                    key={option.value} // ⚠️ CORRECTION : Utilisez option.value comme clé unique
-                                    value={option.value}
-                                  >
-                                    {option.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="cin"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>CIN / Numéro d'identité</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="1234567890123"
-                                disabled={isSubmitting}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="sexe"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Sexe</FormLabel>
-                            <Select
-                              onValueChange={field.onChange}
-                              value={field.value}
-                              disabled={isSubmitting}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Sélectionner le sexe" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="Masculin">
-                                  Masculin
-                                </SelectItem>
-                                <SelectItem value="Feminin">Féminin</SelectItem>
-                                <SelectItem value="Autre">Autre</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="allergies"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Allergies</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="Aucune connue"
-                                disabled={isSubmitting}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="disabilities"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>
-                              Handicaps / Besoins spécifiques
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="Aucun"
-                                disabled={isSubmitting}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                              className={
+                                form.formState.errors.lastName
+                                  ? "border-red-500"
+                                  : ""
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
                     <FormField
                       control={form.control}
-                      name="status"
+                      name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Statut</FormLabel>
+                          <FormLabel>Email *</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type="email"
+                              placeholder="email@example.com"
+                              disabled={isSubmitting || !!student}
+                              className={
+                                form.formState.errors.email
+                                  ? "border-red-500"
+                                  : ""
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Téléphone</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="+509 44 55 66 77"
+                              disabled={isSubmitting}
+                              className={
+                                form.formState.errors.phone
+                                  ? "border-red-500"
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                handlePhoneChange(e, field.onChange)
+                              }
+                              maxLength={15}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                          <FormDescription className="text-xs">
+                            Format: +509XXXXXXXX (ex: +50944556677)
+                          </FormDescription>
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="dateOfBirth"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Date de naissance</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type="date"
+                              disabled={isSubmitting}
+                              className={
+                                form.formState.errors.dateOfBirth
+                                  ? "border-red-500"
+                                  : ""
+                              }
+                              max={new Date().toISOString().split("T")[0]}
+                              min={
+                                new Date(new Date().getFullYear() - 100, 0, 1)
+                                  .toISOString()
+                                  .split("T")[0]
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="placeOfBirth"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Lieu de naissance</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="Lieu de naissance"
+                              disabled={isSubmitting}
+                              maxLength={100}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="sexe"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Sexe</FormLabel>
                           <Select
+                            value={field.value}
                             onValueChange={field.onChange}
-                            defaultValue={field.value}
                             disabled={isSubmitting}
                           >
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Sélectionner un statut" />
+                                <SelectValue placeholder="Sélectionner" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="Active">Actif</SelectItem>
-                              <SelectItem value="Inactive">Inactif</SelectItem>
-                              <SelectItem value="Graduated">Diplômé</SelectItem>
-                              <SelectItem value="Suspended">
-                                Suspendu
-                              </SelectItem>
+                              {SEXE_OPTIONS.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </CardContent>
-                </Card>
-              </TabsContent>
 
-              <TabsContent value="guardians" className="m-0 space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <span>Personnes responsables ({guardians.length})</span>
-                      <Button
-                        type="button"
-                        onClick={addGuardian}
-                        variant="outline"
-                        size="sm"
-                        disabled={isSubmitting}
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Ajouter
-                      </Button>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {guardians.map((guardian, index) => (
-                      <div
-                        key={index}
-                        className="border rounded-lg p-4 space-y-4 relative"
-                      >
-                        <div className="flex justify-between items-center">
-                          <h4 className="font-medium flex items-center gap-2">
-                            Responsable {index + 1}
-                            {guardian.isPrimary && (
-                              <Badge variant="default" className="text-xs">
-                                Principal
-                              </Badge>
+                    <FormField
+                      control={form.control}
+                      name="cin"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>CIN</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="Numéro CIN"
+                              disabled={isSubmitting}
+                              maxLength={20}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="address"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Adresse</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            placeholder="Adresse complète"
+                            disabled={isSubmitting}
+                            rows={2}
+                            maxLength={200}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Informations médicales</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="bloodGroup"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Groupe sanguin</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          disabled={isSubmitting}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sélectionner" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {BLOOD_GROUP_OPTIONS.map((option) => (
+                              <SelectItem
+                                key={option.value}
+                                value={option.value}
+                              >
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="allergies"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Allergies</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            placeholder="Allergies connues (ex: Pollen, Arachides, Lactose)"
+                            disabled={isSubmitting}
+                            rows={2}
+                            maxLength={500}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="disabilities"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Handicaps / Besoins spéciaux</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            placeholder="Handicaps ou besoins spéciaux"
+                            disabled={isSubmitting}
+                            rows={2}
+                            maxLength={500}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Onglet Parents/Tuteurs */}
+            <TabsContent value="guardians" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle>Parents/Tuteurs</CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Ajoutez au moins un parent ou tuteur responsable de
+                        l'étudiant
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={addGuardian}
+                      size="sm"
+                      disabled={guardians.length >= 5}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Ajouter
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {guardians.map((guardian, index) => (
+                    <Card
+                      key={index}
+                      className={
+                        guardian.isPrimary ? "border-primary border-2" : ""
+                      }
+                    >
+                      <CardContent className="pt-6">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant={
+                                guardian.isPrimary ? "default" : "outline"
+                              }
+                              className="text-xs"
+                            >
+                              {guardian.isPrimary ? "Principal" : "Secondaire"}
+                            </Badge>
+                            {!guardian.isPrimary && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setPrimaryGuardian(index)}
+                                className="h-6 px-2 text-xs"
+                              >
+                                Définir comme principal
+                              </Button>
                             )}
-                          </h4>
+                          </div>
                           {guardians.length > 1 && (
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
                               onClick={() => removeGuardian(index)}
-                              disabled={isSubmitting}
+                              className="h-6 w-6 p-0"
+                              disabled={guardian.isPrimary}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-3 w-3" />
                             </Button>
                           )}
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor={`guardian-firstName-${index}`}>
-                              Prénom *
-                            </Label>
-                            <Input
-                              id={`guardian-firstName-${index}`}
-                              value={guardian.firstName}
-                              onChange={(e) =>
-                                updateGuardian(
-                                  index,
-                                  "firstName",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="Marie"
-                              disabled={isSubmitting}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor={`guardian-lastName-${index}`}>
-                              Nom *
-                            </Label>
-                            <Input
-                              id={`guardian-lastName-${index}`}
-                              value={guardian.lastName}
-                              onChange={(e) =>
-                                updateGuardian(
-                                  index,
-                                  "lastName",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="Dupont"
-                              disabled={isSubmitting}
-                              required
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor={`guardian-relationship-${index}`}>
-                              Lien de parenté *
-                            </Label>
-                            <Select
-                              value={guardian.relationship}
-                              onValueChange={(value) =>
-                                updateGuardian(index, "relationship", value)
-                              }
-                              disabled={isSubmitting}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Sélectionner un lien" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {relationshipOptions.map((relation) => (
-                                  <SelectItem key={relation} value={relation}>
-                                    {relation}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor={`guardian-phone-${index}`}>
-                              Téléphone *
-                            </Label>
-                            <Input
-                              id={`guardian-phone-${index}`}
-                              value={guardian.phone}
-                              onChange={(e) =>
-                                updateGuardian(index, "phone", e.target.value)
-                              }
-                              placeholder="+33 1 23 45 67 89"
-                              disabled={isSubmitting}
-                              required
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor={`guardian-email-${index}`}>
-                              Email
-                            </Label>
-                            <Input
-                              id={`guardian-email-${index}`}
-                              type="email"
-                              value={guardian.email || ""}
-                              onChange={(e) =>
-                                updateGuardian(index, "email", e.target.value)
-                              }
-                              placeholder="marie.dupont@example.com"
-                              disabled={isSubmitting}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor={`guardian-address-${index}`}>
-                              Adresse
-                            </Label>
-                            <Input
-                              id={`guardian-address-${index}`}
-                              value={guardian.address || ""}
-                              onChange={(e) =>
-                                updateGuardian(index, "address", e.target.value)
-                              }
-                              placeholder="123 Rue de l'Exemple, 75000 Paris"
-                              disabled={isSubmitting}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            id={`guardian-primary-${index}`}
-                            checked={guardian.isPrimary}
-                            onChange={() => setPrimaryGuardian(index)}
-                            className="h-4 w-4"
-                            disabled={isSubmitting}
+                          <FormField
+                            control={form.control}
+                            name={`guardians.${index}.firstName`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Prénom *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    placeholder="Prénom"
+                                    disabled={isSubmitting}
+                                    maxLength={50}
+                                    className={
+                                      form.formState.errors.guardians?.[index]
+                                        ?.firstName
+                                        ? "border-red-500"
+                                        : ""
+                                    }
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
                           />
-                          <Label htmlFor={`guardian-primary-${index}`}>
-                            Définir comme responsable principal
-                          </Label>
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </ScrollArea>
 
-            {/* Boutons de soumission */}
-            <div className="flex justify-end space-x-4 pt-4 border-t mt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-                disabled={isSubmitting}
-              >
-                Annuler
-              </Button>
-              <Button type="submit" disabled={isSubmitting || loading}>
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Traitement...
-                  </>
-                ) : student ? (
-                  "Modifier l'étudiant"
-                ) : (
-                  "Créer l'étudiant"
+                          <FormField
+                            control={form.control}
+                            name={`guardians.${index}.lastName`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Nom *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    placeholder="Nom"
+                                    disabled={isSubmitting}
+                                    maxLength={50}
+                                    className={
+                                      form.formState.errors.guardians?.[index]
+                                        ?.lastName
+                                        ? "border-red-500"
+                                        : ""
+                                    }
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name={`guardians.${index}.relationship`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Relation *</FormLabel>
+                                <Select
+                                  value={
+                                    field.value || EMPTY_VALUES.NO_RELATIONSHIP
+                                  }
+                                  onValueChange={field.onChange}
+                                  disabled={isSubmitting}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger
+                                      className={
+                                        form.formState.errors.guardians?.[index]
+                                          ?.relationship
+                                          ? "border-red-500"
+                                          : ""
+                                      }
+                                    >
+                                      <SelectValue placeholder="Sélectionner" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {RELATIONSHIP_OPTIONS.map((option) => (
+                                      <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                      >
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name={`guardians.${index}.phone`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Téléphone *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    placeholder="+509 44 55 66 77"
+                                    disabled={isSubmitting}
+                                    className={
+                                      form.formState.errors.guardians?.[index]
+                                        ?.phone
+                                        ? "border-red-500"
+                                        : ""
+                                    }
+                                    onChange={(e) =>
+                                      handlePhoneChange(e, field.onChange)
+                                    }
+                                    maxLength={15}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                                <FormDescription className="text-xs">
+                                  Format: +509XXXXXXXX
+                                </FormDescription>
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name={`guardians.${index}.email`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Email</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    type="email"
+                                    placeholder="email@example.com"
+                                    disabled={isSubmitting}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name={`guardians.${index}.address`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Adresse</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    placeholder="Adresse"
+                                    disabled={isSubmitting}
+                                    maxLength={200}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Onglet Inscription */}
+            <TabsContent value="enrollment" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Inscription à une classe</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Sélectionnez la classe et l'année académique pour inscrire
+                    l'étudiant
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="classId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Classe *</FormLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={
+                              isSubmitting || activeClasses.length === 0
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger
+                                className={
+                                  form.formState.errors.classId
+                                    ? "border-red-500"
+                                    : ""
+                                }
+                              >
+                                <SelectValue placeholder="Sélectionner une classe" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {activeClasses.length === 0 ? (
+                                <SelectItem value="no-classes" disabled>
+                                  Aucune classe active disponible
+                                </SelectItem>
+                              ) : (
+                                activeClasses.map((cls) => (
+                                  <SelectItem key={cls.id} value={cls.id}>
+                                    {cls.name} - {cls.level}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="academicYearId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Année académique *</FormLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={
+                              isSubmitting || academicYears.length === 0
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger
+                                className={
+                                  form.formState.errors.academicYearId
+                                    ? "border-red-500"
+                                    : ""
+                                }
+                              >
+                                <SelectValue placeholder="Sélectionner une année" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {academicYears.length === 0 ? (
+                                <SelectItem value="no-years" disabled>
+                                  Aucune année académique disponible
+                                </SelectItem>
+                              ) : (
+                                academicYears.map((year) => (
+                                  <SelectItem key={year.id} value={year.id}>
+                                    {year.year} {year.isCurrent && "(En cours)"}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Statut de l'étudiant *</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          disabled={isSubmitting}
+                        >
+                          <FormControl>
+                            <SelectTrigger
+                              className={
+                                form.formState.errors.status
+                                  ? "border-red-500"
+                                  : ""
+                              }
+                            >
+                              <SelectValue placeholder="Sélectionner" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Active">Actif</SelectItem>
+                            <SelectItem value="Inactive">Inactif</SelectItem>
+                            <SelectItem value="Graduated">Diplômé</SelectItem>
+                            <SelectItem value="Suspended">Suspendu</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Options supplémentaires pour la création */}
+                  {!student && (
+                    <div className="space-y-4 pt-4 border-t">
+                      <h4 className="font-medium">Options supplémentaires</h4>
+
+                      <FormField
+                        control={form.control}
+                        name="createUserAccount"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-sm">
+                                Créer un compte utilisateur
+                              </FormLabel>
+                              <FormDescription className="text-xs">
+                                L'étudiant pourra se connecter avec son email
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                disabled={isSubmitting}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="sendWelcomeEmail"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-sm">
+                                Envoyer un email de bienvenue
+                              </FormLabel>
+                              <FormDescription className="text-xs">
+                                Un email avec les informations sera envoyé
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                disabled={
+                                  isSubmitting ||
+                                  !form.watch("createUserAccount")
+                                }
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <Separator />
+
+            {/* Boutons d'action */}
+            <div className="flex justify-between items-center pt-4">
+              <div className="flex gap-2">
+                {currentTab !== "student-info" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const prevTab =
+                        currentTab === "enrollment"
+                          ? "guardians"
+                          : currentTab === "guardians"
+                          ? "student-info"
+                          : "student-info";
+                      setCurrentTab(prevTab);
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    <ChevronLeft className="mr-2 h-4 w-4" />
+                    Précédent
+                  </Button>
                 )}
-              </Button>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={isSubmitting}
+                >
+                  Annuler
+                </Button>
+
+                {currentTab === "enrollment" ? (
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting || isLoading}
+                    className="min-w-[120px]"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {student ? "Modification..." : "Création..."}
+                      </>
+                    ) : student ? (
+                      "Modifier l'étudiant"
+                    ) : (
+                      "Créer l'étudiant"
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const nextTab =
+                        currentTab === "student-info"
+                          ? "guardians"
+                          : currentTab === "guardians"
+                          ? "enrollment"
+                          : "enrollment";
+                      setCurrentTab(nextTab);
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    Suivant
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
           </form>
         </Form>

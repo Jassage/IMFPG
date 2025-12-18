@@ -1,351 +1,575 @@
-// store/enrollmentStore.ts - VERSION AVEC CALCUL DES DATES
 import { create } from "zustand";
 import api from "../services/api";
-import {
-  Enrollment,
-  CreateEnrollmentData,
-  UpdateEnrollmentData,
-} from "../types/academic";
-import { toast } from "sonner";
+import { Enrollment } from "../types/academic";
 
-// Interface pour les dates d'inscription
-export interface EnrollmentDates {
-  startDate: string;
-  endDate: string;
-  hasData: boolean;
-  firstEnrollment?: string;
-  lastEnrollment?: string;
-  totalEnrollments?: number;
-  error?: string;
-}
-
-interface EnrollmentStore {
+type EnrollmentStore = {
   enrollments: Enrollment[];
-  enrollmentDates: EnrollmentDates | null;
   loading: boolean;
   error: string | null;
-  datesLoading: boolean;
 
-  // Actions
+  // Méthodes de base
   fetchEnrollments: () => Promise<void>;
-  addEnrollment: (enrollment: CreateEnrollmentData) => Promise<void>;
+  fetchEnrollmentById: (id: string) => Promise<Enrollment>;
+  fetchStudentEnrollments: (studentId: string) => Promise<void>;
+  fetchEnrollmentStats: (academicYearId?: string) => Promise<any>;
+  fetchEnrollmentHistory: (studentId: string) => Promise<any>;
+
+  // Méthodes CRUD
+  addEnrollment: (enrollment: {
+    studentId: string;
+    classId: string;
+    academicYearId: string;
+    enrollmentDate?: string;
+    status?: "Active" | "Suspended" | "Completed";
+    assignFees?: boolean;
+    selectedFeeStructures?: string[];
+  }) => Promise<void>;
+
   updateEnrollment: (
     id: string,
-    enrollment: UpdateEnrollmentData
-  ) => Promise<void>;
-  updateEnrollmentStatus: (
-    id: string,
-    status: "Active" | "Completed" | "Suspended"
+    enrollment: Partial<Enrollment>
   ) => Promise<void>;
   deleteEnrollment: (id: string) => Promise<void>;
 
-  // NOUVELLE ACTION : Calcul des dates d'inscription
-  calculateEnrollmentDates: (studentId: string) => Promise<void>;
-  clearEnrollmentDates: () => void;
+  // Méthodes spéciales
+  reenrollStudent: (data: {
+    studentId: string;
+    classId: string;
+    academicYearId: string;
+    enrollmentDate?: string;
+    notes?: string;
+  }) => Promise<void>;
 
-  // Méthodes utilitaires synchrones
+  unenrollStudent: (id: string, reason?: string) => Promise<void>;
+  validateReenrollment: (studentId: string) => Promise<any>;
+  createBulkEnrollments: (enrollments: any[]) => Promise<any>;
+
+  // Méthodes utilitaires
   getEnrollmentsByStudent: (studentId: string) => Enrollment[];
-  getEnrollmentsByFaculty: (faculty: string, level?: string) => Enrollment[];
-  getActiveEnrollment: (studentId: string) => Enrollment | null;
+  getEnrollmentsByClass: (classId: string) => Enrollment[];
+  getEnrollmentsByAcademicYear: (academicYearId: string) => Enrollment[];
+  getEnrollmentsByStatus: (status: Enrollment["status"]) => Enrollment[];
+  assignFeesToEnrollment: (
+    enrollmentId: string,
+    feeStructureIds: string[]
+  ) => Promise<any>;
 
-  // Méthode pour charger les inscriptions par étudiant
-  fetchEnrollmentsByStudent: (studentId: string) => Promise<void>;
-  assignFeeToStudent: (feeAssignmentData: any) => Promise<any>;
-
-  // Utilitaires
-  clearError: () => void;
-}
+  // Méthode pour les frais
+  getAvailableFeeStructures: () => Promise<any[]>;
+};
 
 export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   enrollments: [],
-  enrollmentDates: null,
   loading: false,
   error: null,
-  datesLoading: false,
 
+  /**
+   * @desc Récupère toutes les inscriptions
+   */
   fetchEnrollments: async () => {
     set({ loading: true, error: null });
     try {
       const response = await api.get("/enrollments");
+
+      // Extraire le tableau d'inscriptions de la réponse
+      let enrollmentsArray = [];
+
+      if (
+        response.data.enrollments &&
+        Array.isArray(response.data.enrollments)
+      ) {
+        enrollmentsArray = response.data.enrollments;
+      } else if (Array.isArray(response.data)) {
+        enrollmentsArray = response.data;
+      } else if (
+        response.data.data &&
+        Array.isArray(response.data.data.enrollments)
+      ) {
+        enrollmentsArray = response.data.data.enrollments;
+      } else {
+        enrollmentsArray = [];
+      }
+
+      // Convertir les dates string en Date
+      const formattedEnrollments = enrollmentsArray.map((enrollment: any) => ({
+        ...enrollment,
+        enrollmentDate: enrollment.enrollmentDate
+          ? new Date(enrollment.enrollmentDate)
+          : new Date(),
+        createdAt: enrollment.createdAt
+          ? new Date(enrollment.createdAt)
+          : undefined,
+        updatedAt: enrollment.updatedAt
+          ? new Date(enrollment.updatedAt)
+          : undefined,
+        reenrollmentDate: enrollment.reenrollmentDate
+          ? new Date(enrollment.reenrollmentDate)
+          : undefined,
+      }));
+
       set({
-        enrollments: response.data,
+        enrollments: formattedEnrollments,
         loading: false,
       });
-    } catch (err: any) {
-      console.error("Failed to fetch enrollments:", err);
+    } catch (err) {
       set({
-        error:
-          err.response?.data?.error ||
-          "Erreur lors du chargement des inscriptions",
+        error: "Erreur lors du chargement des inscriptions",
         loading: false,
       });
-      throw err;
     }
   },
 
-  addEnrollment: async (enrollmentData: CreateEnrollmentData) => {
+  /**
+   * @desc Récupère une inscription par son ID
+   */
+  fetchEnrollmentById: async (id: string) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.get(`/enrollments/${id}`);
+
+      // Gérer différents formats de réponse
+      let enrollmentData = response.data;
+      if (response.data.data) {
+        enrollmentData = response.data.data;
+      }
+
+      // Convertir les dates
+      const enrollment = {
+        ...enrollmentData,
+        enrollmentDate: enrollmentData.enrollmentDate
+          ? new Date(enrollmentData.enrollmentDate)
+          : new Date(),
+        createdAt: enrollmentData.createdAt
+          ? new Date(enrollmentData.createdAt)
+          : undefined,
+        updatedAt: enrollmentData.updatedAt
+          ? new Date(enrollmentData.updatedAt)
+          : undefined,
+      };
+
+      return enrollment;
+    } catch (err) {
+      console.error(" Failed to fetch enrollment:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({
+        error: "Erreur lors du chargement de l'inscription",
+        loading: false,
+      });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /**
+   * @desc Récupère les inscriptions d'un étudiant
+   */
+  fetchStudentEnrollments: async (studentId: string) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.get(`/enrollments/student/${studentId}`);
+
+      // Extraire le tableau d'inscriptions
+      let enrollmentsArray = [];
+
+      if (
+        response.data.enrollments &&
+        Array.isArray(response.data.enrollments)
+      ) {
+        enrollmentsArray = response.data.enrollments;
+      } else if (Array.isArray(response.data)) {
+        enrollmentsArray = response.data;
+      } else if (response.data.data && Array.isArray(response.data.data)) {
+        enrollmentsArray = response.data.data;
+      }
+
+      const formattedEnrollments = enrollmentsArray.map((enrollment: any) => ({
+        ...enrollment,
+        enrollmentDate: enrollment.enrollmentDate
+          ? new Date(enrollment.enrollmentDate)
+          : new Date(),
+      }));
+
+      set({
+        enrollments: formattedEnrollments,
+        loading: false,
+      });
+    } catch (err) {
+      console.error(" Failed to fetch student enrollments:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({
+        error: "Erreur lors du chargement des inscriptions",
+        loading: false,
+      });
+    }
+  },
+
+  /**
+   * @desc Récupère les statistiques d'inscription
+   */
+  fetchEnrollmentStats: async (academicYearId?: string) => {
+    set({ loading: true, error: null });
+    try {
+      const url = academicYearId
+        ? `/enrollments/stats?academicYearId=${academicYearId}`
+        : "/enrollments/stats";
+
+      const response = await api.get(url);
+      console.log("📥 Statistiques d'inscription:", response.data);
+
+      // Gérer différents formats de réponse
+      return response.data.data || response.data;
+    } catch (err) {
+      console.error(" Failed to fetch enrollment stats:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({
+        error: "Erreur lors du chargement des statistiques",
+        loading: false,
+      });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /**
+   * @desc Récupère l'historique complet des inscriptions d'un étudiant
+   */
+  fetchEnrollmentHistory: async (studentId: string) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.get(`/enrollments/history/${studentId}`);
+      console.log("📥 Historique d'inscription:", response.data);
+
+      // Gérer différents formats de réponse
+      return response.data.data || response.data;
+    } catch (err) {
+      console.error(" Failed to fetch enrollment history:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({
+        error: "Erreur lors du chargement de l'historique",
+        loading: false,
+      });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /**
+   * @desc Ajoute une nouvelle inscription
+   */
+  addEnrollment: async (enrollmentData) => {
     set({ loading: true, error: null });
     try {
       const payload = {
         studentId: enrollmentData.studentId,
-        faculty: enrollmentData.faculty,
-        level: enrollmentData.level,
+        classId: enrollmentData.classId,
         academicYearId: enrollmentData.academicYearId,
         enrollmentDate:
-          enrollmentData.enrollmentDate || new Date().toISOString(),
-        status: "Active",
+          enrollmentData.enrollmentDate ||
+          new Date().toISOString().split("T")[0],
+        status: enrollmentData.status || "Active",
+        assignFees: enrollmentData.assignFees || false,
+        selectedFeeStructures: enrollmentData.selectedFeeStructures || [],
       };
 
+      console.log("📤 Envoi création inscription:", payload);
       const response = await api.post("/enrollments", payload);
+      console.log(" Réponse création inscription:", response.data);
 
-      // Recharger toutes les inscriptions
-      const enrollmentsResponse = await api.get("/enrollments");
-
-      set({
-        enrollments: enrollmentsResponse.data,
-        loading: false,
-      });
-
-      toast.success("Inscription créée avec succès");
+      await get().fetchEnrollments(); // Recharge les données
       return response.data;
-    } catch (err: any) {
-      console.error("❌ Erreur détaillée lors de l'ajout:", err);
-      const errorMessage =
-        err.response?.data?.error ||
-        err.response?.data?.details ||
-        "Erreur lors de l'ajout de l'inscription";
-      console.error("Failed to add enrollment:", err);
-      set({
-        error: errorMessage,
-        loading: false,
-      });
-
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
-    }
-  },
-
-  updateEnrollment: async (
-    id: string,
-    enrollmentData: UpdateEnrollmentData
-  ) => {
-    set({ loading: true, error: null });
-    try {
-      const cleanData: any = {};
-
-      if (enrollmentData.faculty !== undefined)
-        cleanData.faculty = enrollmentData.faculty;
-      if (enrollmentData.level !== undefined)
-        cleanData.level = enrollmentData.level;
-      if (enrollmentData.academicYearId !== undefined)
-        cleanData.academicYearId = enrollmentData.academicYearId;
-      if (enrollmentData.status !== undefined)
-        cleanData.status = enrollmentData.status;
-
-      const response = await api.put(`/enrollments/${id}`, cleanData);
-
-      const updatedData = response.data;
-      const normalizedEnrollment = {
-        ...updatedData,
-        faculty:
-          typeof updatedData.faculty === "object"
-            ? updatedData.faculty.name || updatedData.faculty.id
-            : updatedData.faculty,
-        academicYear:
-          typeof updatedData.academicYear === "object"
-            ? updatedData.academicYear.year || updatedData.academicYear.id
-            : updatedData.academicYear,
-      };
-
-      console.log(
-        "🔍 DEBUG updateEnrollment - Données normalisées:",
-        normalizedEnrollment
-      );
-
-      set((state) => ({
-        enrollments: state.enrollments.map((e) =>
-          e.id === id ? normalizedEnrollment : e
-        ),
-        loading: false,
-      }));
-
-      return normalizedEnrollment;
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error ||
-        err.response?.data?.details ||
-        "Erreur lors de la mise à jour de l'inscription";
-      console.error("Failed to update enrollment:", err);
-      set({
-        error: errorMessage,
-        loading: false,
-      });
-      throw new Error(errorMessage);
-    }
-  },
-
-  updateEnrollmentStatus: async (
-    id: string,
-    status: "Active" | "Completed" | "Suspended"
-  ) => {
-    set({ loading: true, error: null });
-    try {
-      const response = await api.patch(`/enrollments/${id}/status`, { status });
-
-      set((state) => ({
-        enrollments: state.enrollments.map((e) =>
-          e.id === id ? { ...e, status } : e
-        ),
-        loading: false,
-      }));
-
-      toast.success("Statut d'inscription mis à jour");
-      return response.data;
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error || "Erreur lors du changement de statut";
-      console.error("Failed to update enrollment status:", err);
-      set({
-        error: errorMessage,
-        loading: false,
-      });
-
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
-    }
-  },
-
-  deleteEnrollment: async (id: string) => {
-    set({ loading: true, error: null });
-    try {
-      await api.delete(`/enrollments/${id}`);
-
-      set((state) => ({
-        enrollments: state.enrollments.filter((e) => e.id !== id),
-        loading: false,
-      }));
-
-      toast.success("Inscription supprimée avec succès");
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error ||
-        "Erreur lors de la suppression de l'inscription";
-      console.error("Failed to delete enrollment:", err);
-      set({
-        error: errorMessage,
-        loading: false,
-      });
-
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
-    }
-  },
-
-  // NOUVELLE FONCTION : Calcul des dates d'inscription
-  calculateEnrollmentDates: async (studentId: string) => {
-    set({ datesLoading: true, error: null });
-    try {
-      console.log(`📅 Store: Calcul des dates pour l'étudiant: ${studentId}`);
-
-      const response = await api.get(
-        `/enrollments/${studentId}/enrollment-dates`
-      );
-      const dates = response.data;
-
-      set({
-        enrollmentDates: dates,
-        datesLoading: false,
-        error: null,
-      });
-
-      console.log("✅ Store: Dates calculées avec succès:", dates);
-      return dates;
-    } catch (err: any) {
-      console.error("❌ Store: Erreur lors du calcul des dates:", err);
-
-      const errorMessage =
-        err.response?.data?.error ||
-        "Erreur lors du calcul des dates d'inscription";
-
-      // En cas d'erreur, on peut quand même définir des dates par défaut
-      const fallbackDates: EnrollmentDates = {
-        startDate: "janvier 2021",
-        endDate: "octobre 2025",
-        hasData: false,
-        error: errorMessage,
-      };
-
-      set({
-        enrollmentDates: fallbackDates,
-        datesLoading: false,
-        error: errorMessage,
-      });
-
-      toast.error("Erreur lors du calcul des dates d'inscription");
-      throw new Error(errorMessage);
-    }
-  },
-
-  // NOUVELLE FONCTION : Vider les dates d'inscription
-  clearEnrollmentDates: () => set({ enrollmentDates: null }),
-
-  getEnrollmentsByStudent: (studentId: string) => {
-    return get().enrollments.filter((e) => e.studentId === studentId);
-  },
-
-  getEnrollmentsByFaculty: (faculty: string, level?: string) => {
-    return get().enrollments.filter(
-      (e) => e.faculty === faculty && (level ? e.level === level : true)
-    );
-  },
-
-  getActiveEnrollment: (studentId: string) => {
-    return (
-      get().enrollments.find(
-        (e) => e.studentId === studentId && e.status === "Active"
-      ) || null
-    );
-  },
-
-  fetchEnrollmentsByStudent: async (studentId: string) => {
-    set({ loading: true, error: null });
-    try {
-      const response = await api.get(`/enrollments?studentId=${studentId}`);
-      set({
-        enrollments: response.data,
-        loading: false,
-      });
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error ||
-        "Erreur lors du chargement des inscriptions";
-      set({
-        error: errorMessage,
-        loading: false,
-      });
-      throw new Error(errorMessage);
-    }
-  },
-
-  assignFeeToStudent: async (feeAssignmentData: any) => {
-    set({ loading: true, error: null });
-    console.log("frais etudiant", feeAssignmentData);
-
-    try {
-      const response = await api.post("/student-fees", feeAssignmentData);
-
-      toast.success("Frais attribués avec succès");
+    } catch (err) {
+      console.error(" Failed to add enrollment:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({ error: "Erreur lors de l'ajout de l'inscription" });
+      throw err;
+    } finally {
       set({ loading: false });
-      return response.data;
-    } catch (error: any) {
-      const errorMessage =
-        error.response?.data?.error || "Erreur lors de l'attribution des frais";
-      set({ error: errorMessage, loading: false });
-
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
     }
   },
 
-  clearError: () => set({ error: null }),
+  /**
+   * @desc Met à jour une inscription existante
+   */
+  updateEnrollment: async (id, enrollmentData) => {
+    set({ loading: true, error: null });
+    try {
+      const payload = {
+        classId: enrollmentData.classId,
+        status: enrollmentData.status,
+        enrollmentDate: enrollmentData.enrollmentDate,
+      };
+
+      console.log("📤 Envoi mise à jour inscription:", { id, payload });
+      const response = await api.put(`/enrollments/${id}`, payload);
+      console.log(" Réponse mise à jour inscription:", response.data);
+
+      await get().fetchEnrollments(); // Recharge les données
+      return response.data;
+    } catch (err) {
+      console.error(" Failed to update enrollment:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({ error: "Erreur lors de la mise à jour de l'inscription" });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /**
+   * @desc Supprime une inscription
+   */
+  deleteEnrollment: async (id) => {
+    set({ loading: true, error: null });
+    try {
+      console.log("🗑️ Suppression inscription:", id);
+      await api.delete(`/enrollments/${id}`);
+      console.log(" Inscription supprimée");
+
+      await get().fetchEnrollments(); // Recharge les données
+    } catch (err) {
+      console.error(" Failed to delete enrollment:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({ error: "Erreur lors de la suppression de l'inscription" });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /**
+   * @desc Réinscrit un étudiant
+   */
+  reenrollStudent: async (data) => {
+    set({ loading: true, error: null });
+    try {
+      const payload = {
+        studentId: data.studentId,
+        classId: data.classId,
+        academicYearId: data.academicYearId,
+        enrollmentDate:
+          data.enrollmentDate || new Date().toISOString().split("T")[0],
+        notes: data.notes,
+      };
+
+      console.log("📤 Réinscription étudiant:", payload);
+      const response = await api.post("/enrollments/reenroll", payload);
+      console.log(" Réponse réinscription:", response.data);
+
+      await get().fetchEnrollments(); // Recharge les données
+      return response.data;
+    } catch (err) {
+      console.error(" Failed to reenroll student:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({ error: "Erreur lors de la réinscription" });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /**
+   * @desc Désinscrit un étudiant
+   */
+  unenrollStudent: async (id, reason) => {
+    set({ loading: true, error: null });
+    try {
+      console.log("🚫 Désinscription étudiant:", { id, reason });
+      const response = await api.delete(`/enrollments/${id}/unenroll`, {
+        data: { reason },
+      });
+      console.log(" Réponse désinscription:", response.data);
+
+      await get().fetchEnrollments(); // Recharge les données
+      return response.data;
+    } catch (err) {
+      console.error(" Failed to unenroll student:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({ error: "Erreur lors de la désinscription" });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /**
+   * @desc Valide la réinscription d'un étudiant
+   */
+  validateReenrollment: async (studentId) => {
+    set({ loading: true, error: null });
+    try {
+      console.log("🔍 Validation réinscription étudiant:", studentId);
+      const response = await api.get(`/enrollments/validate/${studentId}`);
+      console.log(" Réponse validation:", response.data);
+
+      return response.data;
+    } catch (err) {
+      console.error(" Failed to validate reenrollment:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({ error: "Erreur lors de la validation" });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /**
+   * @desc Crée des inscriptions en masse
+   */
+  createBulkEnrollments: async (enrollments) => {
+    set({ loading: true, error: null });
+    try {
+      console.log("📦 Création inscriptions en masse:", enrollments.length);
+      const response = await api.post("/enrollments/bulk", { enrollments });
+      console.log(" Réponse inscriptions en masse:", response.data);
+
+      await get().fetchEnrollments(); // Recharge les données
+      return response.data;
+    } catch (err) {
+      console.error(" Failed to create bulk enrollments:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({ error: "Erreur lors des inscriptions en masse" });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /**
+   * @desc Récupère les structures de frais disponibles
+   */
+  getAvailableFeeStructures: async () => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.get("/fee-structures");
+      console.log("📥 Réponse structures de frais:", response.data);
+
+      // Gérer différents formats de réponse
+      let feeStructures = [];
+
+      if (
+        response.data.feeStructures &&
+        Array.isArray(response.data.feeStructures)
+      ) {
+        feeStructures = response.data.feeStructures;
+      } else if (Array.isArray(response.data)) {
+        feeStructures = response.data;
+      } else if (response.data.data && Array.isArray(response.data.data)) {
+        feeStructures = response.data.data;
+      }
+
+      console.log(` ${feeStructures.length} structures de frais trouvées`);
+      return feeStructures;
+    } catch (err) {
+      console.error(" Failed to fetch fee structures:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({ error: "Erreur lors du chargement des structures de frais" });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  // ==================== MÉTHODES UTILITAIRES ====================
+
+  /**
+   * @desc Filtre les inscriptions par étudiant
+   */
+  getEnrollmentsByStudent: (studentId) => {
+    const { enrollments } = get();
+
+    if (!Array.isArray(enrollments)) {
+      return [];
+    }
+
+    const result = enrollments.filter((e) => e.student.id === studentId);
+
+    return result;
+  },
+
+  /**
+   * @desc Filtre les inscriptions par classe
+   */
+  getEnrollmentsByClass: (classId) => {
+    const { enrollments } = get();
+    console.log(`🔍 Recherche inscriptions pour classId: ${classId}`);
+
+    if (!Array.isArray(enrollments)) {
+      console.warn(" enrollments n'est pas un tableau:", enrollments);
+      return [];
+    }
+
+    return enrollments.filter((e) => e.classId === classId);
+  },
+
+  /**
+   * @desc Filtre les inscriptions par année académique
+   */
+  getEnrollmentsByAcademicYear: (academicYearId) => {
+    const { enrollments } = get();
+    console.log(
+      `🔍 Recherche inscriptions pour academicYearId: ${academicYearId}`
+    );
+
+    if (!Array.isArray(enrollments)) {
+      console.warn(" enrollments n'est pas un tableau:", enrollments);
+      return [];
+    }
+
+    return enrollments.filter((e) => e.academicYearId === academicYearId);
+  },
+
+  /**
+   * @desc Filtre les inscriptions par statut
+   */
+  getEnrollmentsByStatus: (status) => {
+    const { enrollments } = get();
+    console.log(`🔍 Recherche inscriptions avec statut: ${status}`);
+
+    if (!Array.isArray(enrollments)) {
+      console.warn(" enrollments n'est pas un tableau:", enrollments);
+      return [];
+    }
+
+    return enrollments.filter((e) => e.status === status);
+  },
+
+  /**
+   * @desc Assigner des frais à une inscription
+   */
+  assignFeesToEnrollment: async (
+    enrollmentId: string,
+    feeStructureId: string[],
+    academicYearId?: string[]
+  ) => {
+    set({ loading: true, error: null });
+    try {
+      console.log("💰 Assignation frais à l'inscription:", {
+        enrollmentId,
+        feeStructureId,
+        academicYearId,
+      });
+
+      const response = await api.post(
+        `/enrollments/${enrollmentId}/assign-fees`,
+        {
+          feeStructureId,
+          academicYearId,
+        }
+      );
+
+      console.log(" Réponse assignation frais:", response.data);
+
+      return response.data;
+    } catch (err) {
+      console.error(" Failed to assign fees to enrollment:", err);
+      console.error(" Réponse d'erreur:", err.response?.data);
+      set({ error: "Erreur lors de l'assignation des frais" });
+      throw err;
+    } finally {
+      set({ loading: false });
+    }
+  },
 }));

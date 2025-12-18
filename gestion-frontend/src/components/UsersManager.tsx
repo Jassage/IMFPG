@@ -17,6 +17,9 @@ import {
   MoreVertical,
   ChevronDown,
   ChevronUp,
+  Key,
+  Shield,
+  AlertTriangle,
 } from "lucide-react";
 import {
   Dialog,
@@ -24,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -40,6 +44,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -54,6 +59,18 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuthStore } from "@/store/authStore";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Pagination } from "./ui/pagination";
 
 // Schéma de validation avec Zod
 const userSchema = z.object({
@@ -79,16 +96,19 @@ const userSchema = z.object({
     })
     .optional()
     .or(z.literal("")),
-  role: z.enum(["Admin", "Professeur", "Secrétaire", "Directeur", "Doyen"]),
+  role: z.enum([
+    "Admin",
+    "Professeur",
+    "Secretaire",
+    "Directeur",
+    "Student",
+    "Parent",
+  ]), // Rôles simplifiés selon votre API
   status: z.enum(["Actif", "Inactif"]),
   password: z
     .string()
-    .min(8, {
-      message: "Le mot de passe doit contenir au moins 8 caractères",
-    })
-    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-      message:
-        "Le mot de passe doit contenir au moins une majuscule, une minuscule et un chiffre",
+    .min(6, {
+      message: "Le mot de passe doit contenir au moins 6 caractères",
     })
     .optional()
     .or(z.literal("")),
@@ -103,19 +123,39 @@ export const UsersManager = () => {
     createUser,
     updateUser,
     deleteUser,
+    updateUserStatus,
+    hardDeleteUser,
+    getUserDependencies,
+    updateUserRole,
+    activateUser,
+    resetPassword,
     loading,
     error,
+    filters,
+    setFilters,
   } = useUserStore();
+
   const { user: currentUser } = useAuthStore();
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortConfig, setSortConfig] = useState<{
     key: keyof User;
     direction: "asc" | "desc";
   } | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  // États pour les dialogues de confirmation
+  const [showStatusDialog, setShowStatusDialog] = useState(false);
+  const [showRoleDialog, setShowRoleDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [newStatus, setNewStatus] = useState<string>("");
+  const [newRole, setNewRole] = useState<string>("");
+  const [statusReason, setStatusReason] = useState<string>("");
+  const [showHardDeleteDialog, setShowHardDeleteDialog] = useState(false);
+  const [dependencies, setDependencies] = useState<any>(null);
+  const [showDependenciesDialog, setShowDependenciesDialog] = useState(false);
 
   // Initialisation du formulaire avec react-hook-form et zod
   const {
@@ -125,7 +165,6 @@ export const UsersManager = () => {
     reset,
     setValue,
     watch,
-    trigger,
   } = useForm<UserFormData>({
     resolver: zodResolver(userSchema),
     defaultValues: {
@@ -133,7 +172,7 @@ export const UsersManager = () => {
       lastName: "",
       email: "",
       phone: "",
-      role: "Admin",
+      role: "Parent",
       status: "Actif",
       password: "",
     },
@@ -141,23 +180,33 @@ export const UsersManager = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]);
+  }, [fetchUsers, filters]);
 
-  const getAvailableRoles = () => {
-    // Cast to any to avoid TypeScript error when "Doyen" is not part of the declared role union
-    if ((currentUser?.role as any) === "Doyen") {
-      return ["Professeur", "Secrétaire"]; // Les doyens ne peuvent créer que ces rôles
-    }
-    return ["Admin", "Professeur", "Secrétaire", "Directeur", "Doyen"];
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+    setFilters({ search: value });
   };
 
-  // Cacher le bouton de suppression pour certains rôles
-  const canDeleteUser = (targetUser: User) => {
-    if (currentUser?.role === "Doyen") {
-      // Les doyens ne peuvent pas supprimer d'admins ou d'autres doyens
-      return !["Admin", "Doyen"].includes(targetUser.role);
+  const getAvailableRoles = () => {
+    if (currentUser?.role === "Admin") {
+      return [
+        "Admin",
+        "Directeur",
+        "Student",
+        "Secretaire",
+        "Professeur",
+        "Parent",
+      ];
     }
-    return true;
+    // Autres logiques selon les permissions
+    return [
+      "Amin",
+      "Parent",
+      "Student",
+      "Professeur",
+      "Secretaire",
+      "Directeur",
+    ];
   };
 
   // Fonction pour ouvrir le formulaire d'édition
@@ -181,7 +230,7 @@ export const UsersManager = () => {
       lastName: "",
       email: "",
       phone: "",
-      role: "Admin",
+      role: "Parent",
       status: "Actif",
       password: "",
     });
@@ -215,7 +264,6 @@ export const UsersManager = () => {
           role: data.role,
           status: data.status,
           password: data.password as string,
-          lastLogin: "",
           avatar: "",
         });
 
@@ -236,60 +284,109 @@ export const UsersManager = () => {
     }
   };
 
-  const handleDelete = async (userId: string, userName: string) => {
-    if (
-      confirm(`Êtes-vous sûr de vouloir supprimer l'utilisateur ${userName} ?`)
-    ) {
-      try {
-        await deleteUser(userId);
-        toast({
-          title: "Suppression réussie",
-          description: "L'utilisateur a été supprimé avec succès",
-        });
-      } catch (error: any) {
-        toast({
-          title: "Erreur",
-          description: error.message || "Erreur lors de la suppression",
-          variant: "destructive",
-        });
-      }
+  const confirmDelete = async () => {
+    if (!selectedUser) return;
+
+    try {
+      await deleteUser(selectedUser.id);
+      toast({
+        title: "Désactivation réussie",
+        description: "L'utilisateur a été désactivé avec succès",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Erreur lors de la désactivation",
+        variant: "destructive",
+      });
+    } finally {
+      setShowDeleteDialog(false);
+      setSelectedUser(null);
     }
   };
 
-  const handleToggleStatus = async (user: User) => {
-    const newStatus = user.status === "Actif" ? "Inactif" : "Actif";
-    const action = newStatus === "Actif" ? "activer" : "désactiver";
+  const confirmStatusChange = async () => {
+    if (!selectedUser || !newStatus) return;
 
-    if (
-      confirm(
-        `Êtes-vous sûr de vouloir ${action} l'utilisateur ${user.firstName} ${user.lastName} ?`
-      )
-    ) {
-      try {
-        // Utilisez directement les données de l'utilisateur
-        await updateUser(user.id, {
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone || "",
-          role: user.role,
-          status: newStatus,
-        });
+    try {
+      await updateUserStatus(selectedUser.id, newStatus, statusReason);
+      toast({
+        title: "Statut modifié",
+        description: `Le statut a été changé en ${newStatus}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description:
+          error.message || "Erreur lors de la modification du statut",
+        variant: "destructive",
+      });
+    } finally {
+      setShowStatusDialog(false);
+      setSelectedUser(null);
+      setNewStatus("");
+      setStatusReason("");
+    }
+  };
 
-        toast({
-          title: "Statut modifié",
-          description: `L'utilisateur a été ${
-            newStatus === "Actif" ? "activé" : "désactivé"
-          } avec succès`,
-        });
-      } catch (error: any) {
-        toast({
-          title: "Erreur",
-          description:
-            error.message || "Erreur lors de la modification du statut",
-          variant: "destructive",
-        });
-      }
+  const confirmRoleChange = async () => {
+    if (!selectedUser || !newRole) return;
+
+    try {
+      await updateUserRole(selectedUser.id, newRole);
+      toast({
+        title: "Rôle modifié",
+        description: `Le rôle a été changé en ${newRole}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Erreur lors de la modification du rôle",
+        variant: "destructive",
+      });
+    } finally {
+      setShowRoleDialog(false);
+      setSelectedUser(null);
+      setNewRole("");
+    }
+  };
+
+  const confirmResetPassword = async () => {
+    if (!selectedUser) return;
+
+    try {
+      await resetPassword(selectedUser.id);
+      toast({
+        title: "Réinitialisation envoyée",
+        description:
+          "Un email de réinitialisation a été envoyé à l'utilisateur",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description:
+          error.message || "Erreur lors de l'envoi de la réinitialisation",
+        variant: "destructive",
+      });
+    } finally {
+      setShowResetPasswordDialog(false);
+      setSelectedUser(null);
+    }
+  };
+
+  const activateSelectedUser = async (user: User) => {
+    try {
+      await activateUser(user.id);
+      toast({
+        title: "Utilisateur réactivé",
+        description: "L'utilisateur a été réactivé avec succès",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Erreur lors de la réactivation",
+        variant: "destructive",
+      });
     }
   };
 
@@ -312,11 +409,7 @@ export const UsersManager = () => {
         .includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesRole = roleFilter === "all" || user.role === roleFilter;
-    const matchesStatus =
-      statusFilter === "all" || user.status === statusFilter;
-
-    return matchesSearch && matchesRole && matchesStatus;
+    return matchesSearch;
   });
 
   // Trier les utilisateurs
@@ -336,20 +429,25 @@ export const UsersManager = () => {
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case "Admin":
-        return "bg-red-100 text-red-800";
-      case "Professeur":
-        return "bg-green-100 text-green-800";
-      case "Directeur":
-        return "bg-yellow-100 text-yellow-800";
-      case "Secrétaire":
-        return "bg-blue-100 text-blue-800";
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+      case "Staff":
+        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      case "Parent":
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
     }
   };
 
   const getStatusBadgeVariant = (status: string) => {
-    return status === "Actif" ? "default" : "secondary";
+    switch (status) {
+      case "Actif":
+        return "default";
+      case "Inactif":
+        return "secondary";
+      default:
+        return "outline";
+    }
   };
 
   const SortIcon = ({ columnKey }: { columnKey: keyof User }) => {
@@ -363,8 +461,9 @@ export const UsersManager = () => {
     );
   };
 
-  if (loading)
+  if (loading && users.length === 0)
     return <div className="flex justify-center p-8">Chargement...</div>;
+
   if (error) {
     return (
       <div className="p-4 text-red-500">
@@ -374,8 +473,219 @@ export const UsersManager = () => {
     );
   }
 
+  const checkDependencies = async (userId: string) => {
+    try {
+      const deps = await getUserDependencies(userId);
+      setDependencies(deps);
+      setShowDependenciesDialog(true);
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description:
+          error.message || "Erreur lors de la vérification des dépendances",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const confirmHardDelete = async () => {
+    if (!selectedUser) return;
+
+    try {
+      await hardDeleteUser(selectedUser.id);
+      toast({
+        title: "Suppression réussie",
+        description: "L'utilisateur a été supprimé définitivement",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Erreur lors de la suppression",
+        variant: "destructive",
+      });
+    } finally {
+      setShowHardDeleteDialog(false);
+      setSelectedUser(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Dialogues de confirmation */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Désactiver l'utilisateur</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir désactiver l'utilisateur{" "}
+              {selectedUser?.firstName} {selectedUser?.lastName} ? L'utilisateur
+              ne pourra plus se connecter mais ses données seront conservées.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>
+              Désactiver
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Modifier le statut</AlertDialogTitle>
+            <AlertDialogDescription>
+              Changer le statut de {selectedUser?.firstName}{" "}
+              {selectedUser?.lastName}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <Select value={newStatus} onValueChange={setNewStatus}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner un statut" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Actif">Actif</SelectItem>
+                <SelectItem value="Inactif">Inactif</SelectItem>
+                <SelectItem value="Suspendu">Suspendu</SelectItem>
+                <SelectItem value="En attente">En attente</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="space-y-2">
+              <Label htmlFor="reason">Raison (optionnel)</Label>
+              <Textarea
+                id="reason"
+                placeholder="Raison du changement de statut..."
+                value={statusReason}
+                onChange={(e) => setStatusReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmStatusChange}>
+              Modifier
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showRoleDialog} onOpenChange={setShowRoleDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Modifier le rôle</AlertDialogTitle>
+            <AlertDialogDescription>
+              Changer le rôle de {selectedUser?.firstName}{" "}
+              {selectedUser?.lastName}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <Select value={newRole} onValueChange={setNewRole}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner un rôle" />
+              </SelectTrigger>
+              <SelectContent>
+                {getAvailableRoles().map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {role}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRoleChange}>
+              Modifier
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={showResetPasswordDialog}
+        onOpenChange={setShowResetPasswordDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Réinitialiser le mot de passe</AlertDialogTitle>
+            <AlertDialogDescription>
+              Envoyer un email de réinitialisation de mot de passe à{" "}
+              {selectedUser?.firstName} {selectedUser?.lastName} ? Un lien de
+              réinitialisation sera envoyé à {selectedUser?.email}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmResetPassword}>
+              Envoyer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={showHardDeleteDialog}
+        onOpenChange={setShowHardDeleteDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer définitivement</AlertDialogTitle>
+            <AlertDialogDescription className="text-red-600">
+              ⚠️ ACTION IRREVERSIBLE
+            </AlertDialogDescription>
+            <AlertDialogDescription>
+              Êtes-vous ABSOLUMENT sûr de vouloir supprimer définitivement{" "}
+              {selectedUser?.firstName} {selectedUser?.lastName} ?
+              <br />
+              <strong>
+                Toutes les données seront PERDUES et ne pourront pas être
+                récupérées.
+              </strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmHardDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Supprimer définitivement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={showDependenciesDialog}
+        onOpenChange={setShowDependenciesDialog}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dépendances de l'utilisateur</DialogTitle>
+          </DialogHeader>
+          {dependencies ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Cet utilisateur a des données associées qui doivent être gérées
+                avant suppression.
+              </p>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <pre className="text-sm overflow-auto">
+                  {JSON.stringify(dependencies, null, 2)}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <p>
+              Aucune dépendance trouvée. Vous pouvez supprimer cet utilisateur.
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* En-tête */}
       <div className="flex flex-col space-y-4 md:flex-row md:justify-between md:items-center md:space-y-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
@@ -540,36 +850,49 @@ export const UsersManager = () => {
         </Dialog>
       </div>
 
+      {/* Filtres */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
             placeholder="Rechercher un utilisateur..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
             className="pl-10"
           />
         </div>
 
         <div className="flex gap-2">
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-[130px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Rôle" />
+          <Select
+            value={filters.role}
+            onValueChange={(value) =>
+              setFilters({ role: value === "all" ? "" : value })
+            }
+          >
+            <SelectTrigger className="w-[150px]">
+              <Shield className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Filtrer par rôle" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les rôles</SelectItem>
               <SelectItem value="Admin">Admin</SelectItem>
-              <SelectItem value="Professeur">Professeur</SelectItem>
-              <SelectItem value="Secrétaire">Secrétaire</SelectItem>
               <SelectItem value="Directeur">Directeur</SelectItem>
+              <SelectItem value="Professeur">Professeur</SelectItem>
+              <SelectItem value="Secretaire">Secrétaire</SelectItem>
+              <SelectItem value="Student">Éleve</SelectItem>
+              <SelectItem value="Parent">Parent</SelectItem>
             </SelectContent>
           </Select>
 
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[130px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Statut" />
+          <Select
+            value={filters.status}
+            onValueChange={(value) =>
+              setFilters({ status: value === "all" ? "" : value })
+            }
+          >
+            <SelectTrigger className="w-[150px]">
+              <UserCheck className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Filtrer par statut" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les statuts</SelectItem>
@@ -580,7 +903,8 @@ export const UsersManager = () => {
         </div>
       </div>
 
-      <Card className="shadow-sm ujeph-card">
+      {/* Tableau des utilisateurs */}
+      <Card className="shadow-sm">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
@@ -623,7 +947,7 @@ export const UsersManager = () => {
                     </div>
                   </TableHead>
                   <TableHead>Téléphone</TableHead>
-                  <TableHead>Date de création</TableHead>
+                  <TableHead>Dernière connexion</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -635,8 +959,8 @@ export const UsersManager = () => {
                         <Avatar className="h-9 w-9">
                           <AvatarImage src={user.avatar} />
                           <AvatarFallback>
-                            {user.firstName[0]}
-                            {user.lastName[0]}
+                            {user.firstName?.[0] || "U"}
+                            {user.lastName?.[0] || "S"}
                           </AvatarFallback>
                         </Avatar>
                         <div>
@@ -662,7 +986,9 @@ export const UsersManager = () => {
                     </TableCell>
                     <TableCell>{user.phone || "Non renseigné"}</TableCell>
                     <TableCell>
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {user.lastLogin
+                        ? new Date(user.lastLogin).toLocaleDateString()
+                        : "Jamais"}
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
@@ -676,41 +1002,79 @@ export const UsersManager = () => {
                             <Edit className="h-4 w-4 mr-2" />
                             Modifier
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleToggleStatus(user)}
-                            className={
-                              user.status === "Actif"
-                                ? "text-red-600"
-                                : "text-green-600"
-                            }
-                          >
-                            {user.status === "Actif" ? (
-                              <>
-                                <UserX className="h-4 w-4 mr-2" />
-                                Désactiver
-                              </>
-                            ) : (
-                              <>
-                                <UserCheck className="h-4 w-4 mr-2" />
-                                Activer
-                              </>
-                            )}
-                          </DropdownMenuItem>
 
-                          {canDeleteUser(user) && (
+                          {user.status === "Inactif" ? (
                             <DropdownMenuItem
-                              onClick={() =>
-                                handleDelete(
-                                  user.id,
-                                  `${user.firstName} ${user.lastName}`
-                                )
-                              }
-                              className="text-red-600"
+                              onClick={() => activateSelectedUser(user)}
                             >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Supprimer
+                              <UserCheck className="h-4 w-4 mr-2" />
+                              Réactiver
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setShowStatusDialog(true);
+                              }}
+                            >
+                              <UserX className="h-4 w-4 mr-2" />
+                              Changer statut
                             </DropdownMenuItem>
                           )}
+
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setShowRoleDialog(true);
+                            }}
+                          >
+                            <Shield className="h-4 w-4 mr-2" />
+                            Changer rôle
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setShowResetPasswordDialog(true);
+                            }}
+                          >
+                            <Key className="h-4 w-4 mr-2" />
+                            Réinitialiser mot de passe
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setShowDeleteDialog(true);
+                            }}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Désactiver
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedUser(user);
+                              checkDependencies(user.id);
+                            }}
+                            className="text-yellow-600"
+                          >
+                            <AlertTriangle className="h-4 w-4 mr-2" />
+                            Vérifier dépendances
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setShowHardDeleteDialog(true);
+                            }}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Supprimer définitivement
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -728,6 +1092,36 @@ export const UsersManager = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {users.length > 0 && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Affichage de {sortedUsers.length} sur {users.length} utilisateurs
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFilters({ page: (filters.page || 1) - 1 })}
+              disabled={filters.page === 1}
+            >
+              Précédent
+            </Button>
+            <span className="text-sm">Page {filters.page || 1}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFilters({ page: (filters.page || 1) + 1 })}
+              disabled={
+                (filters.page || 1) * sortedUsers.length >= users.length
+              }
+            >
+              Suivant
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
