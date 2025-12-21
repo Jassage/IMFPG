@@ -13,6 +13,14 @@ interface AuthState {
   error: string | null;
   initialized: boolean;
   lastActivity: number;
+  requiresPasswordChange?: boolean;
+
+  updatePassword: (
+    currentPassword: string,
+    newPassword: string,
+    forceChange?: boolean
+  ) => Promise<any>;
+  checkPasswordChangeRequired: () => Promise<boolean>;
   login: (email: string, password: string) => Promise<void>;
   logout: (reason?: string) => void;
   checkAuth: () => Promise<boolean>;
@@ -20,7 +28,6 @@ interface AuthState {
   refreshToken: () => Promise<boolean>;
   updateActivity: () => void;
   initialize: () => Promise<void>;
-  fetchPotentialDeans: () => Promise<any[]>;
   setLoading: (loading: boolean) => void;
 }
 
@@ -166,7 +173,7 @@ export const useAuthStore = create<AuthState>()(
             get().updateActivity();
           });
         } catch (error: any) {
-          console.error("❌ Erreur d'initialisation:", error.message);
+          console.error(" Erreur d'initialisation:", error.message);
 
           // Nettoyer les données invalides
           localStorage.removeItem("authToken");
@@ -258,7 +265,7 @@ export const useAuthStore = create<AuthState>()(
           toast.success(`Bienvenue ${user.firstName} ${user.lastName} !`);
           return;
         } catch (error: any) {
-          console.error("❌ Erreur de connexion:", error);
+          console.error(" Erreur de connexion:", error);
 
           let errorMessage = "Erreur de connexion";
 
@@ -347,6 +354,54 @@ export const useAuthStore = create<AuthState>()(
         return false;
       },
 
+      // Action pour vérifier si le changement est requis
+      checkPasswordChangeRequired: async () => {
+        try {
+          const response = await api.get("/auth/check-password-change");
+          set({
+            requiresPasswordChange: response.data.data.requiresPasswordChange,
+          });
+          return response.data.data.requiresPasswordChange;
+        } catch (error) {
+          console.error(
+            "Erreur lors de la vérification du mot de passe:",
+            error
+          );
+          return false;
+        }
+      },
+
+      // Action pour changer le mot de passe (forcé ou normal)
+      updatePassword: async (
+        currentPassword: string,
+        newPassword: string,
+        forceChange: boolean = false
+      ) => {
+        try {
+          const endpoint = forceChange
+            ? "/auth/force-password-change"
+            : "/auth/change-password";
+
+          const response = await api.post(endpoint, {
+            ...(forceChange ? {} : { currentPassword }),
+            newPassword,
+          });
+
+          if (response.data.success) {
+            if (forceChange) {
+              set({ requiresPasswordChange: false });
+            }
+          }
+
+          return response.data;
+        } catch (error: any) {
+          throw new Error(
+            error.response?.data?.message ||
+              "Erreur lors du changement de mot de passe"
+          );
+        }
+      },
+
       // EFFACER LES ERREURS
       clearError: () => set({ error: null }),
 
@@ -379,7 +434,7 @@ export const useAuthStore = create<AuthState>()(
             return true;
           }
         } catch (error) {
-          console.error("❌ Erreur rafraîchissement token:", error);
+          console.error(" Erreur rafraîchissement token:", error);
         }
 
         return false;
@@ -396,7 +451,7 @@ export const useAuthStore = create<AuthState>()(
           const response = await api.get("/users/potential-deans");
           return response.data;
         } catch (error) {
-          console.error("❌ Erreur récupération doyens:", error);
+          console.error(" Erreur récupération doyens:", error);
           throw error;
         }
       },
@@ -409,10 +464,9 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         lastActivity: state.lastActivity,
       }),
-      // ✅ CORRECTION: Meilleure gestion de la réhydratation
       onRehydrateStorage: () => (state, error) => {
         if (error) {
-          console.error("❌ Erreur de réhydratation:", error);
+          console.error(" Erreur de réhydratation:", error);
         }
 
         if (state) {

@@ -61,6 +61,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import api from "@/services/api";
 // import { DatePicker } from "@/components/ui/date-picker";
 
 interface AuditLog {
@@ -86,12 +88,15 @@ interface AuditLog {
 }
 
 interface AuditLogsResponse {
-  logs: AuditLog[];
+  success: boolean;
+  data: AuditLog[];
   pagination: {
     page: number;
     limit: number;
-    total: number;
-    pages: number;
+    totalCount: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
   };
   stats?: {
     total: number;
@@ -329,24 +334,33 @@ export const AuditLogsManager = () => {
         }
       });
 
-      const API_URL = "http://localhost:4000";
-      const response = await fetch(`${API_URL}/api/audit/audit-logs?${params}`);
+      const response = await api.get(`/audit?${params}`);
 
-      if (!response.ok) {
-        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+      if (!response.data || !response.data.success) {
+        throw new Error("Erreur lors du chargement des logs");
       }
 
-      const data: AuditLogsResponse = await response.json();
-      setLogs(data.logs || []);
-      setPagination(
-        data.pagination || { page: 1, limit: 20, total: 0, pages: 0 }
-      );
+      const data: AuditLogsResponse = response.data;
+
+      console.log("Audit logs data:", data); // Ajoutez ce log pour déboguer
+
+      setLogs(data.data || []);
+
+      if (data.pagination) {
+        setPagination({
+          page: data.pagination.page || 1,
+          limit: data.pagination.limit || filters.limit,
+          total: data.pagination.totalCount || 0,
+          pages: data.pagination.totalPages || 0,
+        });
+      }
+
       setStats(data.stats);
     } catch (error) {
-      console.error("Erreur détaillée:", error);
+      console.error(" Erreur lors du chargement des logs:", error);
       toast({
-        title: "Erreur",
-        description: `Impossible de charger les logs: ${error.message}`,
+        title: "Erreur de chargement",
+        description: "Impossible de récupérer les logs d'audit",
         variant: "destructive",
       });
     } finally {
@@ -365,16 +379,16 @@ export const AuditLogsManager = () => {
       });
       params.append("format", format);
 
-      const API_URL = "http://localhost:4000";
-      const response = await fetch(
-        `${API_URL}/api/audit-logs/export?${params}`
-      );
+      const response = await api.get(`/audit/export?${params}`);
 
-      if (!response.ok) {
+      if (!response && response) {
         throw new Error("Erreur lors de l'export");
       }
 
-      const blob = await response.blob();
+      const blob = new Blob([response.data], {
+        type: format === "csv" ? "text/csv" : "application/json",
+      });
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -1011,8 +1025,3 @@ export const AuditLogsManager = () => {
     </TooltipProvider>
   );
 };
-
-// Helper function pour cn (si non disponible)
-function cn(...classes: (string | undefined | null | false)[]) {
-  return classes.filter(Boolean).join(" ");
-}

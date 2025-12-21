@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,14 @@ import {
   ShieldAlert,
   CalendarDays,
   Eye,
+  ArrowLeft,
+  Info,
+  UserX,
+  Key,
+  MailOpen,
+  Link2,
+  Unlink,
+  Check,
 } from "lucide-react";
 import {
   Dialog,
@@ -83,7 +91,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Professeur } from "@/types/academic";
-import useProfesseurStore from "@/store/professorStore";
+import useProfesseurStore, {
+  Professeur as StoreProfesseur,
+} from "@/store/professorStore";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -91,6 +101,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ProfesseurDetails } from "./professorDetails";
+import api from "@/services/api";
 
 // Fonction pour générer un identifiant unique
 const generateProfesseurId = (
@@ -122,7 +134,7 @@ const generateProfesseurId = (
   return finalCode;
 };
 
-// Schéma de validation amélioré avec toutes les contraintes
+// Schéma de validation amélioré
 const professeurSchema = z.object({
   firstName: z
     .string()
@@ -154,20 +166,6 @@ const professeurSchema = z.object({
     .string()
     .min(1, { message: "L'email est requis" })
     .email({ message: "Adresse email invalide" })
-    .refine(
-      (email) => {
-        // Vérifier le format de l'email académique
-        const academicDomains = [".edu", ".ac.", "univ-", "school", "college"];
-        return (
-          academicDomains.some((domain) =>
-            email.toLowerCase().includes(domain)
-          ) || /@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)
-        );
-      },
-      {
-        message: "Veuillez utiliser une adresse email valide",
-      }
-    )
     .transform((value) => value.toLowerCase().trim()),
 
   phone: z
@@ -175,17 +173,10 @@ const professeurSchema = z.object({
     .refine(
       (phone) => {
         if (!phone || phone.trim() === "") return true; // Optionnel
-
-        // Nettoyer le numéro (supprimer espaces, tirets, parenthèses)
         const cleaned = phone.replace(/[\s\-()]/g, "");
-
-        // Format Haïtien: +509xxxxxxxx (10 chiffres après +509)
         const phoneRegex = /^(\+509)\d{8}$/;
-
-        // Vérifier longueur: +509 (4) + 8 chiffres = 12 caractères
         const isValidLength = cleaned.length === 12;
         const isValidFormat = phoneRegex.test(cleaned);
-
         return isValidLength && isValidFormat;
       },
       {
@@ -208,20 +199,12 @@ const professeurSchema = z.object({
     .refine(
       (date) => {
         if (!date || date.trim() === "") return true; // Optionnel
-
         const selectedDate = new Date(date);
         const today = new Date();
         const minDate = new Date("2000-01-01");
-
-        // Vérifier que la date est valide
         if (isNaN(selectedDate.getTime())) return false;
-
-        // Vérifier que la date n'est pas dans le futur
         if (selectedDate > today) return false;
-
-        // Vérifier que la date est après 2000
         if (selectedDate < minDate) return false;
-
         return true;
       },
       {
@@ -257,6 +240,8 @@ const professeurSchema = z.object({
     })
     .optional()
     .default(""),
+
+  createUserAccount: z.boolean().optional().default(false),
 });
 
 type ProfesseurFormData = z.infer<typeof professeurSchema>;
@@ -283,19 +268,38 @@ export const ProfesseursManager = () => {
     key: keyof Professeur;
     direction: "asc" | "desc";
   } | null>(null);
-  const [editingProfesseur, setEditingProfesseur] = useState<Professeur | null>(
-    null
-  );
+  const [editingProfesseur, setEditingProfesseur] = useState<
+    Professeur | StoreProfesseur | null
+  >(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStatusDialog, setShowStatusDialog] = useState(false);
-  const [selectedProfesseur, setSelectedProfesseur] =
-    useState<Professeur | null>(null);
+  const [selectedProfesseur, setSelectedProfesseur] = useState<
+    Professeur | StoreProfesseur | null
+  >(null);
   const [activeTab, setActiveTab] = useState("all");
   const [actionType, setActionType] = useState<"activate" | "deactivate">(
     "activate"
   );
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [isGeneratingMatricule, setIsGeneratingMatricule] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "details">("list");
+  const [selectedProfesseurDetails, setSelectedProfesseurDetails] = useState<
+    Professeur | StoreProfesseur | null
+  >(null);
+
+  // États pour la gestion des utilisateurs
+  const [showAttachUserDialog, setShowAttachUserDialog] = useState(false);
+  const [selectedProfesseurForUser, setSelectedProfesseurForUser] = useState<
+    Professeur | StoreProfesseur | null
+  >(null);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+  const [users, setUsers] = useState<any[]>([]);
+  const [attachUserForm, setAttachUserForm] = useState({
+    userId: "",
+    email: "",
+    createIfNotExists: false,
+  });
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   // Initialisation du formulaire
   const {
@@ -322,6 +326,7 @@ export const ProfesseursManager = () => {
       matricule: "",
       address: "",
       qualifications: "",
+      createUserAccount: false,
     },
     mode: "onChange",
   });
@@ -330,6 +335,7 @@ export const ProfesseursManager = () => {
   const lastNameValue = watch("lastName");
   const matriculeValue = watch("matricule");
   const phoneValue = watch("phone");
+  const createUserAccountValue = watch("createUserAccount");
 
   useEffect(() => {
     fetchProfesseurs();
@@ -346,7 +352,6 @@ export const ProfesseursManager = () => {
         professeurs.map((p) => p.matricule || "")
       );
 
-      // Ne mettre à jour que si l'utilisateur n'a pas modifié manuellement le matricule
       if (!matriculeValue) {
         setValue("matricule", generatedMatricule, { shouldValidate: true });
       }
@@ -369,17 +374,13 @@ export const ProfesseursManager = () => {
   // Fonction pour formater le téléphone
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return "";
-
     const cleaned = phone.replace(/[\s\-()]/g, "");
-
-    // Format Haïtien: +509 XX XX XX XX
     if (cleaned.startsWith("+509") && cleaned.length === 12) {
       return `+509 ${cleaned.slice(4, 6)} ${cleaned.slice(
         6,
         8
       )} ${cleaned.slice(8, 10)} ${cleaned.slice(10)}`;
     }
-
     return phone;
   };
 
@@ -411,7 +412,7 @@ export const ProfesseursManager = () => {
   };
 
   // Fonction pour ouvrir le formulaire d'édition
-  const handleEdit = async (professeur: Professeur) => {
+  const handleEdit = async (professeur: Professeur | StoreProfesseur) => {
     try {
       const professeurDetails = await fetchProfesseurById(professeur.id);
       setEditingProfesseur(professeurDetails);
@@ -427,6 +428,7 @@ export const ProfesseursManager = () => {
       setValue("matricule", professeurDetails.matricule || "");
       setValue("address", professeurDetails.address || "");
       setValue("qualifications", professeurDetails.qualifications || "");
+      setValue("createUserAccount", !!professeurDetails.userId);
 
       setIsFormOpen(true);
     } catch (error) {
@@ -453,6 +455,7 @@ export const ProfesseursManager = () => {
       matricule: "",
       address: "",
       qualifications: "",
+      createUserAccount: false,
     });
   };
 
@@ -501,7 +504,7 @@ export const ProfesseursManager = () => {
       }
 
       // Préparer les données pour l'API
-      const professeurData = {
+      const professeurData: any = {
         firstName: data.firstName.trim(),
         lastName: data.lastName.trim(),
         email: data.email.toLowerCase().trim(),
@@ -514,17 +517,51 @@ export const ProfesseursManager = () => {
         qualifications: data.qualifications?.trim() || undefined,
       };
 
+      // Ajouter l'option de création de compte utilisateur si demandée
+      if (data.createUserAccount && !editingProfesseur?.userId) {
+        professeurData.createUserAccount = true;
+        professeurData.sendInvitation = true;
+      }
+
       if (editingProfesseur) {
-        await updateProfesseur(editingProfesseur.id, professeurData);
-        toast({
-          title: "✅ Professeur mis à jour",
-          description: `Le professeur ${data.firstName} ${data.lastName} a été modifié avec succès`,
-        });
+        // Pour la mise à jour, on peut également gérer la création de compte
+        if (data.createUserAccount && !editingProfesseur.userId) {
+          // Associer ou créer un compte utilisateur pour un professeur existant
+          try {
+            await attachUserToProfesseur(editingProfesseur.id, {
+              email: data.email,
+              createIfNotExists: true,
+            });
+
+            // Mettre à jour le professeur
+            await updateProfesseur(editingProfesseur.id, professeurData);
+
+            toast({
+              title: " Professeur mis à jour",
+              description: `Le professeur ${data.firstName} ${data.lastName} a été modifié et un compte utilisateur a été créé`,
+            });
+          } catch (error: any) {
+            toast({
+              title: " Erreur",
+              description: error.message || "Erreur lors de la mise à jour",
+              variant: "destructive",
+            });
+            return;
+          }
+        } else {
+          await updateProfesseur(editingProfesseur.id, professeurData);
+          toast({
+            title: " Professeur mis à jour",
+            description: `Le professeur ${data.firstName} ${data.lastName} a été modifié avec succès`,
+          });
+        }
       } else {
         await createProfesseur(professeurData);
         toast({
-          title: "✅ Professeur créé",
-          description: `Le professeur ${data.firstName} ${data.lastName} a été ajouté avec succès`,
+          title: " Professeur créé",
+          description: data.createUserAccount
+            ? `Le professeur ${data.firstName} ${data.lastName} a été créé avec un compte utilisateur`
+            : `Le professeur ${data.firstName} ${data.lastName} a été créé sans compte utilisateur`,
         });
       }
 
@@ -535,7 +572,7 @@ export const ProfesseursManager = () => {
         error.message || "Une erreur est survenue lors de l'enregistrement";
       setFormErrors([errorMessage]);
       toast({
-        title: "❌ Erreur",
+        title: " Erreur",
         description: errorMessage,
         variant: "destructive",
       });
@@ -546,8 +583,6 @@ export const ProfesseursManager = () => {
     if (!selectedProfesseur) return;
 
     try {
-      // Vérifier si le professeur a des assignations
-      // CORRECTION: Utiliser seulement assignments puisque classes n'existe pas
       const hasAssignments = (selectedProfesseur._count?.assignments || 0) > 0;
 
       if (hasAssignments) {
@@ -562,12 +597,12 @@ export const ProfesseursManager = () => {
 
       await deleteProfesseur(selectedProfesseur.id);
       toast({
-        title: "✅ Suppression réussie",
+        title: " Suppression réussie",
         description: "Le professeur a été supprimé avec succès",
       });
     } catch (error: any) {
       toast({
-        title: "❌ Erreur",
+        title: " Erreur",
         description: error.message || "Erreur lors de la suppression",
         variant: "destructive",
       });
@@ -584,7 +619,7 @@ export const ProfesseursManager = () => {
       if (actionType === "activate") {
         await activateProfesseur(selectedProfesseur.id);
         toast({
-          title: "✅ Activation réussie",
+          title: " Activation réussie",
           description: "Le professeur a été activé avec succès",
         });
       } else {
@@ -596,7 +631,7 @@ export const ProfesseursManager = () => {
       }
     } catch (error: any) {
       toast({
-        title: "❌ Erreur",
+        title: " Erreur",
         description: error.message || "Erreur lors du changement de statut",
         variant: "destructive",
       });
@@ -616,6 +651,141 @@ export const ProfesseursManager = () => {
       direction = "desc";
     }
     setSortConfig({ key, direction });
+  };
+
+  // Fonctions pour la gestion des utilisateurs
+  const loadUsers = async (search = "") => {
+    setLoadingUsers(true);
+    try {
+      const response = await api.get("/auth/users", {
+        params: {
+          search,
+          role: "Professeur",
+          limit: 20,
+        },
+      });
+      setUsers(response.data.data?.users || []);
+    } catch (error) {
+      console.error("Erreur lors du chargement des utilisateurs:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les utilisateurs",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleAttachUser = async (professeur: Professeur | StoreProfesseur) => {
+    setSelectedProfesseurForUser(professeur);
+    setAttachUserForm({
+      userId: "",
+      email: professeur.email,
+      createIfNotExists: false,
+    });
+    setShowAttachUserDialog(true);
+    loadUsers();
+  };
+
+  const handleSubmitAttachUser = async () => {
+    if (!selectedProfesseurForUser) return;
+
+    try {
+      const response = await api.post(
+        `/professeurs/${selectedProfesseurForUser.id}/attach-user`,
+        attachUserForm
+      );
+
+      const { professeur, userAccountCreated } = response.data.data;
+
+      toast({
+        title: " Succès",
+        description: userAccountCreated
+          ? "Compte utilisateur créé et associé avec succès"
+          : "Compte utilisateur associé avec succès",
+      });
+
+      setShowAttachUserDialog(false);
+      fetchProfesseurs(); // Rafraîchir la liste
+    } catch (error: any) {
+      toast({
+        title: " Erreur",
+        description:
+          error.response?.data?.message || "Erreur lors de l'association",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDetachUser = async (professeur: Professeur | StoreProfesseur) => {
+    if (!professeur.userId) {
+      toast({
+        title: "Avertissement",
+        description: "Ce professeur n'a pas de compte utilisateur associé",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await api.delete(`/professeurs/${professeur.id}/detach-user`);
+
+      toast({
+        title: " Compte détaché",
+        description: "Le compte utilisateur a été détaché avec succès",
+      });
+
+      fetchProfesseurs();
+    } catch (error: any) {
+      toast({
+        title: " Erreur",
+        description:
+          error.response?.data?.message || "Erreur lors du détachement",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // const handleSendInvitation = async (
+  //   professeur: Professeur | StoreProfesseur
+  // ) => {
+  //   if (!professeur.userId) {
+  //     toast({
+  //       title: "Avertissement",
+  //       description: "Ce professeur n'a pas de compte utilisateur associé",
+  //       variant: "destructive",
+  //     });
+  //     return;
+  //   }
+
+  //   try {
+  //     await api.post(`/auth/send-invitation/${professeur.id}`);
+
+  //     toast({
+  //       title: " Invitation envoyée",
+  //       description: "Un email d'invitation a été envoyé au professeur",
+  //     });
+  //   } catch (error: any) {
+  //     toast({
+  //       title: " Erreur",
+  //       description:
+  //         error.response?.data?.message ||
+  //         "Erreur lors de l'envoi de l'invitation",
+  //       variant: "destructive",
+  //     });
+  //   }
+  // };
+
+  const attachUserToProfesseur = async (
+    professeurId: string,
+    userData: any
+  ) => {
+    const response = await api.post(
+      `/professeurs/${professeurId}/attach-user`,
+      userData
+    );
+    return response.data;
   };
 
   const filteredProfesseurs = useMemo(() => {
@@ -713,10 +883,56 @@ export const ProfesseursManager = () => {
   const activeProfesseurs = professeurs.filter(
     (p) => p.status === "Actif"
   ).length;
+  const professeursWithAccount = professeurs.filter((p) => p.userId).length;
   const totalAssignments = professeurs.reduce(
     (total, prof) => total + (prof._count?.assignments || 0),
     0
   );
+
+  const handleViewDetails = useCallback(
+    (professeur: Professeur | StoreProfesseur) => {
+      setSelectedProfesseurDetails(professeur);
+      setViewMode("details");
+    },
+    []
+  );
+
+  const handleBackToList = useCallback(() => {
+    setViewMode("list");
+    setSelectedProfesseurDetails(null);
+  }, []);
+
+  // Dans le rendu conditionnel au début du return
+  if (viewMode === "details" && selectedProfesseurDetails) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            onClick={handleBackToList}
+            className="hover-scale transition-all duration-200"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Retour à la liste
+          </Button>
+          <div>
+            <h2 className="text-2xl font-bold">Détails du professeur</h2>
+            <p className="text-muted-foreground">
+              {selectedProfesseurDetails.firstName}{" "}
+              {selectedProfesseurDetails.lastName}
+            </p>
+          </div>
+        </div>
+
+        <ProfesseurDetails
+          professeur={selectedProfesseurDetails as StoreProfesseur}
+          onClose={handleBackToList}
+          onEdit={handleEdit}
+          onDelete={deleteProfesseur}
+        />
+      </div>
+    );
+  }
 
   if (loading && professeurs.length === 0)
     return (
@@ -772,7 +988,6 @@ export const ProfesseursManager = () => {
                     </span>{" "}
                     ?
                   </p>
-                  {/* CORRECTION: Utiliser seulement assignments */}
                   {(selectedProfesseur?._count?.assignments || 0) > 0 && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
                       <p className="text-amber-800 text-sm">
@@ -841,6 +1056,164 @@ export const ProfesseursManager = () => {
           </AlertDialogContent>
         </AlertDialog>
 
+        {/* Dialogue pour associer un utilisateur */}
+        <Dialog
+          open={showAttachUserDialog}
+          onOpenChange={setShowAttachUserDialog}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-primary" />
+                Associer un compte utilisateur
+              </DialogTitle>
+              <DialogDescription>
+                Associez un compte utilisateur existant ou créez-en un nouveau
+                pour {selectedProfesseurForUser?.firstName}{" "}
+                {selectedProfesseurForUser?.lastName}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Rechercher un utilisateur existant</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Rechercher par email ou nom..."
+                    value={userSearchTerm}
+                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => loadUsers(userSearchTerm)}
+                    disabled={loadingUsers}
+                  >
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {loadingUsers ? (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Chargement...
+                    </p>
+                  </div>
+                ) : users.length > 0 ? (
+                  <div className="border rounded-md max-h-60 overflow-y-auto">
+                    {users.map((user: any) => (
+                      <div
+                        key={user.id}
+                        className={`p-3 hover:bg-muted cursor-pointer flex items-center justify-between ${
+                          attachUserForm.userId === user.id ? "bg-muted" : ""
+                        }`}
+                        onClick={() =>
+                          setAttachUserForm({
+                            ...attachUserForm,
+                            userId: user.id,
+                            email: user.email,
+                            createIfNotExists: false,
+                          })
+                        }
+                      >
+                        <div>
+                          <div className="font-medium">
+                            {user.firstName} {user.lastName}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {user.email}
+                          </div>
+                          <div className="flex gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              {user.role}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {user.status}
+                            </Badge>
+                          </div>
+                        </div>
+                        {attachUserForm.userId === user.id && (
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  userSearchTerm && (
+                    <div className="text-center py-4 text-muted-foreground">
+                      Aucun utilisateur trouvé
+                    </div>
+                  )
+                )}
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="createIfNotExists"
+                    checked={attachUserForm.createIfNotExists}
+                    onChange={(e) =>
+                      setAttachUserForm({
+                        ...attachUserForm,
+                        createIfNotExists: e.target.checked,
+                        userId: "", // Réinitialiser si on passe en mode création
+                      })
+                    }
+                    className="h-4 w-4"
+                  />
+                  <Label htmlFor="createIfNotExists" className="cursor-pointer">
+                    Créer un nouveau compte utilisateur
+                  </Label>
+                </div>
+
+                {attachUserForm.createIfNotExists && (
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email pour le nouveau compte</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="email@exemple.com"
+                      value={attachUserForm.email}
+                      onChange={(e) =>
+                        setAttachUserForm({
+                          ...attachUserForm,
+                          email: e.target.value,
+                        })
+                      }
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Un email d'invitation sera envoyé pour définir le mot de
+                      passe
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowAttachUserDialog(false)}
+              >
+                Annuler
+              </Button>
+              <Button
+                onClick={handleSubmitAttachUser}
+                disabled={
+                  !attachUserForm.userId &&
+                  (!attachUserForm.email || !attachUserForm.createIfNotExists)
+                }
+              >
+                Associer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* En-tête */}
         <div className="flex flex-col space-y-4 md:flex-row md:justify-between md:items-center md:space-y-0">
           <div>
@@ -849,7 +1222,7 @@ export const ProfesseursManager = () => {
               Gestion des Professeurs
             </h1>
             <p className="text-muted-foreground mt-2">
-              Gérez les professeurs et leurs informations académiques
+              Gérez les professeurs et leurs comptes utilisateurs
             </p>
           </div>
 
@@ -975,7 +1348,7 @@ export const ProfesseursManager = () => {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="cursor-help text-muted-foreground">
-                              ℹ️
+                              <Info className="h-4 w-4" />
                             </span>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -1104,7 +1477,7 @@ export const ProfesseursManager = () => {
                             }
                             register("phone").onChange(e);
                           }}
-                          maxLength={15} // +509 XX XX XX XX = 15 caractères max
+                          maxLength={15}
                         />
                         <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                         {phoneValue && (
@@ -1335,58 +1708,74 @@ export const ProfesseursManager = () => {
                   </div>
                 </div>
 
-                {/* Récapitulatif */}
-                <div className="p-4 bg-muted/30 rounded-lg space-y-3">
-                  <h4 className="text-sm font-semibold flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    Récapitulatif
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    <div className="space-y-1">
-                      <p className="text-muted-foreground">Nom complet:</p>
-                      <p className="font-semibold">
-                        {watch("firstName") && watch("lastName")
-                          ? `${watch("firstName")} ${watch("lastName")}`
-                          : "Non renseigné"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-muted-foreground">Matricule:</p>
-                      <p className="font-mono font-bold">
-                        {watch("matricule") || "Génération automatique"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-muted-foreground">Email:</p>
-                      <p className="font-medium truncate">
-                        {watch("email") || "Non renseigné"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-muted-foreground">Statut:</p>
-                      <Badge
-                        variant={
-                          watch("status") === "Actif" ? "default" : "secondary"
-                        }
-                        className="text-xs"
-                      >
-                        {watch("status") || "Non défini"}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-
                 <Separator />
+
+                {/* Section Compte utilisateur */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Compte utilisateur
+                  </h3>
+
+                  {editingProfesseur && editingProfesseur.userId ? (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                      <div className="flex items-center gap-2 text-green-700 mb-2">
+                        <CheckCircle className="h-5 w-5" />
+                        <span className="font-semibold">
+                          Compte utilisateur associé
+                        </span>
+                      </div>
+                      <div className="text-sm text-green-600">
+                        <p>Email: {editingProfesseur.user?.email}</p>
+                        <p>Statut: {editingProfesseur.user?.status}</p>
+                        {editingProfesseur.user?.mustResetPassword && (
+                          <p className="text-amber-600 mt-1">
+                            ⚠️ L'utilisateur doit définir son mot de passe
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="createUserAccount"
+                          {...register("createUserAccount")}
+                          className="h-4 w-4"
+                        />
+                        <Label
+                          htmlFor="createUserAccount"
+                          className="cursor-pointer"
+                        >
+                          Créer un compte utilisateur pour ce professeur
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Un compte avec le rôle "PROFESSOR" sera créé
+                        automatiquement. Le professeur recevra un email avec ses
+                        identifiants.
+                      </p>
+                    </div>
+                  )}
+                </div>
 
                 <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between sm:space-x-2">
                   <div className="text-sm text-muted-foreground mt-2 sm:mt-0">
                     {editingProfesseur && (
                       <div className="flex items-center gap-2">
                         <span className="text-xs">
-                          Créé le{" "}
-                          {new Date(
-                            editingProfesseur.createdAt
-                          ).toLocaleDateString()}
+                          {editingProfesseur.userId ? (
+                            <span className="text-green-600 flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              Compte utilisateur associé
+                            </span>
+                          ) : (
+                            <span className="text-amber-600 flex items-center gap-1">
+                              <UserX className="h-3 w-3" />
+                              Aucun compte utilisateur
+                            </span>
+                          )}
                         </span>
                       </div>
                     )}
@@ -1532,6 +1921,24 @@ export const ProfesseursManager = () => {
               </div>
             </CardContent>
           </Card>
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-purple-600">Avec compte</p>
+                  <p className="text-2xl font-bold">{professeursWithAccount}</p>
+                  <p className="text-xs text-purple-500 mt-1">
+                    {totalProfesseurs > 0
+                      ? `${Math.round(
+                          (professeursWithAccount / totalProfesseurs) * 100
+                        )}%`
+                      : "0%"}
+                  </p>
+                </div>
+                <User className="h-8 w-8 text-purple-500" />
+              </div>
+            </CardContent>
+          </Card>
           <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -1540,19 +1947,6 @@ export const ProfesseursManager = () => {
                   <p className="text-2xl font-bold">{totalAssignments}</p>
                 </div>
                 <BookOpen className="h-8 w-8 text-orange-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-purple-600">Inactifs</p>
-                  <p className="text-2xl font-bold">
-                    {totalProfesseurs - activeProfesseurs}
-                  </p>
-                </div>
-                <Clock className="h-8 w-8 text-purple-500" />
               </div>
             </CardContent>
           </Card>
@@ -1589,7 +1983,7 @@ export const ProfesseursManager = () => {
                     </TableHead>
                     <TableHead className="min-w-[120px]">
                       <div className="flex items-center gap-2">
-                        <CalendarDays className="h-4 w-4" />
+                        <Hash className="h-4 w-4" />
                         <span>Matricule</span>
                       </div>
                     </TableHead>
@@ -1599,13 +1993,13 @@ export const ProfesseursManager = () => {
                         <span>Assignations</span>
                       </div>
                     </TableHead>
-                    <TableHead className="min-w-[100px]">
+                    <TableHead className="min-w-[120px]">
                       <div className="flex items-center gap-2">
                         <ShieldAlert className="h-4 w-4" />
-                        <span>Statut</span>
+                        <span>Statut & Compte</span>
                       </div>
                     </TableHead>
-                    <TableHead className="text-right min-w-[120px]">
+                    <TableHead className="text-right min-w-[140px]">
                       Actions
                     </TableHead>
                   </TableRow>
@@ -1696,26 +2090,58 @@ export const ProfesseursManager = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={getStatusBadgeVariant(professeur.status)}
-                          className={`${
-                            professeur.status === "Actif"
-                              ? "bg-green-100 text-green-800 hover:bg-green-100 border-green-200"
-                              : "bg-gray-100 text-gray-800 hover:bg-gray-100 border-gray-200"
-                          }`}
-                        >
-                          {professeur.status}
-                        </Badge>
+                        <div className="space-y-2">
+                          <Badge
+                            variant={getStatusBadgeVariant(professeur.status)}
+                            className={`${
+                              professeur.status === "Actif"
+                                ? "bg-green-100 text-green-800 hover:bg-green-100 border-green-200"
+                                : "bg-gray-100 text-gray-800 hover:bg-gray-100 border-gray-200"
+                            }`}
+                          >
+                            {professeur.status}
+                          </Badge>
+
+                          {professeur.userId ? (
+                            <div className="flex flex-wrap gap-1">
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-green-50 text-green-700 border-green-200"
+                              >
+                                <User className="h-2 w-2 mr-1" />
+                                Compte actif
+                              </Badge>
+                              {professeur.user?.mustResetPassword && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs bg-amber-50 text-amber-700 border-amber-200"
+                                >
+                                  <Key className="h-2 w-2 mr-1" />
+                                  MDP à définir
+                                </Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-gray-50 text-gray-500 border-gray-200"
+                            >
+                              <UserX className="h-2 w-2 mr-1" />
+                              Sans compte
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button variant="outline" size="sm" asChild>
-                                <Link to={`/professeurs/${professeur.id}`}>
-                                  <span className="sr-only">Détails</span>
-                                  <Eye className="h-4 w-4" />
-                                </Link>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewDetails(professeur)}
+                              >
+                                <Eye className="h-4 w-4" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -1745,13 +2171,36 @@ export const ProfesseursManager = () => {
                                 </svg>
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuContent align="end" className="w-56">
                               <DropdownMenuItem
                                 onClick={() => handleEdit(professeur)}
                               >
                                 <Edit className="h-4 w-4 mr-2" />
                                 Modifier
                               </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+
+                              {/* Gestion du compte utilisateur */}
+                              {professeur.userId ? (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() => handleDetachUser(professeur)}
+                                    className="text-amber-600"
+                                  >
+                                    <Unlink className="h-4 w-4 mr-2" />
+                                    Détacher le compte
+                                  </DropdownMenuItem>
+                                </>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => handleAttachUser(professeur)}
+                                  className="text-green-600"
+                                >
+                                  <Link2 className="h-4 w-4 mr-2" />
+                                  Associer un compte
+                                </DropdownMenuItem>
+                              )}
+
                               <DropdownMenuSeparator />
                               {professeur.status === "Actif" ? (
                                 <DropdownMenuItem
@@ -1827,10 +2276,29 @@ export const ProfesseursManager = () => {
         {professeurs.length > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
             <div className="text-sm text-muted-foreground">
-              Affichage de{" "}
-              <span className="font-semibold">{sortedProfesseurs.length}</span>{" "}
-              professeur{sortedProfesseurs.length > 1 ? "s" : ""} sur{" "}
-              <span className="font-semibold">{professeurs.length}</span>
+              <div className="flex flex-wrap gap-4">
+                <span>
+                  Affichage de{" "}
+                  <span className="font-semibold">
+                    {sortedProfesseurs.length}
+                  </span>{" "}
+                  professeur{sortedProfesseurs.length > 1 ? "s" : ""} sur{" "}
+                  <span className="font-semibold">{professeurs.length}</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <User className="h-3 w-3" />
+                  <span className="font-semibold">
+                    {professeursWithAccount}
+                  </span>{" "}
+                  avec compte (
+                  {totalProfesseurs > 0
+                    ? Math.round(
+                        (professeursWithAccount / totalProfesseurs) * 100
+                      )
+                    : 0}
+                  %)
+                </span>
+              </div>
             </div>
             <div className="flex items-center space-x-2">
               <Button

@@ -1,9 +1,12 @@
 import {
   activateProfesseur,
+  attachUserToProfesseur,
   createProfesseur,
   deactivateProfesseur,
   deleteProfesseur,
+  detachUserFromProfesseur,
   getProfesseurById,
+  getProfesseurFullDetails,
   getProfesseurs,
   getProfesseurSchedule,
   updateProfesseur,
@@ -40,7 +43,7 @@ router.get("/", requireAuth, requireStaff, getProfesseurs);
 router.get("/:id", requireAuth, requireStaff, sanitizeInput, getProfesseurById);
 
 /**
- * @route GET /api/professeurs/:id/schedule
+ * @route GET /api/:id/schedule
  * @description Récupère l'emploi du temps d'un professeur
  * @access Staff/Admin
  */
@@ -70,7 +73,7 @@ router.post(
 );
 
 /**
- * @route PUT /api/academic/professeurs/:id
+ * @route PUT /api/professeurs/:id
  * @description Met à jour un professeur
  * @access Admin
  */
@@ -125,4 +128,39 @@ router.put(
   deactivateProfesseur
 );
 
+/*
+ * @route GET /api/professeurs/:id/full-details
+ * @description Récupère les détails complets d'un professeur, y compris les cours et les utilisateurs associés
+ * @access Admin
+ */
+router.get(
+  "/:id/full-details",
+  requireAuth,
+  requireAdmin,
+  getProfesseurFullDetails
+);
+
+/**
+ * @route POST /api/professeurs/:id/attach-user
+ * @description Attache un compte utilisateur existant à un professeur
+ * @access Admin
+ */
+router.post(
+  "/:id/attach-user",
+  requireAdmin,
+  requireAuth,
+  attachUserToProfesseur
+);
+
+/**
+ * @route DELETE /api/professeurs/:id/detach-user
+ * @description Détache le compte utilisateur associé à un professeur
+ * @access Admin
+ */
+router.delete(
+  "/:id/detach-user",
+  requireAdmin,
+  requireAuth,
+  detachUserFromProfesseur
+);
 export default router;

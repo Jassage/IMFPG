@@ -30,12 +30,9 @@ import {
   AlertCircle,
   Download,
   History,
-  Edit,
-  Trash2,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -50,7 +47,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useAuthStore } from "@/store/authStore";
@@ -65,11 +61,12 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
   currentEnrollment,
 }) => {
   const {
-    studentFees,
+    studentFees, // Maintenant un objet Record<string, StudentFee[]>
     loading,
     getStudentFees,
     recordPayment,
     getPaymentHistory,
+    clearStudentFees,
   } = useFeeStructureStore();
 
   const [selectedFee, setSelectedFee] = useState<string>("");
@@ -84,11 +81,14 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuthStore();
 
-  // État pour stocker les années académiques des frais (si besoin d'aller les chercher)
-  const [academicYearsMap, setAcademicYearsMap] = useState<Record<string, any>>(
-    {}
-  );
+  // Nettoyer les frais quand le composant est démonté
+  useEffect(() => {
+    return () => {
+      clearStudentFees();
+    };
+  }, [clearStudentFees]);
 
+  // Charger les frais de l'étudiant courant
   useEffect(() => {
     if (student?.id) {
       loadStudentFees();
@@ -97,20 +97,18 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
 
   const loadStudentFees = async () => {
     try {
-      // Log chaque frais pour voir sa structure
-      studentFees.forEach((fee: any, index: number) => {
-        console.log(` Frais ${index + 1}:`, {
-          id: fee.id,
-          name: fee.feeStructure?.name,
-          academicYear: fee.academicYear,
-          academicYearId: fee.academicYearId,
-          academicYearObject: fee.academicYearObject, // Vérifiez si ça existe
-        });
-      });
+      await getStudentFees(student.id);
     } catch (error) {
-      console.error(" Erreur loading student fees:", error);
+      console.error("❌ Erreur loading student fees:", error);
       toast.error("Erreur lors du chargement des frais");
     }
+  };
+
+  // Obtenir les frais de l'étudiant courant
+  const getCurrentStudentFees = () => {
+    if (!student?.id) return [];
+    const fees = studentFees[student.id];
+    return Array.isArray(fees) ? fees : [];
   };
 
   const handleRecordPayment = async () => {
@@ -132,8 +130,7 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
         paymentDate: new Date().toISOString().split("T")[0],
       });
       setShowPaymentForm(false);
-      loadStudentFees();
-
+      
       if (selectedFee) {
         loadPaymentHistory(selectedFee);
       }
@@ -209,9 +206,8 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
     );
   };
 
-  //  Récupère l'année académique d'un frais (version améliorée)
+  // Récupère l'année académique d'un frais
   const getFeeAcademicYearInfo = (fee: any): { year?: string; id?: string } => {
-    // Si academicYear est un objet avec une propriété 'year'
     if (
       fee.academicYear &&
       typeof fee.academicYear === "object" &&
@@ -220,16 +216,14 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
       return { year: fee.academicYear.year, id: fee.academicYear.id };
     }
 
-    // Si academicYear est directement une string (l'année)
     if (typeof fee.academicYear === "string") {
       return { year: fee.academicYear };
     }
 
-    // Sinon, on a seulement l'ID
     return { id: fee.academicYearId };
   };
 
-  //  Récupère l'année académique de l'enrollment
+  // Récupère l'année académique de l'enrollment
   const getEnrollmentAcademicYearInfo = (): { year?: string; id?: string } => {
     if (!currentEnrollment) return {};
 
@@ -251,27 +245,26 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
   };
 
   const enrollmentInfo = getEnrollmentAcademicYearInfo();
+  const currentStudentFees = getCurrentStudentFees();
 
-  const currentYearFees = studentFees.filter((fee: any) => {
+  // Filtrer les frais par année académique courante
+  const currentYearFees = currentStudentFees.filter((fee: any) => {
     const feeInfo = getFeeAcademicYearInfo(fee);
 
     if (enrollmentInfo.id && feeInfo.id) {
-      const matchById = feeInfo.id === enrollmentInfo.id;
-      return matchById;
+      return feeInfo.id === enrollmentInfo.id;
     }
 
     if (enrollmentInfo.year && feeInfo.year) {
-      const matchByYear = feeInfo.year === enrollmentInfo.year;
-      console.log("   Match par année:", matchByYear);
-      return matchByYear;
+      return feeInfo.year === enrollmentInfo.year;
     }
 
     return false;
   });
 
-  // SI AUCUN FRAIS N'EST TROUVÉ - afficher tous les frais pour déboguer
+  // Utiliser les frais filtrés ou tous les frais de l'étudiant
   const displayFees =
-    currentYearFees.length > 0 ? currentYearFees : studentFees;
+    currentYearFees.length > 0 ? currentYearFees : currentStudentFees;
   const isFiltered = currentYearFees.length > 0;
 
   const totalDue = displayFees.reduce(
@@ -296,15 +289,13 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
         <p className="text-muted-foreground">
           Gestion des frais pour {student.firstName} {student.lastName} -{" "}
           {enrollmentInfo.year || enrollmentInfo.id || "Année non spécifiée"}
-          {!isFiltered && studentFees.length > 0 && (
+          {!isFiltered && currentStudentFees.length > 0 && (
             <span className="text-amber-600 ml-2">
-              (Affichage de tous les frais )
+              (Affichage de tous les frais)
             </span>
           )}
         </p>
       </div>
-
-      {/* Bouton de débogage */}
 
       {/* Cartes de résumé des frais */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -386,7 +377,7 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
               <Receipt className="h-5 w-5" />
               Détail des frais{" "}
               {displayFees.length > 0 && `(${displayFees.length})`}
-              {!isFiltered && studentFees.length > 0 && (
+              {!isFiltered && Array.isArray(currentStudentFees) && currentStudentFees.length > 0 && (
                 <Badge
                   variant="outline"
                   className="ml-2 bg-yellow-100 text-yellow-800"
@@ -396,16 +387,14 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
               )}
             </CardTitle>
             {user?.role === "Admin" && (
-              <>
-                <Button
-                  size="sm"
-                  onClick={() => setShowPaymentForm(true)}
-                  disabled={displayFees.length === 0}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Nouveau paiement
-                </Button>
-              </>
+              <Button
+                size="sm"
+                onClick={() => setShowPaymentForm(true)}
+                disabled={displayFees.length === 0}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Nouveau paiement
+              </Button>
             )}
           </div>
           <CardDescription>
@@ -417,7 +406,7 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
                 </span>
               </>
             ) : (
-              <>Tous les frais de l'éleve</>
+              <>Tous les frais de l'élève</>
             )}
           </CardDescription>
         </CardHeader>
@@ -524,14 +513,6 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
                               onClick={() => {
                                 setSelectedFee(fee.id);
                                 loadPaymentHistory(fee.id);
-                                setPaymentData({
-                                  amount: remainingAmount,
-                                  paymentMethod: "cash",
-                                  reference: "",
-                                  paymentDate: new Date()
-                                    .toISOString()
-                                    .split("T")[0],
-                                });
                               }}
                               className="flex items-center gap-1"
                             >

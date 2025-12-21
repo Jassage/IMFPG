@@ -1,7 +1,9 @@
-// store/studentStore.ts - VERSION CORRIGÉE ET COMPLÈTE
+// store/studentStore.ts - VERSION CORRIGÉE
 import { create } from "zustand";
 import { Student } from "@/types/academic";
 import api from "@/services/api";
+import { Toast } from "@/components/ui/toast";
+import { toast } from "@/hooks/use-toast";
 
 interface StudentFilters {
   status?: string;
@@ -32,6 +34,8 @@ interface StudentManagementState {
     search?: string;
     page?: number;
     limit?: number;
+    status?: string;
+    classId?: string;
   }) => Promise<void>;
   fetchStudentById: (id: string) => Promise<Student>;
   createStudent: (studentData: CreateStudentData) => Promise<Student>;
@@ -70,7 +74,6 @@ interface CreateStudentData {
   disabilities?: string;
   status?: Student["status"];
   sexe?: string;
-  cin?: string;
   classId?: string;
   createUserAccount?: boolean;
   guardians?: any[];
@@ -104,58 +107,142 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const { filters } = get();
-      const { search = "", page = 1, limit = 20 } = params;
+      const { search = "", page = 1, limit = 20, status, classId } = params;
+
+      console.log("📡 Fetching students with params:", {
+        search,
+        page,
+        limit,
+        status: status || filters.status,
+        classId: classId || filters.classId,
+      });
 
       const response = await api.get("/students", {
         params: {
           search: search || undefined,
-          status: filters.status || undefined,
-          classId: filters.classId || undefined,
+          status: status || filters.status || undefined,
+          classId: classId || filters.classId || undefined,
           page,
           limit,
         },
       });
 
-      const { data } = response.data;
-      const students = data.students || [];
-      const pagination = data.pagination || {
-        page,
-        limit,
-        total: students.length,
-        totalPages: 1,
-      };
+      console.log("✅ API Response complete:", response.data);
+
+      const responseData = response.data;
+
+      // CORRECTION CRITIQUE : Structure de la réponse
+      let studentsList: Student[] = [];
+      let paginationData: Partial<Pagination> = {};
+
+      if (responseData.success) {
+        // La réponse a deux structures possibles :
+        // 1. responseData.data.students & responseData.data.pagination
+        // 2. responseData.data directement
+
+        if (responseData.data && responseData.data.data) {
+          // Structure imbriquée : data.data
+          studentsList = responseData.data.data || [];
+          paginationData = responseData.data.pagination || {};
+        } else if (responseData.data && Array.isArray(responseData.data)) {
+          // Structure simple : data est directement le tableau
+          studentsList = responseData.data;
+          paginationData = responseData.pagination || {};
+        } else {
+          // Autre structure
+          studentsList =
+            responseData.data?.students || responseData.students || [];
+          paginationData =
+            responseData.data?.pagination || responseData.pagination || {};
+        }
+      }
+
+      console.log("📊 Students parsed:", studentsList);
+      console.log("📊 Pagination parsed:", paginationData);
 
       set({
-        students,
+        students: studentsList,
         loading: false,
-        pagination,
+        pagination: {
+           page,
+          limit,
+          total:studentsList.length,
+          totalPages: paginationData.totalPages || 1,
+        },
       });
     } catch (error: any) {
+      console.error("❌ Error fetching students:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur lors du chargement des étudiants";
+
       set({
-        error:
-          error.response?.data?.message ||
-          "Erreur lors du chargement des étudiants",
+        error: errorMessage,
         loading: false,
       });
+
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+
       throw error;
     }
   },
-
   fetchStudentById: async (id: string) => {
     set({ loading: true });
     try {
+      console.log("📡 Fetching student by ID:", id);
+
       const response = await api.get(`/students/${id}`);
+      console.log("✅ Student details response:", response.data);
 
-      const { data } = response.data;
-      const student = data.student;
+      const responseData = response.data;
 
-      set({ loading: false, currentStudent: student });
+      // CORRECTION ICI : Structure de réponse corrigée
+      let student: Student;
+
+      if (responseData.success && responseData.data) {
+        student = responseData.data.student || responseData.data;
+      } else {
+        student = responseData.data || responseData;
+      }
+
+      if (!student) {
+        throw new Error("Aucune donnée d'étudiant trouvée");
+      }
+
+      set({
+        loading: false,
+        currentStudent: student,
+        error: null,
+      });
+
       return student;
     } catch (error: any) {
+      console.error("❌ Error fetching student by ID:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur de chargement";
+
       set({
-        error: error.response?.data?.message || "Erreur de chargement",
+        error: errorMessage,
         loading: false,
       });
+
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+
       throw error;
     }
   },
@@ -163,23 +250,61 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   createStudent: async (studentData: CreateStudentData) => {
     set({ loading: true, error: null });
     try {
-      console.log("donnees du Store:", studentData);
+      console.log("📤 Creating student with data:", studentData);
 
-      const response = await api.post("/students", studentData);
-      const { data } = response.data;
-      const newStudent = data.student;
+      const dataToSend = {
+        ...studentData,
+        status: studentData.status || "Active",
+      };
+
+      const response = await api.post("/students", dataToSend);
+      console.log("✅ Create student response:", response.data);
+
+      const responseData = response.data;
+      let newStudent: Student;
+
+      // CORRECTION ICI : Structure de réponse corrigée
+      if (responseData.success && responseData.data) {
+        newStudent = responseData.data.student || responseData.data;
+      } else {
+        newStudent = responseData.data || responseData;
+      }
+
+      if (!newStudent) {
+        throw new Error("Aucune donnée d'étudiant retournée");
+      }
 
       set((state) => ({
         students: [newStudent, ...state.students],
         loading: false,
       }));
 
+      toast({
+        title: "Succès",
+        description: "Étudiant créé avec succès",
+      });
+
       return newStudent;
     } catch (error: any) {
+      console.error("❌ Error creating student:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur de création";
+
       set({
-        error: error.response?.data?.message || "Erreur de création",
+        error: errorMessage,
         loading: false,
       });
+
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+
       throw error;
     }
   },
@@ -187,9 +312,24 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   updateStudent: async (id: string, studentData: Partial<Student>) => {
     set({ loading: true, error: null });
     try {
+      console.log("📝 Updating student:", id, studentData);
+
       const response = await api.put(`/students/${id}`, studentData);
-      const { data } = response.data;
-      const updatedStudent = data.student;
+      console.log("✅ Update student response:", response.data);
+
+      const responseData = response.data;
+      let updatedStudent: Student;
+
+      // CORRECTION ICI : Structure de réponse corrigée
+      if (responseData.success && responseData.data) {
+        updatedStudent = responseData.data.student || responseData.data;
+      } else {
+        updatedStudent = responseData.data || responseData;
+      }
+
+      if (!updatedStudent) {
+        throw new Error("Aucune donnée d'étudiant retournée");
+      }
 
       set((state) => ({
         students: state.students.map((student) =>
@@ -202,12 +342,32 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
         loading: false,
       }));
 
+      toast({
+        title: "Succès",
+        description: "Étudiant mis à jour avec succès",
+      });
+
       return updatedStudent;
     } catch (error: any) {
+      console.error("❌ Error updating student:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur de modification";
+
       set({
-        error: error.response?.data?.message || "Erreur de modification",
+        error: errorMessage,
         loading: false,
       });
+
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+
       throw error;
     }
   },
@@ -215,17 +375,39 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   deleteStudent: async (id: string) => {
     set({ loading: true, error: null });
     try {
+      console.log("🗑️ Deleting student:", id);
+
       await api.delete(`/students/${id}`);
 
       set((state) => ({
         students: state.students.filter((student) => student.id !== id),
         loading: false,
       }));
+
+      toast({
+        title: "Succès",
+        description: "Étudiant supprimé avec succès",
+      });
     } catch (error: any) {
+      console.error("❌ Error deleting student:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur de suppression";
+
       set({
-        error: error.response?.data?.message || "Erreur de suppression",
+        error: errorMessage,
         loading: false,
       });
+
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+
       throw error;
     }
   },
@@ -237,12 +419,27 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   ) => {
     set({ loading: true, error: null });
     try {
+      console.log("🔄 Updating student status:", id, status);
+
       const response = await api.put(`/students/${id}/status`, {
         status,
         reason,
       });
-      const { data } = response.data;
-      const updatedStudent = data.student;
+      console.log("✅ Update status response:", response.data);
+
+      const responseData = response.data;
+      let updatedStudent: Student;
+
+      // CORRECTION ICI : Structure de réponse corrigée
+      if (responseData.success && responseData.data) {
+        updatedStudent = responseData.data.student || responseData.data;
+      } else {
+        updatedStudent = responseData.data || responseData;
+      }
+
+      if (!updatedStudent) {
+        throw new Error("Aucune donnée d'étudiant retournée");
+      }
 
       set((state) => ({
         students: state.students.map((student) =>
@@ -251,14 +448,32 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
         loading: false,
       }));
 
+      toast({
+        title: "Succès",
+        description: "Statut de l'étudiant mis à jour avec succès",
+      });
+
       return updatedStudent;
     } catch (error: any) {
+      console.error("❌ Error updating student status:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur lors du changement de statut";
+
       set({
-        error:
-          error.response?.data?.message ||
-          "Erreur lors du changement de statut",
+        error: errorMessage,
         loading: false,
       });
+
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+
       throw error;
     }
   },
@@ -266,11 +481,26 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   assignStudentToClass: async (studentId: string, classId: string) => {
     set({ loading: true, error: null });
     try {
+      console.log("🏫 Assigning student to class:", studentId, classId);
+
       const response = await api.put(`/students/${studentId}/assign-class`, {
         classId,
       });
-      const { data } = response.data;
-      const updatedStudent = data.student;
+      console.log("✅ Assign class response:", response.data);
+
+      const responseData = response.data;
+      let updatedStudent: Student;
+
+      // CORRECTION ICI : Structure de réponse corrigée
+      if (responseData.success && responseData.data) {
+        updatedStudent = responseData.data.student || responseData.data;
+      } else {
+        updatedStudent = responseData.data || responseData;
+      }
+
+      if (!updatedStudent) {
+        throw new Error("Aucune donnée d'étudiant retournée");
+      }
 
       set((state) => ({
         students: state.students.map((student) =>
@@ -279,14 +509,32 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
         loading: false,
       }));
 
+      toast({
+        title: "Succès",
+        description: "Étudiant affecté à la classe avec succès",
+      });
+
       return updatedStudent;
     } catch (error: any) {
+      console.error("❌ Error assigning student to class:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur lors de l'affectation à la classe";
+
       set({
-        error:
-          error.response?.data?.message ||
-          "Erreur lors de l'affectation à la classe",
+        error: errorMessage,
         loading: false,
       });
+
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+
       throw error;
     }
   },
@@ -295,16 +543,33 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await api.get("/students/statistics");
-      const { data } = response.data;
-      set({ loading: false });
-      return data.statistics;
+      console.log("📊 Statistics response:", response.data);
+
+      const responseData = response.data;
+
+      // CORRECTION ICI : Structure de réponse corrigée
+      if (responseData.success && responseData.data) {
+        const statistics = responseData.data.statistics || responseData.data;
+        set({ loading: false });
+        return statistics;
+      } else {
+        set({ loading: false });
+        return responseData.data || responseData;
+      }
     } catch (error: any) {
+      console.error("❌ Error fetching statistics:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur lors de la récupération des statistiques";
+
       set({
-        error:
-          error.response?.data?.message ||
-          "Erreur lors de la récupération des statistiques",
+        error: errorMessage,
         loading: false,
       });
+
       throw error;
     }
   },
@@ -313,14 +578,31 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await api.post("/students/import", { students });
-      const { data } = response.data;
+      console.log("📥 Import response:", response.data);
+
+      const responseData = response.data;
       set({ loading: false });
-      return data;
+
+      // CORRECTION ICI : Structure de réponse corrigée
+      if (responseData.success && responseData.data) {
+        return responseData.data;
+      } else {
+        return responseData;
+      }
     } catch (error: any) {
+      console.error("❌ Error importing students:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur lors de l'import";
+
       set({
-        error: error.response?.data?.message || "Erreur lors de l'import",
+        error: errorMessage,
         loading: false,
       });
+
       throw error;
     }
   },
@@ -335,10 +617,19 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
       set({ loading: false });
       return response.data;
     } catch (error: any) {
+      console.error("❌ Error exporting students:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur lors de l'export";
+
       set({
-        error: error.response?.data?.message || "Erreur lors de l'export",
+        error: errorMessage,
         loading: false,
       });
+
       throw error;
     }
   },

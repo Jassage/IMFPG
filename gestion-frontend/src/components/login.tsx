@@ -232,8 +232,8 @@ export const LoginPage = () => {
 
         <div className="text-center mt-6">
           <p className="text-sm text-gray-600">
-            © {new Date().getFullYear()} Université Jérusalem de Pignon d'Haïti.
-            Tous droits réservés.
+            © {new Date().getFullYear()} Institution Mixte Fautin 1er. Tous
+            droits réservés.
           </p>
         </div>
       </div>

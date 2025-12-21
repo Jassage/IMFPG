@@ -514,6 +514,9 @@ model User {
   resetToken       String?
   resetTokenExpiry DateTime?
 
+  isInitialPassword Boolean   @default(true) 
+  passwordChangedAt DateTime? 
+
   // Relations
   auditLogs        AuditLog[]
   loginAttempts    LoginAttempt[]

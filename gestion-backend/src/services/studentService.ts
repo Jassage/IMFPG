@@ -1,110 +1,244 @@
 /**
  * @file studentService.ts
- * @description Service de gestion des élèves et création de comptes
+ * @description Service pour la gestion des étudiants - Contient la logique métier
  * @version 1.0.0
  */
 
-import { PrismaClient } from "../../generated/prisma";
-import { hashPassword } from "../utils/security";
-import { sanitizeInput, validateEmail } from "../utils/validators";
+import {
+  PrismaClient,
+  Prisma,
+  StudentStatus,
+  UserStatus,
+} from "../../generated/prisma";
+import * as bcrypt from "bcryptjs";
+import {
+  convertBloodGroup,
+  convertSexe,
+  convertUserStatus,
+  UserStatusType,
+} from "../types/prismaHelpers";
+import {
+  PaginatedResponse,
+  StudentCreateData,
+  StudentFilterOptions,
+  StudentImportResult,
+  StudentStatistics,
+  StudentUpdateData,
+} from "../types/studentTypes";
 
 const prisma = new PrismaClient();
 
 /**
- * @class StudentService
- * @description Service regroupant la logique métier des élèves
+ * Service pour la gestion des étudiants
  */
 export class StudentService {
   /**
-   * @method createStudentWithUserAccount
-   * @description Crée un élève avec son compte utilisateur associé
-   * @param {object} studentData - Données de l'élève
-   * @param {string} temporaryPassword - Mot de passe temporaire
-   * @returns {Promise<any>} Élève créé avec son compte
+   * Récupère les étudiants avec pagination et filtres
    */
-  static async createStudentWithUserAccount(
-    studentData: any,
-    temporaryPassword: string = "password123" // À changer par l'élève
+  async getStudents(
+    options: StudentFilterOptions,
+    userId?: string,
+    userRole?: string
+  ): Promise<PaginatedResponse> {
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      search,
+      classId,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = options;
+
+    const pageNum = parseInt(page.toString());
+    const limitNum = parseInt(limit.toString());
+    const skip = (pageNum - 1) * limitNum;
+
+    // Construire la requête de filtrage
+    const where: any = {};
+
+    if (status && status !== "all") {
+      where.status = status;
+    }
+
+    if (classId && classId !== "all") {
+      where.classId = classId;
+    }
+
+    if (search) {
+      const searchStr = search as string;
+      where.OR = [
+        { firstName: { contains: searchStr } },
+        { lastName: { contains: searchStr } },
+        { email: { contains: searchStr } },
+        { studentCode: { contains: searchStr } },
+        { phone: { contains: searchStr } },
+      ];
+    }
+
+    // Gestion des permissions pour les parents
+    if (userRole === "Parent" && userId) {
+      where.guardians = {
+        some: {
+          id: userId,
+        },
+      };
+    }
+
+    // Définir l'ordre de tri
+    let orderBy: any = {};
+    const validSortFields = [
+      "firstName",
+      "lastName",
+      "email",
+      "studentCode",
+      "createdAt",
+      "dateOfBirth",
+    ];
+
+    if (validSortFields.includes(sortBy as string)) {
+      orderBy[sortBy as string] = sortOrder === "desc" ? "desc" : "asc";
+    } else {
+      orderBy = { createdAt: "desc" };
+    }
+
+    // Récupérer les étudiants avec pagination
+    const [students, totalStudents] = await Promise.all([
+      prisma.student.findMany({
+        where,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          studentCode: true,
+          email: true,
+          phone: true,
+          dateOfBirth: true,
+          placeOfBirth: true,
+          address: true,
+          photo: true,
+          bloodGroup: true,
+          allergies: true,
+          disabilities: true,
+          status: true,
+          sexe: true,
+          cin: true,
+          createdAt: true,
+          updatedAt: true,
+          classId: true,
+          schoolClass: {
+            select: {
+              id: true,
+              name: true,
+              level: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+            },
+          },
+          _count: {
+            select: {
+              guardians: true,
+              enrollments: true,
+              grades: true,
+            },
+          },
+        },
+        orderBy,
+        skip,
+        take: limitNum,
+      }),
+      prisma.student.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(totalStudents / limitNum);
+
+    return {
+      data: students,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalStudents,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+    };
+  }
+
+  /**
+   * Récupère un étudiant par son ID
+   */
+  async getStudentById(
+    id: string,
+    userId?: string,
+    userRole?: string
   ): Promise<any> {
-    try {
-      const {
-        firstName,
-        lastName,
-        studentCode,
-        email,
-        phone,
-        dateOfBirth,
-        placeOfBirth,
-        address,
-        classId,
-        cin,
-        sexe,
-      } = studentData;
-
-      // Validation de l'email
-      if (!validateEmail(email)) {
-        throw new Error("Format d'email invalide");
-      }
-
-      // Vérifier si l'email existe déjà
-      const existingUser = await prisma.user.findUnique({
-        where: { email: sanitizeInput(email).toLowerCase() },
-      });
-
-      if (existingUser) {
-        throw new Error("Un utilisateur avec cet email existe déjà");
-      }
-
-      // Vérifier si le code élève existe déjà
-      const existingStudent = await prisma.student.findUnique({
-        where: { studentCode },
-      });
-
-      if (existingStudent) {
-        throw new Error("Un élève avec ce code existe déjà");
-      }
-
-      // Hasher le mot de passe temporaire
-      const hashedPassword = await hashPassword(temporaryPassword);
-
-      // Créer l'utilisateur et l'élève en transaction
-      const result = await prisma.$transaction(async (tx) => {
-        // Créer l'utilisateur
-        const user = await tx.user.create({
-          data: {
-            firstName: sanitizeInput(firstName),
-            lastName: sanitizeInput(lastName),
-            email: sanitizeInput(email).toLowerCase(),
-            phone: phone ? sanitizeInput(phone) : null,
-            role: "Student",
-            password: hashedPassword,
-            status: "Actif",
+    // Récupérer l'étudiant avec toutes ses informations
+    const student = await prisma.student.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        studentCode: true,
+        email: true,
+        phone: true,
+        dateOfBirth: true,
+        placeOfBirth: true,
+        address: true,
+        photo: true,
+        bloodGroup: true,
+        allergies: true,
+        disabilities: true,
+        status: true,
+        sexe: true,
+        cin: true,
+        createdAt: true,
+        updatedAt: true,
+        classId: true,
+        schoolClass: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
           },
-        });
-
-        // Créer l'élève
-        const student = await tx.student.create({
-          data: {
-            firstName: sanitizeInput(firstName),
-            lastName: sanitizeInput(lastName),
-            studentCode,
-            email: sanitizeInput(email).toLowerCase(),
-            phone: phone ? sanitizeInput(phone) : null,
-            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-            placeOfBirth: placeOfBirth ? sanitizeInput(placeOfBirth) : null,
-            address: address ? sanitizeInput(address) : null,
-            cin: cin ? sanitizeInput(cin) : null,
-            sexe,
-            classId: classId || null,
-            userId: user.id,
+        },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
           },
-          include: {
-            user: {
+        },
+        guardians: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            relationship: true,
+            isPrimary: true,
+            address: true,
+          },
+          orderBy: { isPrimary: "desc" },
+        },
+        enrollments: {
+          select: {
+            id: true,
+            academicYearId: true,
+            enrollmentDate: true,
+            status: true,
+            academicYear: {
               select: {
                 id: true,
-                email: true,
-                role: true,
-                status: true,
+                year: true,
               },
             },
             schoolClass: {
@@ -115,250 +249,920 @@ export class StudentService {
               },
             },
           },
-        });
-
-        return student;
-      });
-
-      return result;
-    } catch (error) {
-      console.error(
-        "❌ StudentService - createStudentWithUserAccount error:",
-        error
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * @method getStudentProfile
-   * @description Récupère le profil complet d'un élève
-   * @param {string} studentId - ID de l'élève
-   * @returns {Promise<any>} Profil élève complet
-   */
-  static async getStudentProfile(studentId: string): Promise<any> {
-    try {
-      const student = await prisma.student.findUnique({
-        where: { id: studentId },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              phone: true,
-              role: true,
-              status: true,
-              lastLogin: true,
-              avatar: true,
-            },
-          },
-          schoolClass: {
-            select: {
-              id: true,
-              name: true,
-              level: true,
-              mainTeacher: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  email: true,
-                },
+          orderBy: { enrollmentDate: "desc" },
+        },
+        grades: {
+          select: {
+            id: true,
+            grade: true,
+            session: true,
+            subject: {
+              select: {
+                id: true,
+                name: true,
+                coefficient: true,
               },
             },
           },
-          guardians: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
+        payments: {
+          select: {
+            id: true,
+            amount: true,
+            createdAt: true,
+            paymentMethod: true,
+            status: true,
+            description: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
+        studentFees: {
+          select: {
+            id: true,
+            feeStructure: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            totalAmount: true,
+            dueDate: true,
+            status: true,
+          },
+          orderBy: { dueDate: "desc" },
+        },
+      },
+    });
+
+    if (!student) {
+      throw new Error("STUDENT_NOT_FOUND");
+    }
+
+    // Vérifier les permissions pour les parents
+    if (userRole === "Parent" && userId) {
+      const isGuardian = student.guardians.some(
+        (guardian) => guardian.id === userId
+      );
+      if (!isGuardian) {
+        throw new Error("UNAUTHORIZED");
+      }
+    }
+
+    return student;
+  }
+
+  /**
+   * Crée un nouvel étudiant
+   */
+  async createStudent(data: StudentCreateData): Promise<any> {
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      dateOfBirth,
+      placeOfBirth,
+      address,
+      photo,
+      bloodGroup,
+      allergies,
+      disabilities,
+      status = "Active",
+      sexe,
+      cin,
+      classId,
+      createUserAccount = false,
+      academicYearId,
+      guardians = [],
+    } = data;
+
+    // Validation des données requises
+    if (!firstName || !lastName || !email) {
+      throw new Error("MISSING_REQUIRED_FIELDS");
+    }
+
+    // Utiliser une transaction pour garantir l'intégrité des données
+    return await prisma.$transaction(
+      async (tx) => {
+        // Vérifier l'unicité de l'email dans Student
+        const existingStudent = await tx.student.findUnique({
+          where: { email },
+        });
+
+        if (existingStudent) {
+          throw new Error("EMAIL_ALREADY_EXISTS");
+        }
+
+        // Vérifier l'unicité de l'email dans User si création de compte
+        if (createUserAccount) {
+          const existingUser = await tx.user.findUnique({
+            where: { email },
+          });
+
+          if (existingUser) {
+            throw new Error("USER_EMAIL_ALREADY_EXISTS");
+          }
+        }
+
+        // Vérifier l'unicité du CIN si fourni
+        if (cin) {
+          const existingCIN = await tx.student.findUnique({
+            where: { cin },
+          });
+
+          if (existingCIN) {
+            throw new Error("CIN_ALREADY_EXISTS");
+          }
+        }
+
+        // Vérifier que la classe existe si classId est fourni
+        let schoolClassConnection = undefined;
+        if (classId) {
+          const schoolClass = await tx.schoolClass.findUnique({
+            where: { id: classId },
+          });
+
+          if (!schoolClass) {
+            throw new Error("CLASS_NOT_FOUND");
+          }
+          // Préparer la connexion à la classe
+          schoolClassConnection = { connect: { id: classId } };
+        }
+
+        // Générer un code étudiant unique
+        const studentCode = await this.generateStudentCode(tx);
+
+        let userId = null;
+        let createdUser = null;
+
+        // Créer l'utilisateur si demandé
+        if (createUserAccount) {
+          const hashedPassword = await bcrypt.hash("Etudiant@123", 12);
+
+          createdUser = await tx.user.create({
+            data: {
+              firstName,
+              lastName,
+              email,
+              phone: phone || null,
+              role: "Student",
+              status: convertUserStatus("Actif"),
+              password: hashedPassword,
+            },
+          });
+          userId = createdUser.id;
+        }
+
+        // Créer l'étudiant avec les types corrects
+        const studentData: Prisma.StudentCreateInput = {
+          firstName,
+          lastName,
+          studentCode,
+          email,
+          phone: phone || null,
+          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+          placeOfBirth: placeOfBirth || null,
+          address: address || null,
+          photo: photo || null,
+          bloodGroup: convertBloodGroup(bloodGroup),
+          allergies: allergies || null,
+          disabilities: disabilities || null,
+          status: status as StudentStatus,
+          sexe: convertSexe(sexe),
+          cin: cin || null,
+          ...(schoolClassConnection && { schoolClass: schoolClassConnection }),
+        };
+
+        // Ajouter l'utilisateur si créé
+        if (userId) {
+          studentData.user = { connect: { id: userId } };
+        }
+
+        const createdStudent = await tx.student.create({
+          data: studentData,
+          include: {
+            schoolClass: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        });
+
+        // Créer les gardiens si fournis
+        if (guardians && guardians.length > 0) {
+          for (const guardian of guardians) {
+            await tx.guardian.create({
+              data: {
+                firstName: guardian.firstName,
+                lastName: guardian.lastName,
+                email: guardian.email || null,
+                phone: guardian.phone,
+                relationship: guardian.relationship || "Parent",
+                isPrimary: guardian.isPrimary || false,
+                studentId: createdStudent.id,
+              },
+            });
+          }
+        }
+
+        // Créer l'inscription si academicYearId est fourni
+        if (academicYearId && classId) {
+          await tx.enrollment.create({
+            data: {
+              studentId: createdStudent.id,
+              classId,
+              academicYearId,
+              enrollmentDate: new Date(),
+              status: "Active",
+            },
+          });
+        }
+
+        return {
+          student: createdStudent,
+          user: createdUser,
+          guardiansCount: guardians?.length || 0,
+        };
+      },
+      {
+        maxWait: 5000,
+        timeout: 10000,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }
+    );
+  }
+
+  /**
+   * Met à jour un étudiant
+   */
+  async updateStudent(id: string, data: StudentUpdateData): Promise<any> {
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      dateOfBirth,
+      placeOfBirth,
+      address,
+      photo,
+      bloodGroup,
+      allergies,
+      disabilities,
+      status,
+      sexe,
+      cin,
+      classId,
+    } = data;
+
+    // Vérifier si l'étudiant existe
+    const existingStudent = await prisma.student.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+
+    if (!existingStudent) {
+      throw new Error("STUDENT_NOT_FOUND");
+    }
+
+    // Préparer les données de mise à jour
+    const updateData: Prisma.StudentUpdateInput = {};
+
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (email !== undefined) updateData.email = email;
+    if (phone !== undefined) updateData.phone = phone || null;
+    if (dateOfBirth !== undefined) {
+      updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    }
+    if (placeOfBirth !== undefined) updateData.placeOfBirth = placeOfBirth;
+    if (address !== undefined) updateData.address = address;
+    if (photo !== undefined) updateData.photo = photo;
+    if (bloodGroup !== undefined) {
+      updateData.bloodGroup = convertBloodGroup(bloodGroup);
+    }
+    if (allergies !== undefined) updateData.allergies = allergies;
+    if (disabilities !== undefined) updateData.disabilities = disabilities;
+    if (status !== undefined) updateData.status = status as StudentStatus;
+    if (sexe !== undefined) {
+      updateData.sexe = convertSexe(sexe);
+    }
+    if (cin !== undefined) updateData.cin = cin || null;
+    if (classId !== undefined) {
+      if (classId === null || classId === "") {
+        updateData.schoolClass = { disconnect: true };
+      } else {
+        // Vérifier que la classe existe
+        const schoolClass = await prisma.schoolClass.findUnique({
+          where: { id: classId },
+        });
+        if (!schoolClass) {
+          throw new Error("CLASS_NOT_FOUND");
+        }
+        updateData.schoolClass = { connect: { id: classId } };
+      }
+    }
+
+    // Vérifier l'unicité de l'email si modifié
+    if (email && email !== existingStudent.email) {
+      const studentWithEmail = await prisma.student.findUnique({
+        where: { email },
+      });
+
+      if (studentWithEmail && studentWithEmail.id !== id) {
+        throw new Error("EMAIL_ALREADY_EXISTS");
+      }
+
+      // Mettre à jour l'email de l'utilisateur associé
+      if (existingStudent.user) {
+        await prisma.user.update({
+          where: { id: existingStudent.user.id },
+          data: { email },
+        });
+      }
+    }
+
+    // Vérifier l'unicité du CIN si modifié
+    if (cin !== undefined && cin !== existingStudent.cin) {
+      if (cin) {
+        const studentWithCIN = await prisma.student.findUnique({
+          where: { cin },
+        });
+
+        if (studentWithCIN && studentWithCIN.id !== id) {
+          throw new Error("CIN_ALREADY_EXISTS");
+        }
+      }
+    }
+
+    // Mettre à jour l'étudiant
+    const updatedStudent = await prisma.student.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        studentCode: true,
+        email: true,
+        phone: true,
+        dateOfBirth: true,
+        status: true,
+        sexe: true,
+        cin: true,
+        classId: true,
+        schoolClass: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        updatedAt: true,
+      },
+    });
+
+    return updatedStudent;
+  }
+
+  /**
+   * Supprime un étudiant
+   */
+  async deleteStudent(id: string): Promise<void> {
+    // Vérifier si l'étudiant existe
+    const student = await prisma.student.findUnique({
+      where: { id },
+      include: {
+        user: true,
+        guardians: true,
+        enrollments: true,
+        grades: true,
+        payments: true,
+      },
+    });
+
+    if (!student) {
+      throw new Error("STUDENT_NOT_FOUND");
+    }
+
+    // Utiliser une transaction pour garantir l'intégrité
+    await prisma.$transaction(async (tx) => {
+      // Supprimer les gardiens d'abord
+      if (student.guardians.length > 0) {
+        await tx.guardian.deleteMany({
+          where: { studentId: id },
+        });
+      }
+
+      // Supprimer l'utilisateur associé s'il existe
+      if (student.user) {
+        await tx.user.delete({
+          where: { id: student.user.id },
+        });
+      }
+
+      // Supprimer définitivement l'étudiant
+      await tx.student.delete({
+        where: { id },
+      });
+    });
+  }
+
+  /**
+   * Met à jour le statut d'un étudiant
+   */
+  async updateStudentStatus(
+    id: string,
+    status: StudentStatus,
+    reason?: string
+  ): Promise<any> {
+    // Valider le statut
+    const validStatuses = [
+      "Active",
+      "Inactive",
+      "Graduated",
+      "Transferred",
+      "Suspended",
+    ];
+    if (!validStatuses.includes(status)) {
+      throw new Error("INVALID_STATUS");
+    }
+
+    // Vérifier si l'étudiant existe
+    const student = await prisma.student.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+
+    if (!student) {
+      throw new Error("STUDENT_NOT_FOUND");
+    }
+
+    // Sauvegarder l'ancien statut
+    const oldStatus = student.status;
+
+    // Utiliser une transaction
+    await prisma.$transaction(async (tx) => {
+      // Mettre à jour le statut de l'étudiant
+      await tx.student.update({
+        where: { id },
+        data: { status: status as StudentStatus },
+      });
+
+      // Mettre à jour le statut de l'utilisateur associé si existant
+      if (student.user) {
+        let userStatus: UserStatusType;
+        if (
+          ["Inactive", "Suspended", "Graduated", "Transferred"].includes(status)
+        ) {
+          userStatus = UserStatus.Inactif;
+        } else {
+          userStatus = UserStatus.Actif;
+        }
+
+        await tx.user.update({
+          where: { id: student.user.id },
+          data: {
+            status: userStatus,
+          },
+        });
+      }
+    });
+
+    // Récupérer l'étudiant mis à jour
+    const updatedStudent = await prisma.student.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        studentCode: true,
+        email: true,
+        status: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      student: updatedStudent,
+      change: {
+        oldStatus,
+        newStatus: status,
+        reason,
+      },
+    };
+  }
+
+  /**
+   * Affecte un étudiant à une classe
+   */
+  async assignStudentToClass(
+    id: string,
+    classId: string,
+    academicYearId?: string
+  ): Promise<any> {
+    if (!classId) {
+      throw new Error("MISSING_CLASS_ID");
+    }
+
+    // Vérifier si l'étudiant existe
+    const student = await prisma.student.findUnique({
+      where: { id },
+      select: {
+        classId: true,
+        studentCode: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+
+    if (!student) {
+      throw new Error("STUDENT_NOT_FOUND");
+    }
+
+    // Vérifier si la classe existe
+    const schoolClass = await prisma.schoolClass.findUnique({
+      where: { id: classId },
+    });
+
+    if (!schoolClass) {
+      throw new Error("CLASS_NOT_FOUND");
+    }
+
+    // Vérifier si l'année académique existe si fournie
+    if (academicYearId) {
+      const academicYear = await prisma.academicYear.findUnique({
+        where: { id: academicYearId },
+      });
+
+      if (!academicYear) {
+        throw new Error("ACADEMIC_YEAR_NOT_FOUND");
+      }
+    }
+
+    // Sauvegarder l'ancienne classe
+    const oldClassId = student.classId;
+
+    // Utiliser une transaction
+    await prisma.$transaction(async (tx) => {
+      // Mettre à jour l'étudiant
+      await tx.student.update({
+        where: { id },
+        data: { classId },
+      });
+
+      // Créer ou mettre à jour l'inscription
+      if (academicYearId) {
+        await tx.enrollment.upsert({
+          where: {
+            studentId_academicYearId: {
+              studentId: id,
+              academicYearId,
+            },
+          },
+          update: {
+            classId,
+          },
+          create: {
+            studentId: id,
+            classId,
+            academicYearId,
+            enrollmentDate: new Date(),
+            status: "Active",
+          },
+        });
+      }
+    });
+
+    // Récupérer l'étudiant mis à jour
+    const updatedStudent = await prisma.student.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        studentCode: true,
+        classId: true,
+        schoolClass: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+          },
+        },
+        updatedAt: true,
+      },
+    });
+
+    return {
+      student: updatedStudent,
+      metadata: {
+        oldClassId,
+        newClassId: classId,
+        className: schoolClass.name,
+        academicYearId,
+      },
+    };
+  }
+
+  /**
+   * Récupère les statistiques des étudiants
+   */
+  async getStudentStatistics(): Promise<StudentStatistics> {
+    // Compter par statut
+    const statusCounts = await prisma.student.groupBy({
+      by: ["status"],
+      _count: {
+        id: true,
+      },
+    });
+
+    // Compter par sexe
+    const genderCounts = await prisma.student.groupBy({
+      by: ["sexe"],
+      _count: {
+        id: true,
+      },
+    });
+
+    // Compter par classe
+    const classCounts = await prisma.student.groupBy({
+      by: ["classId"],
+      _count: {
+        id: true,
+      },
+      where: {
+        classId: {
+          not: null,
+        },
+      },
+    });
+
+    // Nombre total
+    const totalStudents = await prisma.student.count();
+
+    // Dernières inscriptions (7 derniers jours)
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const recentEnrollments = await prisma.student.count({
+      where: {
+        createdAt: {
+          gte: weekAgo,
+        },
+      },
+    });
+
+    // Récupérer les informations des classes pour les noms
+    const classIds = classCounts
+      .map((item) => item.classId)
+      .filter(Boolean) as string[];
+    const classes = await prisma.schoolClass.findMany({
+      where: {
+        id: {
+          in: classIds,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        level: true,
+      },
+    });
+
+    const classStats = classCounts.map((item) => {
+      const classInfo = classes.find((c) => c.id === item.classId);
+      return {
+        ...item,
+        className: classInfo?.name || "Non assigné",
+        classLevel: classInfo?.level || null,
+      };
+    });
+
+    return {
+      total: totalStudents,
+      byStatus: statusCounts.reduce(
+        (acc, item) => {
+          acc[item.status] = item._count.id;
+          return acc;
+        },
+        {} as Record<string, number>
+      ),
+      byGender: genderCounts.reduce(
+        (acc, item) => {
+          acc[item.sexe || "Non spécifié"] = item._count.id;
+          return acc;
+        },
+        {} as Record<string, number>
+      ),
+      byClass: classStats,
+      recentEnrollments,
+    };
+  }
+
+  /**
+   * Importe des étudiants depuis un fichier
+   */
+  async importStudents(students: any[]): Promise<StudentImportResult> {
+    if (!students || !Array.isArray(students) || students.length === 0) {
+      throw new Error("NO_STUDENT_DATA");
+    }
+
+    const results: StudentImportResult = {
+      success: 0,
+      failed: 0,
+      errors: [],
+      created: [],
+    };
+
+    // Utiliser une transaction pour l'import en masse
+    await prisma.$transaction(async (tx) => {
+      for (const studentData of students) {
+        try {
+          // Vérifier l'email
+          const existingStudent = await tx.student.findUnique({
+            where: { email: studentData.email },
+          });
+
+          if (existingStudent) {
+            results.failed++;
+            results.errors.push({
+              student: studentData,
+              error: "Email déjà utilisé",
+            });
+            continue;
+          }
+
+          // Générer code étudiant
+          const studentCode = await this.generateStudentCode(tx);
+
+          // Créer l'étudiant avec les bonnes conversions
+          const student = await tx.student.create({
+            data: {
+              firstName: studentData.firstName,
+              lastName: studentData.lastName,
+              studentCode,
+              email: studentData.email,
+              phone: studentData.phone || null,
+              dateOfBirth: studentData.dateOfBirth
+                ? new Date(studentData.dateOfBirth)
+                : null,
+              placeOfBirth: studentData.placeOfBirth || null,
+              address: studentData.address || null,
+              sexe: convertSexe(studentData.sexe),
+              cin: studentData.cin || null,
+              classId: studentData.classId || null,
+              status: "Active" as StudentStatus,
+              bloodGroup: convertBloodGroup(studentData.bloodGroup),
+            },
             select: {
               id: true,
               firstName: true,
               lastName: true,
-              relationship: true,
-              phone: true,
+              studentCode: true,
               email: true,
-              isPrimary: true,
             },
-          },
-          grades: {
-            include: {
-              subject: {
-                select: {
-                  id: true,
-                  name: true,
-                  code: true,
-                  type: true,
-                },
-              },
-              classAssignment: {
-                select: {
-                  professeur: {
-                    select: {
-                      firstName: true,
-                      lastName: true,
-                    },
-                  },
-                },
-              },
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-          },
-          enrollments: {
-            include: {
-              academicYear: true,
-              schoolClass: true,
-            },
-          },
-          studentFees: {
-            include: {
-              feeStructure: true,
-              payments: true,
-              academicYear: true,
-            },
-          },
-          transcripts: {
-            orderBy: {
-              generatedAt: "desc",
-            },
-            take: 5,
-          },
-        },
-      });
+          });
 
-      if (!student) {
-        throw new Error("Élève non trouvé");
+          results.success++;
+          results.created.push(student);
+        } catch (error: any) {
+          results.failed++;
+          results.errors.push({
+            student: studentData,
+            error: error.message,
+          });
+        }
       }
+    });
 
-      return student;
-    } catch (error) {
-      console.error("❌ StudentService - getStudentProfile error:", error);
-      throw error;
-    }
+    return results;
   }
 
   /**
-   * @method getStudentByUserId
-   * @description Récupère un élève par son ID utilisateur
-   * @param {string} userId - ID de l'utilisateur
-   * @returns {Promise<any>} Élève trouvé
+   * Génère un code étudiant unique
    */
-  static async getStudentByUserId(userId: string): Promise<any> {
-    try {
-      const student = await prisma.student.findFirst({
-        where: { userId },
-        include: {
-          schoolClass: {
-            select: {
-              id: true,
-              name: true,
-              level: true,
-            },
-          },
-        },
-      });
+  private async generateStudentCode(tx: any): Promise<string> {
+    const year = new Date().getFullYear().toString().slice(-2);
+    const prefix = `STU${year}`;
 
-      return student;
-    } catch (error) {
-      console.error("❌ StudentService - getStudentByUserId error:", error);
-      throw error;
+    const lastStudent = await tx.student.findFirst({
+      where: {
+        studentCode: {
+          startsWith: prefix,
+        },
+      },
+      orderBy: {
+        studentCode: "desc",
+      },
+      select: {
+        studentCode: true,
+      },
+    });
+
+    let nextNumber = 1;
+    if (lastStudent && lastStudent.studentCode) {
+      const lastNumber = parseInt(
+        lastStudent.studentCode.replace(prefix, ""),
+        10
+      );
+      nextNumber = isNaN(lastNumber) ? 1 : lastNumber + 1;
     }
+
+    return `${prefix}${nextNumber.toString().padStart(4, "0")}`;
   }
 
   /**
-   * @method updateStudentProfile
-   * @description Met à jour le profil d'un élève
-   * @param {string} studentId - ID de l'élève
-   * @param {object} updateData - Données à mettre à jour
-   * @returns {Promise<any>} Élève mis à jour
+   * Recherche des étudiants par terme
    */
-  static async updateStudentProfile(
-    studentId: string,
-    updateData: any
-  ): Promise<any> {
-    try {
-      const { phone, address, photo, allergies, disabilities, classId } =
-        updateData;
-
-      const student = await prisma.student.update({
-        where: { id: studentId },
-        data: {
-          ...(phone !== undefined && { phone: sanitizeInput(phone) }),
-          ...(address !== undefined && { address: sanitizeInput(address) }),
-          ...(photo !== undefined && { photo }),
-          ...(allergies !== undefined && {
-            allergies: sanitizeInput(allergies),
-          }),
-          ...(disabilities !== undefined && {
-            disabilities: sanitizeInput(disabilities),
-          }),
-          ...(classId !== undefined && { classId }),
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              role: true,
-              status: true,
-            },
-          },
-          schoolClass: {
-            select: {
-              id: true,
-              name: true,
-              level: true,
-            },
-          },
-        },
-      });
-
-      return student;
-    } catch (error) {
-      console.error("❌ StudentService - updateStudentProfile error:", error);
-      throw error;
+  async searchStudents(searchTerm: string, limit: number = 10): Promise<any[]> {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      return [];
     }
+
+    const students = await prisma.student.findMany({
+      where: {
+        OR: [
+          { firstName: { contains: searchTerm } },
+          { lastName: { contains: searchTerm } },
+          { email: { contains: searchTerm } },
+          { studentCode: { contains: searchTerm } },
+          { cin: { contains: searchTerm } },
+        ],
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        studentCode: true,
+        email: true,
+        phone: true,
+        status: true,
+        classId: true,
+        schoolClass: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: limit,
+    });
+
+    return students;
   }
 
   /**
-   * @method getClassStudents
-   * @description Récupère tous les élèves d'une classe
-   * @param {string} classId - ID de la classe
-   * @returns {Promise<any[]>} Liste des élèves
+   * Vérifie si un email est disponible
    */
-  static async getClassStudents(classId: string): Promise<any[]> {
-    try {
-      const students = await prisma.student.findMany({
-        where: { classId },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              status: true,
-              lastLogin: true,
-            },
-          },
-          grades: {
-            select: {
-              id: true,
-              grade: true,
-              subject: {
-                select: {
-                  name: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: {
-          lastName: "asc",
-        },
-      });
+  async checkEmailAvailability(
+    email: string,
+    excludeStudentId?: string
+  ): Promise<boolean> {
+    const where: any = {
+      email: email,
+    };
 
-      return students;
-    } catch (error) {
-      console.error("❌ StudentService - getClassStudents error:", error);
-      throw error;
+    if (excludeStudentId) {
+      where.id = { not: excludeStudentId };
     }
+
+    const existingStudent = await prisma.student.findFirst({
+      where,
+    });
+
+    return !existingStudent;
+  }
+
+  /**
+   * Vérifie si un CIN est disponible
+   */
+  async checkCINAvailability(
+    cin: string,
+    excludeStudentId?: string
+  ): Promise<boolean> {
+    if (!cin) return true;
+
+    const where: any = {
+      cin: cin,
+    };
+
+    if (excludeStudentId) {
+      where.id = { not: excludeStudentId };
+    }
+
+    const existingStudent = await prisma.student.findFirst({
+      where,
+    });
+
+    return !existingStudent;
   }
 }
+
+export default new StudentService();

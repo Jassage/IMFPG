@@ -118,7 +118,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ AuthController - login error:", error);
+    console.error(" AuthController - login error:", error);
 
     // Utiliser un message d'erreur court pour l'audit log
     const shortErrorMessage = error.message
@@ -222,7 +222,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json(response);
   } catch (error: any) {
-    console.error("❌ AuthController - register error:", error);
+    console.error(" AuthController - register error:", error);
 
     // Log d'erreur
     await createAuditLog({
@@ -288,7 +288,7 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ AuthController - getMe error:", error);
+    console.error(" AuthController - getMe error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -463,7 +463,7 @@ export const forgotPassword = async (
         metadata: { emailSent: true },
       });
     } catch (emailError) {
-      console.error("❌ Erreur envoi email:", emailError);
+      console.error(" Erreur envoi email:", emailError);
 
       await createAuditLog({
         ...auditData,
@@ -485,7 +485,7 @@ export const forgotPassword = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ AuthController - forgotPassword error:", error);
+    console.error(" AuthController - forgotPassword error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -506,7 +506,175 @@ export const forgotPassword = async (
   }
 };
 
-// ... Les autres contrôleurs (resetPassword, changePassword, updateProfile) suivent le même pattern
+/**
+ * @controller forcePasswordChange
+ * @description Force le changement de mot de passe (première connexion)
+ * @route POST /api/auth/force-password-change
+ * @access Private
+ */
+export const forcePasswordChange = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const userId = req.userId;
+    const { newPassword } = req.body;
+
+    if (!userId) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Non autorisé",
+        code: "UNAUTHORIZED",
+      };
+      res.status(401).json(response);
+      return;
+    }
+
+    if (!newPassword) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Le nouveau mot de passe est requis",
+        code: "MISSING_PASSWORD",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Appel du service avec forceChange = true
+    const result = await AuthService.changePassword(
+      userId,
+      "", // Pas de mot de passe actuel nécessaire pour le changement forcé
+      newPassword,
+      true // Force change
+    );
+
+    if (
+      result.code === "PASSWORD_CHANGED" ||
+      result.code === "INITIAL_PASSWORD_SET"
+    ) {
+      await createAuditLog({
+        ...auditData,
+        action: AuthActionTypes.PASSWORD_FORCE_CHANGED,
+        entity: "User",
+        entityId: userId,
+        userId: userId,
+        description: "Mot de passe initial changé avec succès",
+        status: "SUCCESS",
+        metadata: {
+          isInitialPassword: false,
+          passwordChangedAt: new Date(),
+        },
+      });
+
+      const response: AuthControllerResponse = {
+        success: true,
+        message: result.message,
+      };
+      res.json(response);
+    } else {
+      await createAuditLog({
+        ...auditData,
+        action: AuthActionTypes.PASSWORD_CHANGE_ERROR,
+        entity: "User",
+        entityId: userId,
+        userId: userId,
+        description: result.message,
+        status: "ERROR",
+        errorMessage: result.code,
+      });
+
+      const response: AuthControllerResponse = {
+        success: false,
+        message: result.message,
+        code: result.code,
+      };
+      res.status(400).json(response);
+    }
+  } catch (error: any) {
+    console.error(" AuthController - forcePasswordChange error:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.PASSWORD_CHANGE_ERROR,
+      entity: "Auth",
+      description: "Erreur lors du changement forcé de mot de passe",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
+
+/**
+ * @controller checkPasswordChangeRequired
+ * @description Vérifie si l'utilisateur doit changer son mot de passe
+ * @route GET /api/auth/check-password-change
+ * @access Private
+ */
+export const checkPasswordChangeRequired = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      const response: AuthControllerResponse = {
+        success: false,
+        message: "Non autorisé",
+        code: "UNAUTHORIZED",
+      };
+      res.status(401).json(response);
+      return;
+    }
+
+    const requiresChange =
+      await AuthService.checkPasswordChangeRequired(userId);
+
+    const response: AuthControllerResponse = {
+      success: true,
+      message: requiresChange
+        ? "Changement de mot de passe requis"
+        : "Mot de passe à jour",
+      data: { requiresPasswordChange: requiresChange },
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error(
+      " AuthController - checkPasswordChangeRequired error:",
+      error
+    );
+
+    await createAuditLog({
+      ...auditData,
+      action: AuthActionTypes.CHECK_PASSWORD_STATUS_ERROR,
+      entity: "Auth",
+      description: "Erreur lors de la vérification du statut du mot de passe",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+
+    const response: AuthControllerResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
+
+    res.status(500).json(response);
+  }
+};
 
 /**
  * @function getStatusCodeFromErrorCode

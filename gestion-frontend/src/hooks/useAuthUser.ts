@@ -9,9 +9,9 @@ export const useAuthUser = () => {
     isAuthenticated,
     loading,
     isAdmin: user?.role === "Admin",
-    isDoyen: user?.role === "Doyen",
+    isDoyen: user?.role === "Parent",
     isProfesseur: user?.role === "Professeur",
-    isSecretaire: user?.role === "Secrétaire",
+    isSecretaire: user?.role === "Secretaire",
     isDirecteur: user?.role === "Directeur",
   };
 };

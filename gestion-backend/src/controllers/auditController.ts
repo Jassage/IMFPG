@@ -109,8 +109,24 @@ export const getAuditLogs = asyncErrorHandler(
       const [auditLogs, totalCount] = await Promise.all([
         prisma.auditLog.findMany({
           where,
-          include: {
+          // Solution 1: Utilisez select avec les relations
+          select: {
+            id: true,
+            action: true,
+            entity: true,
+            entityId: true,
+            description: true,
+            oldData: true,
+            newData: true,
+            userId: true,
+            userAgent: true,
+            ipAddress: true,
+            status: true,
+            errorMessage: true,
+            duration: true,
+            createdAt: true,
             user: {
+              // Inclure les données de l'utilisateur via select
               select: {
                 id: true,
                 firstName: true,
@@ -164,6 +180,7 @@ export const getAuditLogById = asyncErrorHandler(
       const auditLog = await prisma.auditLog.findUnique({
         where: { id },
         include: {
+          // Utilisez include au lieu de select+include
           user: {
             select: {
               id: true,
@@ -381,6 +398,60 @@ export const getAuditStats = asyncErrorHandler(
     } catch (error) {
       console.error("❌ Erreur récupération statistiques audit:", error);
       throw error;
+    }
+  }
+);
+
+/**
+ * @controller exportAuditLogs
+ * @description Exporte les logs d'audit au format CSV ou JSON
+ * @route GET /api/audit-logs/export
+ * @access Admin seulement
+ */
+export const exportAuditLogs = asyncErrorHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const { format = "csv", ...filters } = req.query;
+
+      const where: any = {};
+
+      // Construction du filtre
+      if (filters.action) where.action = filters.action as string;
+      if (filters.entity) where.entity = filters.entity as string;
+      if (filters.userId) where.userId = filters.userId as string;
+      if (filters.status) where.status = filters.status as string;
+
+      if (filters.startDate || filters.endDate) {
+        where.createdAt = {};
+        if (filters.startDate)
+          where.createdAt.gte = new Date(filters.startDate as string);
+        if (filters.endDate)
+          where.createdAt.lte = new Date(filters.endDate as string);
+      }
+
+      const auditLogs = await prisma.auditLog.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+              email: true,
+              role: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      // Reste du code d'export inchangé...
+    } catch (error) {
+      console.error("❌ Erreur export logs audit:", error);
+      res.status(500).json({
+        success: false,
+        message: "Erreur lors de l'export",
+        code: "EXPORT_ERROR",
+      });
     }
   }
 );

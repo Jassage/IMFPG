@@ -1,3 +1,4 @@
+// components/dashboards/ProfessorDashboard.tsx
 import React, { useState, useEffect } from "react";
 import {
   Card,
@@ -8,715 +9,643 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import {
-  BookOpen,
-  Users,
-  FileText,
-  Clock,
-  Calendar,
-  TrendingUp,
-  AlertCircle,
-  CheckCircle,
-  MessageSquare,
-  Bell,
-  Download,
-  Upload,
-  Eye,
-  Edit,
-  BarChart3,
-  Award,
-  Target,
-  PieChart as PieChartIcon,
-  Sparkles,
-  Star,
-} from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
 import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+  Calendar,
+  Clock,
+  Users,
+  BookOpen,
+  FileText,
+  TrendingUp,
+  BellRing,
+  MessageSquare,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  MoreHorizontal,
+} from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Progress } from "@/components/ui/progress";
 
-const ProfessorDashboard = () => {
-  const { toast } = useToast();
+interface Course {
+  id: string;
+  name: string;
+  className: string;
+  schedule: string;
+  totalStudents: number;
+  assignmentsPending: number;
+}
+
+interface UpcomingClass {
+  id: string;
+  course: string;
+  time: string;
+  room: string;
+  className: string;
+}
+
+interface StudentGradeSummary {
+  id: string;
+  name: string;
+  average: number;
+  status: "excellent" | "good" | "average" | "needs_improvement";
+  lastEvaluation: string;
+}
+
+interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  priority: "high" | "medium" | "low";
+}
+
+export const ProfessorDashboard = () => {
+  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>([]);
+  const [studentGrades, setStudentGrades] = useState<StudentGradeSummary[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const { user } = useAuthStore();
-
-  const [loading, setLoading] = useState(false);
-  const [courses, setCourses] = useState([
-    {
-      id: 1,
-      name: "Mathématiques Avancées",
-      level: "Terminale S",
-      students: 35,
-      progress: 75,
-    },
-    {
-      id: 2,
-      name: "Physique Quantique",
-      level: "Licence 3",
-      students: 28,
-      progress: 60,
-    },
-    {
-      id: 3,
-      name: "Algèbre Linéaire",
-      level: "Licence 2",
-      students: 42,
-      progress: 90,
-    },
-  ]);
-
-  const [pendingGrades, setPendingGrades] = useState([
-    {
-      id: 1,
-      course: "Mathématiques",
-      assignment: "Devoir 3",
-      count: 35,
-      dueDate: "2024-03-18",
-    },
-    {
-      id: 2,
-      course: "Physique",
-      assignment: "TP Mécanique",
-      count: 28,
-      dueDate: "2024-03-20",
-    },
-    {
-      id: 3,
-      course: "Algèbre",
-      assignment: "Contrôle 2",
-      count: 42,
-      dueDate: "2024-03-15",
-    },
-  ]);
-
-  const [todaySchedule, setTodaySchedule] = useState([
-    {
-      id: 1,
-      time: "8h-10h",
-      course: "Mathématiques",
-      room: "A201",
-      type: "Cours",
-    },
-    { id: 2, time: "10h-12h", course: "Physique", room: "B105", type: "TP" },
-    { id: 3, time: "14h-16h", course: "Algèbre", room: "C302", type: "TD" },
-  ]);
-
-  const [studentMessages, setStudentMessages] = useState([
-    {
-      id: 1,
-      student: "Jean Dupont",
-      course: "Mathématiques",
-      message: "Question sur le chapitre 4",
-      time: "10 min",
-    },
-    {
-      id: 2,
-      student: "Marie Curie",
-      course: "Physique",
-      message: "Besoin d'aide pour le TP",
-      time: "30 min",
-    },
-    {
-      id: 3,
-      student: "Albert Einstein",
-      course: "Algèbre",
-      message: "Rendez-vous demandé",
-      time: "1h",
-    },
-  ]);
-
-  // Données pour les graphiques
-  const gradeDistributionData = [
-    { grade: "0-5", count: 2 },
-    { grade: "6-10", count: 5 },
-    { grade: "11-15", count: 15 },
-    { grade: "16-20", count: 13 },
-  ];
-
-  const courseProgressData = [
-    { month: "Sept", math: 65, physics: 60, algebra: 70 },
-    { month: "Oct", math: 70, physics: 65, algebra: 75 },
-    { month: "Nov", math: 75, physics: 70, algebra: 80 },
-    { month: "Déc", math: 80, physics: 75, algebra: 85 },
-    { month: "Jan", math: 85, physics: 80, algebra: 90 },
-    { month: "Fév", math: 90, physics: 85, algebra: 92 },
-  ];
-
-  const attendanceData = [
-    { name: "Présent", value: 85, color: "#4CAF50" },
-    { name: "Absent", value: 10, color: "#F44336" },
-    { name: "Retard", value: 5, color: "#FF9800" },
-  ];
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Simuler le chargement des données
-    setTimeout(() => {
-      setLoading(false);
-    }, 1000);
+    fetchProfessorData();
   }, []);
 
-  const CourseCard = ({ course }: { course: any }) => (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Badge variant="outline">{course.level}</Badge>
-              <Badge variant="secondary">{course.students} étudiants</Badge>
-            </div>
-            <h3 className="text-lg font-semibold">{course.name}</h3>
-            <div className="mt-4">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm text-muted-foreground">
-                  Progression
-                </span>
-                <span className="text-sm font-medium">{course.progress}%</span>
-              </div>
-              <Progress value={course.progress} className="h-2" />
-            </div>
-          </div>
-          <Button variant="ghost" size="sm">
-            <Eye className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex gap-2 mt-4">
-          <Button size="sm" className="flex-1">
-            <FileText className="h-4 w-4 mr-2" />
-            Notes
-          </Button>
-          <Button size="sm" variant="outline" className="flex-1">
-            <Users className="h-4 w-4 mr-2" />
-            Étudiants
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  const fetchProfessorData = async () => {
+    try {
+      // Simuler un appel API
+      setLoading(true);
 
-  const PendingGradeCard = ({ grade }: { grade: any }) => (
-    <Card className="border-l-4 border-l-yellow-500">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-medium">{grade.course}</span>
-              <Badge variant="outline">{grade.assignment}</Badge>
-            </div>
-            <div className="mt-2">
-              <p className="text-sm text-muted-foreground">
-                {grade.count} copies à corriger
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Date limite: {grade.dueDate}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm">
-              <Edit className="h-4 w-4 mr-2" />
-              Corriger
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+      // Données de démonstration
+      setTimeout(() => {
+        setCourses([
+          {
+            id: "1",
+            name: "Mathématiques",
+            className: "Terminale A",
+            schedule: "Lun 08:00-10:00",
+            totalStudents: 35,
+            assignmentsPending: 2,
+          },
+          {
+            id: "2",
+            name: "Physique",
+            className: "1ère C",
+            schedule: "Mar 10:00-12:00",
+            totalStudents: 28,
+            assignmentsPending: 0,
+          },
+          {
+            id: "3",
+            name: "Informatique",
+            className: "Terminale D",
+            schedule: "Mer 14:00-16:00",
+            totalStudents: 25,
+            assignmentsPending: 5,
+          },
+        ]);
 
-  const ScheduleCard = ({ schedule }: { schedule: any }) => (
-    <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-      <div className="flex items-center gap-3">
-        <div
-          className={`h-10 w-10 rounded-full flex items-center justify-center ${
-            schedule.type === "Cours"
-              ? "bg-blue-100"
-              : schedule.type === "TP"
-              ? "bg-green-100"
-              : "bg-purple-100"
-          }`}
-        >
-          <BookOpen
-            className={`h-5 w-5 ${
-              schedule.type === "Cours"
-                ? "text-blue-600"
-                : schedule.type === "TP"
-                ? "text-green-600"
-                : "text-purple-600"
-            }`}
-          />
+        setUpcomingClasses([
+          {
+            id: "1",
+            course: "Mathématiques",
+            time: "Aujourd'hui, 08:00",
+            room: "Salle 201",
+            className: "Terminale A",
+          },
+          {
+            id: "2",
+            course: "Physique",
+            time: "Demain, 10:00",
+            room: "Labo 3",
+            className: "1ère C",
+          },
+          {
+            id: "3",
+            course: "Informatique",
+            time: "Mercredi, 14:00",
+            room: "Salle Info 2",
+            className: "Terminale D",
+          },
+        ]);
+
+        setStudentGrades([
+          {
+            id: "1",
+            name: "Jean Dupont",
+            average: 18.5,
+            status: "excellent",
+            lastEvaluation: "15/01/2024",
+          },
+          {
+            id: "2",
+            name: "Marie Martin",
+            average: 16.2,
+            status: "good",
+            lastEvaluation: "14/01/2024",
+          },
+          {
+            id: "3",
+            name: "Pierre Dubois",
+            average: 11.5,
+            status: "needs_improvement",
+            lastEvaluation: "10/01/2024",
+          },
+          {
+            id: "4",
+            name: "Sophie Bernard",
+            average: 14.8,
+            status: "average",
+            lastEvaluation: "12/01/2024",
+          },
+        ]);
+
+        setAnnouncements([
+          {
+            id: "1",
+            title: "Réunion pédagogique",
+            content: "Réunion le vendredi à 15h en salle des professeurs",
+            date: "18/01/2024",
+            priority: "high",
+          },
+          {
+            id: "2",
+            title: "Date limite des notes",
+            content:
+              "Les notes du 2ème trimestre doivent être saisies avant le 25/01",
+            date: "16/01/2024",
+            priority: "medium",
+          },
+          {
+            id: "3",
+            title: "Formation continue",
+            content:
+              "Formation sur les nouvelles méthodes pédagogiques disponible",
+            date: "10/01/2024",
+            priority: "low",
+          },
+        ]);
+
+        setLoading(false);
+      }, 1000);
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les données",
+        variant: "destructive",
+      });
+      setLoading(false);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "excellent":
+        return <Badge className="bg-green-100 text-green-800">Excellent</Badge>;
+      case "good":
+        return <Badge className="bg-blue-100 text-blue-800">Bon</Badge>;
+      case "average":
+        return <Badge className="bg-yellow-100 text-yellow-800">Moyen</Badge>;
+      case "needs_improvement":
+        return <Badge className="bg-red-100 text-red-800">À améliorer</Badge>;
+      default:
+        return <Badge>Inconnu</Badge>;
+    }
+  };
+
+  const getPriorityIcon = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case "medium":
+        return <BellRing className="h-4 w-4 text-yellow-500" />;
+      case "low":
+        return <MessageSquare className="h-4 w-4 text-blue-500" />;
+      default:
+        return <BellRing className="h-4 w-4" />;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-8 w-16 mt-2" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-3 w-full" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
-        <div>
-          <h4 className="font-medium">{schedule.course}</h4>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>{schedule.time}</span>
-            <span>•</span>
-            <span>{schedule.room}</span>
-            <Badge variant="outline">{schedule.type}</Badge>
-          </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+          <Card className="col-span-4">
+            <CardHeader>
+              <Skeleton className="h-5 w-32" />
+            </CardHeader>
+            <CardContent>
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full mb-2" />
+              ))}
+            </CardContent>
+          </Card>
+          <Card className="col-span-3">
+            <CardHeader>
+              <Skeleton className="h-5 w-40" />
+            </CardHeader>
+            <CardContent>
+              {[...Array(4)].map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full mb-2" />
+              ))}
+            </CardContent>
+          </Card>
         </div>
       </div>
-      <Button size="sm" variant="ghost">
-        <Eye className="h-4 w-4" />
-      </Button>
-    </div>
-  );
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* En-tête avec informations personnelles */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            Bonjour, Pr. {user?.lastName} !
+            Bonjour, Prof. {user?.firstName} {user?.lastName}
           </h1>
           <p className="text-muted-foreground">
-            Tableau de bord professeur - Suivi des cours et étudiants
+            Voici un aperçu de vos activités et responsabilités
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
-            <Upload className="h-4 w-4 mr-2" />
-            Importer notes
-          </Button>
-          <Button>
-            <FileText className="h-4 w-4 mr-2" />
-            Nouveau devoir
-          </Button>
+          <Badge variant="outline" className="gap-1">
+            <Calendar className="h-3 w-3" />
+            Semaine 3
+          </Badge>
+          <Badge variant="outline" className="gap-1">
+            <Clock className="h-3 w-3" />5 cours cette semaine
+          </Badge>
         </div>
       </div>
 
-      {/* Statistiques principales */}
+      {/* Cartes de statistiques */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Cours enseignés
-                </p>
-                <p className="text-2xl font-bold">{courses.length}</p>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {courses.reduce((sum, c) => sum + c.students, 0)} étudiants
-                </div>
-              </div>
-              <div className="p-3 rounded-full bg-primary/10">
-                <BookOpen className="h-6 w-6 text-primary" />
-              </div>
-            </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Mes Cours</CardTitle>
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{courses.length}</div>
+            <p className="text-xs text-muted-foreground">
+              Cours assignés cette année
+            </p>
+            <Progress value={75} className="h-2 mt-2" />
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Notes à corriger
-                </p>
-                <p className="text-2xl font-bold">
-                  {pendingGrades.reduce((sum, g) => sum + g.count, 0)}
-                </p>
-                <div className="flex items-center text-sm text-yellow-600 mt-1">
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  {pendingGrades.length} devoirs
-                </div>
-              </div>
-              <div className="p-3 rounded-full bg-yellow-100">
-                <FileText className="h-6 w-6 text-yellow-600" />
-              </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Élèves Totaux</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {courses.reduce((acc, course) => acc + course.totalStudents, 0)}
             </div>
+            <p className="text-xs text-muted-foreground">
+              Répartis dans {courses.length} classes
+            </p>
+            <Progress value={60} className="h-2 mt-2" />
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Taux de présence
-                </p>
-                <p className="text-2xl font-bold">85%</p>
-                <div className="flex items-center text-sm text-green-600 mt-1">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  +5% ce mois
-                </div>
-              </div>
-              <div className="p-3 rounded-full bg-green-100">
-                <CheckCircle className="h-6 w-6 text-green-600" />
-              </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Travaux en attente
+            </CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {courses.reduce(
+                (acc, course) => acc + course.assignmentsPending,
+                0
+              )}
             </div>
+            <p className="text-xs text-muted-foreground">Copies à corriger</p>
+            <Progress value={30} className="h-2 mt-2" />
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Messages non lus
-                </p>
-                <p className="text-2xl font-bold">{studentMessages.length}</p>
-                <div className="text-sm text-muted-foreground mt-1">
-                  Des étudiants
-                </div>
-              </div>
-              <div className="p-3 rounded-full bg-blue-100">
-                <MessageSquare className="h-6 w-6 text-blue-600" />
-              </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Prochaine classe
+            </CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {upcomingClasses[0]?.time.split(",")[1]?.trim() || "--:--"}
             </div>
+            <p className="text-xs text-muted-foreground">
+              {upcomingClasses[0]?.course || "Aucun cours"}
+            </p>
+            <Progress value={90} className="h-2 mt-2" />
           </CardContent>
         </Card>
       </div>
 
-      {/* Mes cours */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Mes cours</CardTitle>
-          <CardDescription>Cours assignés cette année</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {courses.map((course) => (
-              <CourseCard key={course.id} course={course} />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Graphiques statistiques */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+      {/* Grille principale */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        {/* Prochains cours */}
+        <Card className="col-span-4">
           <CardHeader>
-            <CardTitle>Distribution des notes</CardTitle>
-            <CardDescription>Dernier devoir de Mathématiques</CardDescription>
+            <CardTitle>Prochains Cours</CardTitle>
+            <CardDescription>Vos prochaines séances de cours</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={gradeDistributionData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="grade" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar
-                    dataKey="count"
-                    name="Nombre d'étudiants"
-                    fill="#8884d8"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cours</TableHead>
+                  <TableHead>Classe</TableHead>
+                  <TableHead>Date & Heure</TableHead>
+                  <TableHead>Salle</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {upcomingClasses.map((classItem) => (
+                  <TableRow key={classItem.id}>
+                    <TableCell className="font-medium">
+                      {classItem.course}
+                    </TableCell>
+                    <TableCell>{classItem.className}</TableCell>
+                    <TableCell>{classItem.time}</TableCell>
+                    <TableCell>{classItem.room}</TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem>Voir les détails</DropdownMenuItem>
+                          <DropdownMenuItem>
+                            Préparer la séance
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            Marquer les présences
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Annonces importantes */}
+        <Card className="col-span-3">
           <CardHeader>
-            <CardTitle>Progression des cours</CardTitle>
-            <CardDescription>Avancement sur l'année</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={courseProgressData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="math"
-                    stroke="#8884d8"
-                    strokeWidth={2}
-                    name="Mathématiques"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="physics"
-                    stroke="#82ca9d"
-                    strokeWidth={2}
-                    name="Physique"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="algebra"
-                    stroke="#ffc658"
-                    strokeWidth={2}
-                    name="Algèbre"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Travaux en attente et emploi du temps */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Notes à corriger */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Notes à corriger</CardTitle>
-                <CardDescription>
-                  Devoirs en attente de correction
-                </CardDescription>
-              </div>
-              <Badge variant="destructive">
-                {pendingGrades.reduce((sum, g) => sum + g.count, 0)} copies
-              </Badge>
-            </div>
+            <CardTitle>Annonces & Rappels</CardTitle>
+            <CardDescription>Informations importantes</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {pendingGrades.map((grade) => (
-                <PendingGradeCard key={grade.id} grade={grade} />
+              {announcements.map((announcement) => (
+                <div
+                  key={announcement.id}
+                  className="flex items-start space-x-4 rounded-lg border p-3"
+                >
+                  <div className="flex-shrink-0">
+                    {getPriorityIcon(announcement.priority)}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      {announcement.title}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {announcement.content}
+                    </p>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {announcement.date}
+                  </div>
+                </div>
               ))}
-            </div>
-
-            <div className="mt-6 p-4 bg-yellow-50 rounded-lg">
-              <h4 className="font-medium mb-2 flex items-center">
-                <Clock className="h-4 w-4 mr-2 text-yellow-600" />
-                Prochaine échéance
-              </h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                Contrôle d'Algèbre à rendre le 15 Mars
-              </p>
-              <Button className="w-full" variant="outline">
-                <Edit className="h-4 w-4 mr-2" />
-                Commencer la correction
-              </Button>
             </div>
           </CardContent>
         </Card>
+      </div>
 
-        {/* Emploi du temps du jour */}
-        <Card>
+      {/* Grille secondaire */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        {/* Résumé des notes */}
+        <Card className="col-span-4">
           <CardHeader>
-            <CardTitle>Emploi du temps d'aujourd'hui</CardTitle>
+            <CardTitle>Résumé des Notes</CardTitle>
             <CardDescription>
-              {new Date().toLocaleDateString("fr-FR", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-              })}
+              Performance des élèves dans vos cours
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {todaySchedule.map((schedule) => (
-                <ScheduleCard key={schedule.id} schedule={schedule} />
-              ))}
-            </div>
-
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-              <h4 className="font-medium mb-2">Statistiques de présence</h4>
-              <div className="h-40">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={attendanceData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) =>
-                        `${name}: ${(percent * 100).toFixed(0)}%`
-                      }
-                      outerRadius={60}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {attendanceData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value) => [`${value}%`, "Pourcentage"]}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Élève</TableHead>
+                  <TableHead>Moyenne</TableHead>
+                  <TableHead>Statut</TableHead>
+                  <TableHead>Dernière évaluation</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {studentGrades.map((student) => (
+                  <TableRow key={student.id}>
+                    <TableCell className="font-medium">
+                      {student.name}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center">
+                        <span className="mr-2">{student.average}/20</span>
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                      </div>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(student.status)}</TableCell>
+                    <TableCell>{student.lastEvaluation}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          // Navigation vers la page de saisie des notes
+                          toast({
+                            title: "Redirection",
+                            description: "Vers la page de saisie des notes",
+                          });
+                        }}
+                      >
+                        Ajouter note
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Messages étudiants et actions rapides */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Messages des étudiants */}
-        <Card>
+        {/* Vos cours */}
+        <Card className="col-span-3">
           <CardHeader>
-            <CardTitle>Messages des étudiants</CardTitle>
-            <CardDescription>Questions et demandes récentes</CardDescription>
+            <CardTitle>Vos Cours</CardTitle>
+            <CardDescription>Liste de vos cours assignés</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {studentMessages.map((message) => (
+              {courses.map((course) => (
                 <div
-                  key={message.id}
-                  className="flex items-start justify-between p-3 border rounded-lg"
+                  key={course.id}
+                  className="flex items-center justify-between rounded-lg border p-3"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Users className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{message.student}</span>
-                        <Badge variant="outline">{message.course}</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {message.message}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Il y a {message.time}
-                      </p>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{course.name}</p>
+                    <div className="flex items-center text-xs text-muted-foreground">
+                      <Users className="mr-1 h-3 w-3" />
+                      {course.totalStudents} élèves
+                      <Separator orientation="vertical" className="mx-2 h-4" />
+                      <Clock className="mr-1 h-3 w-3" />
+                      {course.schedule}
                     </div>
                   </div>
-                  <Button size="sm" variant="ghost">
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center space-x-2">
+                    {course.assignmentsPending > 0 ? (
+                      <Badge variant="destructive">
+                        {course.assignmentsPending}
+                      </Badge>
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        // Navigation vers le détail du cours
+                        toast({
+                          title: "Détail du cours",
+                          description: `Ouvrir ${course.name}`,
+                        });
+                      }}
+                    >
+                      Détails
+                    </Button>
+                  </div>
                 </div>
               ))}
-            </div>
-
-            <Button variant="outline" className="w-full mt-4">
-              <MessageSquare className="h-4 w-4 mr-2" />
-              Voir tous les messages
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Actions rapides */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Actions rapides</CardTitle>
-            <CardDescription>
-              Accès direct aux fonctions fréquentes
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" className="h-auto py-4 flex flex-col">
-                <FileText className="h-5 w-5 mb-2" />
-                <span className="text-sm">Saisir notes</span>
-              </Button>
-              <Button variant="outline" className="h-auto py-4 flex flex-col">
-                <Users className="h-5 w-5 mb-2" />
-                <span className="text-sm">Présences</span>
-              </Button>
-              <Button variant="outline" className="h-auto py-4 flex flex-col">
-                <Upload className="h-5 w-5 mb-2" />
-                <span className="text-sm">Ressources</span>
-              </Button>
-              <Button variant="outline" className="h-auto py-4 flex flex-col">
-                <Calendar className="h-5 w-5 mb-2" />
-                <span className="text-sm">Planning</span>
-              </Button>
-              <Button variant="outline" className="h-auto py-4 flex flex-col">
-                <BarChart3 className="h-5 w-5 mb-2" />
-                <span className="text-sm">Statistiques</span>
-              </Button>
-              <Button variant="outline" className="h-auto py-4 flex flex-col">
-                <MessageSquare className="h-5 w-5 mb-2" />
-                <span className="text-sm">Messages</span>
-              </Button>
-            </div>
-
-            <div className="mt-6 p-4 bg-green-50 rounded-lg">
-              <h4 className="font-medium mb-2 flex items-center">
-                <Target className="h-4 w-4 mr-2 text-green-600" />
-                Objectif pédagogique
-              </h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                Atteindre 90% de réussite au prochain examen
-              </p>
-              <div className="flex items-center justify-between">
-                <Progress value={75} className="h-2 flex-1 mr-4" />
-                <span className="text-sm font-medium">75%</span>
-              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Performance et indicateurs */}
+      {/* Actions rapides */}
       <Card>
         <CardHeader>
-          <CardTitle>Indicateurs de performance</CardTitle>
-          <CardDescription>Suivi de votre activité pédagogique</CardDescription>
+          <CardTitle>Actions Rapides</CardTitle>
+          <CardDescription>
+            Accédez rapidement aux fonctionnalités fréquemment utilisées
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            <div className="text-center">
-              <div className="text-3xl font-bold">4.8</div>
-              <div className="text-sm text-muted-foreground">Note moyenne</div>
-              <div className="flex justify-center mt-2">
-                <Star className="h-4 w-4 text-yellow-500" />
-                <Star className="h-4 w-4 text-yellow-500" />
-                <Star className="h-4 w-4 text-yellow-500" />
-                <Star className="h-4 w-4 text-yellow-500" />
-                <Star className="h-4 w-4 text-yellow-500" />
-              </div>
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex-col gap-2"
+              onClick={() => {
+                // Saisie des notes
+                toast({
+                  title: "Saisie des notes",
+                  description: "Ouvrir l'interface de saisie",
+                });
+              }}
+            >
+              <FileText className="h-6 w-6" />
+              <span>Saisir des notes</span>
+            </Button>
 
-            <div className="text-center">
-              <div className="text-3xl font-bold">92%</div>
-              <div className="text-sm text-muted-foreground">
-                Satisfaction étudiants
-              </div>
-              <Progress value={92} className="h-2 mt-2" />
-            </div>
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex-col gap-2"
+              onClick={() => {
+                // Marquer les présences
+                toast({
+                  title: "Présences",
+                  description: "Marquer les présences",
+                });
+              }}
+            >
+              <Users className="h-6 w-6" />
+              <span>Présences</span>
+            </Button>
 
-            <div className="text-center">
-              <div className="text-3xl font-bold">45</div>
-              <div className="text-sm text-muted-foreground">
-                Heures enseignées
-              </div>
-              <div className="flex items-center justify-center text-sm text-green-600 mt-2">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                +5% ce mois
-              </div>
-            </div>
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex-col gap-2"
+              onClick={() => {
+                // Créer un devoir
+                toast({
+                  title: "Devoir",
+                  description: "Créer un nouveau devoir",
+                });
+              }}
+            >
+              <BookOpen className="h-6 w-6" />
+              <span>Créer devoir</span>
+            </Button>
 
-            <div className="text-center">
-              <div className="text-3xl font-bold">98%</div>
-              <div className="text-sm text-muted-foreground">
-                Taux de réussite
-              </div>
-              <div className="flex items-center justify-center text-sm text-green-600 mt-2">
-                <Award className="h-3 w-3 mr-1" />
-                Meilleur que la moyenne
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 p-4 bg-primary/5 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-medium flex items-center">
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Reconnaissance pédagogique
-                </h4>
-                <p className="text-sm text-muted-foreground">
-                  Votre engagement exceptionnel a été remarqué
-                </p>
-              </div>
-              <Button variant="outline">Voir les détails</Button>
-            </div>
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex-col gap-2"
+              onClick={() => {
+                // Communiquer avec les parents
+                toast({
+                  title: "Communication",
+                  description: "Envoyer un message aux parents",
+                });
+              }}
+            >
+              <MessageSquare className="h-6 w-6" />
+              <span>Contacter parents</span>
+            </Button>
           </div>
         </CardContent>
       </Card>

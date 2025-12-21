@@ -1,8 +1,7 @@
-// hooks/usePermissions.ts
+// hooks/usePermissions.ts - VERSION CORRIGÉE
 import { useAuthStore } from "@/store/authStore";
-import { roleConfigurations } from "@/config/roleConfig";
+import { roleConfigurations, rolePermissions } from "@/config/roleConfig"; // Import depuis config
 import { ActiveTab, UserRole, PERMISSIONS } from "@/types/navigation";
-import { rolePermissions } from "@/config/roleConfig"; // Importez également rolePermissions
 
 export const usePermissions = () => {
   const { user } = useAuthStore();
@@ -17,7 +16,7 @@ export const usePermissions = () => {
       return true;
     }
 
-    // 2. Vérifier les permissions spécifiques au rôle depuis roleConfig
+    // 2. Vérifier les permissions spécifiques au rôle
     const rolePerms = rolePermissions[userRole] || [];
 
     // 3. Si le rôle a "full_access", il a toutes les permissions
@@ -48,14 +47,6 @@ export const usePermissions = () => {
       .map((item) => item.id as ActiveTab);
   };
 
-  const getRoleConfig = () => {
-    if (!user) return roleConfigurations.Admin;
-    return (
-      roleConfigurations[user.role as UserRole] || roleConfigurations.Admin
-    );
-  };
-
-  // Nouvelle fonction pour vérifier l'accès à un onglet spécifique
   const canAccessTab = (tabId: ActiveTab): boolean => {
     if (!user) return false;
 
@@ -78,7 +69,6 @@ export const usePermissions = () => {
   return {
     hasPermission,
     getAccessibleModules,
-    getRoleConfig,
     canAccessTab,
   };
 };

@@ -1,4 +1,4 @@
-// components/students/StudentsManager.tsx - VERSION AMÉLIORÉE
+// components/students/StudentsManager.tsx - VERSION CORRIGÉE
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Plus,
@@ -26,6 +26,8 @@ import {
   MapPin,
   ChevronDown,
   AlertCircle,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,7 +39,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -64,8 +65,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,7 +75,6 @@ import { StudentForm } from "./students/StudentForm";
 import { useClassStore } from "@/store/classStore";
 import { StudentDetails } from "./students/StudentDetails";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-// import { FormError } from "@/components/ui/form-error";
 
 // Constantes pour les valeurs "vides"
 const EMPTY_VALUES = {
@@ -86,6 +84,46 @@ const EMPTY_VALUES = {
   NOT_ASSIGNED: "not-assigned",
   NOT_SPECIFIED: "not-specified",
 } as const;
+
+// Fonctions utilitaires
+const getStatusLabel = (status: Student["status"]) => {
+  const labels: Record<Student["status"], string> = {
+    Active: "Actif",
+    Inactive: "Inactif",
+    Graduated: "Diplômé",
+    Transferred: "Transféré",
+    Suspended: "Suspendu",
+  };
+  return labels[status] || status;
+};
+
+const getStatusBadgeVariant = (status: Student["status"]) => {
+  const variants: Record<
+    Student["status"],
+    "default" | "secondary" | "outline" | "destructive"
+  > = {
+    Active: "default",
+    Inactive: "secondary",
+    Graduated: "outline",
+    Transferred: "secondary",
+    Suspended: "destructive",
+  };
+  return variants[status] || "secondary";
+};
+
+// Composant Squelette de chargement
+const StudentSkeleton = () => (
+  <Card className="p-4 animate-pulse">
+    <div className="flex items-center space-x-4">
+      <div className="h-12 w-12 bg-gray-300 rounded-full"></div>
+      <div className="space-y-2 flex-1">
+        <div className="h-4 bg-gray-300 rounded w-1/3"></div>
+        <div className="h-3 bg-gray-300 rounded w-2/3"></div>
+        <div className="h-3 bg-gray-300 rounded w-1/2"></div>
+      </div>
+    </div>
+  </Card>
+);
 
 // Composant Carte Étudiant
 const StudentCard = ({
@@ -114,7 +152,7 @@ const StudentCard = ({
   return (
     <Card className="mb-4 relative hover:shadow-md transition-shadow duration-200">
       {isSelecting && (
-        <div className="absolute top-4 left-4">
+        <div className="absolute top-4 left-4 z-10">
           <Checkbox
             checked={isSelected}
             onCheckedChange={() => onSelect(student.id)}
@@ -146,14 +184,12 @@ const StudentCard = ({
                 <Mail className="h-3 w-3" />
                 {student.email}
               </div>
-              <div className="mt-2">
+              <div className="mt-2 flex flex-wrap gap-1">
                 <Badge variant={getStatusBadgeVariant(student.status)}>
                   {getStatusLabel(student.status)}
                 </Badge>
                 {studentClass && (
-                  <Badge variant="outline" className="ml-2">
-                    {studentClass.name}
-                  </Badge>
+                  <Badge variant="outline">{studentClass.name}</Badge>
                 )}
               </div>
             </div>
@@ -192,7 +228,7 @@ const StudentCard = ({
               <Phone className="h-3 w-3" />
               Téléphone
             </div>
-            <div>{student.phone || "-"}</div>
+            <div className="truncate">{student.phone || "-"}</div>
           </div>
           <div>
             <div className="text-muted-foreground flex items-center gap-1">
@@ -209,7 +245,7 @@ const StudentCard = ({
                 <Calendar className="h-3 w-3" />
                 Date de naissance
               </div>
-              <div>
+              <div className="truncate">
                 {new Date(student.dateOfBirth).toLocaleDateString("fr-FR")}
               </div>
             </div>
@@ -251,7 +287,13 @@ const Pagination = ({
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2 py-4 border-t">
       <div className="text-sm text-muted-foreground">
-        Affichage de {startIndex} à {endIndex} sur {totalItems} étudiant(s)
+        {totalItems > 0 ? (
+          <>
+            Affichage de {startIndex} à {endIndex} sur {totalItems} étudiant(s)
+          </>
+        ) : (
+          <>Aucun étudiant</>
+        )}
       </div>
 
       <div className="flex items-center space-x-4">
@@ -279,43 +321,45 @@ const Pagination = ({
           </Select>
         </div>
 
-        <div className="flex items-center space-x-1">
-          <Button
-            variant="outline"
-            className="h-8 w-8 p-0"
-            onClick={() => onPageChange(1)}
-            disabled={currentPage === 1}
-          >
-            <ChevronsLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            className="h-8 w-8 p-0"
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="flex items-center justify-center text-sm font-medium w-8">
-            {currentPage}
+        {totalPages > 1 && (
+          <div className="flex items-center space-x-1">
+            <Button
+              variant="outline"
+              className="h-8 w-8 p-0"
+              onClick={() => onPageChange(1)}
+              disabled={currentPage === 1}
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              className="h-8 w-8 p-0"
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center justify-center text-sm font-medium w-8">
+              {currentPage}
+            </div>
+            <Button
+              variant="outline"
+              className="h-8 w-8 p-0"
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              className="h-8 w-8 p-0"
+              onClick={() => onPageChange(totalPages)}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            className="h-8 w-8 p-0"
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            className="h-8 w-8 p-0"
-            onClick={() => onPageChange(totalPages)}
-            disabled={currentPage === totalPages}
-          >
-            <ChevronsRight className="h-4 w-4" />
-          </Button>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -423,46 +467,6 @@ const BulkActionsBar = ({
   );
 };
 
-// Fonctions utilitaires
-const getStatusLabel = (status: Student["status"]) => {
-  const labels: Record<Student["status"], string> = {
-    Active: "Actif",
-    Inactive: "Inactif",
-    Graduated: "Diplômé",
-    Transferred: "Transféré",
-    Suspended: "Suspendu",
-  };
-  return labels[status] || status;
-};
-
-const getStatusBadgeVariant = (status: Student["status"]) => {
-  const variants: Record<
-    Student["status"],
-    "default" | "secondary" | "outline" | "destructive"
-  > = {
-    Active: "default",
-    Inactive: "secondary",
-    Graduated: "outline",
-    Transferred: "secondary",
-    Suspended: "destructive",
-  };
-  return variants[status] || "secondary";
-};
-
-// Squelette de chargement
-const StudentSkeleton = () => (
-  <Card className="p-4 animate-pulse">
-    <div className="flex items-center space-x-4">
-      <div className="h-12 w-12 bg-gray-300 rounded-full"></div>
-      <div className="space-y-2 flex-1">
-        <div className="h-4 bg-gray-300 rounded w-1/3"></div>
-        <div className="h-3 bg-gray-300 rounded w-2/3"></div>
-        <div className="h-3 bg-gray-300 rounded w-1/2"></div>
-      </div>
-    </div>
-  </Card>
-);
-
 // Interface pour l'état du formulaire
 interface FormState {
   isOpen: boolean;
@@ -502,8 +506,6 @@ export const StudentsManager = () => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [isSelecting, setIsSelecting] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
   const [showAssignClassModal, setShowAssignClassModal] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState("");
 
@@ -524,9 +526,11 @@ export const StudentsManager = () => {
   useEffect(() => {
     const initializeData = async () => {
       try {
+        console.log("🔄 Initializing data...");
         await Promise.all([fetchStudents(), fetchClasses()]);
+        console.log("✅ Data initialized successfully");
       } catch (err) {
-        console.error("Erreur lors de l'initialisation:", err);
+        console.error("❌ Erreur lors de l'initialisation:", err);
         toast({
           title: "Erreur d'initialisation",
           description: "Impossible de charger les données initiales",
@@ -541,6 +545,7 @@ export const StudentsManager = () => {
   // Gestion des erreurs globales
   useEffect(() => {
     if (globalError) {
+      console.error("❌ Global error:", globalError);
       toast({
         title: "Erreur",
         description: globalError,
@@ -560,74 +565,93 @@ export const StudentsManager = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Charger les étudiants avec recherche
+  // Charger les Éleves avec recherche
   useEffect(() => {
     const loadStudents = async () => {
+      console.log("🔄 Loading students with:", {
+        search: debouncedSearchTerm,
+        page: currentPage,
+        limit: itemsPerPage,
+        filters,
+      });
       try {
         await fetchStudents({
           search: debouncedSearchTerm,
           page: currentPage,
           limit: itemsPerPage,
+          status: filters.status,
+          classId: filters.classId,
         });
+        console.log("✅ Students loaded:", students.length);
       } catch (err) {
-        console.error("Erreur lors du chargement des étudiants:", err);
-        // L'erreur est déjà gérée par le store et affichée via le toast
+        console.error("❌ Erreur lors du chargement des Éleves:", err);
       }
     };
 
     loadStudents();
-  }, [debouncedSearchTerm, currentPage, itemsPerPage, fetchStudents]);
+  }, [debouncedSearchTerm, currentPage, itemsPerPage, fetchStudents, filters]);
 
-  // Filtrage des étudiants
+  // Filtrage des Éleves
   const filteredStudents = useMemo(() => {
+    console.log("🔍 Filtering students:", {
+      total: students.length,
+      filters,
+    });
+
     return students.filter((student) => {
       if (!student || !student.id) return false;
 
       const matchesStatus =
-        filters.status === "" || student.status === filters.status;
+        !filters.status ||
+        filters.status === EMPTY_VALUES.ALL ||
+        student.status === filters.status;
 
       const matchesClass =
-        filters.classId === "" || student.classId === filters.classId;
+        !filters.classId ||
+        filters.classId === EMPTY_VALUES.ALL ||
+        student.classId === filters.classId;
 
       return matchesStatus && matchesClass;
     });
-  }, [students, filters.status, filters.classId]);
+  }, [students, filters]);
 
   // Pagination
   const totalPages = Math.ceil(pagination.total / itemsPerPage);
   const paginatedStudents = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredStudents.slice(startIndex, startIndex + itemsPerPage);
+    const result = filteredStudents.slice(
+      startIndex,
+      startIndex + itemsPerPage
+    );
+    console.log("📄 Paginated students:", {
+      currentPage,
+      itemsPerPage,
+      startIndex,
+      endIndex: startIndex + itemsPerPage,
+      total: filteredStudents.length,
+      resultCount: result.length,
+    });
+    return result;
   }, [filteredStudents, currentPage, itemsPerPage]);
 
   // Gestion de l'édition d'un étudiant
   const handleEditStudent = useCallback(
     async (student: Student) => {
       try {
-        // Définir l'état du formulaire avant l'ouverture
+        console.log("✏️ Editing student:", student.id);
         setFormState({
           isOpen: true,
           mode: "edit",
-          student: { ...student }, // Créer une copie pour éviter les mutations
+          student: { ...student },
           isLoading: false,
           error: null,
         });
 
-        // Si l'étudiant est dans la vue détails, on ferme cette vue
         if (viewMode === "details") {
           setViewMode("list");
         }
-
-        console.log("📝 Préparation de l'édition:", {
-          id: student.id,
-          firstName: student.firstName,
-          lastName: student.lastName,
-          email: student.email,
-          classId: student.classId,
-          guardians: student.guardians?.length || 0,
-        });
       } catch (err) {
-        console.error("Erreur lors de la préparation de l'édition:", err);
+        console.error("❌ Erreur lors de la préparation de l'édition:", err);
         setFormState((prev) => ({
           ...prev,
           error: "Impossible de charger les données de l'étudiant",
@@ -638,15 +662,18 @@ export const StudentsManager = () => {
   );
 
   const handleViewDetails = useCallback((student: Student) => {
+    console.log("👁️ Viewing details for student:", student.id);
     setSelectedStudentDetails(student);
     setViewMode("details");
   }, []);
 
   const handleDeleteStudent = useCallback((studentId: string) => {
+    console.log("🗑️ Requesting delete for student:", studentId);
     setStudentToDelete(studentId);
   }, []);
 
   const handleBackToList = useCallback(() => {
+    console.log("↩️ Back to list");
     setViewMode("list");
     setSelectedStudentDetails(null);
     setSelectedStudents([]);
@@ -656,8 +683,9 @@ export const StudentsManager = () => {
   const handleConfirmDelete = useCallback(async () => {
     if (!studentToDelete) return;
 
+    console.log("✅ Confirming delete:", studentToDelete);
+
     try {
-      // Vérifier si c'est une suppression groupée
       if (studentToDelete.includes(",")) {
         const ids = studentToDelete.split(",");
         const deletePromises = ids.map((id) => deleteStudent(id));
@@ -665,7 +693,7 @@ export const StudentsManager = () => {
 
         toast({
           title: "Suppression réussie",
-          description: `${ids.length} étudiants ont été supprimés avec succès`,
+          description: `${ids.length} Éleves ont été supprimés avec succès`,
         });
       } else {
         await deleteStudent(studentToDelete);
@@ -678,7 +706,7 @@ export const StudentsManager = () => {
       setStudentToDelete(null);
       setSelectedStudents([]);
     } catch (error) {
-      console.error("Erreur lors de la suppression:", error);
+      console.error("❌ Erreur lors de la suppression:", error);
       toast({
         title: "Erreur",
         description: "Une erreur s'est produite lors de la suppression",
@@ -687,7 +715,7 @@ export const StudentsManager = () => {
     }
   }, [studentToDelete, deleteStudent]);
 
-  // Sélection des étudiants
+  // Sélection des Éleves
   const toggleStudentSelection = useCallback((studentId: string) => {
     setSelectedStudents((prev) =>
       prev.includes(studentId)
@@ -706,12 +734,15 @@ export const StudentsManager = () => {
 
   const handleBulkDelete = useCallback(() => {
     if (selectedStudents.length === 0) return;
+    console.log("🗑️ Bulk delete for:", selectedStudents);
     setStudentToDelete(selectedStudents.join(","));
   }, [selectedStudents]);
 
   const handleBulkStatusChange = useCallback(
     async (newStatus: Student["status"]) => {
       if (selectedStudents.length === 0) return;
+
+      console.log("🔄 Bulk status change to:", newStatus, selectedStudents);
 
       try {
         const updatePromises = selectedStudents.map((studentId) => {
@@ -726,12 +757,12 @@ export const StudentsManager = () => {
 
         toast({
           title: "Statut mis à jour",
-          description: `Le statut de ${selectedStudents.length} étudiants a été modifié`,
+          description: `Le statut de ${selectedStudents.length} Éleves a été modifié`,
         });
 
         setSelectedStudents([]);
       } catch (error) {
-        console.error("Erreur lors de la mise à jour groupée:", error);
+        console.error("❌ Erreur lors de la mise à jour groupée:", error);
         toast({
           title: "Erreur",
           description:
@@ -745,11 +776,17 @@ export const StudentsManager = () => {
 
   const handleBulkAssignClass = useCallback(() => {
     if (selectedStudents.length === 0) return;
+    console.log("🏫 Bulk assign class for:", selectedStudents);
     setShowAssignClassModal(true);
   }, [selectedStudents]);
 
   const handleConfirmAssignClass = useCallback(async () => {
     if (selectedStudents.length === 0 || !selectedClassId) return;
+
+    console.log("✅ Confirming bulk assign:", {
+      students: selectedStudents,
+      classId: selectedClassId,
+    });
 
     try {
       const updatePromises = selectedStudents.map((studentId) => {
@@ -760,14 +797,14 @@ export const StudentsManager = () => {
 
       toast({
         title: "Classe assignée",
-        description: `${selectedStudents.length} étudiants ont été affectés à la classe`,
+        description: `${selectedStudents.length} Éleves ont été affectés à la classe`,
       });
 
       setSelectedStudents([]);
       setShowAssignClassModal(false);
       setSelectedClassId("");
     } catch (error) {
-      console.error("Erreur lors de l'affectation groupée:", error);
+      console.error("❌ Erreur lors de l'affectation groupée:", error);
       toast({
         title: "Erreur",
         description:
@@ -779,6 +816,8 @@ export const StudentsManager = () => {
 
   const handleBulkExport = useCallback(() => {
     if (selectedStudents.length === 0) return;
+
+    console.log("📤 Bulk export for:", selectedStudents.length, "students");
 
     try {
       const selectedStudentsData = students.filter((student) =>
@@ -803,7 +842,6 @@ export const StudentsManager = () => {
             : "",
           "Lieu de Naissance": student.placeOfBirth || "",
           Adresse: student.address || "",
-          CIN: student.cin || "",
           "Groupe Sanguin": student.bloodGroup || "",
           Allergies: student.allergies || "",
           Handicaps: student.disabilities || "",
@@ -816,15 +854,15 @@ export const StudentsManager = () => {
 
       const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Étudiants");
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Éleves");
       XLSX.writeFile(workbook, "etudiants-selection.xlsx");
 
       toast({
         title: "Export réussi",
-        description: `Les données de ${selectedStudents.length} étudiants ont été exportées`,
+        description: `Les données de ${selectedStudents.length} Éleves ont été exportées`,
       });
     } catch (error) {
-      console.error("Erreur lors de l'export:", error);
+      console.error("❌ Erreur lors de l'export:", error);
       toast({
         title: "Erreur d'export",
         description: "Une erreur s'est produite lors de l'exportation",
@@ -834,6 +872,8 @@ export const StudentsManager = () => {
   }, [selectedStudents, students, classes]);
 
   const exportAllToExcel = useCallback(() => {
+    console.log("📤 Export all students:", filteredStudents.length);
+
     try {
       const data = filteredStudents.map((student) => {
         const studentClass = student.classId
@@ -853,7 +893,6 @@ export const StudentsManager = () => {
             : "",
           "Lieu de Naissance": student.placeOfBirth || "",
           Adresse: student.address || "",
-          CIN: student.cin || "",
           "Groupe Sanguin": student.bloodGroup || "",
           Allergies: student.allergies || "",
           Handicaps: student.disabilities || "",
@@ -866,15 +905,15 @@ export const StudentsManager = () => {
 
       const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Étudiants");
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Éleves");
       XLSX.writeFile(workbook, "etudiants.xlsx");
 
       toast({
         title: "Export réussi",
-        description: `Les données de ${filteredStudents.length} étudiants ont été exportées`,
+        description: `Les données de ${filteredStudents.length} Éleves ont été exportées`,
       });
     } catch (error) {
-      console.error("Erreur lors de l'export:", error);
+      console.error("❌ Erreur lors de l'export:", error);
       toast({
         title: "Erreur d'export",
         description: "Une erreur s'est produite lors de l'exportation",
@@ -886,11 +925,21 @@ export const StudentsManager = () => {
   // Gestion de la soumission du formulaire
   const handleFormSubmit = useCallback(
     async (studentData: any) => {
+      console.log("📤 Form submit:", {
+        mode: formState.mode,
+        data: studentData,
+      });
+
       setFormState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       try {
+        const dataToSend = {
+          ...studentData,
+          status: formState.mode === "create" ? "Active" : studentData.status,
+        };
+
         if (formState.mode === "create") {
-          await createStudent(studentData);
+          await createStudent(dataToSend);
           toast({
             title: "Étudiant créé",
             description: "L'étudiant a été créé avec succès",
@@ -900,7 +949,7 @@ export const StudentsManager = () => {
             throw new Error("ID de l'étudiant manquant");
           }
 
-          await updateStudent(formState.student.id, studentData);
+          await updateStudent(formState.student.id, dataToSend);
           toast({
             title: "Étudiant mis à jour",
             description: "L'étudiant a été modifié avec succès",
@@ -915,7 +964,7 @@ export const StudentsManager = () => {
           error: null,
         });
       } catch (error: any) {
-        console.error("Erreur lors de la soumission:", error);
+        console.error("❌ Erreur lors de la soumission:", error);
 
         let errorMessage = "Une erreur s'est produite lors de l'opération";
         if (error.message) {
@@ -941,6 +990,7 @@ export const StudentsManager = () => {
   );
 
   const handleOpenCreateForm = useCallback(() => {
+    console.log("➕ Opening create form");
     setFormState({
       isOpen: true,
       mode: "create",
@@ -951,6 +1001,7 @@ export const StudentsManager = () => {
   }, []);
 
   const handleCloseForm = useCallback(() => {
+    console.log("❌ Closing form");
     setFormState({
       isOpen: false,
       mode: "create",
@@ -993,9 +1044,16 @@ export const StudentsManager = () => {
   }
 
   const renderContent = () => {
+    console.log("🎨 Rendering content:", {
+      loading,
+      studentsCount: students.length,
+      filteredCount: filteredStudents.length,
+      paginatedCount: paginatedStudents.length,
+    });
+
     if (loading && students.length === 0) {
       return (
-        <div className="space-y-4">
+        <div className="space-y-4 p-4">
           {[...Array(5)].map((_, i) => (
             <StudentSkeleton key={`skeleton-${i}`} />
           ))}
@@ -1003,7 +1061,7 @@ export const StudentsManager = () => {
       );
     }
 
-    if (students.length === 0) {
+    if (students.length === 0 && !loading) {
       return (
         <div className="text-center py-12">
           <User className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
@@ -1025,6 +1083,27 @@ export const StudentsManager = () => {
       );
     }
 
+    if (filteredStudents.length === 0 && !loading) {
+      return (
+        <div className="text-center py-12">
+          <AlertTriangle className="h-16 w-16 mx-auto text-yellow-500/50 mb-4" />
+          <h3 className="text-lg font-semibold text-muted-foreground">
+            Aucun résultat
+          </h3>
+          <p className="text-muted-foreground mt-1">
+            Aucun étudiant ne correspond à vos filtres
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => setFilters({ status: "", classId: "" })}
+            className="mt-4"
+          >
+            Réinitialiser les filtres
+          </Button>
+        </div>
+      );
+    }
+
     if (isDesktop) {
       return (
         <div className="overflow-x-auto">
@@ -1038,7 +1117,7 @@ export const StudentsManager = () => {
                       paginatedStudents.length > 0
                     }
                     onCheckedChange={toggleSelectAll}
-                    aria-label="Sélectionner tous les étudiants"
+                    aria-label="Sélectionner tous les Éleves"
                   />
                 </TableHead>
                 <TableHead key="code-header" className="w-[150px]">
@@ -1174,7 +1253,7 @@ export const StudentsManager = () => {
 
     // Vue mobile/tablette
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 p-4">
         {paginatedStudents.map((student) => (
           <StudentCard
             key={student.id}
@@ -1191,37 +1270,36 @@ export const StudentsManager = () => {
     );
   };
 
+  console.log("📊 State summary:", {
+    totalStudents: students.length,
+    filteredStudents: filteredStudents.length,
+    paginatedStudents: paginatedStudents.length,
+    loading,
+    currentPage,
+    totalPages,
+    filters,
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Gestion des Étudiants
+            Gestion des Éleves
           </h2>
           <p className="text-muted-foreground mt-2">
-            Gérez les informations des étudiants de votre établissement
+            Gérez les informations des Éleves de votre établissement
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {/* Bouton Import */}
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={() => setShowImportModal(true)}
-            disabled={loading}
-          >
-            <Upload className="h-4 w-4" />
-            <span className="hidden sm:inline">Importer</span>
-          </Button>
-
           {/* Bouton Export */}
           <Button
             variant="outline"
             className="gap-2"
-            onClick={() => setShowExportModal(true)}
-            disabled={students.length === 0}
+            onClick={exportAllToExcel}
+            disabled={students.length === 0 || loading}
           >
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">Exporter</span>
@@ -1232,7 +1310,7 @@ export const StudentsManager = () => {
             variant="outline"
             className="gap-2"
             onClick={() => setIsSelecting(!isSelecting)}
-            disabled={students.length === 0}
+            disabled={students.length === 0 || loading}
           >
             <CheckCircle className="h-4 w-4" />
             <span className="hidden sm:inline">Sélection</span>
@@ -1245,7 +1323,7 @@ export const StudentsManager = () => {
             disabled={loading}
           >
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Nouvel étudiant</span>
+            <span className="hidden sm:inline">Nouvel éleve</span>
           </Button>
         </div>
       </div>
@@ -1269,11 +1347,11 @@ export const StudentsManager = () => {
             <div className="relative flex-1 w-full">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Rechercher par nom, code étudiant, email ou CIN..."
+                placeholder="Rechercher par nom, code étudiant ou email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 h-11 w-full"
-                aria-label="Rechercher des étudiants"
+                aria-label="Rechercher des Éleves"
               />
             </div>
 
@@ -1333,49 +1411,42 @@ export const StudentsManager = () => {
         </CardContent>
       </Card>
 
-      {/* Tableau des étudiants */}
+      {/* Tableau des Éleves */}
       <Card>
         <CardHeader className="bg-muted/40">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="flex items-center gap-2">
               <UserCheck className="h-5 w-5" />
-              Liste des Étudiants
+              Liste des Éleves
             </CardTitle>
-            <span className="text-sm text-muted-foreground">
-              {pagination.total} étudiant
-              {pagination.total !== 1 ? "s" : ""}
-            </span>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-sm">
+                {pagination.total} éleve{pagination.total !== 1 ? "s" : ""}
+              </Badge>
+              {loading && (
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              )}
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
-          {loading && students.length > 0 ? (
-            <div className="p-4 text-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-              <p className="text-sm text-muted-foreground mt-2">
-                Mise à jour...
-              </p>
-            </div>
-          ) : (
-            renderContent()
-          )}
-        </CardContent>
+        <CardContent className="p-0">{renderContent()}</CardContent>
 
         {/* Pagination */}
-        {students.length > 0 && (
+        {students.length > 0 && !loading && (
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={setCurrentPage}
             itemsPerPage={itemsPerPage}
             onItemsPerPageChange={setItemsPerPage}
-            totalItems={pagination.total}
+            totalItems={pagination.total || filteredStudents.length}
           />
         )}
       </Card>
 
       {/* Modal du formulaire d'étudiant */}
       <Dialog open={formState.isOpen} onOpenChange={handleCloseForm}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {formState.mode === "create"
@@ -1400,7 +1471,7 @@ export const StudentsManager = () => {
           {/* Contenu du formulaire */}
           {formState.isLoading ? (
             <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : (
             <StudentForm
@@ -1413,42 +1484,6 @@ export const StudentsManager = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Modal d'importation */}
-      <Dialog open={showImportModal} onOpenChange={setShowImportModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Importation des Étudiants</DialogTitle>
-            <DialogDescription>
-              Importez des étudiants depuis un fichier Excel
-            </DialogDescription>
-          </DialogHeader>
-          {/* <ImportStudents
-            onSuccess={() => {
-              setShowImportModal(false);
-              fetchStudents();
-            }}
-          /> */}
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal d'exportation */}
-      <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Exportation des Étudiants</DialogTitle>
-            <DialogDescription>
-              Exportez les données des étudiants au format Excel (.xlsx)
-            </DialogDescription>
-          </DialogHeader>
-          {/* <ExportStudents
-            students={students}
-            classes={classes}
-            onClose={() => setShowExportModal(false)}
-            onExport={exportAllToExcel}
-          /> */}
-        </DialogContent>
-      </Dialog>
-
       {/* Modal d'affectation à une classe */}
       <Dialog
         open={showAssignClassModal}
@@ -1458,7 +1493,7 @@ export const StudentsManager = () => {
           <DialogHeader>
             <DialogTitle>Affecter à une classe</DialogTitle>
             <DialogDescription>
-              Sélectionnez une classe pour affecter les étudiants sélectionnés
+              Sélectionnez une classe pour affecter les Éleves sélectionnés
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1510,7 +1545,7 @@ export const StudentsManager = () => {
           studentToDelete && studentToDelete.includes(",")
             ? `Êtes-vous sûr de vouloir supprimer ${
                 studentToDelete.split(",").length
-              } étudiants ? Cette action est irréversible.`
+              } Éleves ? Cette action est irréversible.`
             : "Êtes-vous sûr de vouloir supprimer cet étudiant ? Cette action est irréversible."
         }
         confirmLabel="Supprimer"

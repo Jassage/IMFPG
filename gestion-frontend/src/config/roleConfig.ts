@@ -72,7 +72,6 @@ export const ICONS: Record<string, any> = {
   Building,
 };
 
-// Helper pour créer des items de navigation
 const createNavItem = (
   id: ActiveTab,
   label: string,
@@ -159,13 +158,6 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
     ],
     documentItems: [
       createNavItem(
-        "student-cards",
-        "Cartes Élèves",
-        "CreditCard",
-        PERMISSIONS.GENERATE_CARDS,
-        "Génération des cartes élèves"
-      ),
-      createNavItem(
         "transcripts",
         "Bulletins",
         "ScrollText",
@@ -195,13 +187,7 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.MANAGE_FEES,
         "Gestion des frais de scolarité"
       ),
-      createNavItem(
-        "expenses",
-        "Dépenses",
-        "Briefcase",
-        PERMISSIONS.VIEW_EXPENSES,
-        "Gestion des dépenses"
-      ),
+
       createNavItem(
         "payments",
         "Paiements",
@@ -270,62 +256,10 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.PROCESS_ENROLLMENTS,
         "Traitement des inscriptions"
       ),
-      createNavItem(
-        "guardians",
-        "Parents",
-        "UsersRound",
-        PERMISSIONS.VIEW_GUARDIANS,
-        "Coordonnées des parents"
-      ),
     ],
-    academicItems: [
-      createNavItem(
-        "payments",
-        "Paiements",
-        "DollarSign",
-        PERMISSIONS.VIEW_PAYMENTS,
-        "Encaissements et suivi"
-      ),
-      createNavItem(
-        "attendance",
-        "Présences",
-        "ClipboardCheck",
-        PERMISSIONS.VIEW_ATTENDANCE,
-        "Pointage des présences"
-      ),
-      createNavItem(
-        "schedule",
-        "Emploi du temps",
-        "CalendarDays",
-        PERMISSIONS.VIEW_SCHEDULE,
-        "Consultation planning"
-      ),
-    ],
-    documentItems: [
-      createNavItem(
-        "student-cards",
-        "Cartes élèves",
-        "CreditCard",
-        PERMISSIONS.GENERATE_DOCUMENTS,
-        "Impression des cartes"
-      ),
-      createNavItem(
-        "transcripts",
-        "Bulletins",
-        "ScrollText",
-        PERMISSIONS.GENERATE_DOCUMENTS,
-        "Édition des relevés"
-      ),
-    ],
-    adminItems: [
-      createNavItem(
-        "settings",
-        "Préférences",
-        "Settings",
-        PERMISSIONS.VIEW_SETTINGS,
-        "Paramètres personnels"
-      ),
-    ],
+    academicItems: [],
+    documentItems: [],
+    adminItems: [],
   },
 
   Parent: {
@@ -470,13 +404,7 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.VIEW_DASHBOARD,
         "Vue professeur"
       ),
-      createNavItem(
-        "subject",
-        "Mes matières",
-        "BookOpen",
-        PERMISSIONS.VIEW_OWN_SUBJECTS,
-        "Matières attribuées"
-      ),
+
       createNavItem(
         "grades",
         "Saisie des notes",
@@ -484,55 +412,10 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.MANAGE_OWN_GRADES,
         "Évaluation des élèves"
       ),
-      createNavItem(
-        "attendance",
-        "Présences",
-        "ClipboardCheck",
-        PERMISSIONS.MANAGE_ATTENDANCE,
-        "Feuille de présence"
-      ),
-      createNavItem(
-        "students",
-        "Mes élèves",
-        "Users",
-        PERMISSIONS.VIEW_OWN_STUDENTS,
-        "Liste des élèves"
-      ),
     ],
-    academicItems: [
-      createNavItem(
-        "schedule",
-        "Mon planning",
-        "CalendarDays",
-        PERMISSIONS.VIEW_SCHEDULE,
-        "Emploi du temps"
-      ),
-      createNavItem(
-        "announcements",
-        "Annonces",
-        "Megaphone",
-        PERMISSIONS.SEND_ANNOUNCEMENTS,
-        "Communication avec élèves"
-      ),
-    ],
-    documentItems: [
-      createNavItem(
-        "reports",
-        "Rapports de classe",
-        "FileBarChart",
-        PERMISSIONS.GENERATE_REPORTS,
-        "Bilans pédagogiques"
-      ),
-    ],
-    adminItems: [
-      createNavItem(
-        "settings",
-        "Paramètres",
-        "Settings",
-        PERMISSIONS.VIEW_SETTINGS,
-        "Configuration personnelle"
-      ),
-    ],
+    academicItems: [],
+    documentItems: [],
+    adminItems: [],
   },
 
   Directeur: {

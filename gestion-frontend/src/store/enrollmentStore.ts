@@ -472,8 +472,6 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
     }
   },
 
-  // ==================== MÉTHODES UTILITAIRES ====================
-
   /**
    * @desc Filtre les inscriptions par étudiant
    */

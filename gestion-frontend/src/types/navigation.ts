@@ -1,5 +1,3 @@
-// types/navigation.ts
-
 // Types de rôles utilisateur
 export type UserRole =
   | "Admin"

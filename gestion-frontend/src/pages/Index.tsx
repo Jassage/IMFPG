@@ -59,11 +59,8 @@ import { useAuthStore } from "@/store/authStore";
 import { ExpenseManager } from "@/components/ExpenseManager";
 import { FeeStructureManager } from "@/components/FeeStructureManager";
 import { AuditLogsManager } from "@/components/AuditLogsManager";
-// import { SystemBackupManager } from "@/components/SystemBackupManager";
-import { usePermissions } from "@/hooks/usePermissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-// import { DeanGradesView } from "@/components/GradesManager";
 import { SearchResults } from "@/components/SearchResults";
 import { ActiveTab } from "@/types/navigation";
 import { useAcademicYearStore } from "@/store/academicYearStore";
@@ -74,19 +71,20 @@ import { SubjectsManager } from "@/components/SubjectsManager";
 import roleConfigurations from "@/config/roleConfig";
 import EnrollmentManager from "@/components/students/EnrollmentManager";
 import { StudentsManager } from "@/components/StudentsManager";
-// import { ClassAssignmentManager } from "@/components/ClassAssignmentManager";
 import { SystemBackupManager } from "@/components/SystemBackupManager";
 import { GuardiansManager } from "@/components/GuardiansManager";
 import ClassAssignmentManager from "@/components/ClassAssignmentManager";
 import AnnouncementsPage from "./AnnouncementsPage";
 import EventManager from "@/components/EventManager";
 import { ClassTimetable } from "@/components/ClassTimetable";
-// import { ScheduleManager } from "@/components/TimetableManager";
 import { PaymentManager } from "@/components/PaymentManager";
 import { ScheduleManager } from "@/components/ScheduleManager";
 import { TimetableManager } from "@/components/TimetableManager";
 import { GradeManager } from "@/components/GradesManager";
-// import GradeManager from "@/components/GradeManager";
+import { usePermissions } from "@/hooks/usePermissions";
+import BulletinPage from "./BulletinPage";
+import SubjectProf from "@/components/SubjectProf";
+import ProfessorGradeManager from "@/components/ProfessorGradesManager";
 
 // Types pour les rôles
 type UserRole =
@@ -96,404 +94,6 @@ type UserRole =
   | "Student"
   | "Professeur"
   | "Directeur";
-
-// Configuration des menus par rôle
-// const roleConfigurations = {
-//   Admin: {
-//     mainItems: [
-//       {
-//         id: "dashboard",
-//         label: "Accueil",
-//         icon: Home,
-//         permission: "view_dashboard",
-//       },
-//       {
-//         id: "students",
-//         label: "ELEVES",
-//         icon: Users,
-//         permission: "view_students",
-//       },
-//       {
-//         id: "enrollments",
-//         label: "INSCRIPTIONS",
-//         icon: UserPlus,
-//         permission: "manage_enrollments",
-//       },
-//       {
-//         id: "courses",
-//         label: "MATIERES",
-//         icon: BookOpen,
-//         permission: "view_courses",
-//       },
-//       {
-//         id: "grades",
-//         label: "NOTES",
-//         icon: FileText,
-//         permission: "manage_grades",
-//       },
-//       {
-//         id: "professeurs",
-//         label: "PROFESSEURS",
-//         icon: Users,
-//         permission: "view_professeurs",
-//       },
-//       {
-//         id: "guardians",
-//         label: "PARENTS",
-//         icon: Users,
-//         permission: "view_guardians",
-//       },
-//     ],
-//     academicItems: [
-//       {
-//         id: "payments",
-//         label: "PAIEMENTS",
-//         icon: DollarSign,
-//         permission: "view_payments",
-//       },
-//       {
-//         id: "expenses",
-//         label: "DEPENSES",
-//         icon: DollarSign,
-//         permission: "view_expenses",
-//       },
-//       {
-//         id: "fees",
-//         label: "FRAIS SCOLAIRES",
-//         icon: DollarSign,
-//         permission: "manage_fees",
-//       },
-//     ],
-//     documentItems: [
-//       {
-//         id: "student-cards",
-//         label: "CARTES ELEVES",
-//         icon: CreditCard,
-//         permission: "generate_cards",
-//       },
-//       {
-//         id: "transcripts",
-//         label: "BULLETINS",
-//         icon: ScrollText,
-//         permission: "generate_transcripts",
-//       },
-//     ],
-//     adminItems: [
-//       {
-//         id: "users",
-//         label: "UTILISATEURS",
-//         icon: UserCog,
-//         permission: "view_users",
-//       },
-//       {
-//         id: "classes",
-//         label: "CLASSES",
-//         icon: Building2,
-//         permission: "view_classes",
-//       },
-//       {
-//         id: "settings",
-//         label: "Paramètres",
-//         icon: Settings,
-//         permission: "view_settings",
-//       },
-//       {
-//         id: "audit-logs",
-//         label: "Journal d'Audit",
-//         icon: FileText,
-//         permission: "view_audit_logs",
-//       },
-//       {
-//         id: "backup",
-//         label: "Sauvegardes",
-//         icon: Shield,
-//         permission: "manage_backup",
-//       },
-//     ],
-//   },
-//   Secretaire: {
-//     mainItems: [
-//       {
-//         id: "dashboard",
-//         label: "Accueil",
-//         icon: Home,
-//         permission: "view_dashboard",
-//       },
-//       {
-//         id: "students",
-//         label: "Eleves",
-//         icon: Users,
-//         permission: "view_students",
-//       },
-//       {
-//         id: "enrollments",
-//         label: "Inscriptions",
-//         icon: UserPlus,
-//         permission: "manage_enrollments",
-//       },
-//       {
-//         id: "payments",
-//         label: "Paiements",
-//         icon: DollarSign,
-//         permission: "view_payments",
-//       },
-//       {
-//         id: "guardians",
-//         label: "Parents",
-//         icon: Users,
-//         permission: "view_guardians",
-//       },
-//     ],
-//     academicItems: [
-//       {
-//         id: "student-cards",
-//         label: "Cartes Eleves",
-//         icon: CreditCard,
-//         permission: "generate_cards",
-//       },
-//       {
-//         id: "transcripts",
-//         label: "Bulletins",
-//         icon: ScrollText,
-//         permission: "generate_transcripts",
-//       },
-//     ],
-//     documentItems: [],
-//     adminItems: [
-//       {
-//         id: "settings",
-//         label: "Paramètres",
-//         icon: Settings,
-//         permission: "view_settings",
-//       },
-//     ],
-//   },
-//   Parent: {
-//     mainItems: [
-//       {
-//         id: "dashboard",
-//         label: "Accueil",
-//         icon: Home,
-//         permission: "view_dashboard",
-//       },
-//       {
-//         id: "grades",
-//         label: "Notes des enfants",
-//         icon: FileText,
-//         permission: "view_grades",
-//       },
-
-//       {
-//         id: "payments",
-//         label: "Paiements",
-//         icon: DollarSign,
-//         permission: "view_own_payments",
-//       },
-//     ],
-//     academicItems: [],
-//     documentItems: [
-//       {
-//         id: "transcripts",
-//         label: "Bulletins",
-//         icon: ScrollText,
-//         permission: "view_transcripts",
-//       },
-//     ],
-//     adminItems: [
-//       {
-//         id: "settings",
-//         label: "Paramètres",
-//         icon: Settings,
-//         permission: "view_settings",
-//       },
-//     ],
-//   },
-//   Student: {
-//     mainItems: [
-//       {
-//         id: "dashboard",
-//         label: "Accueil",
-//         icon: Home,
-//         permission: "view_dashboard",
-//       },
-//       {
-//         id: "grades",
-//         label: "Mes Notes",
-//         icon: FileText,
-//         permission: "view_own_grades",
-//       },
-//       {
-//         id: "attendance",
-//         label: "Mes Présences",
-//         icon: Calendar,
-//         permission: "view_own_attendance",
-//       },
-//       {
-//         id: "courses",
-//         label: "Mes Cours",
-//         icon: BookOpen,
-//         permission: "view_own_courses",
-//       },
-//       {
-//         id: "schedule",
-//         label: "Emploi du temps",
-//         icon: Calendar,
-//         permission: "view_schedule",
-//       },
-//     ],
-//     academicItems: [
-//       {
-//         id: "payments",
-//         label: "Mes Paiements",
-//         icon: DollarSign,
-//         permission: "view_own_payments",
-//       },
-//     ],
-//     documentItems: [
-//       {
-//         id: "student-cards",
-//         label: "Ma Carte",
-//         icon: CreditCard,
-//         permission: "view_own_card",
-//       },
-//       {
-//         id: "transcripts",
-//         label: "Mes Bulletins",
-//         icon: ScrollText,
-//         permission: "view_own_transcripts",
-//       },
-//     ],
-//     adminItems: [
-//       {
-//         id: "settings",
-//         label: "Paramètres",
-//         icon: Settings,
-//         permission: "view_settings",
-//       },
-//     ],
-//   },
-//   Professeur: {
-//     mainItems: [
-//       {
-//         id: "dashboard",
-//         label: "Accueil",
-//         icon: Home,
-//         permission: "view_dashboard",
-//       },
-//       {
-//         id: "courses",
-//         label: "Mes Cours",
-//         icon: BookOpen,
-//         permission: "view_own_courses",
-//       },
-//       {
-//         id: "grades",
-//         label: "Saisie Notes",
-//         icon: FileText,
-//         permission: "manage_own_grades",
-//       },
-//       {
-//         id: "students",
-//         label: "Mes Eleves",
-//         icon: Users,
-//         permission: "view_own_students",
-//       },
-//     ],
-//     academicItems: [
-//       {
-//         id: "schedule",
-//         label: "Mon emploi du temps",
-//         icon: Calendar,
-//         permission: "view_schedule",
-//       },
-//     ],
-//     documentItems: [],
-//     adminItems: [
-//       {
-//         id: "settings",
-//         label: "Paramètres",
-//         icon: Settings,
-//         permission: "view_settings",
-//       },
-//     ],
-//   },
-//   Direction: {
-//     mainItems: [
-//       {
-//         id: "dashboard",
-//         label: "Accueil",
-//         icon: Home,
-//         permission: "view_dashboard",
-//       },
-//       {
-//         id: "analytics",
-//         label: "Analytiques",
-//         icon: ChartBar,
-//         permission: "view_analytics",
-//       },
-//       {
-//         id: "students",
-//         label: "Eleves",
-//         icon: Users,
-//         permission: "view_students",
-//       },
-//       {
-//         id: "professeurs",
-//         label: "Professeurs",
-//         icon: Users,
-//         permission: "view_professeurs",
-//       },
-//       {
-//         id: "grades",
-//         label: "Notes",
-//         icon: FileText,
-//         permission: "view_grades",
-//       },
-//     ],
-//     academicItems: [
-//       {
-//         id: "payments",
-//         label: "Finances",
-//         icon: DollarSign,
-//         permission: "view_finances",
-//       },
-//       {
-//         id: "expenses",
-//         label: "Dépenses",
-//         icon: DollarSign,
-//         permission: "view_expenses",
-//       },
-//       {
-//         id: "announcements",
-//         label: "Annonces",
-//         icon: Megaphone,
-//         permission: "manage_announcements",
-//       },
-//     ],
-//     documentItems: [
-//       {
-//         id: "reports",
-//         label: "Rapports",
-//         icon: FileText,
-//         permission: "generate_reports",
-//       },
-//     ],
-//     adminItems: [
-//       {
-//         id: "settings",
-//         label: "Paramètres",
-//         icon: Settings,
-//         permission: "view_settings",
-//       },
-//       {
-//         id: "audit-logs",
-//         label: "Audit",
-//         icon: ShieldAlert,
-//         permission: "view_audit_logs",
-//       },
-//     ],
-//   },
-// };
 
 const MobileSidebar = ({
   activeTab,
@@ -653,7 +253,6 @@ const Index = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuthStore();
-  // const { hasPermission, getAccessibleModules } = usePermissions();
   const { hasPermission, getAccessibleModules, canAccessTab } =
     usePermissions();
   const { currentAcademicYear } = useAcademicYearStore();
@@ -696,18 +295,18 @@ const Index = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Vérifier les permissions
-  useEffect(() => {
-    if (user && !hasPermission(`view_${activeTab}`)) {
-      toast({
-        title: "Accès non autorisé",
-        description:
-          "Vous n'avez pas les permissions pour accéder à cette section",
-        variant: "destructive",
-      });
-      setActiveTab("dashboard");
-    }
-  }, [activeTab, user, hasPermission, toast]);
+  // // Vérifier les permissions
+  // useEffect(() => {
+  //   if (user && !hasPermission(`view_${activeTab}`)) {
+  //     toast({
+  //       title: "Accès non autorisé",
+  //       description:
+  //         "Vous n'avez pas les permissions pour accéder à cette section",
+  //       variant: "destructive",
+  //     });
+  //     setActiveTab("dashboard");
+  //   }
+  // }, [activeTab, user, hasPermission, toast]);
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
@@ -780,173 +379,60 @@ const Index = () => {
   };
 
   const renderContent = () => {
-    if (user?.role === "Admin") {
-      switch (activeTab) {
-        case "dashboard":
-          return <RoleBasedDashboard role={user.role as UserRole} />;
-        case "students":
-          return <StudentsManager />;
-        case "enrollments":
-          return <EnrollmentManager />;
-        case "subject":
-          return <SubjectsManager />;
-        case "professeurs":
-          return <ProfesseursManager />;
-        case "guardians":
-          return <GuardiansManager />;
-        case "class_assignment": // ou "retakes" selon votre ID
-          return <ClassAssignmentManager />;
-        case "expenses":
-          return <ExpenseManager />;
-        case "users":
-          return <UsersManager />;
-        case "classes":
-          return <ClassesManager />;
-        case "fees":
-          return <FeeStructureManager />;
-        case "payments":
-          return <PaymentManager />;
-        case "settings":
-          return <SettingsPage />;
-        case "audit-logs":
-          return <AuditLogsManager />;
-        case "analytics":
-          return <AnalyticsDashboard />;
-        case "announcements":
-          return <AnnouncementsPage />;
-        case "events":
-          return <EventManager />;
-        case "schedule":
-          return <TimetableManager />;
-        case "grades":
-          return <GradeManager />;
-        default:
-          return <RoleBasedDashboard role={user.role as UserRole} />;
-      }
-    }
-
-    // Pour les autres rôles, vérifier les permissions
+    // Vérifier d'abord si l'utilisateur a accès à cet onglet
     if (!isTabAccessible(activeTab)) {
       return <UnauthorizedView />;
     }
 
-    switch (activeTab) {
-      // case "dashboard":
-      //   return <Dashboard />;
-      case "students":
-        return hasPermission("view_students") ? (
-          <ClassAssignmentManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "enrollments":
-        return hasPermission("manage_enrollments") ||
-          hasPermission("view_enrollments") ? (
-          <EnrollmentManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "subject":
-        return hasPermission("view_subject") ? (
-          <SubjectsManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "professeurs":
-        return hasPermission("view_professeurs") ? (
-          <ProfesseursManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "classes":
-        return hasPermission("view_subject") ? (
-          <ClassesManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      // case "retakes":
-      //   return hasPermission("manage_subject") ? (
-      //     <ClassAssignmentManager />
-      //   ) : (
-      //     <UnauthorizedView />
-      //   );
-      // case "grades":
-      //   return hasPermission("manage_grades") ? (
-      //     <GradesBulkEditor />
-      //   ) : (
-      //     <DeanGradesView />
-      //   );
-      case "guardians":
-        return hasPermission("view_guardians") ? (
-          <GuardiansManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      // case "payments":
-      //   return hasPermission("view_payments") ? (
-      //     <PaymentManager />
-      //   ) : (
-      //     <UnauthorizedView />
-      //   );
-      case "expenses":
-        return hasPermission("view_expenses") ? (
-          <ExpenseManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "users":
-        return hasPermission("view_users") ? (
-          <UsersManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "classes":
-        return hasPermission("view_faculties") ? (
-          <ClassesManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "fees":
-        return hasPermission("manage_fees") ? (
-          <FeeStructureManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      // case "student-cards":
-      //   return hasPermission("generate_cards") ? (
-      //     <StudentCardGenerator />
-      //   ) : (
-      //     <UnauthorizedView />
-      //   );
-      // case "transcripts":
-      //   return hasPermission("generate_transcripts") ? (
-      //     <TranscriptGenerator />
-      //   ) : (
-      //     <UnauthorizedView />
-      //   );
-      case "settings":
-        return <SettingsPage />;
-      case "audit-logs":
-        return hasPermission("view_audit_logs") ? (
-          <AuditLogsManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "backup":
-        return hasPermission("manage_backup") ? (
-          <SystemBackupManager />
-        ) : (
-          <UnauthorizedView />
-        );
-      case "analytics":
-        return hasPermission("view_analytics") ? (
-          <AnalyticsDashboard />
-        ) : (
-          <UnauthorizedView />
-        );
-      // default:
-      //   return <Dashboard />;
+    // Si l'utilisateur n'est pas authentifié
+    if (!user) {
+      return <UnauthorizedView />;
     }
+
+    // Tableau de correspondance pour les composants
+    const tabComponents: Partial<Record<ActiveTab, React.ReactNode>> = {
+      dashboard: <RoleBasedDashboard role={user.role as UserRole} />,
+      students:
+        user?.role === "Professeur" ? (
+          <div>Vue des élèves pour professeur</div>
+        ) : (
+          <StudentsManager />
+        ),
+      subject:
+        user?.role === "Professeur" ? <SubjectProf /> : <SubjectsManager />,
+      grades:
+        user?.role === "Professeur" ? (
+          <ProfessorGradeManager professorId={user.id} />
+        ) : (
+          <GradeManager />
+        ),
+      professeurs: <ProfesseursManager />,
+      guardians: <GuardiansManager />,
+      enrollments: <EnrollmentManager />,
+      users: <UsersManager />,
+      classes: <ClassesManager />,
+      fees: <FeeStructureManager />,
+      payments: <PaymentManager />,
+      expenses: <ExpenseManager />,
+      settings: <SettingsPage />,
+      "audit-logs": <AuditLogsManager />,
+      analytics: <AnalyticsDashboard />,
+      announcements: <AnnouncementsPage />,
+      events: <EventManager />,
+      schedule: <TimetableManager />,
+      transcripts: <BulletinPage />,
+      class_assignment: <ClassAssignmentManager />,
+    };
+
+    // Retourner le composant ou une vue par défaut
+    const component = tabComponents[activeTab];
+
+    if (component) {
+      return component;
+    }
+
+    // Fallback: retourner le dashboard
+    return <RoleBasedDashboard role={user.role as UserRole} />;
   };
 
   const UnauthorizedView = () => (

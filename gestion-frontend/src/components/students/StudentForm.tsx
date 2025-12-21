@@ -1,4 +1,4 @@
-// components/students/StudentForm.tsx - VERSION AMÉLIORÉE
+// components/students/StudentForm.tsx - VERSION AMÉLIORÉE SANS CIN
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,6 +36,8 @@ import {
   ChevronLeft,
   Loader2,
   ShieldAlert,
+  CheckCircle,
+  Mail,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -45,6 +47,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Constantes pour les valeurs "vides"
 const EMPTY_VALUES = {
@@ -126,7 +129,7 @@ const guardianSchema = z.object({
   isPrimary: z.boolean().default(false),
 });
 
-// Schéma principal de l'étudiant avec validation complète
+// MODIFIÉ : Schéma principal SANS CIN et avec statut optionnel (toujours "Active" par défaut)
 const studentSchema = z.object({
   // Informations personnelles
   firstName: z
@@ -176,17 +179,17 @@ const studentSchema = z.object({
         const today = new Date();
         const age = today.getFullYear() - birthDate.getFullYear();
 
-        // Vérifier si l'étudiant a au moins 3 ans
-        if (age < 3) return false;
+        // Vérifier si l'étudiant a au moins 13 ans
+        if (age < 13) return false;
 
-        // Vérifier si l'étudiant n'a pas plus de 100 ans
-        if (age > 100) return false;
+        // Vérifier si l'étudiant n'a pas plus de 25 ans
+        if (age > 25) return false;
 
         return true;
       },
       {
         message:
-          "Date de naissance invalide. L'étudiant doit avoir entre 3 et 100 ans",
+          "Date de naissance invalide. L'étudiant doit avoir entre 13 et 25 ans",
       }
     ),
 
@@ -218,15 +221,18 @@ const studentSchema = z.object({
     .optional()
     .or(z.literal("")),
 
-  status: z.enum(["Active", "Inactive", "Graduated", "Suspended"]),
+  // MODIFIÉ : Statut optionnel (sera toujours "Active" par défaut côté backend)
+  status: z.enum(["Active", "Inactive", "Graduated", "Suspended"]).optional(),
 
   sexe: z.string().optional(),
 
-  cin: z
-    .string()
-    .max(20, "Le CIN ne peut pas dépasser 20 caractères")
-    .optional()
-    .or(z.literal("")),
+  // SUPPRIMÉ : cin (plus utilisé)
+  // cin: z
+  //   .string()
+  //   .min(8, "Le CIN doit contenir au moins 8 caractères")
+  //   .max(12, "Le CIN ne peut pas dépasser 12 caractères")
+  //   .optional()
+  //   .or(z.literal("")),
 
   // Inscription à la classe
   classId: z
@@ -323,6 +329,12 @@ export const StudentForm = ({
     new Set(["student-info"])
   );
 
+  // État pour vérifier la disponibilité de l'email
+  const [emailAvailability, setEmailAvailability] = useState<{
+    checking: boolean;
+    available?: boolean;
+  }>({ checking: false });
+
   // Initialiser les données
   useEffect(() => {
     const initializeData = async () => {
@@ -355,9 +367,9 @@ export const StudentForm = ({
       bloodGroup: EMPTY_VALUES.NO_BLOOD_GROUP,
       allergies: "",
       disabilities: "",
-      status: "Active",
+      // MODIFIÉ : Pas de statut par défaut dans le formulaire, sera géré côté backend
       sexe: EMPTY_VALUES.NO_SEX,
-      cin: "",
+      // SUPPRIMÉ : cin
       classId: "",
       academicYearId: "",
       guardians: [
@@ -413,6 +425,7 @@ export const StudentForm = ({
           hasGuardians: fullStudent.guardians?.length > 0,
           hasEnrollments: fullStudent.enrollments?.length > 0,
           classId: fullStudent.classId,
+          status: fullStudent.status,
         });
 
         // Préparer les données pour le formulaire
@@ -428,9 +441,10 @@ export const StudentForm = ({
           bloodGroup: fullStudent.bloodGroup || EMPTY_VALUES.NO_BLOOD_GROUP,
           allergies: fullStudent.allergies || "",
           disabilities: fullStudent.disabilities || "",
+          // MODIFIÉ : Garder le statut existant pour l'édition
           status: (fullStudent.status as "Active") || "Active",
           sexe: fullStudent.sexe || EMPTY_VALUES.NO_SEX,
-          cin: fullStudent.cin || "",
+          // SUPPRIMÉ : cin
           classId: fullStudent.classId || EMPTY_VALUES.NO_CLASS,
         };
 
@@ -519,6 +533,32 @@ export const StudentForm = ({
     loadStudentData();
   }, [student?.id, fetchStudentById, academicYears, form, getDefaultValues]);
 
+  // Fonction pour vérifier la disponibilité de l'email
+  const checkEmailAvailability = useCallback(
+    async (email: string) => {
+      if (!email || !email.includes("@")) {
+        setEmailAvailability({ checking: false, available: undefined });
+        return;
+      }
+
+      setEmailAvailability({ checking: true, available: undefined });
+
+      try {
+        // Simuler une vérification d'email
+        // En production, vous feriez un appel API ici
+        setTimeout(() => {
+          // Pour la démo, on simule que l'email est disponible si ce n'est pas l'étudiant actuel
+          const isAvailable = !student || student.email !== email;
+          setEmailAvailability({ checking: false, available: isAvailable });
+        }, 500);
+      } catch (error) {
+        console.error("Erreur lors de la vérification de l'email:", error);
+        setEmailAvailability({ checking: false, available: undefined });
+      }
+    },
+    [student]
+  );
+
   // Calcul du pourcentage de complétion
   const calculateCompletion = () => {
     const values = form.getValues();
@@ -569,7 +609,8 @@ export const StudentForm = ({
         "dateOfBirth",
       ],
       guardians: ["guardians"],
-      enrollment: ["classId", "academicYearId", "status"],
+      enrollment: ["classId", "academicYearId"],
+      // MODIFIÉ : Retiré "status" car optionnel
     };
 
     const fields = tabValidations[currentTab];
@@ -609,6 +650,7 @@ export const StudentForm = ({
       data: {
         ...data,
         guardiansCount: data.guardians.length,
+        // Le statut n'est pas envoyé, sera "Active" par défaut côté backend
       },
     });
 
@@ -627,7 +669,7 @@ export const StudentForm = ({
         dateOfBirth: data.dateOfBirth || undefined,
         placeOfBirth: data.placeOfBirth ? data.placeOfBirth.trim() : "",
         address: data.address ? data.address.trim() : "",
-        cin: data.cin ? data.cin.trim() : "",
+        // SUPPRIMÉ : cin
         allergies: data.allergies ? data.allergies.trim() : "",
         disabilities: data.disabilities ? data.disabilities.trim() : "",
         bloodGroup:
@@ -635,6 +677,8 @@ export const StudentForm = ({
             ? undefined
             : data.bloodGroup,
         sexe: data.sexe === EMPTY_VALUES.NO_SEX ? undefined : data.sexe,
+        // MODIFIÉ : Ne pas envoyer le statut pour la création, il sera "Active" par défaut
+        ...(student && data.status ? { status: data.status } : {}),
         guardians: data.guardians.map((guardian) => ({
           ...guardian,
           firstName: guardian.firstName.trim(),
@@ -773,6 +817,18 @@ export const StudentForm = ({
     }
     onChange(e.target.value);
   };
+
+  // Suivi des changements d'email pour vérifier la disponibilité
+  useEffect(() => {
+    const email = form.watch("email");
+    if (email && email.includes("@")) {
+      const timer = setTimeout(() => {
+        checkEmailAvailability(email);
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [form.watch("email"), checkEmailAvailability]);
 
   // Affichage du chargement
   if (isLoadingDetails) {
@@ -944,19 +1000,54 @@ export const StudentForm = ({
                         <FormItem>
                           <FormLabel>Email *</FormLabel>
                           <FormControl>
-                            <Input
-                              {...field}
-                              type="email"
-                              placeholder="email@example.com"
-                              disabled={isSubmitting || !!student}
-                              className={
-                                form.formState.errors.email
-                                  ? "border-red-500"
-                                  : ""
-                              }
-                            />
+                            <div className="relative">
+                              <Input
+                                {...field}
+                                type="email"
+                                placeholder="email@example.com"
+                                disabled={isSubmitting || !!student}
+                                className={
+                                  form.formState.errors.email
+                                    ? "border-red-500"
+                                    : ""
+                                }
+                                onChange={(e) => {
+                                  field.onChange(e);
+                                  setEmailAvailability({
+                                    checking: false,
+                                    available: undefined,
+                                  });
+                                }}
+                              />
+                              {emailAvailability.checking && (
+                                <div className="absolute right-3 top-3">
+                                  <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                                </div>
+                              )}
+                              {emailAvailability.available !== undefined &&
+                                !form.formState.errors.email && (
+                                  <div className="absolute right-3 top-3">
+                                    {emailAvailability.available ? (
+                                      <CheckCircle className="h-4 w-4 text-green-500" />
+                                    ) : (
+                                      <AlertCircle className="h-4 w-4 text-red-500" />
+                                    )}
+                                  </div>
+                                )}
+                            </div>
                           </FormControl>
                           <FormMessage />
+                          {emailAvailability.available === false &&
+                            !student && (
+                              <p className="text-sm text-red-500 mt-1">
+                                Cet email est déjà utilisé
+                              </p>
+                            )}
+                          {emailAvailability.available === true && !student && (
+                            <p className="text-sm text-green-500 mt-1">
+                              Email disponible
+                            </p>
+                          )}
                         </FormItem>
                       )}
                     />
@@ -1066,25 +1157,6 @@ export const StudentForm = ({
                               ))}
                             </SelectContent>
                           </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="cin"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>CIN</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              placeholder="Numéro CIN"
-                              disabled={isSubmitting}
-                              maxLength={20}
-                            />
-                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -1429,7 +1501,7 @@ export const StudentForm = ({
               </Card>
             </TabsContent>
 
-            {/* Onglet Inscription */}
+            {/* Onglet Inscription - MODIFIÉ : Sans le champ statut */}
             <TabsContent value="enrollment" className="space-y-6">
               <Card>
                 <CardHeader>
@@ -1528,39 +1600,44 @@ export const StudentForm = ({
                     />
                   </div>
 
-                  <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Statut de l'étudiant *</FormLabel>
-                        <Select
-                          value={field.value}
-                          onValueChange={field.onChange}
-                          disabled={isSubmitting}
-                        >
-                          <FormControl>
-                            <SelectTrigger
-                              className={
-                                form.formState.errors.status
-                                  ? "border-red-500"
-                                  : ""
-                              }
-                            >
-                              <SelectValue placeholder="Sélectionner" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="Active">Actif</SelectItem>
-                            <SelectItem value="Inactive">Inactif</SelectItem>
-                            <SelectItem value="Graduated">Diplômé</SelectItem>
-                            <SelectItem value="Suspended">Suspendu</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {/* MODIFIÉ : Afficher le champ statut seulement pour l'édition */}
+                  {student && (
+                    <FormField
+                      control={form.control}
+                      name="status"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Statut de l'étudiant *</FormLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={isSubmitting}
+                          >
+                            <FormControl>
+                              <SelectTrigger
+                                className={
+                                  form.formState.errors.status
+                                    ? "border-red-500"
+                                    : ""
+                                }
+                              >
+                                <SelectValue placeholder="Sélectionner" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="Active">Actif</SelectItem>
+                              <SelectItem value="Inactive">Inactif</SelectItem>
+                              <SelectItem value="Graduated">Diplômé</SelectItem>
+                              <SelectItem value="Suspended">
+                                Suspendu
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
 
                   {/* Options supplémentaires pour la création */}
                   {!student && (

@@ -872,7 +872,7 @@ export const EnrollmentManager = () => {
     }
   };
 
-  // Filtrer les étudiants
+  // Filtrer les Éleves
   const filteredStudents = Array.isArray(students)
     ? students.filter((student) => {
         if (!student) return false;
@@ -1009,7 +1009,7 @@ export const EnrollmentManager = () => {
                 <Users className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Étudiants</p>
+                <p className="text-sm text-muted-foreground">Éleves</p>
                 <p className="text-2xl font-bold">{students?.length || 0}</p>
               </div>
             </div>
@@ -1090,18 +1090,16 @@ export const EnrollmentManager = () => {
         </CardContent>
       </Card>
 
-      {/* Liste des étudiants */}
+      {/* Liste des Éleves */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>Étudiants ({filteredStudents.length})</span>
+            <span>Éleves ({filteredStudents.length})</span>
             <Badge variant="outline" className="ml-2">
               {filteredStudents.length} trouvé(s)
             </Badge>
           </CardTitle>
-          <CardDescription>
-            Gérer les inscriptions des étudiants
-          </CardDescription>
+          <CardDescription>Gérer les inscriptions des Éleves</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">

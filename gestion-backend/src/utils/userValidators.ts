@@ -148,8 +148,17 @@ export const validateUserRoleUpdate = [
     .exists()
     .withMessage("Le rôle est requis")
     .trim()
-    .isIn(["Parent", "Staff", "Admin"])
-    .withMessage("Le rôle doit être l'un des suivants: Parent, Staff, Admin"),
+    .isIn([
+      "Parent",
+      "Student",
+      "Professeur",
+      "Secretaire",
+      "Directeur",
+      "Admin",
+    ])
+    .withMessage(
+      "Le rôle doit être l'un des suivants: Parent, Student, Professeur, Secretaire, Directeur, Admin"
+    ),
 ];
 
 /**
@@ -229,8 +238,17 @@ export const validateUserCreateByAdmin = [
     .exists()
     .withMessage("Le rôle est requis")
     .trim()
-    .isIn(["Parent", "Staff", "Admin"])
-    .withMessage("Le rôle doit être l'un des suivants: Parent, Staff, Admin"),
+    .isIn([
+      "Parent",
+      "Student",
+      "Professeur",
+      "Secretaire",
+      "Directeur",
+      "Admin",
+    ])
+    .withMessage(
+      "Le rôle doit être l'un des suivants: Parent, Student, Professeur, Secretaire, Directeur, Admin"
+    ),
 
   body("phone")
     .optional()

@@ -3,7 +3,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+} from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { useDataContext } from "./contexts/DataContext";
@@ -12,27 +18,15 @@ import NotFound from "./pages/NotFound";
 import { AppInitializer } from "./components/AppInitializer";
 import { initializeAuthStore, useAuthStore } from "./store/authStore";
 import { useEnrollmentStore } from "./store/enrollmentStore";
-// import { useAcademicStore } from "./store/studentStore";
 import { useAcademicYearStore } from "./store/academicYearStore";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { ForgotPassword } from "./components/ForgotPassword";
 import { LoginPage } from "./components/login";
 import { useBackupStore } from "./store/backupStore";
-
-// Import des dashboards par rôle
-import AdminDashboard from "./components/dashboards/AdminDashboard";
-import SecretaryDashboard from "./components/dashboards/SecretaryDashboard";
-import ParentDashboard from "./components/dashboards/ParentDashboard";
-import StudentDashboard from "./components/dashboards/StudentDashboard";
-import ProfessorDashboard from "./components/dashboards/ProfessorDashboard";
-import DirectorDashboard from "./components/dashboards/DirectorDashboard";
-
-// Import des composants partagés
-
 import { UnauthorizedPage } from "./components/UnauthorizedPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import useStudentStore from "./store/studentStore";
-import ProfesseurDetails from "./components/professorDetails";
+import { ForcePasswordChange } from "./components/auth/ForcePasswordChange";
 
 const queryClient = new QueryClient();
 
@@ -118,14 +112,6 @@ const AppContent = () => {
             }
           />
 
-          {/* SUPPRIMEZ cette route, elle est inutile */}
-          {/* <Route
-            path="/dashboard"
-            element={
-              isAuthenticated ? <Index /> : <Navigate to="/login" replace />
-            }
-          /> */}
-
           {/* Routes ADMIN */}
           <Route
             path="/admin/*"
@@ -180,7 +166,7 @@ const AppContent = () => {
           <Route
             path="/director/*"
             element={
-              <ProtectedRoute allowedRoles={["Direction"]}>
+              <ProtectedRoute allowedRoles={["Directeur"]}>
                 <Index />
               </ProtectedRoute>
             }
@@ -230,26 +216,24 @@ const AppContent = () => {
           <Route
             path="/director/dashboard"
             element={
-              <ProtectedRoute allowedRoles={["Direction"]}>
+              <ProtectedRoute allowedRoles={["Directeur"]}>
                 <Index />
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/professeurs/:id"
             element={
               <ProtectedRoute
-                allowedRoles={["Admin", "Secretaire", "Direction"]}
+                allowedRoles={["Admin", "Secretaire", "Directeur"]}
               >
                 <Index />
               </ProtectedRoute>
             }
           />
 
-          {/* Routes partagées pour tous les rôles
           <Route
-            path="/profile"
+            path="/force-password-change"
             element={
               <ProtectedRoute
                 allowedRoles={[
@@ -258,13 +242,14 @@ const AppContent = () => {
                   "Parent",
                   "Student",
                   "Professeur",
-                  "Direction",
+                  "Directeur",
                 ]}
               >
-                <ProfilePage />
+                <ForcePasswordChange />
               </ProtectedRoute>
             }
-          /> */}
+          />
+
           <Route
             path="/settings"
             element={
@@ -275,7 +260,7 @@ const AppContent = () => {
                   "Parent",
                   "Student",
                   "Professeur",
-                  "Direction",
+                  "Directeur",
                 ]}
               >
                 <SettingsPage />
@@ -298,9 +283,6 @@ const cleanupAuth = () => {
   }
 };
 
-// Variable pour suivre l'initialisation
-let isInitializing = false;
-
 const App = () => {
   const [initializationState, setInitializationState] = useState<
     "idle" | "loading" | "success" | "error"
@@ -308,7 +290,13 @@ const App = () => {
   const [initializationError, setInitializationError] = useState<string | null>(
     null
   );
+  const { user, requiresPasswordChange, checkPasswordChangeRequired } =
+    useAuthStore();
+  const [checkingPassword, setCheckingPassword] = useState(true);
   const initializationRef = useRef(false);
+
+  // DÉPLACER useNavigate ICI, à l'intérieur du composant
+  const navigate = useNavigate();
 
   // Initialisation des stores
   useEffect(() => {
@@ -329,15 +317,7 @@ const App = () => {
         // 2. Vérifier l'authentification
         const { isAuthenticated, token, user } = useAuthStore.getState();
 
-        // console.log("🔐 Statut authentification:", {
-        //   isAuthenticated,
-        //   token: !!token,
-        //   userRole: user?.role,
-        // });
-
         if (isAuthenticated && token && user) {
-          // console.log("📦 Chargement des données pour:", user.role);
-
           // Charger les données de base pour tous les rôles
           const baseLoaders = [
             useAcademicYearStore
@@ -380,44 +360,6 @@ const App = () => {
               ]);
               break;
 
-            // case "Professeur":
-            //   await Promise.all([
-            //     ...baseLoaders,
-            //     useUEStore
-            //       .getState()
-            //       .fetchProfessorUEs(user.id)
-            //       .catch((err) => console.warn("Erreur UEs professeur:", err)),
-            //     useAcademicStore
-            //       .getState()
-            //       .fetchProfessorStudents(user.id)
-            //       .catch((err) => console.warn("Erreur étudiants professeur:", err)),
-            //   ]);
-            //   break;
-
-            // case "Parent":
-            //   await Promise.all([
-            //     ...baseLoaders,
-            //     useAcademicStore
-            //       .getState()
-            //       .fetchParentStudents(user.id)
-            //       .catch((err) => console.warn("Erreur enfants:", err)),
-            //   ]);
-            //   break;
-
-            // case "Student":
-            //   await Promise.all([
-            //     ...baseLoaders,
-            //     useAcademicStore
-            //       .getState()
-            //       .fetchStudentData(user.id)
-            //       .catch((err) => console.warn("Erreur données étudiant:", err)),
-            //     useUEStore
-            //       .getState()
-            //       .fetchStudentCourses(user.id)
-            //       .catch((err) => console.warn("Erreur cours étudiant:", err)),
-            //   ]);
-            //   break;
-
             case "Directeur":
               await Promise.all([
                 ...baseLoaders,
@@ -430,14 +372,14 @@ const App = () => {
           }
         } else {
           console.log(
-            "👤 Utilisateur non authentifié, chargement des données différé"
+            " Utilisateur non authentifié, chargement des données différé"
           );
         }
 
-        console.log("✅ Initialisation terminée");
+        console.log(" Initialisation terminée");
         setInitializationState("success");
       } catch (error: any) {
-        console.error("❌ Erreur lors de l'initialisation:", error);
+        console.error(" Erreur lors de l'initialisation:", error);
         setInitializationError(error.message);
         setInitializationState("error");
       }
@@ -445,6 +387,27 @@ const App = () => {
 
     initializeStores();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      checkPasswordChangeRequired().finally(() => {
+        setCheckingPassword(false);
+      });
+    } else {
+      setCheckingPassword(false);
+    }
+  }, [user]);
+
+  // Utiliser navigate pour rediriger si nécessaire
+  useEffect(() => {
+    if (!checkingPassword && user && requiresPasswordChange) {
+      navigate("/force-password-change");
+    }
+  }, [checkingPassword, user, requiresPasswordChange, navigate]);
+
+  if (checkingPassword) {
+    return <div>Chargement...</div>;
+  }
 
   // Afficher l'écran de chargement pendant l'initialisation
   if (initializationState === "loading" || initializationState === "idle") {
@@ -462,7 +425,7 @@ const App = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center p-8 max-w-md">
-          <div className="text-destructive text-6xl mb-4">⚠️</div>
+          <div className="text-destructive text-6xl mb-4"></div>
           <h1 className="text-2xl font-bold text-foreground mb-2">
             Erreur de connexion
           </h1>
@@ -490,13 +453,20 @@ const App = () => {
         <Toaster title={""} description={""} variant={""} />
         <Sonner />
         <AppInitializer>
-          <BrowserRouter>
-            <AppContent />
-          </BrowserRouter>
+          <AppContent />
         </AppInitializer>
       </TooltipProvider>
     </QueryClientProvider>
   );
 };
 
-export default App;
+// Créer un composant wrapper avec BrowserRouter
+const AppWrapper = () => {
+  return (
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  );
+};
+
+export default AppWrapper;

@@ -51,6 +51,21 @@ import {
 } from "lucide-react";
 import { ClassAssignmentForm } from "./classes/ClassAssignmentForm";
 
+// Constante pour les niveaux de classe
+const CLASS_LEVELS = [
+  "Sixieme",
+  "Cinquieme",
+  "Quatrieme",
+  "Troisieme",
+  "Seconde",
+  "Premiere",
+  "Terminale",
+  "NSI",
+  "NSII",
+  "NSIII",
+  "NSIV",
+] as const;
+
 const ClassAssignmentManager = () => {
   const {
     assignments,
@@ -63,9 +78,11 @@ const ClassAssignmentManager = () => {
     subjects,
     professeurs,
     academicYears,
-    classLevels,
     loadFormData,
   } = useAssignmentStore();
+
+  // Utilisez la constante locale si classLevels du store est undefined
+  const classLevels = useMemo(() => CLASS_LEVELS, []);
 
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -97,7 +114,7 @@ const ClassAssignmentManager = () => {
       }
     };
     initializeData();
-  }, []);
+  }, [fetchAssignments, loadFormData]);
 
   // Validation et nettoyage des données
   const safeAssignments = useMemo(() => {
@@ -186,10 +203,10 @@ const ClassAssignmentManager = () => {
           title: "✅ Supprimé",
           description: "L'assignation a été supprimée avec succès",
         });
-      } catch (err) {
+      } catch (err: any) {
         toast({
           title: "❌ Erreur",
-          description: "Impossible de supprimer l'assignation",
+          description: err.message || "Impossible de supprimer l'assignation",
           variant: "destructive",
         });
       }
@@ -219,6 +236,24 @@ const ClassAssignmentManager = () => {
 
   const handleFilterChange = (filter: string) => {
     setActiveFilter(filter);
+  };
+
+  // Fonction pour formater l'affichage du niveau de classe
+  const formatClassLevel = (level: string) => {
+    const levelMap: Record<string, string> = {
+      Sixieme: "Sixième",
+      Cinquieme: "Cinquième",
+      Quatrieme: "Quatrième",
+      Troisieme: "Troisième",
+      Seconde: "Seconde",
+      Premiere: "Première",
+      Terminale: "Terminale",
+      NSI: "NS I",
+      NSII: "NS II",
+      NSIII: "NS III",
+      NSIV: "NS IV",
+    };
+    return levelMap[level] || level;
   };
 
   // Afficher un état de chargement
@@ -419,19 +454,19 @@ const ClassAssignmentManager = () => {
                     <Select
                       value={filters.classLevel || ""}
                       onValueChange={(value) =>
-                        setFilters({ classLevel: value || undefined })
+                        setFilters({
+                          classLevel: value === "" ? undefined : value,
+                        })
                       }
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Toutes les classes" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="no-classe">
-                          Toutes les classes
-                        </SelectItem>
+                        <SelectItem value="all">Toutes les classes</SelectItem>
                         {classLevels.map((level) => (
                           <SelectItem key={level} value={level}>
-                            {level}
+                            {formatClassLevel(level)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -516,7 +551,7 @@ const ClassAssignmentManager = () => {
                           variant="outline"
                           className="text-xs px-2 py-0.5"
                         >
-                          {assignment.classLevel}
+                          {formatClassLevel(assignment.classLevel)}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -637,7 +672,7 @@ const ClassAssignmentManager = () => {
                           variant="outline"
                           className="text-xs px-2 py-0.5"
                         >
-                          {assignment.classLevel}
+                          {formatClassLevel(assignment.classLevel)}
                         </Badge>
                       </div>
                       <div className="flex items-center">

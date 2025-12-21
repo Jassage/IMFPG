@@ -94,6 +94,7 @@ export const authenticateToken = (options: AuthMiddlewareOptions = {}) => {
         req.userId = user.id;
         req.user = user;
         req.user.role = user.role;
+        req.user.requiresPasswordChange = user.requiresPasswordChange || false;
 
         // Vérifier les rôles
         if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {

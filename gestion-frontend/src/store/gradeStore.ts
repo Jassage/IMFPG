@@ -110,6 +110,7 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
   isSaving: false, // ← AJOUTEZ CETTE LIGNE
   error: null,
 
+  // store/gradeStore.ts - CORRIGER LA FONCTION fetchGrades
   fetchGrades: async (filters = {}) => {
     set({ loading: true, error: null });
     try {
@@ -129,6 +130,7 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         isArray: Array.isArray(response.data),
         hasData: !!response.data?.data,
         hasGrades: !!response.data?.grades,
+        dataContent: response.data?.data, // Ajout pour debug
       });
 
       if (response.status !== 200) {
@@ -137,10 +139,42 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
 
       let gradesData = [];
 
-      if (Array.isArray(response.data)) {
+      // CORRECTION : La structure de réponse semble être {success: true, message: string, data: {...}}
+      // Regardons d'abord dans response.data.data.grades ou response.data.data
+      if (response.data?.success && response.data.data) {
+        // Si data contient directement un tableau
+        if (Array.isArray(response.data.data)) {
+          gradesData = response.data.data;
+        }
+        // Si data est un objet avec une propriété grades
+        else if (
+          response.data.data.grades &&
+          Array.isArray(response.data.data.grades)
+        ) {
+          gradesData = response.data.data.grades;
+        }
+        // Si data est un objet avec une propriété results
+        else if (
+          response.data.data.results &&
+          Array.isArray(response.data.data.results)
+        ) {
+          gradesData = response.data.data.results;
+        }
+        // Si data est un objet et nous devons extraire les valeurs
+        else if (
+          typeof response.data.data === "object" &&
+          response.data.data !== null
+        ) {
+          // Essayons d'extraire toutes les valeurs qui sont des objets avec un id
+          const allValues = Object.values(response.data.data);
+          gradesData = allValues.filter(
+            (item) => item && typeof item === "object" && "id" in item
+          );
+        }
+      }
+      // Structure alternative directe
+      else if (Array.isArray(response.data)) {
         gradesData = response.data;
-      } else if (response.data?.data && Array.isArray(response.data.data)) {
-        gradesData = response.data.data;
       } else if (response.data?.grades && Array.isArray(response.data.grades)) {
         gradesData = response.data.grades;
       } else if (
@@ -148,16 +182,9 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         Array.isArray(response.data.results)
       ) {
         gradesData = response.data.results;
-      } else {
-        console.warn(" Structure de réponse inattendue:", response.data);
-        if (typeof response.data === "object" && response.data !== null) {
-          gradesData = Object.values(response.data).filter(
-            (item) => typeof item === "object" && item !== null && "id" in item
-          );
-        }
       }
 
-      console.log(" Extracted grades:", gradesData);
+      console.log("✅ Extracted grades:", gradesData);
 
       set({
         grades: gradesData,
@@ -166,7 +193,7 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Erreur inconnue";
-      console.error(" Error fetching grades:", errorMessage);
+      console.error("❌ Error fetching grades:", errorMessage);
       set({ error: errorMessage, loading: false });
       throw error;
     }

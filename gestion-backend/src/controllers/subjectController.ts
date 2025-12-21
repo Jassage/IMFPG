@@ -4,11 +4,17 @@
  */
 
 import { Request, Response } from "express";
-import { PrismaClient } from "../../generated/prisma";
 import { extractAuditData } from "./auth/authUtils";
 import { createAuditLog } from "./auditController";
+import {
+  SubjectService,
+  SubjectFilters,
+  CreateSubjectData,
+  UpdateSubjectData,
+} from "../services/subjectService";
+import { SubjectType } from "../../generated/prisma";
 
-const prisma = new PrismaClient();
+const subjectService = new SubjectService();
 
 // Interface pour les réponses
 interface ApiResponse {
@@ -28,62 +34,19 @@ export const getSubjects = async (
   const auditData = extractAuditData(req);
 
   try {
-    const {
-      page = 1,
-      limit = 20,
-      search,
-      type,
-      sortBy = "name",
-      sortOrder = "asc",
-    } = req.query;
+    const filters: SubjectFilters = {
+      page: req.query.page ? parseInt(req.query.page as string) : undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      search: req.query.search as string,
+      type:
+        typeof req.query.type === "string"
+          ? (req.query.type as SubjectType)
+          : undefined,
+      sortBy: req.query.sortBy as string,
+      sortOrder: req.query.sortOrder as "asc" | "desc",
+    };
 
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
-    const skip = (pageNum - 1) * limitNum;
-
-    // Filtres
-    const where: any = {};
-
-    if (search) {
-      where.OR = [
-        { name: { contains: search as string, mode: "insensitive" } },
-        { code: { contains: search as string, mode: "insensitive" } },
-        { description: { contains: search as string, mode: "insensitive" } },
-      ];
-    }
-
-    if (type) {
-      where.type = type;
-    }
-
-    // Récupération avec pagination
-    const [subjects, total] = await Promise.all([
-      prisma.subject.findMany({
-        where,
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          _count: {
-            select: {
-              assignments: true,
-              grades: true,
-            },
-          },
-        },
-        orderBy: {
-          [sortBy as string]: sortOrder === "desc" ? "desc" : "asc",
-        },
-        skip,
-        take: limitNum,
-      }),
-      prisma.subject.count({ where }),
-    ]);
+    const result = await subjectService.getSubjects(filters, auditData);
 
     await createAuditLog({
       ...auditData,
@@ -93,21 +56,7 @@ export const getSubjects = async (
       status: "SUCCESS",
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: "Matières récupérées avec succès",
-      data: {
-        subjects,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total,
-          totalPages: Math.ceil(total / limitNum),
-        },
-      },
-    };
-
-    res.json(response);
+    res.json(result);
   } catch (error: any) {
     console.error("❌ SubjectController - getSubjects error:", error);
 
@@ -141,41 +90,10 @@ export const getSubjectById = async (
 
   try {
     const { id } = req.params;
+    const result = await subjectService.getSubjectById(id, auditData);
 
-    const subject = await prisma.subject.findUnique({
-      where: { id },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        assignments: {
-          include: {
-            professeur: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-            academicYear: true,
-          },
-        },
-      },
-    });
-
-    if (!subject) {
-      const response: ApiResponse = {
-        success: false,
-        message: "Matière non trouvée",
-        code: "SUBJECT_NOT_FOUND",
-      };
-      res.status(404).json(response);
+    if (!result.success && result.code === "SUBJECT_NOT_FOUND") {
+      res.status(404).json(result);
       return;
     }
 
@@ -188,13 +106,7 @@ export const getSubjectById = async (
       status: "SUCCESS",
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: "Matière récupérée avec succès",
-      data: { subject },
-    };
-
-    res.json(response);
+    res.json(result);
   } catch (error: any) {
     console.error("❌ SubjectController - getSubjectById error:", error);
 
@@ -227,29 +139,20 @@ export const createSubject = async (
   const auditData = extractAuditData(req);
 
   try {
-    const { code, name, coefficient, type, passingGrade, description } =
-      req.body;
+    const data: CreateSubjectData = req.body;
+    const userId = auditData.userId || req.user?.id;
 
     console.log("body:", req.body);
 
-    // Vérifier si le code existe déjà
-    const existingSubject = await prisma.subject.findUnique({
-      where: { code },
-    });
-
-    if (existingSubject) {
-      const response: ApiResponse = {
-        success: false,
-        message: "Une matière avec ce code existe déjà",
-        code: "SUBJECT_CODE_EXISTS",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    // Créer la matière
-    const userId = auditData.userId || req.user?.id;
     if (!userId) {
+      await createAuditLog({
+        ...auditData,
+        action: "SUBJECT_CREATION_UNAUTHORIZED",
+        entity: "Subject",
+        description:
+          "Tentative de création de matière par un utilisateur non identifié",
+        status: "ERROR",
+      });
       const response: ApiResponse = {
         success: false,
         message: "Utilisateur non identifié",
@@ -259,50 +162,25 @@ export const createSubject = async (
       return;
     }
 
-    const subject = await prisma.subject.create({
-      data: {
-        code,
-        name,
-        coefficient: coefficient || 1, // ← NOUVEAU
-        type,
-        passingGrade: passingGrade || 60,
-        description,
-        // Retirez objectives
-        createdById: userId,
-      },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-    });
+    const result = await subjectService.createSubject(data, userId, auditData);
+
+    if (!result.success) {
+      const statusCode = result.code === "UNAUTHORIZED" ? 401 : 400;
+      res.status(statusCode).json(result);
+      return;
+    }
 
     await createAuditLog({
       ...auditData,
       action: "SUBJECT_CREATED",
       entity: "Subject",
-      entityId: subject.id,
-      description: `Matière "${name}" créée`,
+      entityId: result.data?.subject?.id,
+      description: `Matière "${data.name}" créée`,
       status: "SUCCESS",
-      metadata: {
-        code,
-        type,
-        coefficient, // ← AJOUTEZ
-        passingGrade,
-      },
+      metadata: result.metadata,
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: "Matière créée avec succès",
-      data: { subject },
-    };
-
-    res.status(201).json(response);
+    res.status(201).json(result);
   } catch (error: any) {
     console.error("❌ SubjectController - createSubject error:", error);
 
@@ -336,138 +214,36 @@ export const updateSubject = async (
 
   try {
     const { id } = req.params;
-    const {
-      code,
-      name,
-      credits,
-      type,
-      passingGrade,
-      description,
-      coefficient,
-    } = req.body;
+    const data: UpdateSubjectData = req.body;
 
     console.log("📝 Update Subject - Body:", req.body);
     console.log("🔍 ID à mettre à jour:", id);
 
-    // 1. Vérifier si la matière existe
-    const existingSubject = await prisma.subject.findUnique({
-      where: { id },
-    });
+    const result = await subjectService.updateSubject(id, data, auditData);
 
-    if (!existingSubject) {
-      const response: ApiResponse = {
-        success: false,
-        message: "Matière non trouvée",
-        code: "SUBJECT_NOT_FOUND",
-      };
-      res.status(404).json(response);
+    if (!result.success) {
+      const statusCode = result.code === "SUBJECT_NOT_FOUND" ? 404 : 400;
+      res.status(statusCode).json(result);
       return;
     }
-
-    // 2. Vérifier si le type est valide (si fourni)
-    if (type && !["Obligatoire", "Optionnelle"].includes(type)) {
-      const response: ApiResponse = {
-        success: false,
-        message: "Type invalide. Valeurs acceptées: Obligatoire, Optionnelle",
-        code: "INVALID_SUBJECT_TYPE",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    // 3. Vérifier si le nouveau code existe déjà (seulement si le code change)
-    if (code && code !== existingSubject.code) {
-      const subjectWithCode = await prisma.subject.findUnique({
-        where: { code },
-      });
-
-      if (subjectWithCode) {
-        const response: ApiResponse = {
-          success: false,
-          message: "Une autre matière utilise déjà ce code",
-          code: "SUBJECT_CODE_EXISTS",
-        };
-        res.status(400).json(response);
-        return;
-      }
-    }
-
-    // 4. Préparer les données de mise à jour
-    const updateData: any = {};
-
-    if (code !== undefined) updateData.code = code;
-    if (name !== undefined) updateData.name = name;
-    if (credits !== undefined) updateData.credits = credits;
-    if (type !== undefined) updateData.type = type;
-    if (passingGrade !== undefined) updateData.passingGrade = passingGrade;
-    if (description !== undefined) updateData.description = description;
-    if (coefficient !== undefined) updateData.coefficient = coefficient;
-
-    console.log("🔄 Données de mise à jour:", updateData);
-
-    // 5. Mettre à jour la matière
-    const updatedSubject = await prisma.subject.update({
-      where: { id },
-      data: updateData,
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-    });
 
     await createAuditLog({
       ...auditData,
       action: "SUBJECT_UPDATED",
       entity: "Subject",
       entityId: id,
-      description: `Matière "${name || existingSubject.name}" mise à jour`,
+      description: `Matière "${data.name || "N/A"}" mise à jour`,
       status: "SUCCESS",
-      metadata: {
-        oldCode: existingSubject.code,
-        newCode: code || existingSubject.code,
-        changes: Object.keys(updateData),
-      },
+      metadata: result.metadata,
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: "Matière mise à jour avec succès",
-      data: { subject: updatedSubject },
-    };
-
-    console.log("✅ Matière mise à jour:", updatedSubject.id);
-    res.json(response);
+    console.log("✅ Matière mise à jour:", id);
+    res.json(result);
   } catch (error: any) {
     console.error("❌ SubjectController - updateSubject error:", error);
     console.error("❌ Error name:", error.name);
     console.error("❌ Error message:", error.message);
     console.error("❌ Error code:", error.code);
-
-    // Gestion spécifique des erreurs Prisma
-    if (error.code === "P2002") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Une autre matière utilise déjà ce code",
-        code: "SUBJECT_CODE_EXISTS",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    if (error.code === "P2025") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Matière non trouvée",
-        code: "SUBJECT_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
-    }
 
     await createAuditLog({
       ...auditData,
@@ -499,66 +275,24 @@ export const deleteSubject = async (
 
   try {
     const { id } = req.params;
+    const result = await subjectService.deleteSubject(id, auditData);
 
-    // Vérifier si la matière existe
-    const subject = await prisma.subject.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: {
-            assignments: true,
-            grades: true,
-          },
-        },
-      },
-    });
-
-    if (!subject) {
-      const response: ApiResponse = {
-        success: false,
-        message: "Matière non trouvée",
-        code: "SUBJECT_NOT_FOUND",
-      };
-      res.status(404).json(response);
+    if (!result.success) {
+      const statusCode = result.code === "SUBJECT_NOT_FOUND" ? 404 : 400;
+      res.status(statusCode).json(result);
       return;
     }
-
-    // Vérifier les dépendances
-    if (subject._count.assignments > 0 || subject._count.grades > 0) {
-      const response: ApiResponse = {
-        success: false,
-        message:
-          "Cette matière ne peut pas être supprimée car elle est utilisée",
-        code: "SUBJECT_HAS_DEPENDENCIES",
-        data: {
-          assignments: subject._count.assignments,
-          grades: subject._count.grades,
-        },
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    // Supprimer la matière
-    await prisma.subject.delete({
-      where: { id },
-    });
 
     await createAuditLog({
       ...auditData,
       action: "SUBJECT_DELETED",
       entity: "Subject",
       entityId: id,
-      description: `Matière "${subject.name}" supprimée`,
+      description: `Matière "${result.subjectName}" supprimée`,
       status: "SUCCESS",
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: "Matière supprimée avec succès",
-    };
-
-    res.json(response);
+    res.json(result);
   } catch (error: any) {
     console.error("❌ SubjectController - deleteSubject error:", error);
 

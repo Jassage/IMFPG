@@ -13,6 +13,8 @@ import {
   validateContentType,
   sanitizeInput,
   handleValidationErrors,
+  requireTeacher,
+  requireTeacherOrStaff,
 } from "../middleware";
 import {
   createClassAssignment,
@@ -47,7 +49,7 @@ const router = Router();
  * @query {string} [sortBy=createdAt] - Champ de tri
  * @query {string} [sortOrder=desc] - Ordre de tri (asc/desc)
  */
-router.get("/", requireAuth, requireStaff, getClassAssignments);
+router.get("/", requireAuth, requireTeacherOrStaff, getClassAssignments);
 
 /**
  * @route GET /api/academic/class-assignments/:id
@@ -157,6 +159,7 @@ router.get(
 router.get(
   "/professor/:professeurId",
   requireAuth,
+  requireTeacherOrStaff,
   sanitizeInput,
   getClassAssignmentsByProfessor
 );

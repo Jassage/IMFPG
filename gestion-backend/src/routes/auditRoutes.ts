@@ -10,6 +10,7 @@ import {
   getAuditLogById,
   getUserAuditLogs,
   getAuditStats,
+  exportAuditLogs,
 } from "../controllers/auditController";
 import { requireAuth, requireAdmin } from "../middleware";
 import { validatePagination } from "../middleware/validationMiddleware";
@@ -21,37 +22,29 @@ const router = Router();
  * @description Récupère les logs d'audit avec pagination
  * @access Admin seulement
  */
-router.get(
-  "/",
-  requireAuth,
-  requireAdmin,
-  validatePagination,
-  getAuditLogs // CORRIGÉ : fonction directe, pas d'appel
-);
+
+router.get("/", requireAuth, requireAdmin, validatePagination, getAuditLogs);
+
+/**
+ * @route GET /api/audit-logs/export
+ * @description Exporte les logs d'audit en CSV ou JSON
+ * @access Admin seulement
+ */
+router.get("/export", requireAuth, requireAdmin, exportAuditLogs);
 
 /**
  * @route GET /api/audit-logs/stats
  * @description Récupère les statistiques des logs d'audit
  * @access Admin seulement
  */
-router.get(
-  "/stats",
-  requireAuth,
-  requireAdmin,
-  getAuditStats // CORRIGÉ : fonction directe
-);
+router.get("/stats", requireAuth, requireAdmin, getAuditStats);
 
 /**
  * @route GET /api/audit-logs/:id
  * @description Récupère un log d'audit spécifique
  * @access Admin seulement
  */
-router.get(
-  "/:id",
-  requireAuth,
-  requireAdmin,
-  getAuditLogById // CORRIGÉ : fonction directe
-);
+router.get("/:id", requireAuth, requireAdmin, getAuditLogById);
 
 /**
  * @route GET /api/audit-logs/user/:userId
@@ -63,7 +56,7 @@ router.get(
   requireAuth,
   requireAdmin,
   validatePagination,
-  getUserAuditLogs // CORRIGÉ : fonction directe
+  getUserAuditLogs
 );
 
 export default router;

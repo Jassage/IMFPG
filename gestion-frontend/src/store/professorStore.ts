@@ -7,9 +7,6 @@ import { create } from "zustand";
 
 // Types
 export interface Professeur {
-  matricule: string;
-  address: string;
-  qualifications: string;
   id: string;
   firstName: string;
   lastName: string;
@@ -18,20 +15,28 @@ export interface Professeur {
   speciality?: string;
   hireDate?: string;
   status: "Actif" | "Inactif";
+  matricule?: string;
+  address?: string;
+  qualifications?: string;
   createdAt: string;
   updatedAt: string;
   userId?: string;
   user?: {
+    [x: string]: any;
     id: string;
     email: string;
     role: string;
     status: string;
+    lastLogin?: string;
+    emailVerified?: boolean;
   };
   _count?: {
     assignments: number;
     schedules: number;
-    classes: number;
+    classes?: number;
   };
+  assignments?: ProfesseurAssignment[];
+  schedules?: ProfesseurSchedule[];
 }
 
 export interface ProfesseurSchedule {
@@ -45,24 +50,37 @@ export interface ProfesseurSchedule {
     name: string;
     code: string;
   };
-  class?: {
+  schoolClass?: {
     id: string;
     name: string;
     level: string;
+  };
+  classAssignment?: {
+    subject: {
+      id: string;
+      name: string;
+      code: string;
+    };
+    academicYear: {
+      id: string;
+      year: string;
+    };
   };
 }
 
 export interface ProfesseurAssignment {
   id: string;
+  classLevel: string;
+  status: string;
   subject: {
     id: string;
     name: string;
     code: string;
   };
-  classLevel: string;
   academicYear: {
     id: string;
     year: string;
+    isCurrent: boolean;
   };
   schedules: Array<{
     id: string;
@@ -70,7 +88,16 @@ export interface ProfesseurAssignment {
     startTime: string;
     endTime: string;
     classroom?: string;
+    schoolClass?: {
+      id: string;
+      name: string;
+      level: string;
+    };
   }>;
+  _count?: {
+    schedules: number;
+    grades: number;
+  };
 }
 
 // Interfaces pour les filtres
@@ -84,6 +111,34 @@ interface ProfesseurFilters {
   sortOrder?: "asc" | "desc";
 }
 
+interface CreateProfesseurData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  speciality?: string;
+  hireDate?: string;
+  matricule?: string;
+  address?: string;
+  qualifications?: string;
+  userId?: string;
+  status?: "Actif" | "Inactif";
+}
+
+interface UpdateProfesseurData {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  speciality?: string;
+  hireDate?: string;
+  status?: "Actif" | "Inactif";
+  matricule?: string;
+  address?: string;
+  qualifications?: string;
+  userId?: string | null;
+}
+
 // Interface pour l'état du store
 interface ProfesseurStore {
   // État
@@ -92,6 +147,7 @@ interface ProfesseurStore {
   professeurSchedule: ProfesseurSchedule[];
   professeurAssignments: ProfesseurAssignment[];
   loading: boolean;
+  loadingDetails: boolean;
   error: string | null;
   filters: ProfesseurFilters;
 
@@ -107,6 +163,7 @@ interface ProfesseurStore {
   setFilters: (filters: Partial<ProfesseurFilters>) => void;
   fetchProfesseurs: () => Promise<void>;
   fetchProfesseurById: (id: string) => Promise<Professeur>;
+  fetchProfesseurFullDetails: (id: string) => Promise<Professeur>;
   fetchProfesseurSchedule: (id: string) => Promise<void>;
   fetchProfesseurAssignments: (id: string) => Promise<void>;
   createProfesseur: (
@@ -123,26 +180,6 @@ interface ProfesseurStore {
   clearError: () => void;
   clearProfesseurs: () => void;
 }
-interface CreateProfesseurData {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  speciality?: string;
-  hireDate?: string;
-  userId?: string;
-}
-
-interface UpdateProfesseurData {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-  speciality?: string;
-  hireDate?: string;
-  status?: "Actif" | "Inactif";
-  userId?: string;
-}
 
 // Import de l'API
 import api from "../services/api";
@@ -154,6 +191,7 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
   professeurSchedule: [],
   professeurAssignments: [],
   loading: false,
+  loadingDetails: false,
   error: null,
 
   filters: {
@@ -244,6 +282,47 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     }
   },
 
+  fetchProfesseurFullDetails: async (id: string) => {
+    set({ loadingDetails: true, error: null });
+
+    try {
+      const response = await api.get(`/professeurs/${id}/full-details`);
+      const { professeur, scheduleByDay, stats } = response.data.data;
+
+      // Convertir l'objet scheduleByDay en tableau plat
+      const scheduleArray: ProfesseurSchedule[] = [];
+      if (scheduleByDay) {
+        Object.entries(scheduleByDay).forEach(
+          ([day, schedules]: [string, any]) => {
+            schedules.forEach((schedule: any) => {
+              scheduleArray.push({
+                ...schedule,
+                dayOfWeek: parseInt(day),
+              });
+            });
+          }
+        );
+      }
+
+      set({
+        currentProfesseur: professeur,
+        professeurSchedule: scheduleArray,
+        professeurAssignments: professeur.assignments || [],
+        loadingDetails: false,
+      });
+
+      return professeur;
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur lors du chargement des détails",
+        loadingDetails: false,
+      });
+      throw error;
+    }
+  },
+
   fetchProfesseurSchedule: async (id: string) => {
     set({ loading: true, error: null });
 
@@ -253,16 +332,18 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
 
       // Convertir l'objet en tableau plat
       const scheduleArray: ProfesseurSchedule[] = [];
-      Object.entries(scheduleByDay).forEach(
-        ([day, schedules]: [string, any]) => {
-          schedules.forEach((schedule: any) => {
-            scheduleArray.push({
-              ...schedule,
-              dayOfWeek: parseInt(day),
+      if (scheduleByDay) {
+        Object.entries(scheduleByDay).forEach(
+          ([day, schedules]: [string, any]) => {
+            schedules.forEach((schedule: any) => {
+              scheduleArray.push({
+                ...schedule,
+                dayOfWeek: parseInt(day),
+              });
             });
-          });
-        }
-      );
+          }
+        );
+      }
 
       set({
         professeurSchedule: scheduleArray,
@@ -283,13 +364,15 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await api.get(`/professeurs/${id}/assignments`);
-      const assignments = response.data.data.assignments;
+      const response = await api.get(`/class-assignments/professor/${id}`);
+      const assignments = response.data.data.assignments || [];
 
       set({
         professeurAssignments: assignments,
         loading: false,
       });
+
+      return assignments;
     } catch (error: any) {
       set({
         error:
@@ -359,6 +442,7 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
 
       set((state) => ({
         professeurs: state.professeurs.filter((prof) => prof.id !== id),
+        currentProfesseur: null,
         loading: false,
       }));
     } catch (error: any) {
@@ -374,7 +458,7 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await api.put(`/professeurs/${id}/activate`);
+      const response = await api.patch(`/professeurs/${id}/activate`);
       const updatedProfesseur = response.data.data.professeur;
 
       set((state) => ({
@@ -399,7 +483,7 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await api.put(`/professeurs/${id}/deactivate`);
+      const response = await api.patch(`/professeurs/${id}/deactivate`);
       const updatedProfesseur = response.data.data.professeur;
 
       set((state) => ({
@@ -414,6 +498,77 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     } catch (error: any) {
       set({
         error: error.response?.data?.message || "Erreur de désactivation",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  attachUserToProfesseur: async (professeurId, userData) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.post(
+        `/professeurs/${professeurId}/attach-user`,
+        userData
+      );
+      const updatedProfesseur = response.data.data.professeur;
+
+      set((state) => ({
+        professeurs: state.professeurs.map((prof) =>
+          prof.id === professeurId ? updatedProfesseur : prof
+        ),
+        currentProfesseur: updatedProfesseur,
+        loading: false,
+      }));
+
+      return updatedProfesseur;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur lors de l'association",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  detachUserFromProfesseur: async (professeurId) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.delete(
+        `/professeurs/${professeurId}/detach-user`
+      );
+      const updatedProfesseur = response.data.data.professeur;
+
+      set((state) => ({
+        professeurs: state.professeurs.map((prof) =>
+          prof.id === professeurId ? updatedProfesseur : prof
+        ),
+        currentProfesseur: updatedProfesseur,
+        loading: false,
+      }));
+
+      return updatedProfesseur;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur lors du détachement",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  sendInvitationEmail: async (professeurId) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.post(`/auth/send-invitation/${professeurId}`);
+      set({ loading: false });
+      return response.data;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur d'envoi d'invitation",
         loading: false,
       });
       throw error;

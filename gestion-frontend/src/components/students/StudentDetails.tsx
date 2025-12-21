@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -16,7 +15,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Progress } from "@/components/ui/progress";
 import {
   User,
   Mail,
@@ -24,7 +22,6 @@ import {
   MapPin,
   Calendar,
   GraduationCap,
-  Heart,
   AlertTriangle,
   Edit,
   Trash2,
@@ -33,16 +30,10 @@ import {
   Users,
   CreditCard,
   BarChart3,
-  FileText,
-  Download,
-  Filter,
-  ScrollText,
-  User2,
   ChevronDown,
   ChevronUp,
   Eye,
   TrendingUp,
-  Clock,
   CheckCircle,
   XCircle,
   RefreshCw,
@@ -53,15 +44,14 @@ import {
   Target,
   Banknote,
   Building,
+  ScrollText,
+  User2,
 } from "lucide-react";
-import { Student, Enrollment, GradeWithDetails } from "../../types/academic";
+import { Student, Enrollment } from "../../types/academic";
 import { useEnrollmentStore } from "../../store/enrollmentStore";
-// import { usePaymentStore } from "../../store/paymentStore";
 import { Checkbox } from "../ui/checkbox";
 import { useFeeStructureStore } from "@/store/feeStructureStore";
-import { GradesModal } from "./GradesModal";
 import { useGradeStore } from "@/store/gradeStore";
-import { DocumentTypeI } from "@/types/academic";
 import {
   Select,
   SelectContent,
@@ -71,7 +61,6 @@ import {
 } from "../ui/select";
 import { useAuthStore } from "@/store/authStore";
 import { Input } from "../ui/input";
-import { useAcademicStore } from "@/store/academicStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,12 +69,26 @@ import {
 } from "../ui/dropdown-menu";
 import { StudentFeesSection } from "../StudentFeesSection";
 import { AssignFeesButton } from "./AssignFeesButton";
+import { useClassStore } from "@/store/classStore";
+import { useAcademicYearStore } from "@/store/academicYearStore";
 
-interface StudentDetailsProps {
-  student: Student;
-  onClose: () => void;
-  onEdit?: (student: Student) => void;
-  onDelete?: (studentId: string) => void;
+interface GradeWithDetails {
+  id: string;
+  studentId: string;
+  subjectId: string;
+  grade?: number;
+  status?: string | null;
+  session?: string | null;
+  controlType?: string | null;
+  subject?: {
+    id: string;
+    name: string;
+    code: string;
+    coefficient?: number;
+  } | null;
+  academicYearId?: string;
+  classLevel?: string;
+  [key: string]: any;
 }
 
 interface AcademicYearGrades {
@@ -102,18 +105,27 @@ interface AcademicYearGrades {
   obtainedCredits: number;
 }
 
+interface StudentDetailsProps {
+  student: Student;
+  onClose: () => void;
+  onEdit?: (student: Student) => void;
+  onDelete?: (studentId: string) => void;
+}
+
 export const StudentDetails = ({
   student,
   onClose,
   onEdit,
   onDelete,
 }: StudentDetailsProps) => {
-  const { getStudentGrades, getStudentGuardians, getStudentRetakes } =
-    useAcademicStore();
-  const { grades: allGrades, fetchGrades: fetchAllGrades } = useGradeStore();
   const { enrollments, getEnrollmentsByStudent } = useEnrollmentStore();
-  // const { payments, getPaymentsByStudent, getTotalAmount, getPaidAmount } =
-  //   usePaymentStore();
+  const {
+    grades: allGrades,
+    fetchGrades: fetchAllGrades,
+    fetchStudentGrades,
+  } = useGradeStore();
+  const { classes, fetchClasses } = useClassStore();
+  const { academicYears, fetchAcademicYears } = useAcademicYearStore();
 
   const [activeTab, setActiveTab] = useState("info");
   const [grades, setGrades] = useState<GradeWithDetails[]>([]);
@@ -123,76 +135,110 @@ export const StudentDetails = ({
   const [expandedYears, setExpandedYears] = useState<Set<string>>(new Set());
   const [showOnlyRetakes, setShowOnlyRetakes] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-
-  const guardians = getStudentGuardians(student.id);
-  const retakes = getStudentRetakes(student.id);
-  const studentEnrollments = getEnrollmentsByStudent(student.id);
-  // const studentPayments = getPaymentsByStudent(student.id);
-  const [selectedEnrollment, setSelectedEnrollment] =
-    useState<Enrollment | null>(null);
-  const [showGradesModal, setShowGradesModal] = useState(false);
   const [loadingGrades, setLoadingGrades] = useState(false);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+
+  const studentEnrollments = useMemo(
+    () => getEnrollmentsByStudent(student.id),
+    [student.id, getEnrollmentsByStudent, enrollments]
+  );
 
   const { studentFees } = useFeeStructureStore();
   const { user } = useAuthStore();
 
-  const currentEnrollment =
-    studentEnrollments.find((e) => e.status === "Active") ||
-    studentEnrollments[studentEnrollments.length - 1];
+  const currentEnrollment = useMemo(
+    () =>
+      studentEnrollments.find((e) => e.status === "Active") ||
+      studentEnrollments[studentEnrollments.length - 1],
+    [studentEnrollments]
+  );
 
-  // Fonctions helper pour extraire les données
-  const getEnrollmentYear = (enrollment: Enrollment): string => {
-    if (!enrollment) return "N/A";
+  // Charger les classes et années académiques au montage
+  useEffect(() => {
+    const loadData = async () => {
+      setLoadingClasses(true);
+      try {
+        await Promise.all([fetchClasses(), fetchAcademicYears()]);
+      } catch (error) {
+        console.error("Erreur chargement données:", error);
+      } finally {
+        setLoadingClasses(false);
+      }
+    };
+    loadData();
+  }, [fetchClasses, fetchAcademicYears]);
 
-    if (typeof enrollment.academicYear === "string") {
-      return enrollment.academicYear;
-    } else if (
-      enrollment.academicYear &&
+  // Fonction pour extraire le nom de la classe
+  const getClassName = (classId: string): string => {
+    if (!classId) return "N/A";
+
+    const classInfo = classes.find((c) => c.id === classId);
+    if (classInfo) {
+      return classInfo.name || `Classe ${classId}`;
+    }
+
+    // Si la classe n'est pas trouvée, essayer de l'extraire de l'inscription
+    const enrollment = studentEnrollments.find((e) => e.classId === classId);
+    // Utiliser une variable locale pour gérer les cas null/undefined et éviter les erreurs de typage
+    const enrollmentClassId = enrollment?.classId;
+    if (
+      enrollmentClassId &&
+      typeof enrollmentClassId === "object" &&
+      enrollmentClassId !== null &&
+      "name" in (enrollmentClassId as any)
+    ) {
+      // enrollment.classId peut être un objet contenant le nom de la classe
+      return (enrollmentClassId as any).name || `Classe ${classId}`;
+    }
+
+    return `Classe ${classId}`;
+  };
+
+  // Fonction pour extraire le niveau de la classe
+  const getClassLevel = (classId: string): string => {
+    if (!classId) return "N/A";
+
+    const classInfo = classes.find((c) => c.id === classId);
+    if (classInfo) {
+      return classInfo.level || "N/A";
+    }
+
+    // Si la classe n'est pas trouvée, essayer de l'extraire de l'inscription
+    const enrollment = studentEnrollments.find((e) => e.classId === classId);
+    if (
+      enrollment &&
+      typeof enrollment.classId === "object" &&
+      enrollment.classId !== null &&
+      "level" in (enrollment.classId as any)
+    ) {
+      return (enrollment.classId as any).level || "N/A";
+    }
+
+    return "N/A";
+  };
+
+  // Fonction pour extraire l'année académique
+  const getAcademicYear = (academicYearId: string): string => {
+    if (!academicYearId) return "N/A";
+
+    const academicYear = academicYears.find((ay) => ay.id === academicYearId);
+    if (academicYear) {
+      return academicYear.year;
+    }
+
+    // Si l'année n'est pas trouvée, essayer de l'extraire de l'inscription
+    const enrollment = studentEnrollments.find(
+      (e) => e.academicYearId === academicYearId
+    );
+    if (
+      enrollment?.academicYear &&
       typeof enrollment.academicYear === "object" &&
       "year" in enrollment.academicYear
     ) {
       return enrollment.academicYear.year;
-    } else if (enrollment.academicYearId) {
-      return enrollment.academicYearId;
     }
 
-    return "N/A";
-  };
-
-  const getEnrollmentFaculty = (enrollment: Enrollment): string => {
-    if (!enrollment) return "N/A";
-
-    if (typeof enrollment.classId === "string") {
-      return enrollment.classId;
-    } else if (
-      enrollment.classId &&
-      typeof enrollment.classId === "object" &&
-      "faculty" in enrollment.classId
-    ) {
-      return enrollment.classId;
-    } else if (enrollment.classId) {
-      return enrollment.classId;
-    }
-
-    return "N/A";
-  };
-
-  const getEnrollmentLevel = (enrollment: Enrollment): string => {
-    if (!enrollment) return "N/A";
-
-    if (typeof enrollment.classId === "string") {
-      return enrollment.classId;
-    } else if (
-      enrollment.classId &&
-      typeof enrollment.classId === "object" &&
-      "level" in enrollment.classId
-    ) {
-      return enrollment.classId;
-    } else if (enrollment.classId) {
-      return enrollment.classId;
-    }
-
-    return "N/A";
+    return academicYearId;
   };
 
   // Charger les notes de l'étudiant
@@ -204,21 +250,30 @@ export const StudentDetails = ({
       ) {
         setLoadingGrades(true);
         try {
-          const studentGrades = getStudentGrades(student.id);
-          if (studentGrades && studentGrades.length > 0) {
-            setGrades(studentGrades);
-          } else {
+          // Essayer d'abord la méthode dédiée
+          try {
+            const studentGrades = await fetchStudentGrades(student.id);
+            if (studentGrades && Array.isArray(studentGrades)) {
+              setGrades(studentGrades);
+            } else {
+              // Sinon, filtrer depuis toutes les notes
+              const filteredGrades = allGrades.filter(
+                (grade) => grade.studentId === student.id
+              ) as GradeWithDetails[];
+              setGrades(filteredGrades);
+            }
+          } catch (error) {
+            // Fallback: filtrer depuis toutes les notes
             const filteredGrades = allGrades.filter(
               (grade) => grade.studentId === student.id
             ) as GradeWithDetails[];
             setGrades(filteredGrades);
+
             if (filteredGrades.length === 0) {
               try {
                 await fetchAllGrades({ studentId: student.id });
-              } catch (error) {
-                console.log(
-                  "API grades non disponible, utilisation des données locales"
-                );
+              } catch (fetchError) {
+                console.log("API grades non disponible");
               }
             }
           }
@@ -231,7 +286,7 @@ export const StudentDetails = ({
     };
 
     loadStudentGrades();
-  }, [student.id, activeTab, allGrades, getStudentGrades, fetchAllGrades]);
+  }, [student.id, activeTab, allGrades, fetchAllGrades, fetchStudentGrades]);
 
   // Grouper les notes par année académique
   useEffect(() => {
@@ -240,17 +295,21 @@ export const StudentDetails = ({
 
       studentEnrollments.forEach((enrollment) => {
         const enrollmentGrades = grades.filter(
-          (grade) => grade.studentId === enrollment.student.id
+          (grade) => grade.academicYearId === enrollment.academicYearId
         );
 
         if (enrollmentGrades.length > 0) {
           const validatedGrades = enrollmentGrades.filter(
-            (g) => g.status === "Valid_"
+            (g) => g.status === "Valid_" || (g.grade || 0) >= 10
           );
-          const failedGrades = enrollmentGrades.filter(
-            (g) =>
-              g.status === "Non_valid_" || g.status === "Echec" || g.grade < 10
-          );
+          const failedGrades = enrollmentGrades.filter((g) => {
+            const status = String(g.status);
+            return (
+              status === "Non_valid_" ||
+              status === "Echec" ||
+              (g.grade || 0) < 10
+            );
+          });
           const retakeGrades = enrollmentGrades.filter(
             (g) => g.session === "Reprise" || g.status === "Reprise"
           );
@@ -269,16 +328,16 @@ export const StudentDetails = ({
               : 0;
 
           const totalCredits = enrollmentGrades.reduce(
-            (sum, grade) => sum + (grade.ue?.credits || 0),
+            (sum, grade) => sum + (grade.subject?.coefficient || 0),
             0
           );
           const obtainedCredits = validatedGrades.reduce(
-            (sum, grade) => sum + (grade.ue?.credits || 0),
+            (sum, grade) => sum + (grade.subject?.coefficient || 0),
             0
           );
 
-          const academicYear = getEnrollmentYear(enrollment);
-          const academicYearId = enrollment.academicYearId || academicYear;
+          const academicYear = getAcademicYear(enrollment.academicYearId);
+          const academicYearId = enrollment.academicYearId;
 
           grouped.push({
             academicYear,
@@ -296,24 +355,28 @@ export const StudentDetails = ({
         }
       });
 
+      // Trier par année (la plus récente en premier)
       grouped.sort((a, b) => b.academicYear.localeCompare(a.academicYear));
       setGroupedGrades(grouped);
 
+      // Développer la première année par défaut
       if (grouped.length > 0 && expandedYears.size === 0) {
         setExpandedYears(new Set([grouped[0].academicYearId]));
       }
     };
 
-    if (grades.length > 0) {
+    if (grades.length > 0 || studentEnrollments.length > 0) {
       groupGradesByAcademicYear();
     }
   }, [grades, studentEnrollments, expandedYears]);
 
-  const filteredGroupedGrades = groupedGrades.filter(
-    (group) =>
-      selectedAcademicYear === "all" ||
-      group.academicYearId === selectedAcademicYear
-  );
+  const filteredGroupedGrades = useMemo(() => {
+    return groupedGrades.filter(
+      (group) =>
+        selectedAcademicYear === "all" ||
+        group.academicYearId === selectedAcademicYear
+    );
+  }, [groupedGrades, selectedAcademicYear]);
 
   const toggleYearExpansion = (academicYearId: string) => {
     setExpandedYears((prev) => {
@@ -327,30 +390,50 @@ export const StudentDetails = ({
     });
   };
 
-  const getGlobalStats = () => {
+  // Calculer les statistiques globales
+  const globalStats = useMemo(() => {
     const allGradesList = filteredGroupedGrades.flatMap(
       (group) => group.grades
     );
-    const validatedGrades = allGradesList.filter((g) => g.status === "Valid_");
-    const failedGrades = allGradesList.filter(
-      (g) => g.status === "Non_valid_" || g.status === "Echec" || g.grade < 10
+
+    if (allGradesList.length === 0) {
+      return {
+        totalGrades: 0,
+        validatedCount: 0,
+        failedCount: 0,
+        retakeCount: 0,
+        average: 0,
+        successRate: 0,
+        totalCredits: 0,
+        obtainedCredits: 0,
+        creditProgress: 0,
+      };
+    }
+
+    const validatedGrades = allGradesList.filter(
+      (g) => g.status === "Valid_" || (g.grade || 0) >= 10
     );
+    const failedGrades = allGradesList.filter((g) => {
+      const status = String(g.status);
+      return (
+        status === "Non_valid_" || status === "Echec" || (g.grade || 0) < 10
+      );
+    });
     const retakeGrades = allGradesList.filter(
       (g) => g.session === "Reprise" || g.status === "Reprise"
     );
 
     const totalAverage =
-      allGradesList.length > 0
-        ? allGradesList.reduce((sum, grade) => sum + (grade.grade || 0), 0) /
-          allGradesList.length
-        : 0;
+      allGradesList.reduce((sum, grade) => sum + (grade.grade || 0), 0) /
+      allGradesList.length;
 
     const totalCredits = allGradesList.reduce(
-      (sum, grade) => sum + (grade.ue?.credits || 0),
+      (sum, grade) => sum + (grade.subject?.coefficient || 0),
       0
     );
+
     const obtainedCredits = validatedGrades.reduce(
-      (sum, grade) => sum + (grade.ue?.credits || 0),
+      (sum, grade) => sum + (grade.subject?.coefficient || 0),
       0
     );
 
@@ -360,50 +443,36 @@ export const StudentDetails = ({
       failedCount: failedGrades.length,
       retakeCount: retakeGrades.length,
       average: Math.round(totalAverage * 100) / 100,
-      successRate:
-        allGradesList.length > 0
-          ? Math.round((validatedGrades.length / allGradesList.length) * 100)
-          : 0,
+      successRate: Math.round(
+        (validatedGrades.length / allGradesList.length) * 100
+      ),
       totalCredits,
       obtainedCredits,
       creditProgress:
         totalCredits > 0 ? (obtainedCredits / totalCredits) * 100 : 0,
     };
-  };
+  }, [filteredGroupedGrades]);
 
-  const globalStats = getGlobalStats();
+  // Calculer GPA et taux de réussite
+  const { gpa, successRate } = useMemo(() => {
+    if (grades.length === 0) return { gpa: 0, successRate: 0 };
 
-  const calculateGPA = () => {
-    if (grades.length === 0) return 0;
-    const total = grades.reduce((sum, grade) => sum + grade.grade, 0);
-    return Math.round((total / grades.length) * 100) / 100;
-  };
+    const total = grades.reduce((sum, grade) => sum + (grade.grade || 0), 0);
+    const validatedGrades = grades.filter(
+      (g) => g.status === "Valid_" || (g.grade || 0) >= 10
+    ).length;
 
-  const getSuccessRate = () => {
-    if (grades.length === 0) return 0;
-    const validatedGrades = grades.filter((g) => g.status === "Valid_").length;
-    return Math.round((validatedGrades / grades.length) * 100);
-  };
+    return {
+      gpa: Math.round((total / grades.length) * 100) / 100,
+      successRate: Math.round((validatedGrades / grades.length) * 100),
+    };
+  }, [grades]);
 
+  // Fonctions utilitaires
   const getGradeStatusBadge = (grade: GradeWithDetails) => {
     const isRetake = grade.session === "Reprise" || grade.status === "Reprise";
-    const isValid = grade.status === "Valid_" || grade.grade >= 10;
-    const isFailed =
-      grade.status === "Non_valid_" ||
-      grade.status === "Echec" ||
-      grade.grade < 10;
-
-    if (isRetake) {
-      return (
-        <Badge
-          variant="secondary"
-          className="gap-1 text-xs bg-amber-100 text-amber-800 hover:bg-amber-100"
-        >
-          <RefreshCw className="h-3 w-3" />
-          Rattrapage
-        </Badge>
-      );
-    }
+    const isValid = grade.status === "Valid_" || (grade.grade || 0) >= 10;
+    const isFailed = grade.status === "Non_valid_" || (grade.grade || 0) < 10;
 
     if (isValid) {
       return (
@@ -480,9 +549,11 @@ export const StudentDetails = ({
     return `${levelNum}ème année`;
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (date: string | Date) => {
     try {
-      return new Date(dateString).toLocaleDateString("fr-FR", {
+      const d = typeof date === "string" ? new Date(date) : date;
+      if (!(d instanceof Date) || isNaN(d.getTime())) return "Date invalide";
+      return d.toLocaleDateString("fr-FR", {
         year: "numeric",
         month: "long",
         day: "numeric",
@@ -492,11 +563,21 @@ export const StudentDetails = ({
     }
   };
 
-  const totalPaid = 0; //getPaidAmount({ studentCode: student.studentCode }) || 0;
+  // Obtenir le nom de la matière
+  const getSubjectName = (grade: GradeWithDetails): string => {
+    if (grade.subject?.name) return grade.subject.name;
+    if (grade.subject?.code) return grade.subject.code;
+    return "Matière inconnue";
+  };
+
+  // Obtenir le coefficient
+  const getSubjectCoefficient = (grade: GradeWithDetails): number => {
+    return grade.subject?.coefficient || 1;
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6 max-h-[90vh] overflow-auto p-2 sm:p-0">
-      {/* Header élégant */}
+      {/* Header */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 to-white border border-slate-200 shadow-sm">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5" />
         <div className="relative p-6">
@@ -540,7 +621,7 @@ export const StudentDetails = ({
                   </div>
                 </div>
 
-                {/* Stats en icônes */}
+                {/* Stats */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div className="text-center p-3 rounded-xl bg-white border border-slate-200 hover:border-primary/30 transition-all duration-300">
                     <div className="flex items-center justify-center gap-2">
@@ -549,7 +630,7 @@ export const StudentDetails = ({
                       </div>
                       <div className="text-left">
                         <div className="text-lg font-bold text-slate-900">
-                          {calculateGPA()}
+                          {gpa}
                         </div>
                         <div className="text-xs text-slate-500">Moyenne</div>
                       </div>
@@ -563,23 +644,9 @@ export const StudentDetails = ({
                       </div>
                       <div className="text-left">
                         <div className="text-lg font-bold text-slate-900">
-                          {getSuccessRate()}%
+                          {successRate}%
                         </div>
                         <div className="text-xs text-slate-500">Réussite</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-center p-3 rounded-xl bg-white border border-slate-200 hover:border-primary/30 transition-all duration-300">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="p-2 rounded-lg bg-purple-100 text-purple-600">
-                        <Banknote className="h-4 w-4" />
-                      </div>
-                      <div className="text-left">
-                        <div className="text-lg font-bold text-slate-900">
-                          {totalPaid} HTG
-                        </div>
-                        <div className="text-xs text-slate-500">Payés</div>
                       </div>
                     </div>
                   </div>
@@ -591,9 +658,9 @@ export const StudentDetails = ({
                       </div>
                       <div className="text-left">
                         <div className="text-lg font-bold text-slate-900">
-                          {globalStats.obtainedCredits}
+                          {grades.length}
                         </div>
-                        <div className="text-xs text-slate-500">Crédits</div>
+                        <div className="text-xs text-slate-500">Notes</div>
                       </div>
                     </div>
                   </div>
@@ -661,7 +728,7 @@ export const StudentDetails = ({
         </div>
       </div>
 
-      {/* Navigation par onglets élégante */}
+      {/* Navigation */}
       <Tabs defaultValue="info" className="w-full" onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-5 h-11 p-1 bg-slate-100 rounded-xl">
           <TabsTrigger
@@ -710,11 +777,6 @@ export const StudentDetails = ({
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               <span className="hidden xs:inline">Tuteurs</span>
-              {guardians.length > 0 && (
-                <Badge variant="secondary" className="ml-1 h-5 w-5 p-0">
-                  {guardians.length}
-                </Badge>
-              )}
             </div>
           </TabsTrigger>
         </TabsList>
@@ -920,9 +982,9 @@ export const StudentDetails = ({
                     const filteredGrades = group.grades.filter((grade) => {
                       const matchesSearch =
                         searchTerm === "" ||
-                        (grade.ue?.title?.toLowerCase() || "").includes(
-                          searchTerm.toLowerCase()
-                        );
+                        getSubjectName(grade)
+                          .toLowerCase()
+                          .includes(searchTerm.toLowerCase());
                       const matchesRetakeFilter =
                         !showOnlyRetakes ||
                         grade.session === "Reprise" ||
@@ -931,6 +993,8 @@ export const StudentDetails = ({
                     });
 
                     const isExpanded = expandedYears.has(group.academicYearId);
+                    const className = getClassName(group.enrollment.classId);
+                    const level = getClassLevel(group.enrollment.classId);
 
                     return (
                       <Card
@@ -960,15 +1024,13 @@ export const StudentDetails = ({
                                 </h3>
                                 <div className="flex items-center gap-2 mt-1">
                                   <Badge variant="outline" className="text-xs">
-                                    {getEnrollmentFaculty(group.enrollment)}
+                                    {className}
                                   </Badge>
                                   <Badge
                                     variant="secondary"
                                     className="text-xs"
                                   >
-                                    {getLevelText(
-                                      getEnrollmentLevel(group.enrollment)
-                                    )}
+                                    {getLevelText(level)}
                                   </Badge>
                                 </div>
                               </div>
@@ -996,26 +1058,29 @@ export const StudentDetails = ({
                                     <div className="flex-1">
                                       <div className="flex items-center gap-2 mb-1">
                                         <h4 className="font-medium text-slate-900">
-                                          {grade.ue?.title ||
-                                            "Matière inconnue"}
+                                          {getSubjectName(grade)}
+                                          <span className="text-xs text-slate-500 ml-2">
+                                            (Coef:{" "}
+                                            {getSubjectCoefficient(grade)})
+                                          </span>
                                         </h4>
                                         {getGradeStatusBadge(grade)}
                                       </div>
                                       <div className="text-xs text-slate-500">
-                                        Semestre {grade.semester} • Session:{" "}
-                                        {grade.session || "Normale"}
+                                        {grade.controlType ||
+                                          "Contrôle non spécifié"}
                                       </div>
                                     </div>
                                     <div className="text-right">
                                       <div
                                         className={`text-lg font-bold ${getGradeColor(
-                                          grade.grade
+                                          grade.grade || 0
                                         )}`}
                                       >
-                                        {grade.grade?.toFixed(2) || "0"}/20
+                                        {(grade.grade || 0).toFixed(2)}/20
                                       </div>
                                       <div className="text-xs text-slate-500">
-                                        {grade.ue?.credits || 0} crédits
+                                        {getSubjectCoefficient(grade)} crédits
                                       </div>
                                     </div>
                                   </div>
@@ -1043,7 +1108,6 @@ export const StudentDetails = ({
         </TabsContent>
 
         {/* Onglet Frais */}
-
         <TabsContent value="fees" className="mt-6">
           <div className="space-y-6">
             {currentEnrollment ? (
@@ -1053,15 +1117,14 @@ export const StudentDetails = ({
                     <h3 className="text-lg font-medium">Frais de scolarité</h3>
                     <p className="text-muted-foreground">
                       {student.firstName} {student.lastName} -{" "}
-                      {getEnrollmentYear(currentEnrollment)}
+                      {getAcademicYear(currentEnrollment.academicYearId)}
                     </p>
                   </div>
 
-                  {/* Bouton pour assigner des frais manuellement */}
                   <AssignFeesButton
                     studentId={student.id}
                     studentCode={student.studentCode}
-                    academicYearId={getEnrollmentYear(currentEnrollment)}
+                    academicYearId={currentEnrollment.academicYearId}
                     onSuccess={() => {}}
                   />
                 </div>
@@ -1070,10 +1133,10 @@ export const StudentDetails = ({
                   student={student}
                   currentEnrollment={{
                     ...currentEnrollment,
-                    academicYear: getEnrollmentYear(currentEnrollment),
-                    academicYearId:
-                      currentEnrollment.academicYearId ||
-                      getEnrollmentYear(currentEnrollment),
+                    academicYear: getAcademicYear(
+                      currentEnrollment.academicYearId
+                    ),
+                    academicYearId: currentEnrollment.academicYearId,
                   }}
                 />
               </>
@@ -1094,7 +1157,7 @@ export const StudentDetails = ({
           </div>
         </TabsContent>
 
-        {/* Onglet Inscriptions */}
+        {/* Onglet Inscriptions - CORRIGÉ */}
         <TabsContent value="enrollments" className="mt-6">
           <Card className="border-slate-200 overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-slate-900 to-slate-800 text-white">
@@ -1126,10 +1189,11 @@ export const StudentDetails = ({
                         new Date(a.enrollmentDate).getTime()
                     )
                     .map((enrollment, index) => {
-                      const enrollmentYear = getEnrollmentYear(enrollment);
-                      const enrollmentFaculty =
-                        getEnrollmentFaculty(enrollment);
-                      const enrollmentLevel = getEnrollmentLevel(enrollment);
+                      const enrollmentYear = getAcademicYear(
+                        enrollment.academicYearId
+                      );
+                      const className = getClassName(enrollment.classId);
+                      const level = getClassLevel(enrollment.classId);
 
                       return (
                         <div
@@ -1146,7 +1210,7 @@ export const StudentDetails = ({
                                 </div>
                                 <div>
                                   <h3 className="font-semibold text-slate-900">
-                                    {enrollmentFaculty}
+                                    {className}
                                   </h3>
                                   <div className="flex items-center gap-2 mt-1">
                                     <Badge
@@ -1159,7 +1223,7 @@ export const StudentDetails = ({
                                       variant="secondary"
                                       className="text-xs"
                                     >
-                                      {getLevelText(enrollmentLevel)}
+                                      {getLevelText(level)}
                                     </Badge>
                                   </div>
                                 </div>
@@ -1167,7 +1231,7 @@ export const StudentDetails = ({
                               <div className="flex items-center gap-4 text-sm text-slate-600">
                                 <span className="flex items-center gap-1">
                                   <Calendar className="h-3 w-3" />
-                                  {/* {formatDate(enrollment.enrollmentDate)} */}
+                                  {formatDate(enrollment.enrollmentDate)}
                                 </span>
                                 <span
                                   className={`flex items-center gap-1 ${
@@ -1190,15 +1254,6 @@ export const StudentDetails = ({
                                   En cours
                                 </Badge>
                               )}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {}}
-                                className="gap-2"
-                              >
-                                <Eye className="h-4 w-4" />
-                                Détails
-                              </Button>
                             </div>
                           </div>
 
@@ -1241,81 +1296,17 @@ export const StudentDetails = ({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {guardians.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {guardians.map((guardian) => (
-                    <Card
-                      key={guardian.id}
-                      className="border-slate-200 hover:border-primary/30 transition-colors"
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <h4 className="font-semibold text-slate-900">
-                              {guardian.firstName} {guardian.lastName}
-                            </h4>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="outline" className="text-xs">
-                                {guardian.relationship || "Non spécifié"}
-                              </Badge>
-                              {guardian.isPrimary && (
-                                <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs">
-                                  Principal
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                          <Shield className="h-5 w-5 text-slate-400" />
-                        </div>
-
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-4 w-4 text-slate-400" />
-                            <span>{guardian.phone || "Non renseigné"}</span>
-                          </div>
-                          {guardian.email && (
-                            <div className="flex items-center gap-2">
-                              <Mail className="h-4 w-4 text-slate-400" />
-                              <span className="text-slate-700">
-                                {guardian.email}
-                              </span>
-                            </div>
-                          )}
-                          {guardian.address && (
-                            <div className="flex items-start gap-2 pt-1">
-                              <MapPin className="h-4 w-4 text-slate-400 mt-0.5" />
-                              <span className="text-slate-600 text-xs leading-relaxed">
-                                {guardian.address}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Users className="h-12 w-12 mx-auto text-slate-300 mb-4" />
-                  <p className="text-slate-500">Aucun tuteur enregistré</p>
-                </div>
-              )}
+              {/* À remplacer par vos données de tuteurs */}
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 mx-auto text-slate-300 mb-4" />
+                <p className="text-slate-500">
+                  {loadingClasses ? "Chargement..." : "Aucun tuteur enregistré"}
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-
-      {showGradesModal && selectedEnrollment && (
-        <GradesModal
-          enrollment={selectedEnrollment}
-          student={student}
-          grades={grades.filter(
-            (grade) => grade.studentId === selectedEnrollment.student.id
-          )}
-          onClose={() => setShowGradesModal(false)}
-          onGenerateReport={() => {}}
-        />
-      )}
     </div>
   );
 };

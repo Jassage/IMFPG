@@ -395,7 +395,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       expiresIn: "24h",
     });
   } catch (error: any) {
-    console.error("❌ Erreur login:", error);
+    console.error(" Erreur login:", error);
 
     // Message d'erreur court pour éviter les problèmes de longueur
     const shortError = error.message
@@ -484,7 +484,7 @@ export const verifyPassword = async (
       }
       decoded = jwt.verify(token, JWT_SECRET);
     } catch (jwtError) {
-      console.error("❌ Erreur JWT:", jwtError);
+      console.error(" Erreur JWT:", jwtError);
 
       const errorMessage =
         jwtError instanceof Error ? jwtError.message : "Erreur JWT inconnue";
@@ -568,7 +568,7 @@ export const verifyPassword = async (
       valid: true,
     });
   } catch (error: any) {
-    console.error("❌ Erreur vérification mot de passe:", error);
+    console.error(" Erreur vérification mot de passe:", error);
 
     await createAuditLog({
       ...auditData,
@@ -715,7 +715,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       user,
     });
   } catch (error: any) {
-    console.error("❌ Registration error:", error);
+    console.error(" Registration error:", error);
 
     await createAuditLog({
       ...auditData,

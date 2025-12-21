@@ -44,6 +44,7 @@ import {
 } from "./middleware/sessionTimeout";
 import { initializeAcademicYearCron } from "./services/cronService";
 import { time } from "console";
+import { requirePasswordChange } from "./middleware/requirePasswordChange";
 
 dotenv.config();
 
@@ -68,6 +69,9 @@ app.use(
 
 const PORT = process.env.PORT || 4000;
 
+// Appliquer le middleware de vérification de changement de mot de passe
+app.use("/api", requirePasswordChange);
+
 // Monte chaque route avec un préfixe API clair
 app.use("/api/auth", authRoutes);
 app.use("/api/users", authRoutes);
@@ -79,7 +83,6 @@ app.use("/api/academic-years", academicYearRoutes);
 app.use("/api/classes", classesRoutes);
 app.use("/api/class-assignments", classeAssignmentRoutes);
 app.use("/api/guardians", guardianRoutes);
-// app.use("/api/prerequisites", prerequisiteRoutes);
 app.use("/api/grades", gradeRoutes);
 app.use("/api/schedules", scheduleRoutes);
 app.use("/api/timetables", timetableRoutes);

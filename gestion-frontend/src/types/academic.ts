@@ -415,6 +415,11 @@ export interface FeePayment {
 }
 
 export interface Professeur {
+  hireDate: any;
+  address: any;
+  user: any;
+  userId: any;
+  qualifications: any;
   id: string;
   firstName: string;
   lastName: string;
@@ -424,6 +429,7 @@ export interface Professeur {
   speciality?: string;
   status: "Actif" | "Inactif";
   _count?: {
+    schedules: number;
     assignments: number;
   };
   createdAt?: string;
@@ -692,4 +698,47 @@ export interface ExpenseFilters {
   page?: number;
   limit?: number;
   createdBy?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  entity: string;
+  entityId?: string;
+  description: string;
+  oldData?: any;
+  newData?: any;
+  userId?: string;
+  userAgent?: string;
+  ipAddress?: string;
+  status?: "SUCCESS" | "ERROR";
+  errorMessage?: string;
+  duration?: number;
+  createdAt: string;
+  user?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: string;
+  };
+}
+
+export interface AuditLogsResponse {
+  success: boolean;
+  data: AuditLog[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+  stats?: {
+    total: number;
+    success: number;
+    error: number;
+    today: number;
+  };
 }

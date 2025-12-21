@@ -11,6 +11,8 @@ import {
   getMe,
   verifyToken,
   forgotPassword,
+  checkPasswordChangeRequired,
+  forcePasswordChange,
 } from "../controllers/auth/authController";
 import {
   validateLogin,
@@ -110,6 +112,8 @@ router.get("/me", requireAuth, getMe);
  * @access Public
  */
 router.get("/verify", optionalAuth, verifyToken);
+router.get("/check-password-change", requireAuth, checkPasswordChangeRequired);
+router.post("/force-password-change", requireAuth, forcePasswordChange);
 
 /**
  * @route POST /api/auth/verify-password

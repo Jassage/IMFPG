@@ -78,7 +78,6 @@ export class AuthService {
         where: { email: cleanEmail },
         include: {
           loginAttempts: {
-            // CORRIGÉ : loginAttempts au lieu de loginattempt
             orderBy: {
               attemptTime: "desc",
             },
@@ -154,12 +153,14 @@ export class AuthService {
 
       // Connexion réussie
       await this.handleSuccessfulLogin(user.id);
+      const requiresPasswordChange = user.isInitialPassword;
 
       // Génération du token
       const token = generateJwtToken({
         id: user.id,
         email: user.email,
         role: user.role,
+        requiresPasswordChange,
       });
 
       // Récupérer les données utilisateur sans le mot de passe
@@ -170,6 +171,7 @@ export class AuthService {
         email: user.email,
         phone: user.phone,
         role: user.role,
+        requiresPasswordChange: user.isInitialPassword,
         status: user.status,
         lastLogin: user.lastLogin,
         createdAt: user.createdAt,
@@ -179,7 +181,7 @@ export class AuthService {
         message: "Connexion réussie",
         token,
         expiresIn: "24h",
-        user: userData, // ✅ Ajouter l'utilisateur ici
+        user: userData,
       };
     } catch (error) {
       console.error("AuthService - authenticateUser error:", error);
@@ -250,6 +252,7 @@ export class AuthService {
           phone: phone ? sanitizeInput(phone) : null,
           role: validatedRole,
           password: hashedPassword,
+          isInitialPassword: true,
           status: "Actif",
         },
         select: {
@@ -259,17 +262,13 @@ export class AuthService {
           email: true,
           phone: true,
           role: true,
+          isInitialPassword: true,
           status: true,
           createdAt: true,
         },
       });
 
-      // Création du profil spécifique si nécessaire
-      if (validatedRole === "Parent") {
-        await prisma.parent.create({
-          data: { userId: user.id },
-        });
-      }
+      await this.createRoleSpecificProfile(user.id, user.role);
 
       return {
         message: "Utilisateur créé avec succès",
@@ -279,6 +278,59 @@ export class AuthService {
     } catch (error) {
       console.error("AuthService - registerUser error:", error);
       throw new Error("Erreur lors de l'inscription");
+    }
+  }
+
+  /**
+   * @method createRoleSpecificProfile
+   * @description Crée le profil spécifique selon le rôle
+   * @param {string} userId - ID de l'utilisateur
+   * @param {UserRole} role - Rôle de l'utilisateur
+   */
+  private static async createRoleSpecificProfile(
+    userId: string,
+    role: UserRole
+  ): Promise<void> {
+    try {
+      switch (role) {
+        case "Professeur":
+          await prisma.professeur.create({
+            data: {
+              userId: userId,
+              firstName: "",
+              lastName: "",
+              email: "",
+              matricule: "",
+            },
+          });
+          break;
+
+        case "Student":
+          await prisma.student.create({
+            data: {
+              userId: userId,
+              firstName: "",
+              lastName: "",
+              email: "",
+              studentCode: "",
+            },
+          });
+          break;
+
+        case "Parent":
+          await prisma.parent.create({
+            data: { userId: userId },
+          });
+          break;
+
+        default:
+          break;
+      }
+    } catch (error) {
+      console.error("UserService - createRoleSpecificProfile error:", error);
+      throw new Error(
+        "Erreur lors de la création du profil spécifique au rôle"
+      );
     }
   }
 
@@ -432,65 +484,130 @@ export class AuthService {
    * @param {string} userId - ID de l'utilisateur
    * @param {string} currentPassword - Mot de passe actuel
    * @param {string} newPassword - Nouveau mot de passe
+   * @param {boolean} forceChange - Force le changement (première connexion)
    * @returns {Promise<AuthResponse>} Résultat du changement
    */
   static async changePassword(
     userId: string,
     currentPassword: string,
-    newPassword: string
+    newPassword: string,
+    forceChange: boolean = false
   ): Promise<AuthResponse> {
     try {
-      if (!currentPassword || !newPassword) {
+      if (!newPassword) {
         return {
-          message: "Mot de passe actuel et nouveau mot de passe requis",
+          message: "Le nouveau mot de passe est requis",
           code: "MISSING_CREDENTIALS",
         };
       }
 
+      // Si ce n'est pas un changement forcé, vérifier le mot de passe actuel
+      if (!forceChange) {
+        if (!currentPassword) {
+          return {
+            message: "Le mot de passe actuel est requis",
+            code: "MISSING_CURRENT_PASSWORD",
+          };
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+        });
+
+        if (!user || !user.password) {
+          return {
+            message: "Utilisateur non trouvé",
+            code: "USER_NOT_FOUND",
+          };
+        }
+
+        const isCurrentPasswordValid = await verifyPassword(
+          currentPassword,
+          user.password
+        );
+
+        if (!isCurrentPasswordValid) {
+          return {
+            message: "Mot de passe actuel incorrect",
+            code: "INVALID_CREDENTIALS",
+          };
+        }
+      }
+
+      // Validation du nouveau mot de passe
       if (!validatePasswordStrength(newPassword)) {
         return {
           message:
-            "Le nouveau mot de passe doit contenir au moins 6 caractères",
-          code: "PASSWORD_TOO_SHORT",
-        };
-      }
-
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-      });
-
-      if (!user || !user.password) {
-        return {
-          message: "Utilisateur non trouvé",
-          code: "USER_NOT_FOUND",
-        };
-      }
-
-      const isCurrentPasswordValid = await verifyPassword(
-        currentPassword,
-        user.password
-      );
-
-      if (!isCurrentPasswordValid) {
-        return {
-          message: "Mot de passe actuel incorrect",
-          code: "INVALID_CREDENTIALS",
+            "Le nouveau mot de passe doit contenir au moins 8 caractères avec des majuscules, minuscules, chiffres et caractères spéciaux",
+          code: "PASSWORD_WEAK",
         };
       }
 
       const hashedNewPassword = await hashPassword(newPassword);
 
+      // Mettre à jour le mot de passe et marquer comme changé
       await prisma.user.update({
         where: { id: userId },
-        data: { password: hashedNewPassword },
+        data: {
+          password: hashedNewPassword,
+          isInitialPassword: false, // Marquer que le mot de passe a été changé
+          passwordChangedAt: new Date(), // Enregistrer la date du changement
+        },
       });
 
       return {
-        message: "Mot de passe modifié avec succès",
+        message: forceChange
+          ? "Mot de passe initial défini avec succès"
+          : "Mot de passe modifié avec succès",
+        code: forceChange ? "INITIAL_PASSWORD_SET" : "PASSWORD_CHANGED",
       };
     } catch (error) {
       console.error("AuthService - changePassword error:", error);
       throw new Error("Erreur lors du changement de mot de passe");
+    }
+  }
+
+  /**
+   * @method checkPasswordChangeRequired
+   * @description Vérifie si l'utilisateur doit changer son mot de passe
+   * @param {string} userId - ID de l'utilisateur
+   * @returns {Promise<boolean>} True si le changement est requis
+   */
+  static async checkPasswordChangeRequired(userId: string): Promise<boolean> {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          isInitialPassword: true,
+          passwordChangedAt: true,
+          createdAt: true,
+        },
+      });
+
+      if (!user) return false;
+
+      // Si c'est le mot de passe initial
+      if (user.isInitialPassword) {
+        return true;
+      }
+
+      // Vérifier si le mot de passe est trop ancien (optionnel)
+      if (user.passwordChangedAt) {
+        const daysSinceChange = Math.floor(
+          (Date.now() - user.passwordChangedAt.getTime()) /
+            (1000 * 60 * 60 * 24)
+        );
+
+        // Forcer le changement tous les 90 jours par exemple
+        if (daysSinceChange > 90) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error("AuthService - checkPasswordChangeRequired error:", error);
+      return false;
     }
   }
 }

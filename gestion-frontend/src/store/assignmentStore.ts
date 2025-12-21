@@ -119,12 +119,6 @@ export const useAssignmentStore = create<AssignmentState>((set, get) => ({
   professeurs: [],
   academicYears: [],
   classLevels: [
-    "CP1",
-    "CP2",
-    "CE1",
-    "CE2",
-    "CM1",
-    "CM2",
     "Sixieme",
     "Cinquieme",
     "Quatrieme",
@@ -132,6 +126,10 @@ export const useAssignmentStore = create<AssignmentState>((set, get) => ({
     "Seconde",
     "Premiere",
     "Terminale",
+    "NSI",
+    "NSII",
+    "NSIII",
+    "NSIV",
   ],
 
   // Actions
