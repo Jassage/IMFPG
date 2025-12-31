@@ -186,6 +186,7 @@ export class GradeService {
                 name: true,
                 coefficient: true,
                 type: true,
+                maxGrade: true,
                 passingGrade: true,
               },
             },
@@ -289,6 +290,7 @@ export class GradeService {
               name: true,
               coefficient: true,
               type: true,
+              maxGrade: true,
               passingGrade: true,
               description: true,
             },
@@ -382,7 +384,6 @@ export class GradeService {
         assignmentId,
         grade: gradeValue,
         status,
-        session,
         controlType,
         academicYearId,
         classLevel,
@@ -447,13 +448,12 @@ export class GradeService {
       // Vérifier si une note existe déjà pour cette combinaison
       const existingGrade = await prisma.grade.findUnique({
         where: {
-          studentId_subjectId_academicYearId_controlType_session_assignmentId: {
+          studentId_subjectId_academicYearId_controlType_assignmentId: {
             studentId,
             subjectId,
             academicYearId,
             controlType: controlType || ControlType.CONTROLE_1,
             assignmentId,
-            session: session || GradeSession.Normale,
           },
         },
       });
@@ -486,7 +486,6 @@ export class GradeService {
           grade: gradeNum,
           status: status || GradeStatus.Valid_,
           controlType: controlType || ControlType.CONTROLE_1,
-          session: session || GradeSession.Normale,
           academicYearId,
           classLevel: classLevel || assignment.classLevel,
           notes,
@@ -520,7 +519,6 @@ export class GradeService {
           grade: gradeNum,
           academicYearId,
           controlType,
-          session,
         },
       };
     } catch (error: any) {

@@ -1,20 +1,32 @@
 import React, { useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Download, Eye, RefreshCw, FileText } from "lucide-react";
-import { DocumentType, ControlType, BulletinData, GradeWithDetails } from "@/types/bulletin";
+import {
+  Loader2,
+  Download,
+  Eye,
+  RefreshCw,
+  FileText,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+} from "lucide-react";
+import {
+  DocumentType,
+  ControlType,
+  BulletinData,
+  GradeWithDetails,
+  normalizeGrade,
+} from "@/types/bulletin";
 import { toast } from "sonner";
-import { DocumentSelector } from "./bulletin/DocumentSelector";
+import { DocumentSelector } from "./bulletin/DocumentSelector"; // <-- Ajouté
 import { FilterPanel } from "./bulletin/FilterPanel";
 import { useBulletinData } from "@/hooks/useBulletinData";
 import { usePDFGenerator } from "@/hooks/usePDFGenerator";
 import { StudentSelector } from "./bulletin/StudentSelector";
 import { StatisticsPanel } from "./bulletin/StatisticsPanel";
 import { GradesTable } from "./bulletin/GradesTable";
-
-// Composants
-
-// Hooks
+import { MultiControlTable } from "./bulletin/MultiControlTable";
 
 export const BulletinGenerator: React.FC = () => {
   // États
@@ -67,78 +79,120 @@ export const BulletinGenerator: React.FC = () => {
     setSelectedStudentId(studentId);
   }, []);
 
-  // Préparer les données pour le PDF
-  const prepareBulletinData = useCallback((): BulletinData | null => {
-    if (
-      !selectedStudent ||
-      !selectedAcademicYear ||
-      studentGrades.length === 0
-    ) {
-      return null;
+  // Calculer les statistiques par contrôle
+  const calculateStatisticsByControl = useCallback(() => {
+    const statsByControl: Record<string, any> = {};
+
+    Object.entries(gradesByControlType).forEach(
+      ([controlType, grades]: [string, GradeWithDetails[]]) => {
+        if (grades.length === 0) return;
+
+        const totalCoefficient = grades.reduce(
+          (sum, grade) => sum + (grade.coefficient || 1),
+          0
+        );
+
+        const weightedSum = grades.reduce((sum, grade) => {
+          const coefficient = grade.coefficient || 1;
+          const normalizedGrade =
+            grade.normalizedGrade ||
+            normalizeGrade(grade.grade, grade.maxGrade || 20);
+          return sum + normalizedGrade * coefficient;
+        }, 0);
+
+        const weightedAverage =
+          totalCoefficient > 0 ? weightedSum / totalCoefficient : 0;
+
+        const passingGrades = grades.filter((grade) => {
+          const normalizedGrade =
+            grade.normalizedGrade ||
+            normalizeGrade(grade.grade, grade.maxGrade || 20);
+          return normalizedGrade >= 10;
+        }).length;
+
+        const successRate =
+          grades.length > 0 ? (passingGrades / grades.length) * 100 : 0;
+
+        const normalizedGrades = grades.map(
+          (g) => g.normalizedGrade || normalizeGrade(g.grade, g.maxGrade || 20)
+        );
+        const minGrade =
+          normalizedGrades.length > 0 ? Math.min(...normalizedGrades) : 0;
+        const maxGrade =
+          normalizedGrades.length > 0 ? Math.max(...normalizedGrades) : 0;
+
+        statsByControl[controlType] = {
+          weightedAverage,
+          totalCoefficient,
+          successRate,
+          minGrade,
+          maxGrade,
+          totalSubjects: grades.length,
+          passingSubjects: passingGrades,
+        };
+      }
+    );
+
+    return statsByControl;
+  }, [gradesByControlType]);
+
+  const statisticsByControl = calculateStatisticsByControl();
+
+  // Calculer la moyenne générale
+  const calculateOverallAverage = useCallback(() => {
+    if (studentGrades.length === 0) return 0;
+
+    const totalCoefficient = studentGrades.reduce(
+      (sum, grade) => sum + (grade.coefficient || 1),
+      0
+    );
+
+    const weightedSum = studentGrades.reduce((sum, grade) => {
+      const coefficient = grade.coefficient || 1;
+      const normalizedGrade =
+        grade.normalizedGrade ||
+        normalizeGrade(grade.grade, grade.maxGrade || 20);
+      return sum + normalizedGrade * coefficient;
+    }, 0);
+
+    return totalCoefficient > 0 ? weightedSum / totalCoefficient : 0;
+  }, [studentGrades]);
+
+  const overallAverage = calculateOverallAverage();
+
+  const getOverallDecision = (
+    average: number
+  ): {
+    label: string;
+    color: string;
+    icon: React.ReactNode;
+    description: string;
+  } => {
+    if (average >= 10) {
+      return {
+        label: "ADMIS",
+        color: "bg-green-100 text-green-800 border-green-300",
+        icon: <CheckCircle className="h-5 w-5 mr-2" />,
+        description: "L'élève est admis en classe supérieure",
+      };
+    } else if (average >= 8) {
+      return {
+        label: "À REFAIRE",
+        color: "bg-yellow-100 text-yellow-800 border-yellow-300",
+        icon: <AlertCircle className="h-5 w-5 mr-2" />,
+        description: "L'élève doit refaire l'année dans la même école",
+      };
+    } else {
+      return {
+        label: "À REFAIRE AILLEURS",
+        color: "bg-red-100 text-red-800 border-red-300",
+        icon: <XCircle className="h-5 w-5 mr-2" />,
+        description: "L'élève est exclu et doit refaire ailleurs",
+      };
     }
+  };
 
-    const controlType: ControlType =
-      filters.controlType === "all"
-        ? (studentGrades[0].controlType as ControlType)
-        : (filters.controlType as ControlType);
-
-    const gradesWithDetails = studentGrades.map((grade) => ({
-      ...grade,
-      subjectName: grade.subject?.name || "Matière inconnue",
-      coefficient: grade.subject?.coefficient || 1,
-      passingGrade: grade.subject?.passingGrade || 10,
-      professeurName: grade.classAssignment?.professeur
-        ? `${grade.classAssignment.professeur.firstName} ${grade.classAssignment.professeur.lastName}`
-        : "Professeur non assigné",
-    }));
-
-    const mappedStudent = {
-      ...selectedStudent,
-      enrollments: (selectedStudent.enrollments || []).map((e: any) => ({
-        ...e,
-        studentId: (selectedStudent as any).id || (selectedStudent as any).studentId,
-      })),
-    };
-
-    return {
-      student: mappedStudent as any,
-      academicYear: {
-        ...selectedAcademicYear,
-        startDate: new Date(selectedAcademicYear.startDate),
-        endDate: new Date(selectedAcademicYear.endDate),
-        createdAt: selectedAcademicYear.createdAt
-          ? new Date(selectedAcademicYear.createdAt)
-          : undefined,
-        updatedAt: selectedAcademicYear.updatedAt
-          ? new Date(selectedAcademicYear.updatedAt)
-          : undefined,
-      },
-      controlType,
-      classLevel: studentClass?.level || filters.classLevel,
-      documentType: selectedDocument,
-      grades: gradesWithDetails as unknown as GradeWithDetails[],
-      statistics,
-      remarks: {
-        headTeacher: "",
-        director: "",
-        generalComment: "",
-      },
-      metadata: {
-        generatedAt: new Date(),
-        generatedBy: "Système",
-        documentNumber: `BUL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        controlPeriod: getControlPeriodLabel(controlType),
-      },
-    };
-  }, [
-    selectedStudent,
-    selectedAcademicYear,
-    studentGrades,
-    filters,
-    studentClass,
-    selectedDocument,
-    statistics,
-  ]);
+  const overallDecision = getOverallDecision(overallAverage);
 
   const getControlPeriodLabel = (controlType: ControlType): string => {
     switch (controlType) {
@@ -154,6 +208,207 @@ export const BulletinGenerator: React.FC = () => {
         return "Période";
     }
   };
+
+  // Dans BulletinGenerator.tsx, modifiez la fonction getControlTypesToShow
+  const getControlTypesToShow = (
+    controlType: ControlType | "all"
+  ): ControlType[] => {
+    if (controlType === "all") {
+      // Retourner les contrôles qui ont des données dans gradesByControlType
+      return Object.keys(gradesByControlType)
+        .filter(
+          (key) =>
+            gradesByControlType[key] && gradesByControlType[key].length > 0
+        )
+        .map((key) => key as ControlType);
+    }
+    return [controlType as ControlType];
+  };
+
+  // Préparation des données pour MultiControlTable
+  const prepareGradesForMultiControl = useCallback(() => {
+    if (filters.controlType !== "all" || !selectedStudentId) {
+      return [];
+    }
+
+    // Récupérer toutes les notes groupées par contrôle
+    const allGrades: any[] = [];
+
+    Object.entries(gradesByControlType).forEach(([controlType, grades]) => {
+      grades.forEach((grade) => {
+        allGrades.push({
+          ...grade,
+          controlType: controlType as ControlType,
+          subjectName:
+            grade.subject?.name || grade.subjectName || "Matière inconnue",
+          coefficient: grade.coefficient || grade.subject?.coefficient || 1,
+          maxGrade: grade.maxGrade || grade.subject?.maxGrade || 20,
+          normalizedGrade:
+            grade.normalizedGrade ||
+            normalizeGrade(grade.grade, grade.maxGrade || 20),
+          // Créer controlGrades pour chaque contrôle
+          controlGrades: {
+            [controlType]: {
+              grade: grade.grade,
+              normalizedGrade:
+                grade.normalizedGrade ||
+                normalizeGrade(grade.grade, grade.maxGrade || 20),
+            },
+          },
+        });
+      });
+    });
+
+    return allGrades;
+  }, [filters.controlType, gradesByControlType, selectedStudentId]);
+
+  // Préparer les données pour le PDF
+  const prepareBulletinData = useCallback((): BulletinData | null => {
+    if (
+      !selectedStudent ||
+      !selectedAcademicYear ||
+      studentGrades.length === 0
+    ) {
+      return null;
+    }
+
+    const controlType: ControlType =
+      filters.controlType === "all"
+        ? (studentGrades[0]?.controlType as ControlType) ||
+          ControlType.CONTROLE_1
+        : (filters.controlType as ControlType);
+
+    // Créer les grades avec les données de controlGrades correctement formatées
+    const gradesWithDetails = studentGrades.map((grade) => {
+      // Vérifier si grade.controlGrades existe, sinon essayer d'extraire des données
+      let controlGrades = grade.controlGrades || {};
+
+      // Si pas de controlGrades mais qu'on a les données par contrôle dans l'objet grade
+      if (
+        !grade.controlGrades ||
+        Object.keys(grade.controlGrades).length === 0
+      ) {
+        // Essayer de reconstruire les controlGrades à partir des données disponibles
+        controlGrades = {};
+
+        // Vérifier si on a des données pour différents contrôles
+        const controlTypes = [
+          ControlType.CONTROLE_1,
+          ControlType.CONTROLE_2,
+          ControlType.CONTROLE_3,
+          ControlType.CONTROLE_4,
+        ];
+        controlTypes.forEach((ct) => {
+          // Si la note a ce contrôle type, ajouter aux controlGrades
+          if (grade.controlType === ct) {
+            controlGrades[ct] = {
+              grade: grade.grade,
+              note: grade.grade,
+              normalizedGrade:
+                grade.normalizedGrade ||
+                normalizeGrade(grade.grade, grade.maxGrade || 20),
+            };
+          }
+        });
+      }
+
+      return {
+        ...grade,
+        subjectName:
+          grade.subject?.name || grade.subjectName || "Matière inconnue",
+        coefficient: grade.coefficient || grade.subject?.coefficient || 1,
+        passingGrade: grade.passingGrade || grade.subject?.passingGrade || 10,
+        maxGrade: grade.maxGrade || grade.subject?.maxGrade || 20,
+        normalizedGrade:
+          grade.normalizedGrade ||
+          normalizeGrade(grade.grade, grade.maxGrade || 20),
+        professeurName:
+          grade.professeurName ||
+          (grade.classAssignment?.professeur
+            ? `${grade.classAssignment.professeur.firstName} ${grade.classAssignment.professeur.lastName}`
+            : "Professeur non assigné"),
+        controlGrades: controlGrades, // Utiliser les controlGrades reconstruits
+      };
+    });
+
+    // Créer l'objet étudiant formaté
+    const formattedStudent = {
+      id: selectedStudent.id,
+      firstName: selectedStudent.firstName || "",
+      lastName: selectedStudent.lastName || "",
+      studentCode: selectedStudent.studentCode || "",
+      email: selectedStudent.email || "",
+      phone: selectedStudent.phone || "",
+      dateOfBirth: selectedStudent.dateOfBirth,
+      placeOfBirth: selectedStudent.placeOfBirth || "",
+      address: selectedStudent.address || "",
+      photo: selectedStudent.photo || "",
+      bloodGroup: selectedStudent.bloodGroup || "",
+      status: selectedStudent.status || "Active",
+      cin: selectedStudent.cin || "",
+      sexe: selectedStudent.sexe || "",
+      classId: selectedStudent.classId || "",
+      createdAt: selectedStudent.createdAt || new Date(),
+      updatedAt: selectedStudent.updatedAt || new Date(),
+      enrollments: selectedStudent.enrollments || [],
+    };
+
+    return {
+      student: formattedStudent,
+      academicYear: {
+        ...selectedAcademicYear,
+        startDate: selectedAcademicYear.startDate
+          ? new Date(selectedAcademicYear.startDate)
+          : new Date(),
+        endDate: selectedAcademicYear.endDate
+          ? new Date(selectedAcademicYear.endDate)
+          : new Date(),
+        createdAt: selectedAcademicYear.createdAt
+          ? new Date(selectedAcademicYear.createdAt)
+          : new Date(),
+        updatedAt: selectedAcademicYear.updatedAt
+          ? new Date(selectedAcademicYear.updatedAt)
+          : new Date(),
+      },
+      controlType,
+      classLevel: studentClass?.level || filters.classLevel || "Niveau inconnu",
+      documentType: selectedDocument,
+      grades: gradesWithDetails as unknown as GradeWithDetails[],
+      statistics: {
+        ...statistics,
+        average: overallAverage,
+      },
+      statisticsByControl:
+        filters.controlType === "all" ? statisticsByControl : undefined,
+      showAllControls: filters.controlType === "all",
+      remarks: {
+        headTeacher: "",
+        director: "",
+        generalComment:
+          filters.controlType === "all" ? overallDecision.description : "",
+      },
+      metadata: {
+        generatedAt: new Date(),
+        generatedBy: "Système de Gestion Scolaire",
+        documentNumber: `BUL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        controlPeriod:
+          filters.controlType === "all"
+            ? "Année Scolaire Complète"
+            : getControlPeriodLabel(controlType),
+      },
+    };
+  }, [
+    selectedStudent,
+    selectedAcademicYear,
+    studentGrades,
+    filters,
+    studentClass,
+    selectedDocument,
+    statistics,
+    statisticsByControl,
+    overallAverage,
+    overallDecision,
+  ]);
 
   // Gestion des actions
   const handlePreview = useCallback(async () => {
@@ -259,6 +514,7 @@ export const BulletinGenerator: React.FC = () => {
             searchTerm={searchTerm}
             onSelectStudent={handleSelectStudent}
             onSearchChange={setSearchTerm}
+            classLevel={filters.classLevel}
           />
         </div>
 
@@ -268,17 +524,28 @@ export const BulletinGenerator: React.FC = () => {
               {/* En-tête élève */}
               <Card>
                 <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                       <h2 className="text-xl font-bold">
                         {selectedStudent.firstName} {selectedStudent.lastName}
                       </h2>
-                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-600">
                         <span>Code: {selectedStudent.studentCode}</span>
                         <span>
                           Classe: {studentClass?.name || "Non assigné"}
                         </span>
                         <span>Année: {selectedAcademicYear?.year}</span>
+                        <span className="font-medium">
+                          Période:{" "}
+                          {filters.controlType === "all"
+                            ? "Année Complète"
+                            : getControlPeriodLabel(
+                                filters.controlType as ControlType
+                              )}
+                        </span>
+                        <span className="text-blue-600 font-medium">
+                          Document: {selectedDocument.replace("_", " ")}
+                        </span>
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -309,7 +576,7 @@ export const BulletinGenerator: React.FC = () => {
 
               {/* Statistiques */}
               <StatisticsPanel
-                statistics={statistics}
+                statistics={{ ...statistics, average: overallAverage }}
                 controlType={
                   filters.controlType === "all"
                     ? undefined
@@ -317,44 +584,70 @@ export const BulletinGenerator: React.FC = () => {
                 }
               />
 
+              {/* Décision globale (pour "tous les contrôles") */}
+              {filters.controlType === "all" && (
+                <Card className="border-2">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div
+                          className={`p-3 rounded-full ${overallDecision.color
+                            .replace("bg-", "bg-")
+                            .replace(" text-", " bg-opacity-20")}`}
+                        >
+                          {overallDecision.icon}
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold">DÉCISION FINALE</h3>
+                          <p className="text-gray-600">
+                            {overallDecision.description}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-center md:text-right">
+                        <div className="text-2xl font-bold">
+                          {overallAverage.toFixed(2)}/20
+                        </div>
+                        <div
+                          className={`text-lg font-bold mt-2 px-4 py-2 rounded-lg ${overallDecision.color} border`}
+                        >
+                          {overallDecision.label}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Tableau des notes */}
               {filters.controlType === "all" ? (
-                // Tous les contrôles
-                <div className="space-y-6">
-                  {Object.entries(gradesByControlType).map(
-                    ([controlType, grades]) => (
-                      <GradesTable
-                        key={controlType}
-                        grades={grades.map((grade) => ({
-                          ...grade,
-                          subjectName:
-                            grade.subject?.name || "Matière inconnue",
-                          coefficient: grade.subject?.coefficient || 1,
-                          passingGrade: grade.subject?.passingGrade || 10,
-                          professeurName: grade.classAssignment?.professeur
-                            ? `${grade.classAssignment.professeur.firstName} ${grade.classAssignment.professeur.lastName}`
-                            : "Professeur non assigné",
-                        })) as any}
-                        title={getControlPeriodLabel(
-                          controlType as ControlType
-                        )}
-                      />
-                    )
-                  )}
-                </div>
+                // Tous les contrôles dans un seul tableau
+                <MultiControlTable
+                  grades={prepareGradesForMultiControl()}
+                  controlTypes={getControlTypesToShow(filters.controlType)}
+                  title="RÉSULTATS ANNÉE SCOLAIRE COMPLÈTE"
+                />
               ) : (
                 // Un contrôle spécifique
                 <GradesTable
-                  grades={studentGrades.map((grade) => ({
-                    ...grade,
-                    subjectName: grade.subject?.name || "Matière inconnue",
-                    coefficient: grade.subject?.coefficient || 1,
-                    passingGrade: grade.subject?.passingGrade || 10,
-                    professeurName: grade.classAssignment?.professeur
-                      ? `${grade.classAssignment.professeur.firstName} ${grade.classAssignment.professeur.lastName}`
-                      : "Professeur non assigné",
-                  })) as any}
-                  title={getControlPeriodLabel(filters.controlType)}
+                  grades={
+                    studentGrades.map((grade) => ({
+                      ...grade,
+                      subjectName:
+                        grade.subject?.name ||
+                        grade.subjectName ||
+                        "Matière inconnue",
+                      coefficient:
+                        grade.coefficient || grade.subject?.coefficient || 1,
+                      maxGrade: grade.maxGrade || grade.subject?.maxGrade || 20,
+                      normalizedGrade:
+                        grade.normalizedGrade ||
+                        normalizeGrade(grade.grade, grade.maxGrade || 20),
+                    })) as any
+                  }
+                  title={getControlPeriodLabel(
+                    filters.controlType as ControlType
+                  )}
                 />
               )}
             </>
@@ -373,6 +666,19 @@ export const BulletinGenerator: React.FC = () => {
                     ? "Aucune note disponible pour les critères sélectionnés"
                     : "Utilisez les filtres pour sélectionner un élève et générer son bulletin"}
                 </p>
+                {selectedStudentId && (
+                  <div className="mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedStudentId("");
+                        setSearchTerm("");
+                      }}
+                    >
+                      Réinitialiser la sélection
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

@@ -50,7 +50,7 @@ export const getClassAssignments = async (
     res.json(result);
   } catch (error: any) {
     console.error(
-      "❌ ClassAssignmentController - getClassAssignments error:",
+      " ClassAssignmentController - getClassAssignments error:",
       error
     );
 
@@ -105,7 +105,7 @@ export const getClassAssignmentById = async (
     res.json(result);
   } catch (error: any) {
     console.error(
-      "❌ ClassAssignmentController - getClassAssignmentById error:",
+      " ClassAssignmentController - getClassAssignmentById error:",
       error
     );
 
@@ -159,7 +159,7 @@ export const createClassAssignment = async (
     res.status(201).json(result);
   } catch (error: any) {
     console.error(
-      "❌ ClassAssignmentController - createClassAssignment error:",
+      " ClassAssignmentController - createClassAssignment error:",
       error
     );
 
@@ -213,7 +213,7 @@ export const updateClassAssignment = async (
     res.json(result);
   } catch (error: any) {
     console.error(
-      "❌ ClassAssignmentController - updateClassAssignment error:",
+      " ClassAssignmentController - updateClassAssignment error:",
       error
     );
 
@@ -261,7 +261,7 @@ export const deleteClassAssignment = async (
     res.json(result);
   } catch (error: any) {
     console.error(
-      "❌ ClassAssignmentController - deleteClassAssignment error:",
+      " ClassAssignmentController - deleteClassAssignment error:",
       error
     );
 
@@ -304,7 +304,7 @@ export const getClassAssignmentsByClass = async (
     res.json(result);
   } catch (error: any) {
     console.error(
-      "❌ ClassAssignmentController - getClassAssignmentsByClass error:",
+      " ClassAssignmentController - getClassAssignmentsByClass error:",
       error
     );
 
@@ -335,7 +335,7 @@ export const getClassAssignmentsByProfessor = async (
     res.json(result);
   } catch (error: any) {
     console.error(
-      "❌ ClassAssignmentController - getClassAssignmentsByProfessor error:",
+      " ClassAssignmentController - getClassAssignmentsByProfessor error:",
       error
     );
 
@@ -366,7 +366,7 @@ export const getAvailableAssignments = async (
     res.json(result);
   } catch (error: any) {
     console.error(
-      "❌ ClassAssignmentController - getAvailableAssignments error:",
+      " ClassAssignmentController - getAvailableAssignments error:",
       error
     );
 
@@ -379,7 +379,6 @@ export const getAvailableAssignments = async (
     res.status(error.status || 500).json(response);
   }
 };
-
 /**
  * @desc Récupère les assignations d'une classe et d'un niveau spécifiques
  */
@@ -388,18 +387,30 @@ export const getClassAssignmentsByClassAndLevel = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { classId } = req.params;
+    // extraire classLevel au lieu de level
+    const { classId, classLevel } = req.params;
+    const academicYearId = req.query.academicYearId as string;
+
+    console.log("DEBUG - Controller received:", {
+      classId,
+      classLevel,
+      academicYearId,
+      params: req.params,
+      query: req.query,
+    });
+
+    //  passer classLevel au service
     const result =
       await ClassAssignmentService.getClassAssignmentsByClassAndLevel(
         classId,
-        req.query.level as string,
-        req.query.academicYearId as string
+        classLevel,
+        academicYearId
       );
 
     res.json(result);
   } catch (error: any) {
     console.error(
-      "❌ ClassAssignmentController - getClassAssignmentsByClassAndLevel error:",
+      " ClassAssignmentController - getClassAssignmentsByClassAndLevel error:",
       error
     );
 

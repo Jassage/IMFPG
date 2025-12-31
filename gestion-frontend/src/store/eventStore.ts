@@ -138,7 +138,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
   },
 
   eventCategories: [
-    "General", // Assurez-vous que ça correspond à votre backend
+    "General",
     "Academic",
     "Cultural",
     "Sports",
@@ -224,16 +224,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
       // Nettoyer les params
       const params = cleanParams(rawParams);
 
-      console.log("📡 Fetching events...");
-      console.log("Raw filters:", rawParams);
-      console.log("Cleaned params:", params);
-      console.log(
-        "Full URL:",
-        `/events?${new URLSearchParams(params as any).toString()}`
-      );
-
       const response = await api.get("/events", { params });
-      console.log("✅ Events response:", response.data);
 
       const { data: events, meta } = response.data;
 
@@ -248,7 +239,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
         },
       });
     } catch (error: any) {
-      console.error("❌ Error fetching events:", {
+      console.error(" Error fetching events:", {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status,
@@ -294,6 +285,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
     }
   },
 
+  // Récupérer les événements à venir
   fetchUpcomingEvents: async (limit: number = 5) => {
     set({ loading: true, error: null });
 
@@ -302,7 +294,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
       const response = await api.get("/events/upcoming", {
         params: { limit },
       });
-      console.log("✅ Upcoming events response:", response.data);
+      console.log(" Upcoming events response:", response.data);
 
       const { data: events } = response.data;
 

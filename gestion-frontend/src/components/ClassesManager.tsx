@@ -68,6 +68,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import api from "@/services/api";
 
 // Schéma de validation avec Zod
 const classSchema = z.object({
@@ -76,12 +77,6 @@ const classSchema = z.object({
     .min(2, { message: "Le nom doit contenir au moins 2 caractères" })
     .max(50, { message: "Le nom ne peut pas dépasser 50 caractères" }),
   level: z.enum([
-    "CP1",
-    "CP2",
-    "CE1",
-    "CE2",
-    "CM1",
-    "CM2",
     "Sixieme",
     "Cinquieme",
     "Quatrieme",
@@ -89,6 +84,10 @@ const classSchema = z.object({
     "Seconde",
     "Premiere",
     "Terminale",
+    "NSI",
+    "NSII",
+    "NSIII",
+    "NSIV",
   ]),
 
   capacity: z
@@ -130,7 +129,44 @@ export const ClassesManager = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedClass, setSelectedClass] = useState<SchoolClass | null>(null);
   const [activeTab, setActiveTab] = useState("all");
+  // Ajoute cet état pour les statistiques
+  const [classStats, setClassStats] = useState<Record<string, number>>({});
+  const [loadingStats, setLoadingStats] = useState(false);
 
+  // Fonction pour récupérer le nombre d'élèves par classe
+  const fetchStudentsCount = async () => {
+    setLoadingStats(true);
+    try {
+      const counts: Record<string, number> = {};
+
+      // Pour chaque classe, récupérer les statistiques
+      const promises = classes.map(async (cls) => {
+        try {
+          const response = await api.get(`/classes/${cls.id}/stats`);
+          if (response.data.success) {
+            counts[cls.id] = response.data.data.totalStudents || 0;
+          }
+        } catch (error) {
+          console.error(`Erreur pour la classe ${cls.id}:`, error);
+          counts[cls.id] = 0;
+        }
+      });
+
+      await Promise.all(promises);
+      setClassStats(counts);
+    } catch (error) {
+      console.error("Erreur récupération des statistiques:", error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  // Charger les statistiques quand les classes changent
+  useEffect(() => {
+    if (classes.length > 0) {
+      fetchStudentsCount();
+    }
+  }, [classes]);
   // Initialisation du formulaire
   const {
     register,
@@ -170,12 +206,6 @@ export const ClassesManager = () => {
       setValue(
         "level",
         classDetails.level as
-          | "CP1"
-          | "CP2"
-          | "CE1"
-          | "CE2"
-          | "CM1"
-          | "CM2"
           | "Sixieme"
           | "Cinquieme"
           | "Quatrieme"
@@ -183,6 +213,10 @@ export const ClassesManager = () => {
           | "Seconde"
           | "Premiere"
           | "Terminale"
+          | "NSI"
+          | "NSII"
+          | "NSIII"
+          | "NSIV"
       );
       setValue("capacity", classDetails.capacity);
 
@@ -304,12 +338,6 @@ export const ClassesManager = () => {
 
   const getLevelLabel = (level: string) => {
     const levels: Record<string, string> = {
-      CP1: "CP 1",
-      CP2: "CP 2",
-      CE1: "CE 1",
-      CE2: "CE 2",
-      CM1: "CM 1",
-      CM2: "CM 2",
       Sixieme: "6ème",
       Cinquieme: "5ème",
       Quatrieme: "4ème",
@@ -317,6 +345,10 @@ export const ClassesManager = () => {
       Seconde: "2nde",
       Premiere: "1ère",
       Terminale: "Terminale",
+      NSI: "NSI",
+      NSII: "NSII",
+      NSIII: "NSIII",
+      NSIV: "NSIV",
     };
     return levels[level] || level;
   };
@@ -460,12 +492,6 @@ export const ClassesManager = () => {
                     <SelectValue placeholder="Sélectionner un niveau" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CP1">CP 1</SelectItem>
-                    <SelectItem value="CP2">CP 2</SelectItem>
-                    <SelectItem value="CE1">CE 1</SelectItem>
-                    <SelectItem value="CE2">CE 2</SelectItem>
-                    <SelectItem value="CM1">CM 1</SelectItem>
-                    <SelectItem value="CM2">CM 2</SelectItem>
                     <SelectItem value="Sixieme">6ème</SelectItem>
                     <SelectItem value="Cinquieme">5ème</SelectItem>
                     <SelectItem value="Quatrieme">4ème</SelectItem>
@@ -473,6 +499,10 @@ export const ClassesManager = () => {
                     <SelectItem value="Seconde">2nde</SelectItem>
                     <SelectItem value="Premiere">1ère</SelectItem>
                     <SelectItem value="Terminale">Terminale</SelectItem>
+                    <SelectItem value="NSI">NSI</SelectItem>
+                    <SelectItem value="NSII">NSII</SelectItem>
+                    <SelectItem value="NSIII">NSIII</SelectItem>
+                    <SelectItem value="NSIV">NSIV</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.level && (
@@ -541,12 +571,7 @@ export const ClassesManager = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les niveaux</SelectItem>
-                <SelectItem value="CP1">CP 1</SelectItem>
-                <SelectItem value="CP2">CP 2</SelectItem>
-                <SelectItem value="CE1">CE 1</SelectItem>
-                <SelectItem value="CE2">CE 2</SelectItem>
-                <SelectItem value="CM1">CM 1</SelectItem>
-                <SelectItem value="CM2">CM 2</SelectItem>
+
                 <SelectItem value="Sixieme">6ème</SelectItem>
                 <SelectItem value="Cinquieme">5ème</SelectItem>
                 <SelectItem value="Quatrieme">4ème</SelectItem>
@@ -554,6 +579,10 @@ export const ClassesManager = () => {
                 <SelectItem value="Seconde">2nde</SelectItem>
                 <SelectItem value="Premiere">1ère</SelectItem>
                 <SelectItem value="Terminale">Terminale</SelectItem>
+                <SelectItem value="NSI">NSI</SelectItem>
+                <SelectItem value="NSII">NSII</SelectItem>
+                <SelectItem value="NSIII">NSIII</SelectItem>
+                <SelectItem value="NSIV">NSIV</SelectItem>
               </SelectContent>
             </Select>
 
@@ -684,22 +713,44 @@ export const ClassesManager = () => {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-muted-foreground" />
-                        <span>
-                          {classItem._count?.students || 0} /{" "}
-                          {classItem.capacity}
-                        </span>
-                        <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-primary"
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                ((classItem._count?.students || 0) /
-                                  classItem.capacity) *
-                                  100
-                              )}%`,
-                            }}
-                          />
+                        <div className="min-w-[100px]">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium">
+                              {classStats[classItem.id] ||
+                                classItem._count?.students ||
+                                0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              / {classItem.capacity}
+                            </span>
+                          </div>
+                          {/* Barre de progression */}
+                          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-primary transition-all duration-300"
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  ((classStats[classItem.id] ||
+                                    classItem._count?.students ||
+                                    0) /
+                                    classItem.capacity) *
+                                    100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          {/* Pourcentage */}
+                          <div className="text-xs text-muted-foreground mt-1 text-right">
+                            {Math.round(
+                              ((classStats[classItem.id] ||
+                                classItem._count?.students ||
+                                0) /
+                                classItem.capacity) *
+                                100
+                            )}
+                            %
+                          </div>
                         </div>
                       </div>
                     </TableCell>
@@ -710,11 +761,6 @@ export const ClassesManager = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Button variant="outline" size="sm" asChild>
-                          <Link to={`/academic/classes/${classItem.id}`}>
-                            Détails
-                          </Link>
-                        </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon">

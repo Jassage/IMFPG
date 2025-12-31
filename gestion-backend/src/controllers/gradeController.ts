@@ -150,6 +150,7 @@ export const getGrades = async (req: Request, res: Response): Promise<void> => {
               coefficient: true,
               type: true,
               passingGrade: true,
+              maxGrade: true,
             },
           },
           classAssignment: {
@@ -487,12 +488,11 @@ export const createGrade = async (
     // Vérifier si une note existe déjà pour cette combinaison
     const existingGrade = await prisma.grade.findUnique({
       where: {
-        studentId_subjectId_academicYearId_controlType_session_assignmentId: {
+        studentId_subjectId_academicYearId_controlType_assignmentId: {
           studentId,
           subjectId,
           academicYearId,
           controlType: controlType || "CONTROLE_1",
-          session: session || "Normale",
           assignmentId,
         },
       },
@@ -529,7 +529,6 @@ export const createGrade = async (
         assignmentId,
         grade: gradeNum,
         status: status || "Valid_",
-        session: session || "Normale",
         controlType: controlType || "CONTROLE_1",
         academicYearId,
         classLevel: classLevel || assignment.classLevel,
@@ -931,6 +930,7 @@ export const getStudentGrades = async (
             coefficient: true,
             type: true,
             passingGrade: true,
+            maxGrade: true,
           },
         },
         classAssignment: {
@@ -1298,6 +1298,7 @@ export const getGradeStatistics = async (
             name: true,
             passingGrade: true,
             coefficient: true,
+            maxGrade: true,
           },
         },
         academicYear: {
@@ -1331,12 +1332,6 @@ export const getGradeStatistics = async (
       Valid_: grades.filter((g) => g.status === "Valid_").length,
       Non_valid_: grades.filter((g) => g.status === "Non_valid_").length,
       Reprendre: grades.filter((g) => g.status === "Reprendre").length,
-    };
-
-    // Statistiques par session
-    const sessionStats = {
-      Normale: grades.filter((g) => g.session === "Normale").length,
-      Reprise: grades.filter((g) => g.session === "Reprise").length,
     };
 
     // Statistiques par type de contrôle
@@ -1377,7 +1372,6 @@ export const getGradeStatistics = async (
       passedGrades,
       failedGrades: totalGrades - passedGrades,
       statusStats,
-      sessionStats,
       controlTypeStats,
       classLevelStats,
       gradeDistribution,

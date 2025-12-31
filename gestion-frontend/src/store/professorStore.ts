@@ -56,6 +56,7 @@ export interface ProfesseurSchedule {
     level: string;
   };
   classAssignment?: {
+    classLevel: string;
     subject: {
       id: string;
       name: string;
@@ -166,6 +167,13 @@ interface ProfesseurStore {
   fetchProfesseurFullDetails: (id: string) => Promise<Professeur>;
   fetchProfesseurSchedule: (id: string) => Promise<void>;
   fetchProfesseurAssignments: (id: string) => Promise<void>;
+  fetchProfesseurByUserId: (userId: string) => Promise<Professeur>;
+  attachUserToProfesseur: (
+    professeurId: string,
+    userData: { email: string; password?: string }
+  ) => Promise<Professeur>;
+  detachUserFromProfesseur: (professeurId: string) => Promise<Professeur>;
+  sendInvitationEmail: (professeurId: string) => Promise<any>;
   createProfesseur: (
     professeurData: CreateProfesseurData
   ) => Promise<Professeur>;
@@ -282,6 +290,7 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     }
   },
 
+  // Dans fetchProfesseurFullDetails
   fetchProfesseurFullDetails: async (id: string) => {
     set({ loadingDetails: true, error: null });
 
@@ -289,20 +298,70 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
       const response = await api.get(`/professeurs/${id}/full-details`);
       const { professeur, scheduleByDay, stats } = response.data.data;
 
-      // Convertir l'objet scheduleByDay en tableau plat
-      const scheduleArray: ProfesseurSchedule[] = [];
-      if (scheduleByDay) {
-        Object.entries(scheduleByDay).forEach(
-          ([day, schedules]: [string, any]) => {
-            schedules.forEach((schedule: any) => {
-              scheduleArray.push({
-                ...schedule,
-                dayOfWeek: parseInt(day),
-              });
+      // Convertir les jours de texte en nombre pour scheduleByDay
+      const processedScheduleByDay: Record<number, any[]> = {
+        1: [],
+        2: [],
+        3: [],
+        4: [],
+        5: [],
+        6: [],
+        7: [],
+      };
+
+      // Fonction pour convertir le jour
+      const dayToNumber = (dayString: string): number => {
+        const daysMap: Record<string, number> = {
+          MONDAY: 1,
+          TUESDAY: 2,
+          WEDNESDAY: 3,
+          THURSDAY: 4,
+          FRIDAY: 5,
+          SATURDAY: 6,
+          SUNDAY: 7,
+        };
+        return daysMap[dayString] || 0;
+      };
+
+      // Traiter les schedules des assignments
+      if (professeur.assignments && Array.isArray(professeur.assignments)) {
+        professeur.assignments.forEach((assignment: any) => {
+          if (assignment.schedules && Array.isArray(assignment.schedules)) {
+            assignment.schedules.forEach((schedule: any) => {
+              const dayNumber = dayToNumber(schedule.dayOfWeek);
+              if (dayNumber > 0) {
+                processedScheduleByDay[dayNumber].push({
+                  ...schedule,
+                  assignment: {
+                    subject: assignment.subject,
+                    academicYear: assignment.academicYear,
+                    classLevel: assignment.classLevel,
+                  },
+                });
+              }
             });
           }
-        );
+        });
       }
+
+      // Convertir processedScheduleByDay en tableau plat
+      const scheduleArray: ProfesseurSchedule[] = [];
+      Object.entries(processedScheduleByDay).forEach(
+        ([day, schedules]: [string, any]) => {
+          schedules.forEach((schedule: any) => {
+            scheduleArray.push({
+              ...schedule,
+              dayOfWeek: parseInt(day),
+              subject:
+                schedule.assignment?.subject ||
+                schedule.classAssignment?.subject,
+              schoolClass: schedule.schoolClass || {
+                name: schedule.assignment?.classLevel,
+              },
+            });
+          });
+        }
+      );
 
       set({
         currentProfesseur: professeur,
@@ -322,28 +381,40 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
       throw error;
     }
   },
-
+  // Dans professeurStore.ts
   fetchProfesseurSchedule: async (id: string) => {
     set({ loading: true, error: null });
 
     try {
-      const response = await api.get(`/professeurs/${id}/schedule`);
-      const { scheduleByDay, totalSessions } = response.data.data;
+      // Récupérer d'abord les assignments qui contiennent les horaires
+      const assignmentsResponse = await api.get(
+        `/class-assignments/professor/${id}`
+      );
+      const assignments = assignmentsResponse.data.data.assignments || [];
 
-      // Convertir l'objet en tableau plat
+      // Extraire tous les horaires de tous les assignments
       const scheduleArray: ProfesseurSchedule[] = [];
-      if (scheduleByDay) {
-        Object.entries(scheduleByDay).forEach(
-          ([day, schedules]: [string, any]) => {
-            schedules.forEach((schedule: any) => {
-              scheduleArray.push({
-                ...schedule,
-                dayOfWeek: parseInt(day),
-              });
+
+      assignments.forEach((assignment: ProfesseurAssignment) => {
+        if (assignment.schedules && assignment.schedules.length > 0) {
+          assignment.schedules.forEach((schedule: any) => {
+            scheduleArray.push({
+              id: schedule.id,
+              dayOfWeek: schedule.dayOfWeek,
+              startTime: schedule.startTime,
+              endTime: schedule.endTime,
+              classroom: schedule.classroom,
+              schoolClass: schedule.schoolClass,
+              subject: assignment.subject,
+              classAssignment: {
+                subject: assignment.subject,
+                academicYear: assignment.academicYear,
+                classLevel: "",
+              },
             });
-          }
-        );
-      }
+          });
+        }
+      });
 
       set({
         professeurSchedule: scheduleArray,
@@ -458,7 +529,7 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await api.patch(`/professeurs/${id}/activate`);
+      const response = await api.put(`/professeurs/${id}/activate`);
       const updatedProfesseur = response.data.data.professeur;
 
       set((state) => ({
@@ -483,7 +554,7 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await api.patch(`/professeurs/${id}/deactivate`);
+      const response = await api.put(`/professeurs/${id}/deactivate`);
       const updatedProfesseur = response.data.data.professeur;
 
       set((state) => ({
@@ -559,6 +630,28 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     }
   },
 
+  fetchProfesseurByUserId: async (userId: string) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.get(`/professeurs/user/${userId}`);
+      const professeur = response.data.data.professeur;
+
+      // Stocker le professeur récupéré
+      set({
+        currentProfesseur: professeur,
+        loading: false,
+      });
+
+      return professeur;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || "Erreur de chargement",
+        loading: false,
+      });
+      throw error;
+    }
+  },
   sendInvitationEmail: async (professeurId) => {
     set({ loading: true, error: null });
 

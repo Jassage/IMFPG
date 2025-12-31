@@ -1,5 +1,4 @@
-// components/timetable/ScheduleManager.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useTimetableStore } from "@/store/timetableStore";
 import { useSubjectStore } from "@/store/subjectStore";
 import { useClassStore } from "@/store/classStore";
@@ -22,40 +21,42 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import {
-  Plus,
   Calendar,
   Clock,
-  Users,
-  BookOpen,
   MapPin,
   Filter,
   Search,
   Edit,
   Trash2,
-  Check,
-  X,
   AlertTriangle,
-  Download,
-  Upload,
   Loader2,
+  Plus,
+  Grid,
+  List,
+  CalendarDays,
+  CheckCircle,
+  RefreshCw,
+  Printer,
+  Share2,
+  CalendarCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { fr } from "date-fns/locale";
 import useProfesseurStore from "@/store/professorStore";
 import { useAssignmentStore } from "@/store/assignmentStore";
 import { useAcademicYearStore } from "@/store/academicYearStore";
+import { ScheduleForm } from "./timetable/ScheduleForm";
+import { DeleteScheduleDialog } from "./timetable/DeleteScheduleDialog";
 
 interface ScheduleManagerProps {
   classId?: string;
@@ -63,53 +64,177 @@ interface ScheduleManagerProps {
   academicYearId?: string;
 }
 
-// Composant List pour remplacer l'icône manquante
-const List = (props: any) => (
-  <svg
-    {...props}
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="8" x2="21" y1="6" y2="6" />
-    <line x1="8" x2="21" y1="12" y2="12" />
-    <line x1="8" x2="21" y1="18" y2="18" />
-    <line x1="3" x2="3.01" y1="6" y2="6" />
-    <line x1="3" x2="3.01" y1="12" y2="12" />
-    <line x1="3" x2="3.01" y1="18" y2="18" />
-  </svg>
+const DAYS = [
+  { value: "MONDAY", label: "Lundi", short: "LUN" },
+  { value: "TUESDAY", label: "Mardi", short: "MAR" },
+  { value: "WEDNESDAY", label: "Mercredi", short: "MER" },
+  { value: "THURSDAY", label: "Jeudi", short: "JEU" },
+  { value: "FRIDAY", label: "Vendredi", short: "VEN" },
+  { value: "SATURDAY", label: "Samedi", short: "SAM" },
+] as const;
+
+const DAY_LABELS: Record<string, string> = {
+  MONDAY: "Lundi",
+  TUESDAY: "Mardi",
+  WEDNESDAY: "Mercredi",
+  THURSDAY: "Jeudi",
+  FRIDAY: "Vendredi",
+  SATURDAY: "Samedi",
+};
+
+// Composant ScheduleCard optimisé avec React.memo
+const ScheduleCard = React.memo(
+  ({
+    schedule,
+    onEdit,
+    onDelete,
+    getSubjectName,
+    getProfesseurName,
+    getClassroomColor,
+    dayLabels,
+    formatTimeFromISO,
+  }: {
+    schedule: any;
+    onEdit: (schedule: any) => void;
+    onDelete: (schedule: any) => void;
+    getSubjectName: (schedule: any) => string;
+    getProfesseurName: (schedule: any) => string;
+    getClassroomColor: (classroom: string) => string;
+    dayLabels: Record<string, string>;
+    formatTimeFromISO: (time: string) => string;
+  }) => {
+    const [showActions, setShowActions] = useState(false);
+
+    const handleEditClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onEdit(schedule);
+      },
+      [schedule, onEdit]
+    );
+
+    const handleDeleteClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onDelete(schedule);
+      },
+      [schedule, onDelete]
+    );
+
+    return (
+      <div
+        className="p-4 rounded-lg border bg-white hover:shadow-md transition-all duration-200 relative"
+        onMouseEnter={() => setShowActions(true)}
+        onMouseLeave={() => setShowActions(false)}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 space-y-2">
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  schedule.status === "ACTIVE"
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+                }
+              >
+                {schedule.status === "ACTIVE" ? "Actif" : "Annulé"}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={getClassroomColor(schedule.classroom)}
+              >
+                <MapPin className="h-3 w-3 mr-1" />
+                {schedule.classroom || "Salle non définie"}
+              </Badge>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-base">
+                {getSubjectName(schedule)}
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                {getProfesseurName(schedule) || "Professeur non assigné"}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">
+                  {formatTimeFromISO(schedule.startTime)} -{" "}
+                  {formatTimeFromISO(schedule.endTime)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span>{dayLabels[schedule.dayOfWeek]}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Boutons d'action - VISIBLES AU HOVER */}
+          <div
+            className={`flex flex-col gap-1 transition-opacity duration-200 ${
+              showActions ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 hover:bg-primary/10"
+              onClick={handleEditClick}
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:bg-destructive/10"
+              onClick={handleDeleteClick}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 );
+
+ScheduleCard.displayName = "ScheduleCard";
 
 export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   classId: propClassId,
   assignmentId,
   academicYearId: propAcademicYearId,
 }) => {
-  const [activeTab, setActiveTab] = useState("view");
-  const [editingSchedule, setEditingSchedule] = useState<any>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list" | "week">("grid");
   const [searchTerm, setSearchTerm] = useState("");
   const [filters, setFilters] = useState({
     dayOfWeek: "",
     status: "ACTIVE",
     classroom: "",
+    subject: "",
+    professor: "",
   });
 
-  // États locaux pour les filtres
+  // États pour les modales
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
+  const [scheduleToDelete, setScheduleToDelete] = useState<any>(null);
+
+  // États locaux
   const [selectedClassId, setSelectedClassId] = useState<string>(
     propClassId || ""
   );
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string>(
     propAcademicYearId || ""
   );
-  const [selectedClassLevel, setSelectedClassLevel] = useState<string>("");
 
+  // Stores
   const {
     schedules,
     error,
@@ -119,314 +244,519 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     updateSchedule,
     deleteSchedule,
     generateClassTimetable,
+    checkScheduleConflicts,
   } = useTimetableStore();
 
   const {
     assignments,
     fetchAssignments,
+    fetchAssignmentsByClass,
     fetchAssignmentsByClassAndLevel,
     loading: assignmentsLoading,
   } = useAssignmentStore();
 
-  const { subjects, fetchSubjects } = useSubjectStore();
+  const { subjects } = useSubjectStore();
   const { classes, fetchClasses } = useClassStore();
   const { professeurs, fetchProfesseurs } = useProfesseurStore();
   const { academicYears, fetchAcademicYears } = useAcademicYearStore();
 
-  useEffect(() => {
-    loadInitialData();
-  }, [propClassId, propAcademicYearId]);
+  // Fonction pour formater le temps avant envoi à l'API
+  const formatTimeForAPI = useCallback((time: string): string => {
+    if (!time) return "";
 
-  const loadInitialData = async () => {
-    try {
-      // Charger les données de base
-      await Promise.all([fetchClasses(), fetchSubjects(), fetchProfesseurs()]);
-
-      // Si une classe est spécifiée dans les props, la charger
-      if (propClassId) {
-        const selectedClass = classes.find((c) => c.id === propClassId);
-        if (selectedClass) {
-          setSelectedClassId(propClassId);
-          setSelectedClassLevel(selectedClass.level);
-
-          // Charger les horaires de la classe
-          await fetchClassTimetable(propClassId, {
-            academicYearId: propAcademicYearId,
-          });
-
-          // Charger les assignations filtrées par classe et niveau
-          await fetchAssignmentsByClassAndLevel(
-            propClassId,
-            selectedClass.level
-          );
-        }
-      } else {
-        // Charger toutes les assignations
-        await fetchAssignments();
-      }
-    } catch (error) {
-      console.error(" Error loading initial data:", error);
-      toast.error("Erreur lors du chargement des données");
+    // Si c'est déjà au format HH:MM, l'envoyer tel quel
+    if (time.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+      return time;
     }
-  };
 
-  // Charger les assignations lorsqu'une classe est sélectionnée
+    // Sinon, essayer de parser
+    try {
+      const [hours, minutes] = time.split(":");
+      return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
+    } catch {
+      return "00:00";
+    }
+  }, []);
+
+  // Fonction pour formater le temps depuis ISO ou autres formats
+  const formatTimeFromISO = useCallback((time: string): string => {
+    if (!time) return "00:00";
+
+    // Si c'est déjà au format HH:MM
+    if (time.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+      return time;
+    }
+
+    // Si c'est un objet Date ou timestamp
+    try {
+      // Essayer de parser comme date
+      let date: Date;
+
+      if (time.includes("T")) {
+        // Format ISO
+        date = new Date(time);
+      } else if (time.includes(":")) {
+        // Format HH:MM:SS ou HH:MM
+        const [hours, minutes] = time.split(":");
+        date = new Date();
+        date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+      } else {
+        // Autre format inconnu
+        return "00:00";
+      }
+
+      if (isNaN(date.getTime())) {
+        return "00:00";
+      }
+
+      // Formater en HH:MM
+      const hours = date.getHours().toString().padStart(2, "0");
+      const minutes = date.getMinutes().toString().padStart(2, "0");
+
+      return `${hours}:${minutes}`;
+    } catch (error) {
+      console.error("Error formatting time:", error, time);
+      return "00:00";
+    }
+  }, []);
+
+  // Chargement initial
   useEffect(() => {
-    if (selectedClassId) {
+    const loadInitialData = async () => {
+      try {
+        // Charger les données de base
+        await Promise.all([
+          fetchClasses(),
+          fetchProfesseurs(),
+          fetchAcademicYears(),
+        ]);
+
+        // Si une classe est spécifiée, charger son horaire
+        if (propClassId && propClassId !== "all") {
+          setSelectedClassId(propClassId);
+
+          // Trouver l'année académique courante
+          const currentYear = academicYears.find((year) => year.isCurrent);
+          if (currentYear) {
+            setSelectedAcademicYearId(currentYear.id);
+
+            // Charger les assignations pour cette classe
+            await loadAssignmentsForClassLevel(propClassId);
+
+            // Charger l'horaire de la classe
+            await fetchClassTimetable(propClassId, {
+              academicYearId: currentYear.id,
+            });
+          }
+        }
+      } catch (error: any) {
+        console.error("Error loading initial data:", error);
+
+        // Message d'erreur spécifique
+        let errorMessage = "Erreur lors du chargement des données";
+        if (error.message?.includes("SCHEDULE_NOT_FOUND")) {
+          errorMessage = "Aucun horaire trouvé pour cette classe";
+        }
+
+        toast.error(errorMessage);
+      }
+    };
+
+    loadInitialData();
+  }, [propClassId]);
+
+  // Charger les assignations par niveau
+  useEffect(() => {
+    if (selectedClassId && selectedClassId !== "all") {
       const selectedClass = classes.find((c) => c.id === selectedClassId);
       if (selectedClass) {
-        setSelectedClassLevel(selectedClass.level);
-        loadAssignmentsForClass(selectedClassId, selectedClass.level);
-
-        // Charger les horaires pour cette classe
+        loadAssignmentsForClassLevel(selectedClass.level);
         fetchClassTimetable(selectedClassId, {
           academicYearId: selectedAcademicYearId,
         });
       }
     } else {
-      fetchAssignments(); // Charger toutes les assignations
+      fetchAssignments();
     }
-  }, [selectedClassId, selectedAcademicYearId]);
+  }, [selectedClassId, selectedAcademicYearId, classes]);
 
-  const loadAssignmentsForClass = async (classId: string, level: string) => {
-    try {
-      await fetchAssignmentsByClassAndLevel(classId, level);
-    } catch (error) {
-      console.error(" Error loading assignments:", error);
-      toast.error("Erreur lors du chargement des assignations");
-    }
-  };
+  // Fonction pour charger les assignations par niveau
+  const loadAssignmentsForClassLevel = useCallback(
+    async (classLevel: string) => {
+      try {
+        // Vérifiez si la fonction existe dans votre store
+        if (fetchAssignmentsByClassAndLevel) {
+          console.log("Fetching assignments for class:", {
+            classId: selectedClassId,
+            level: classLevel,
+          });
 
-  // Filtrer les horaires
-  const filteredSchedules = schedules.filter((schedule) => {
-    // Filtrer par classe si une classe est sélectionnée
-    if (selectedClassId && schedule.classId !== selectedClassId) return false;
+          // Appelez la fonction du store avec les bons paramètres
+          await fetchAssignmentsByClassAndLevel(selectedClassId, classLevel);
+        } else {
+          console.warn(
+            "fetchAssignmentsByClassAndLevel n'est pas disponible, fallback à fetchAssignments"
+          );
+          await fetchAssignments();
+        }
+      } catch (error: any) {
+        console.error("Error loading assignments for level:", error);
 
-    if (filters.dayOfWeek && schedule.dayOfWeek !== filters.dayOfWeek)
-      return false;
-    if (filters.status && schedule.status !== filters.status) return false;
-    if (filters.classroom && !schedule.classroom?.includes(filters.classroom))
-      return false;
+        // Fallback: charger toutes les assignations
+        await fetchAssignments();
 
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      const subjectName = getSubjectName(schedule)?.toLowerCase() || "";
-      const professeurName = getProfesseurName(schedule)?.toLowerCase() || "";
+        toast.error("Erreur lors du chargement des assignations par niveau");
+      }
+    },
+    [selectedClassId, fetchAssignmentsByClassAndLevel, fetchAssignments]
+  );
 
-      return (
-        subjectName.includes(searchLower) ||
-        professeurName.includes(searchLower) ||
-        schedule.classroom?.toLowerCase().includes(searchLower) ||
-        schedule.notes?.toLowerCase().includes(searchLower)
+  // Fonction utilitaire pour obtenir des données uniques
+  const getUniqueData = useCallback((data: any[], key: string = "id") => {
+    const seen = new Set();
+    return data.filter((item) => {
+      if (seen.has(item[key])) {
+        console.warn(`Doublon détecté pour la clé ${key}:`, item[key]);
+        return false;
+      }
+      seen.add(item[key]);
+      return true;
+    });
+  }, []);
+
+  // Assignations filtrées par niveau et sans doublons
+  const filteredAssignments = useMemo(() => {
+    if (selectedClassId && selectedClassId !== "all") {
+      const selectedClass = classes.find((c) => c.id === selectedClassId);
+      if (!selectedClass) return getUniqueData(assignments);
+
+      // Filtrer les assignations par niveau
+      const filtered = assignments.filter(
+        (assignment) => assignment.classLevel === selectedClass.level
       );
+      return getUniqueData(filtered);
     }
+    return getUniqueData(assignments);
+  }, [assignments, selectedClassId, classes, getUniqueData]);
 
-    return true;
-  });
+  // Schedules uniques
+  const uniqueSchedules = useMemo(
+    () => getUniqueData(schedules),
+    [schedules, getUniqueData]
+  );
 
-  // Fonction pour obtenir le nom de la matière
-  const getSubjectName = (schedule: any) => {
+  // Fonctions utilitaires avec useMemo pour l'optimisation
+  const getSubjectName = useCallback((schedule: any): string => {
     return (
       schedule.classAssignment?.subject?.name ||
       schedule.subject?.name ||
       schedule.assignment?.subject?.name ||
       "Sans nom"
     );
-  };
+  }, []);
 
-  // Fonction pour obtenir le nom du professeur
-  const getProfesseurName = (schedule: any) => {
+  const getProfesseurName = useCallback((schedule: any): string => {
     const professeur =
       schedule.classAssignment?.professeur ||
       schedule.professeur ||
       schedule.assignment?.professeur;
-    if (professeur) {
-      return `${professeur.firstName || ""} ${
-        professeur.lastName || ""
-      }`.trim();
-    }
-    return "";
-  };
+    return professeur
+      ? `${professeur.firstName || ""} ${professeur.lastName || ""}`.trim()
+      : "";
+  }, []);
+
+  const getClassroomColor = useCallback((classroom: string): string => {
+    const colors = [
+      "bg-blue-100 text-blue-800 border-blue-200",
+      "bg-green-100 text-green-800 border-green-200",
+      "bg-purple-100 text-purple-800 border-purple-200",
+      "bg-amber-100 text-amber-800 border-amber-200",
+      "bg-pink-100 text-pink-800 border-pink-200",
+      "bg-indigo-100 text-indigo-800 border-indigo-200",
+    ];
+    const index =
+      classroom?.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) %
+      colors.length;
+    return colors[index] || "bg-gray-100 text-gray-800 border-gray-200";
+  }, []);
+
+  // Données filtrées sans doublons
+  const filteredSchedules = useMemo(() => {
+    return uniqueSchedules.filter((schedule) => {
+      if (
+        selectedClassId &&
+        selectedClassId !== "all" &&
+        schedule.classId !== selectedClassId
+      )
+        return false;
+
+      if (filters.dayOfWeek && schedule.dayOfWeek !== filters.dayOfWeek)
+        return false;
+
+      if (filters.status && schedule.status !== filters.status) return false;
+
+      if (filters.classroom && !schedule.classroom?.includes(filters.classroom))
+        return false;
+
+      if (filters.subject) {
+        const subjectName = getSubjectName(schedule).toLowerCase();
+        if (!subjectName.includes(filters.subject.toLowerCase())) return false;
+      }
+
+      if (filters.professor) {
+        const professorName = getProfesseurName(schedule).toLowerCase();
+        if (!professorName.includes(filters.professor.toLowerCase()))
+          return false;
+      }
+
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        const subjectName = getSubjectName(schedule).toLowerCase();
+        const professorName = getProfesseurName(schedule).toLowerCase();
+
+        return (
+          subjectName.includes(searchLower) ||
+          professorName.includes(searchLower) ||
+          schedule.classroom?.toLowerCase().includes(searchLower) ||
+          schedule.notes?.toLowerCase().includes(searchLower)
+        );
+      }
+
+      return true;
+    });
+  }, [
+    uniqueSchedules,
+    selectedClassId,
+    filters,
+    searchTerm,
+    getSubjectName,
+    getProfesseurName,
+  ]);
 
   // Grouper par jour
-  const schedulesByDay = filteredSchedules.reduce((acc, schedule) => {
-    const day = schedule.dayOfWeek;
-    if (!acc[day]) acc[day] = [];
-    acc[day].push(schedule);
-    return acc;
-  }, {} as Record<string, typeof schedules>);
+  const schedulesByDay = useMemo(() => {
+    return filteredSchedules.reduce((acc, schedule) => {
+      const day = schedule.dayOfWeek;
+      if (!acc[day]) acc[day] = [];
+      acc[day].push(schedule);
+      return acc;
+    }, {} as Record<string, typeof schedules>);
+  }, [filteredSchedules]);
 
   // Statistiques
-  const stats = {
-    total: filteredSchedules.length,
-    byDay: Object.keys(schedulesByDay).length,
-    active: filteredSchedules.filter((s) => s.status === "ACTIVE").length,
-    conflicts: 0,
-  };
+  const stats = useMemo(() => {
+    return {
+      total: filteredSchedules.length,
+      byDay: Object.keys(schedulesByDay).length,
+      active: filteredSchedules.filter((s) => s.status === "ACTIVE").length,
+      cancelled: filteredSchedules.filter((s) => s.status === "CANCELLED")
+        .length,
+    };
+  }, [filteredSchedules, schedulesByDay]);
 
-  // Gestion des formulaires
-  const [formData, setFormData] = useState({
-    assignmentId: assignmentId || "",
-    classId: selectedClassId || "",
-    dayOfWeek: "",
-    startTime: "",
-    endTime: "",
-    classroom: "",
-    recurrence: "",
-    untilDate: "",
-    notes: "",
-  });
+  // Gestion des actions
+  const handleEdit = useCallback((schedule: any) => {
+    setSelectedSchedule(schedule);
+    setIsFormOpen(true);
+  }, []);
 
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const handleAddNew = useCallback(() => {
+    setSelectedSchedule(null);
+    setIsFormOpen(true);
+  }, []);
 
-  const handleFormChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: "" }));
-    }
-  };
+  const handleDeleteClick = useCallback((schedule: any) => {
+    setScheduleToDelete(schedule);
+    setIsDeleteDialogOpen(true);
+  }, []);
 
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.assignmentId) newErrors.assignmentId = "Assignation requise";
-    if (!formData.classId) newErrors.classId = "Classe requise";
-    if (!formData.dayOfWeek) newErrors.dayOfWeek = "Jour requis";
-    if (!formData.startTime) newErrors.startTime = "Heure de début requise";
-    if (!formData.endTime) newErrors.endTime = "Heure de fin requise";
-
-    if (formData.startTime && formData.endTime) {
-      const [startHour, startMinute] = formData.startTime
-        .split(":")
-        .map(Number);
-      const [endHour, endMinute] = formData.endTime.split(":").map(Number);
-      const startTotal = startHour * 60 + startMinute;
-      const endTotal = endHour * 60 + endMinute;
-
-      if (endTotal <= startTotal) {
-        newErrors.endTime = "L'heure de fin doit être après l'heure de début";
-      }
-      if (endTotal - startTotal < 30) {
-        newErrors.endTime = "Durée minimale: 30 minutes";
-      }
-      if (endTotal - startTotal > 240) {
-        newErrors.endTime = "Durée maximale: 4 heures";
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!validateForm()) {
-      toast.error("Veuillez corriger les erreurs dans le formulaire");
-      return;
-    }
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!scheduleToDelete) return;
 
     try {
-      const scheduleData = {
-        dayOfWeek: formData.dayOfWeek,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        classId: formData.classId,
-        classroom: formData.classroom || undefined,
-        recurrence: formData.recurrence || undefined,
-        untilDate: formData.untilDate || undefined,
-        notes: formData.notes || undefined,
-      };
+      await deleteSchedule(scheduleToDelete.id);
+      toast.success("L'horaire a été supprimé avec succès", {
+        icon: <CheckCircle className="h-4 w-4" />,
+      });
 
-      if (editingSchedule) {
-        await updateSchedule(editingSchedule.id, scheduleData);
-        toast.success("L'horaire a été mis à jour avec succès");
-      } else {
-        await addSchedule(formData.assignmentId, scheduleData);
-        toast.success("L'horaire a été ajouté avec succès");
-      }
-
-      // Réinitialiser
-      resetForm();
-      if (formData.classId) {
-        fetchClassTimetable(formData.classId, {
-          academicYearId: selectedAcademicYearId,
-        });
-      }
-    } catch (error: any) {
-      toast.error(error.data.message || "Erreur lors de l'opération");
-    }
-  };
-
-  // CORRECTION de handleEdit
-  const handleEdit = (schedule: any) => {
-    setEditingSchedule(schedule);
-
-    // DEBUG: Vérifiez la structure du schedule
-    console.log("📝 Editing schedule:", {
-      id: schedule.id,
-      assignmentId: schedule.assignmentId,
-      classAssignmentId: schedule.classAssignment?.id,
-      classId: schedule.classId,
-      keys: Object.keys(schedule),
-    });
-
-    setFormData({
-      assignmentId: schedule.assignmentId || schedule.classAssignment?.id || "",
-      classId: schedule.classId || selectedClassId || "",
-      dayOfWeek: schedule.dayOfWeek,
-      startTime: schedule.startTime,
-      endTime: schedule.endTime,
-      classroom: schedule.classroom || "",
-      recurrence: schedule.recurrence || "",
-      untilDate: schedule.untilDate
-        ? format(new Date(schedule.untilDate), "yyyy-MM-dd")
-        : "",
-      notes: schedule.notes || "",
-    });
-
-    setIsDialogOpen(true);
-  };
-
-  const handleDelete = async (scheduleId: string) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer cet horaire ?")) {
-      return;
-    }
-
-    try {
-      await deleteSchedule(scheduleId);
-      toast.success("L'horaire a été supprimé avec succès");
-
-      // Recharger les horaires si une classe est sélectionnée
-      if (selectedClassId) {
+      if (selectedClassId && selectedClassId !== "all") {
         fetchClassTimetable(selectedClassId, {
           academicYearId: selectedAcademicYearId,
         });
       }
+
+      setIsDeleteDialogOpen(false);
+      setScheduleToDelete(null);
     } catch (error: any) {
-      toast.error(error.message || "Erreur lors de la suppression");
+      toast.error(error.message || "Erreur lors de la suppression", {
+        icon: <AlertTriangle className="h-4 w-4" />,
+      });
     }
-  };
+  }, [
+    scheduleToDelete,
+    selectedClassId,
+    selectedAcademicYearId,
+    deleteSchedule,
+    fetchClassTimetable,
+  ]);
 
-  const resetForm = () => {
-    setFormData({
-      assignmentId: assignmentId || "",
-      classId: selectedClassId || "",
-      dayOfWeek: "",
-      startTime: "",
-      endTime: "",
-      classroom: "",
-      recurrence: "",
-      untilDate: "",
-      notes: "",
-    });
-    setEditingSchedule(null);
-    setErrors({});
-    setIsDialogOpen(false);
-  };
+  // Fonction améliorée avec vérification des conflits
+  const handleFormSubmit = useCallback(
+    async (formData: any) => {
+      try {
+        console.log("Form data received:", formData);
 
-  const handleGenerateTimetable = async () => {
-    if (!selectedClassId || !selectedAcademicYearId) {
+        // Validation des données requises
+        if (!formData.assignmentId && !selectedSchedule) {
+          toast.error("Une assignation est requise pour créer un horaire");
+          return;
+        }
+
+        if (!formData.dayOfWeek || !formData.startTime || !formData.endTime) {
+          toast.error("Jour, heure de début et heure de fin sont requis");
+          return;
+        }
+
+        // Formater les heures pour l'API
+        const formattedData = {
+          ...formData,
+          startTime: formatTimeForAPI(formData.startTime),
+          endTime: formatTimeForAPI(formData.endTime),
+        };
+
+        // Pour une création (pas d'édition)
+        if (!selectedSchedule) {
+          const assignment = filteredAssignments.find(
+            (a) => a.id === formattedData.assignmentId
+          );
+
+          if (!assignment) {
+            toast.error("Assignation non trouvée");
+            return;
+          }
+
+          // Vérifier les conflits AVANT d'ajouter
+          try {
+            const professeurId =
+              assignment.professeur?.id || assignment.professeur?.id;
+
+            if (!professeurId) {
+              toast.error("Professeur non assigné à cette matière");
+              return;
+            }
+
+            const conflictCheck = await checkScheduleConflicts({
+              professeurId: professeurId,
+              classId: formattedData.classId || assignment.schoolClass?.id,
+              dayOfWeek: formattedData.dayOfWeek,
+              startTime: formattedData.startTime,
+              endTime: formattedData.endTime,
+              classroom: formattedData.classroom,
+            });
+
+            if (conflictCheck.hasConflict) {
+              const conflictMessages = conflictCheck.conflicts
+                .map((conflict: any) => {
+                  if (conflict.type === "PROFESSEUR_CONFLICT") {
+                    return `• Le professeur ${assignment.professeur?.firstName} ${assignment.professeur?.lastName} a déjà un cours à ce créneau`;
+                  } else if (conflict.type === "CLASS_CONFLICT") {
+                    return `• La classe a déjà un cours à ce créneau`;
+                  }
+                  return `• ${conflict.message}`;
+                })
+                .join("\n");
+
+              toast.error(`Conflits détectés:\n${conflictMessages}`, {
+                duration: 8000,
+              });
+              return;
+            }
+          } catch (conflictError: any) {
+            console.warn("Could not check conflicts:", conflictError);
+            // Continuer même si la vérification échoue
+          }
+
+          // Ajouter l'horaire
+          await addSchedule(formattedData.assignmentId, formattedData);
+          toast.success("L'horaire a été ajouté avec succès");
+        } else {
+          // Pour une édition
+          const conflictCheck = await checkScheduleConflicts({
+            professeurId: selectedSchedule.professeurId,
+            classId: formattedData.classId || selectedSchedule.classId,
+            dayOfWeek: formattedData.dayOfWeek,
+            startTime: formattedData.startTime,
+            endTime: formattedData.endTime,
+            classroom: formattedData.classroom,
+            excludeScheduleId: selectedSchedule.id,
+          });
+
+          if (conflictCheck.hasConflict) {
+            const conflictMessages = conflictCheck.conflicts
+              .map((conflict: any) => `• ${conflict.message}`)
+              .join("\n");
+
+            toast.error(`Conflits détectés:\n${conflictMessages}`, {
+              duration: 8000,
+            });
+            return;
+          }
+
+          // Mettre à jour l'horaire
+          await updateSchedule(selectedSchedule.id, formattedData);
+          toast.success("L'horaire a été mis à jour avec succès");
+        }
+
+        // Rafraîchir les données
+        if (selectedClassId && selectedClassId !== "all") {
+          await fetchClassTimetable(selectedClassId, {
+            academicYearId: selectedAcademicYearId,
+          });
+        }
+
+        setIsFormOpen(false);
+        setSelectedSchedule(null);
+      } catch (error: any) {
+        console.error("Error in handleFormSubmit:", error);
+
+        // Messages d'erreur spécifiques
+        let errorMessage = "Erreur lors de l'opération";
+
+        if (error.response?.data?.code === "PROFESSEUR_CONFLICT") {
+          errorMessage = "Le professeur a déjà un cours à ce créneau horaire";
+        } else if (error.response?.data?.code === "CLASS_CONFLICT") {
+          errorMessage = "La classe a déjà un cours à ce créneau horaire";
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        }
+
+        toast.error(errorMessage);
+      }
+    },
+    [
+      selectedSchedule,
+      selectedAcademicYearId,
+      selectedClassId,
+      updateSchedule,
+      addSchedule,
+      checkScheduleConflicts,
+      filteredAssignments,
+      fetchClassTimetable,
+      formatTimeForAPI,
+    ]
+  );
+
+  const handleFormSuccess = useCallback(() => {
+    setIsFormOpen(false);
+    setSelectedSchedule(null);
+  }, []);
+
+  const handleGenerateTimetable = useCallback(async () => {
+    if (
+      !selectedClassId ||
+      selectedClassId === "all" ||
+      !selectedAcademicYearId
+    ) {
       toast.error("Classe et année académique sont requises");
       return;
     }
@@ -439,346 +769,216 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     } catch (error: any) {
       toast.error(error.message || "Erreur lors de la génération");
     }
-  };
+  }, [selectedClassId, selectedAcademicYearId, generateClassTimetable]);
 
-  const handleClassChange = (classId: string) => {
-    setSelectedClassId(classId);
+  // Composants de vue
+  const GridView = useMemo(() => {
+    return () => (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {DAYS.map((day) => {
+            const daySchedules = schedulesByDay[day.value] || [];
+            const uniqueDaySchedules = getUniqueData(daySchedules);
 
-    // Mettre à jour le formData si on est en mode édition
-    if (!editingSchedule) {
-      setFormData((prev) => ({ ...prev, classId }));
-    }
-
-    // Trouver la classe sélectionnée
-    const selectedClass = classes.find((c) => c.id === classId);
-    if (selectedClass) {
-      setSelectedClassLevel(selectedClass.level);
-
-      // Charger les assignations pour cette classe et ce niveau
-      loadAssignmentsForClass(classId, selectedClass.level);
-    }
-  };
-
-  const handleAcademicYearChange = (yearId: string) => {
-    setSelectedAcademicYearId(yearId);
-
-    // Recharger les assignations et horaires si une classe est sélectionnée
-    if (selectedClassId) {
-      const selectedClass = classes.find((c) => c.id === selectedClassId);
-      if (selectedClass) {
-        loadAssignmentsForClass(selectedClassId, selectedClass.level);
-        fetchClassTimetable(selectedClassId, { academicYearId: yearId });
-      }
-    }
-  };
-
-  const days = [
-    { value: "MONDAY", label: "Lundi" },
-    { value: "TUESDAY", label: "Mardi" },
-    { value: "WEDNESDAY", label: "Mercredi" },
-    { value: "THURSDAY", label: "Jeudi" },
-    { value: "FRIDAY", label: "Vendredi" },
-    { value: "SATURDAY", label: "Samedi" },
-  ];
-
-  const timeSlots = [
-    "08:00",
-    "08:30",
-    "09:00",
-    "09:30",
-    "10:00",
-    "10:30",
-    "11:00",
-    "11:30",
-    "12:00",
-    "12:30",
-    "13:00",
-    "13:30",
-    "14:00",
-    "14:30",
-    "15:00",
-    "15:30",
-    "16:00",
-    "16:30",
-    "17:00",
-    "17:30",
-    "18:00",
-    "18:30",
-    "19:00",
-  ];
-
-  const dayLabels: Record<string, string> = {
-    MONDAY: "Lundi",
-    TUESDAY: "Mardi",
-    WEDNESDAY: "Mercredi",
-    THURSDAY: "Jeudi",
-    FRIDAY: "Vendredi",
-    SATURDAY: "Samedi",
-  };
-
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(":");
-    return `${hours}:${minutes}`;
-  };
-
-  // Composant ScheduleCard à l'intérieur pour accéder aux fonctions utilitaires
-  interface ScheduleCardProps {
-    schedule: any;
-    onEdit: (schedule: any) => void;
-    onDelete: (scheduleId: string) => void;
-    variant?: "default" | "compact" | "list";
-  }
-
-  const ScheduleCard: React.FC<ScheduleCardProps> = ({
-    schedule,
-    onEdit,
-    onDelete,
-    variant = "default",
-  }) => {
-    const [showActions, setShowActions] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
-
-    const handleDelete = async (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (isDeleting) return;
-
-      setIsDeleting(true);
-      try {
-        await onDelete(schedule.id);
-      } finally {
-        setIsDeleting(false);
-      }
-    };
-
-    const subjectName = getSubjectName(schedule);
-    const professeurName = getProfesseurName(schedule);
-
-    if (variant === "compact") {
-      return (
-        <div
-          className="p-3 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
-          onMouseEnter={() => setShowActions(true)}
-          onMouseLeave={() => setShowActions(false)}
-          onClick={() => onEdit(schedule)}
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="font-medium text-sm">{subjectName}</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                <div className="flex items-center gap-2">
-                  <span>
-                    {formatTime(schedule.startTime)}-
-                    {formatTime(schedule.endTime)}
-                  </span>
-                  {schedule.classroom && (
-                    <>
-                      <span>•</span>
-                      <span>{schedule.classroom}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            {showActions && (
-              <div className="flex gap-1 ml-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(schedule);
-                  }}
-                >
-                  <Edit className="h-3 w-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-destructive"
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                >
-                  {isDeleting ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3 w-3" />
-                  )}
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    if (variant === "list") {
-      return (
-        <div
-          className="p-4 border rounded-lg hover:bg-accent/50 transition-colors"
-          onMouseEnter={() => setShowActions(true)}
-          onMouseLeave={() => setShowActions(false)}
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-4">
-                <div className="font-medium">{subjectName}</div>
-                <Badge variant="outline">
-                  {dayLabels[schedule.dayOfWeek] || schedule.dayOfWeek}
-                </Badge>
-                <Badge
-                  variant={
-                    schedule.status === "ACTIVE"
-                      ? "default"
-                      : schedule.status === "CANCELLED"
-                      ? "destructive"
-                      : "secondary"
-                  }
-                >
-                  {schedule.status}
-                </Badge>
-              </div>
-
-              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
-                <div className="flex items-center gap-1">
-                  <Clock className="h-4 w-4" />
-                  {formatTime(schedule.startTime)} -{" "}
-                  {formatTime(schedule.endTime)}
-                </div>
-
-                {professeurName && (
-                  <div className="flex items-center gap-1">
-                    <Users className="h-4 w-4" />
-                    {professeurName}
+            return (
+              <Card key={`day-card-${day.value}`} className="overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">{day.label}</CardTitle>
+                    <Badge variant="secondary">
+                      {uniqueDaySchedules.length} cours
+                    </Badge>
                   </div>
-                )}
-
-                {schedule.classroom && (
-                  <div className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {schedule.classroom}
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {uniqueDaySchedules.length ? (
+                      uniqueDaySchedules
+                        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+                        .map((schedule, index) => (
+                          <ScheduleCard
+                            key={`schedule-${day.value}-${schedule.id}-${index}`}
+                            schedule={schedule}
+                            onEdit={handleEdit}
+                            onDelete={handleDeleteClick}
+                            getSubjectName={getSubjectName}
+                            getProfesseurName={getProfesseurName}
+                            getClassroomColor={getClassroomColor}
+                            dayLabels={DAY_LABELS}
+                            formatTimeFromISO={formatTimeFromISO}
+                          />
+                        ))
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>Aucun cours programmé</p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-
-              {schedule.notes && (
-                <div className="mt-2 text-sm">
-                  <span className="font-medium">Notes:</span> {schedule.notes}
-                </div>
-              )}
-            </div>
-
-            <div
-              className={`flex gap-2 ${
-                showActions ? "opacity-100" : "opacity-0"
-              } transition-opacity`}
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onEdit(schedule)}
-              >
-                <Edit className="h-4 w-4 mr-2" />
-                Modifier
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleDelete}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Suppression...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Supprimer
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div
-        className="p-3 bg-card border rounded-lg hover:shadow-md transition-all cursor-pointer group"
-        onMouseEnter={() => setShowActions(true)}
-        onMouseLeave={() => setShowActions(false)}
-        onClick={() => onEdit(schedule)}
-      >
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="font-medium text-sm">{subjectName}</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              <div className="flex items-center gap-2">
-                {professeurName && (
-                  <span className="flex items-center gap-1">
-                    <Users className="h-3 w-3" />
-                    {professeurName.length > 15
-                      ? professeurName.substring(0, 15) + "..."
-                      : professeurName}
-                  </span>
-                )}
-                {schedule.classroom && (
-                  <>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />
-                      {schedule.classroom}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          <div
-            className={`flex gap-1 ${
-              showActions ? "opacity-100" : "opacity-0"
-            } transition-opacity`}
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(schedule);
-              }}
-            >
-              <Edit className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete(e);
-              }}
-              disabled={isDeleting}
-            >
-              {isDeleting ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Trash2 className="h-3 w-3" />
-              )}
-            </Button>
-          </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     );
-  };
+  }, [
+    schedulesByDay,
+    handleEdit,
+    handleDeleteClick,
+    getSubjectName,
+    getProfesseurName,
+    getClassroomColor,
+    formatTimeFromISO,
+    getUniqueData,
+  ]);
+
+  const ListView = useMemo(
+    () => () => {
+      const uniqueFilteredSchedules = getUniqueData(filteredSchedules);
+
+      return (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Matière</TableHead>
+                    <TableHead>Professeur</TableHead>
+                    <TableHead>Jour</TableHead>
+                    <TableHead>Horaires</TableHead>
+                    <TableHead>Salle</TableHead>
+                    <TableHead>Statut</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {uniqueFilteredSchedules.map((schedule, index) => (
+                    <TableRow key={`list-${schedule.id}-${index}`}>
+                      <TableCell className="font-medium">
+                        {getSubjectName(schedule)}
+                      </TableCell>
+                      <TableCell>{getProfesseurName(schedule)}</TableCell>
+                      <TableCell>{DAY_LABELS[schedule.dayOfWeek]}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          {formatTimeFromISO(schedule.startTime)} -{" "}
+                          {formatTimeFromISO(schedule.endTime)}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={getClassroomColor(schedule.classroom)}
+                        >
+                          {schedule.classroom}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            schedule.status === "ACTIVE"
+                              ? "default"
+                              : "destructive"
+                          }
+                        >
+                          {schedule.status === "ACTIVE" ? "Actif" : "Annulé"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="hover:bg-primary/10"
+                            onClick={() => handleEdit(schedule)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:bg-destructive/10"
+                            onClick={() => handleDeleteClick(schedule)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {uniqueFilteredSchedules.length === 0 && (
+              <div className="text-center py-12">
+                <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">
+                  Aucun horaire trouvé
+                </h3>
+                <p className="text-muted-foreground">
+                  Aucun horaire ne correspond à vos critères de recherche
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      );
+    },
+    [
+      filteredSchedules,
+      getSubjectName,
+      getProfesseurName,
+      getClassroomColor,
+      formatTimeFromISO,
+      handleEdit,
+      handleDeleteClick,
+      getUniqueData,
+    ]
+  );
+
+  // Rendu des options pour les selects
+  const renderClassOptions = useMemo(() => {
+    const uniqueClasses = getUniqueData(classes);
+    return uniqueClasses.map((cls) => (
+      <SelectItem key={`class-select-${cls.id}`} value={cls.id}>
+        {cls.name}
+      </SelectItem>
+    ));
+  }, [classes, getUniqueData]);
+
+  const renderYearOptions = useMemo(() => {
+    const uniqueYears = getUniqueData(academicYears);
+    return uniqueYears.map((year) => (
+      <SelectItem key={`year-select-${year.id}`} value={year.id}>
+        {year.year}
+      </SelectItem>
+    ));
+  }, [academicYears, getUniqueData]);
+
+  const renderDayOptions = useMemo(
+    () =>
+      DAYS.map((day) => (
+        <SelectItem key={`day-select-${day.value}`} value={day.value}>
+          {day.label}
+        </SelectItem>
+      )),
+    []
+  );
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex flex-col items-center justify-center h-[70vh] space-y-4">
+        <div className="relative">
+          <div className="h-16 w-16 rounded-full border-4 border-primary/20"></div>
+          <div className="absolute top-0 left-0 h-16 w-16 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+        </div>
+        <div className="text-center">
+          <h3 className="text-lg font-semibold">Chargement des horaires</h3>
+          <p className="text-muted-foreground">Veuillez patienter...</p>
+        </div>
       </div>
     );
   }
@@ -786,145 +986,56 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   return (
     <div className="space-y-6">
       {/* En-tête */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Gestion des Horaires</h1>
-          <p className="text-muted-foreground">
-            Gérez les horaires de cours pour les classes
+          <h1 className="text-3xl font-bold tracking-tight">Emploi du Temps</h1>
+          <p className="text-muted-foreground mt-1">
+            Gérez et visualisez les horaires de cours
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {selectedClassId && (
-            <Button variant="outline" onClick={handleGenerateTimetable}>
-              <Calendar className="h-4 w-4 mr-2" />
-              Générer automatiquement
-            </Button>
-          )}
-          <Button onClick={() => setIsDialogOpen(true)}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button onClick={handleAddNew} size="sm">
             <Plus className="h-4 w-4 mr-2" />
-            Nouvel horaire
+            Nouveau cours
           </Button>
         </div>
       </div>
 
-      {/* Filtres de classe et année académique */}
+      {/* Filtres rapides */}
       <Card>
-        <CardHeader>
-          <CardTitle>Filtres de classe</CardTitle>
-          <CardDescription>
-            Sélectionnez une classe pour filtrer les assignations et horaires
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="filterClass">Classe</Label>
+              <Label htmlFor="filter-class">Classe</Label>
               <Select
                 value={selectedClassId}
-                onValueChange={handleClassChange}
-                disabled={!!propClassId}
+                onValueChange={setSelectedClassId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une classe" />
+                  <SelectValue placeholder="Toutes les classes" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes les classes</SelectItem>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.name} (Niveau: {cls.level})
-                    </SelectItem>
-                  ))}
+                  {renderClassOptions}
                 </SelectContent>
               </Select>
-              {selectedClassId && selectedClassLevel && (
-                <p className="text-xs text-muted-foreground">
-                  Niveau: {selectedClassLevel}
-                </p>
-              )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="filterAcademicYear">Année académique</Label>
+              <Label htmlFor="filter-year">Année</Label>
               <Select
                 value={selectedAcademicYearId}
-                onValueChange={handleAcademicYearChange}
+                onValueChange={setSelectedAcademicYearId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une année" />
+                  <SelectValue placeholder="Année académique" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les années</SelectItem>
-                  {academicYears.map((year) => (
-                    <SelectItem key={year.id} value={year.id}>
-                      {year.year}
-                      {year.isCurrent ? " (Actuelle)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectContent>{renderYearOptions}</SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="search">Recherche</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="search"
-                  placeholder="Rechercher..."
-                  className="pl-10"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Statistiques */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <div className="text-sm text-muted-foreground">Horaires totaux</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.byDay}</div>
-            <div className="text-sm text-muted-foreground">
-              Jours avec cours
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.active}</div>
-            <div className="text-sm text-muted-foreground">Horaires actifs</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.conflicts}</div>
-            <div className="text-sm text-muted-foreground">
-              Conflits détectés
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filtres avancés */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filtres avancés
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="day">Jour</Label>
+              <Label htmlFor="filter-day">Jour</Label>
               <Select
                 value={filters.dayOfWeek}
                 onValueChange={(value) =>
@@ -936,17 +1047,13 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous les jours</SelectItem>
-                  {days.map((day) => (
-                    <SelectItem key={day.value} value={day.value}>
-                      {day.label}
-                    </SelectItem>
-                  ))}
+                  {renderDayOptions}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="status">Statut</Label>
+              <Label htmlFor="filter-status">Statut</Label>
               <Select
                 value={filters.status}
                 onValueChange={(value) =>
@@ -965,475 +1072,328 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="classroom">Salle</Label>
-              <Input
-                id="classroom"
-                placeholder="Filtrer par salle"
-                value={filters.classroom}
-                onChange={(e) =>
-                  setFilters({ ...filters, classroom: e.target.value })
-                }
-              />
+              <Label htmlFor="search">Recherche</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="search"
+                  placeholder="Matière, professeur..."
+                  className="pl-10"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setFilters({
+                    dayOfWeek: "",
+                    status: "ACTIVE",
+                    classroom: "",
+                    subject: "",
+                    professor: "",
+                  });
+                  setSearchTerm("");
+                  setSelectedClassId("all");
+                  setSelectedAcademicYearId("");
+                }}
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                Réinitialiser
+              </Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Onglets */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="view">
-            <Calendar className="h-4 w-4 mr-2" />
-            Vue calendrier
-          </TabsTrigger>
-          <TabsTrigger value="list">
-            <List className="h-4 w-4 mr-2" />
-            Vue liste
-          </TabsTrigger>
-          <TabsTrigger value="byDay">
-            <Calendar className="h-4 w-4 mr-2" />
-            Par jour
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Vue calendrier */}
-        <TabsContent value="view">
-          <Card>
-            <CardHeader>
-              <CardTitle>Calendrier des horaires</CardTitle>
-              {selectedClassId && (
-                <CardDescription>
-                  Classe: {classes.find((c) => c.id === selectedClassId).name} |
-                  Assignations disponibles: {assignments.length}
-                </CardDescription>
-              )}
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="w-32 p-3 border text-left font-medium bg-muted/50">
-                        Créneaux
-                      </th>
-                      {days.map((day) => (
-                        <th
-                          key={day.value}
-                          className="p-3 border text-center font-medium bg-muted/50"
-                        >
-                          {day.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {timeSlots
-                      .filter((_, index) => index % 2 === 0) // Afficher seulement les heures pleines
-                      .map((timeSlot) => {
-                        const nextIndex = timeSlots.indexOf(timeSlot) + 1;
-                        const endSlot =
-                          nextIndex < timeSlots.length
-                            ? timeSlots[nextIndex]
-                            : "19:30";
-                        return (
-                          <tr key={timeSlot}>
-                            <td className="p-3 border text-center font-medium bg-muted/30">
-                              <div className="flex flex-col">
-                                <span>{timeSlot}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  à
-                                </span>
-                                <span>{endSlot}</span>
-                              </div>
-                            </td>
-                            {days.map((day) => {
-                              const cellSchedules = filteredSchedules.filter(
-                                (schedule) =>
-                                  schedule.dayOfWeek === day.value &&
-                                  schedule.startTime >= timeSlot &&
-                                  schedule.startTime < endSlot
-                              );
-                              return (
-                                <td
-                                  key={`${day.value}-${timeSlot}`}
-                                  className="p-2 border min-w-[180px]"
-                                >
-                                  {cellSchedules.map((schedule) => (
-                                    <ScheduleCard
-                                      key={schedule.id}
-                                      schedule={schedule}
-                                      onEdit={handleEdit}
-                                      onDelete={handleDelete}
-                                    />
-                                  ))}
-                                  {cellSchedules.length === 0 && (
-                                    <div className="text-sm text-muted-foreground italic py-4 text-center">
-                                      Libre
-                                    </div>
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
+      {/* Statistiques */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-700">Total cours</p>
+                <p className="text-3xl font-bold text-blue-900 mt-2">
+                  {stats.total}
+                </p>
               </div>
-            </CardContent>
-          </Card>
+              <div className="p-3 rounded-full bg-blue-500/10">
+                <Calendar className="h-6 w-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-green-700">
+                  Cours actifs
+                </p>
+                <p className="text-3xl font-bold text-green-900 mt-2">
+                  {stats.active}
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-green-500/10">
+                <CheckCircle className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-amber-700">
+                  Jours occupés
+                </p>
+                <p className="text-3xl font-bold text-amber-900 mt-2">
+                  {stats.byDay}
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-amber-500/10">
+                <CalendarDays className="h-6 w-6 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-red-700">
+                  Cours annulés
+                </p>
+                <p className="text-3xl font-bold text-red-900 mt-2">
+                  {stats.cancelled}
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-red-500/10">
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Onglets de vue */}
+      <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)}>
+        <div className="flex items-center justify-between mb-4">
+          <TabsList>
+            <TabsTrigger value="grid">
+              <Grid className="h-4 w-4 mr-2" />
+              Grille
+            </TabsTrigger>
+            <TabsTrigger value="list">
+              <List className="h-4 w-4 mr-2" />
+              Liste
+            </TabsTrigger>
+            <TabsTrigger value="week">
+              <Calendar className="h-4 w-4 mr-2" />
+              Semaine
+            </TabsTrigger>
+          </TabsList>
+
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <CalendarCheck className="h-4 w-4" />
+            <span>
+              Dernière mise à jour: {format(new Date(), "dd/MM/yyyy HH:mm")}
+            </span>
+          </div>
+        </div>
+        <TabsContent value="grid" className="mt-0">
+          <GridView />
+        </TabsContent>
+        <TabsContent value="list" className="mt-0">
+          <ListView />
         </TabsContent>
 
-        {/* Vue liste */}
-        <TabsContent value="list">
+        <TabsContent value="week" className="mt-0">
           <Card>
             <CardHeader>
-              <CardTitle>Liste des horaires</CardTitle>
+              <CardTitle>Vue hebdomadaire</CardTitle>
               <CardDescription>
-                {filteredSchedules.length} horaire(s) trouvé(s)
-                {selectedClassId && ` pour la classe sélectionnée`}
+                Vue d'ensemble des cours de la semaine
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[600px]">
-                <div className="space-y-3">
-                  {filteredSchedules.map((schedule) => (
-                    <ScheduleCard
-                      key={schedule.id}
-                      schedule={schedule}
-                      onEdit={handleEdit}
-                      onDelete={handleDelete}
-                      variant="list"
-                    />
-                  ))}
-                  {filteredSchedules.length === 0 && (
-                    <div className="text-center py-12">
-                      <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">
-                        Aucun horaire
-                      </h3>
-                      <p className="text-muted-foreground">
-                        {selectedClassId
-                          ? "Aucun horaire pour cette classe. Ajoutez un nouvel horaire."
-                          : "Aucun horaire ne correspond aux filtres actuels"}
-                      </p>
-                      {selectedClassId && (
-                        <Button
-                          className="mt-4"
-                          onClick={() => setIsDialogOpen(true)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Ajouter un horaire
-                        </Button>
-                      )}
+              <div className="overflow-x-auto">
+                <div className="min-w-[800px]">
+                  <div className="grid grid-cols-7 border rounded-t-lg bg-muted/50">
+                    <div className="p-4 text-center font-semibold border-r">
+                      Heures
                     </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                    {DAYS.map((day) => (
+                      <div
+                        key={`week-header-${day.value}`}
+                        className="p-4 text-center font-semibold"
+                      >
+                        {day.label}
+                      </div>
+                    ))}
+                  </div>
 
-        {/* Vue par jour */}
-        <TabsContent value="byDay">
-          <Card>
-            <CardHeader>
-              <CardTitle>Horaires par jour</CardTitle>
-              {selectedClassId && (
-                <CardDescription>
-                  Horaires pour la classe:{" "}
-                  {classes.find((c) => c.id === selectedClassId)?.name}
-                </CardDescription>
-              )}
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {days.map((day) => {
-                  const daySchedules = schedulesByDay[day.value] || [];
-                  return (
-                    <Card key={day.value}>
-                      <CardHeader>
-                        <CardTitle className="text-lg">{day.label}</CardTitle>
-                        <CardDescription>
-                          {daySchedules.length} cours
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {daySchedules
-                            .sort((a, b) =>
-                              a.startTime.localeCompare(b.startTime)
-                            )
-                            .map((schedule) => (
-                              <ScheduleCard
-                                key={schedule.id}
-                                schedule={schedule}
-                                onEdit={handleEdit}
-                                onDelete={handleDelete}
-                                variant="compact"
-                              />
-                            ))}
-                          {daySchedules.length === 0 && (
-                            <div className="text-center py-6 text-muted-foreground italic">
-                              Aucun cours ce jour
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                  {/* Créneaux horaires fixes */}
+                  {[
+                    "08:00",
+                    "08:30",
+                    "09:00",
+                    "09:30",
+                    "10:00",
+                    "10:30",
+                    "11:00",
+                    "11:30",
+                    "12:00",
+                    "12:30",
+                    "13:00",
+                    "13:30",
+                    "14:00",
+                    "14:30",
+                    "15:00",
+                    "15:30",
+                    "16:00",
+                    "16:30",
+                    "17:00",
+                    "17:30",
+                    "18:00",
+                    "18:30",
+                  ].map((time) => (
+                    <div
+                      key={`time-row-${time}`}
+                      className="grid grid-cols-7 border-b"
+                    >
+                      <div className="p-3 border-r text-sm text-muted-foreground bg-muted/30">
+                        {time}
+                      </div>
+
+                      {DAYS.map((day) => {
+                        // Convertir l'heure en minutes pour la comparaison
+                        const [hour, minute] = time.split(":").map(Number);
+                        const timeInMinutes = hour * 60 + minute;
+
+                        // Trouver les cours qui débutent à cette heure exacte
+                        const schedulesStartingNow =
+                          schedulesByDay[day.value]?.filter((schedule) => {
+                            try {
+                              const scheduleStart = formatTimeFromISO(
+                                schedule.startTime
+                              );
+                              const [scheduleHour, scheduleMinute] =
+                                scheduleStart.split(":").map(Number);
+                              const scheduleStartMinutes =
+                                scheduleHour * 60 + scheduleMinute;
+
+                              return scheduleStartMinutes === timeInMinutes;
+                            } catch (error) {
+                              return false;
+                            }
+                          }) || [];
+
+                        return (
+                          <div
+                            key={`${day.value}-${time}`}
+                            className="p-2 border-r min-h-[60px]"
+                          >
+                            {schedulesStartingNow.map((schedule, index) => {
+                              const duration = (() => {
+                                const start = formatTimeFromISO(
+                                  schedule.startTime
+                                );
+                                const end = formatTimeFromISO(schedule.endTime);
+
+                                const [startHour, startMinute] = start
+                                  .split(":")
+                                  .map(Number);
+                                const [endHour, endMinute] = end
+                                  .split(":")
+                                  .map(Number);
+
+                                return (
+                                  endHour * 60 +
+                                  endMinute -
+                                  (startHour * 60 + startMinute)
+                                );
+                              })();
+
+                              // Nombre de créneaux à occuper (chaque créneau = 30min)
+                              const slotsToOccupy = Math.ceil(duration / 30);
+
+                              return (
+                                <div
+                                  key={`week-schedule-${schedule.id}-${index}`}
+                                  className="text-xs p-1 mb-1 rounded bg-gradient-to-r from-blue-100 to-blue-200 border border-blue-300"
+                                  style={{
+                                    height: `${slotsToOccupy * 30}px`,
+                                    minHeight: "30px",
+                                  }}
+                                  title={`${getSubjectName(
+                                    schedule
+                                  )} (${formatTimeFromISO(
+                                    schedule.startTime
+                                  )} - ${formatTimeFromISO(schedule.endTime)})`}
+                                >
+                                  <div className="font-medium truncate">
+                                    {getSubjectName(schedule)}
+                                  </div>
+                                  <div className="truncate text-[10px] opacity-75">
+                                    {getProfesseurName(schedule)}
+                                  </div>
+                                  {schedule.classroom && (
+                                    <div className="text-[10px] opacity-60">
+                                      {schedule.classroom}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-      {/* Dialogue de formulaire */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingSchedule ? "Modifier l'horaire" : "Nouvel horaire"}
-            </DialogTitle>
-          </DialogHeader>
+      {/* Formulaire avec assignations filtrées */}
+      <ScheduleForm
+        open={isFormOpen}
+        onClose={() => {
+          setIsFormOpen(false);
+          setSelectedSchedule(null);
+        }}
+        schedule={selectedSchedule}
+        assignments={filteredAssignments}
+        classes={classes}
+        loading={loading}
+        onSubmit={handleFormSubmit}
+        onSuccess={handleFormSuccess}
+        checkScheduleConflicts={checkScheduleConflicts}
+      />
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Assignation */}
-            <div className="space-y-2">
-              <Label htmlFor="assignmentId">Assignation *</Label>
-              <Select
-                value={formData.assignmentId}
-                onValueChange={(value) =>
-                  handleFormChange("assignmentId", value)
-                }
-                disabled={!!assignmentId || assignmentsLoading}
-              >
-                <SelectTrigger
-                  className={errors.assignmentId ? "border-destructive" : ""}
-                >
-                  <SelectValue
-                    placeholder={
-                      assignmentsLoading
-                        ? "Chargement des assignations..."
-                        : "Sélectionner une assignation"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {assignments.length === 0 && !assignmentsLoading ? (
-                    <SelectItem value="none" disabled>
-                      Aucune assignation disponible pour cette classe/niveau
-                    </SelectItem>
-                  ) : (
-                    assignments.map((assignment) => (
-                      <SelectItem key={assignment.id} value={assignment.id}>
-                        {assignment.subject?.name || "Matière non spécifiée"} -{" "}
-                        {assignment.professeur?.firstName}{" "}
-                        {assignment.professeur?.lastName}
-                        {assignment.academicYear &&
-                          ` (${assignment.academicYear.year})`}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {errors.assignmentId && (
-                <p className="text-sm text-destructive">
-                  {errors.assignmentId}
-                </p>
-              )}
-              {selectedClassId && (
-                <p className="text-xs text-muted-foreground">
-                  Assignations filtrées pour la classe sélectionnée (Niveau:{" "}
-                  {selectedClassLevel})
-                </p>
-              )}
-            </div>
-
-            {/* Classe */}
-            <div className="space-y-2">
-              <Label htmlFor="classId">Classe *</Label>
-              <Select
-                value={formData.classId}
-                onValueChange={(value) => {
-                  handleFormChange("classId", value);
-                  handleClassChange(value);
-                }}
-                disabled={!!propClassId}
-              >
-                <SelectTrigger
-                  className={errors.classId ? "border-destructive" : ""}
-                >
-                  <SelectValue placeholder="Sélectionner une classe" />
-                </SelectTrigger>
-                <SelectContent>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.name} (Niveau: {cls.level})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.classId && (
-                <p className="text-sm text-destructive">{errors.classId}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* Jour */}
-              <div className="space-y-2">
-                <Label htmlFor="dayOfWeek">Jour *</Label>
-                <Select
-                  value={formData.dayOfWeek}
-                  onValueChange={(value) =>
-                    handleFormChange("dayOfWeek", value)
-                  }
-                >
-                  <SelectTrigger
-                    className={errors.dayOfWeek ? "border-destructive" : ""}
-                  >
-                    <SelectValue placeholder="Sélectionner un jour" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {days.map((day) => (
-                      <SelectItem key={day.value} value={day.value}>
-                        {day.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.dayOfWeek && (
-                  <p className="text-sm text-destructive">{errors.dayOfWeek}</p>
-                )}
-              </div>
-
-              {/* Salle */}
-              <div className="space-y-2">
-                <Label htmlFor="classroom">Salle</Label>
-                <Input
-                  id="classroom"
-                  value={formData.classroom}
-                  onChange={(e) =>
-                    handleFormChange("classroom", e.target.value)
-                  }
-                  placeholder="Ex: Salle 101"
-                />
-              </div>
-            </div>
-
-            {/* Horaires */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startTime">Heure de début *</Label>
-                <Select
-                  value={formData.startTime}
-                  onValueChange={(value) =>
-                    handleFormChange("startTime", value)
-                  }
-                >
-                  <SelectTrigger
-                    className={errors.startTime ? "border-destructive" : ""}
-                  >
-                    <SelectValue placeholder="HH:mm" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {timeSlots.map((time) => (
-                      <SelectItem key={`start-${time}`} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.startTime && (
-                  <p className="text-sm text-destructive">{errors.startTime}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="endTime">Heure de fin *</Label>
-                <Select
-                  value={formData.endTime}
-                  onValueChange={(value) => handleFormChange("endTime", value)}
-                >
-                  <SelectTrigger
-                    className={errors.endTime ? "border-destructive" : ""}
-                  >
-                    <SelectValue placeholder="HH:mm" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {timeSlots.map((time) => (
-                      <SelectItem key={`end-${time}`} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.endTime && (
-                  <p className="text-sm text-destructive">{errors.endTime}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Récurrence */}
-            <div className="space-y-2">
-              <Label htmlFor="recurrence">Règle de récurrence</Label>
-              <Input
-                id="recurrence"
-                value={formData.recurrence}
-                onChange={(e) => handleFormChange("recurrence", e.target.value)}
-                placeholder="Ex: WEEKLY, BIWEEKLY"
-              />
-            </div>
-
-            {/* Date de fin */}
-            <div className="space-y-2">
-              <Label htmlFor="untilDate">Valable jusqu'au</Label>
-              <Input
-                id="untilDate"
-                type="date"
-                value={formData.untilDate}
-                onChange={(e) => handleFormChange("untilDate", e.target.value)}
-              />
-            </div>
-
-            {/* Notes */}
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => handleFormChange("notes", e.target.value)}
-                placeholder="Notes supplémentaires..."
-                rows={3}
-              />
-            </div>
-
-            <Separator />
-
-            {/* Actions */}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={resetForm}>
-                <X className="h-4 w-4 mr-2" />
-                Annuler
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    En cours...
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4 mr-2" />
-                    {editingSchedule ? "Modifier" : "Créer"}
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Dialogue de suppression */}
+      <DeleteScheduleDialog
+        open={isDeleteDialogOpen}
+        onClose={() => {
+          setIsDeleteDialogOpen(false);
+          setScheduleToDelete(null);
+        }}
+        onConfirm={handleDeleteConfirm}
+        loading={loading}
+        scheduleName={
+          scheduleToDelete ? getSubjectName(scheduleToDelete) : undefined
+        }
+      />
     </div>
   );
 };

@@ -14,6 +14,7 @@ import {
   validateContentType,
   sanitizeInput,
   handleValidationErrors,
+  requireTeacherOrStaff,
 } from "../middleware";
 
 import {
@@ -36,7 +37,7 @@ import {
 const router = Router();
 
 /**
- * @route GET /api/academic/grades
+ * @route GET /api/grades
  * @description Récupère la liste des notes avec pagination et filtres
  * @access Staff/Admin/Teacher
  * @query {number} [page=1] - Numéro de page
@@ -48,7 +49,6 @@ const router = Router();
  * @query {string} [academicYearId] - ID de l'année académique
  * @query {string} [classLevel] - Niveau de classe
  * @query {string} [controlType] - Type de contrôle (CONTROLE_1 à CONTROLE_4)
- * @query {string} [session] - Session (Normale/Reprise)
  * @query {string} [status] - Statut (Valid_/Non_valid_/Reprendre)
  * @query {number} [minGrade] - Note minimale
  * @query {number} [maxGrade] - Note maximale
@@ -60,7 +60,7 @@ const router = Router();
 router.get(
   "/",
   requireAuth,
-  requireStaff,
+  requireTeacherOrStaff,
   sanitizeInput,
   validateGradeFilters,
   handleValidationErrors,
@@ -87,7 +87,7 @@ router.get(
 );
 
 /**
- * @route GET /api/academic/grades/student/:studentId
+ * @route GET /api/grades/student/:studentId
  * @description Récupère toutes les notes d'un étudiant spécifique
  * @access Staff/Admin/Teacher/Student (eux-mêmes)/Parent (leurs enfants)
  * @param {string} studentId - ID de l'étudiant
@@ -110,7 +110,7 @@ router.get("/:id", requireAuth, requireStaff, sanitizeInput, getGradeById);
 /**
  * @route POST /api/academic/grades
  * @description Crée une nouvelle note
- * @access Admin/Teacher
+ * @access Admin/Teacher/professor
  * @body {string} studentId - ID de l'étudiant (requis)
  * @body {string} subjectId - ID de la matière (requis)
  * @body {string} assignmentId - ID de l'affectation (requis)
@@ -125,7 +125,7 @@ router.get("/:id", requireAuth, requireStaff, sanitizeInput, getGradeById);
 router.post(
   "/",
   requireAuth,
-  requireTeacher,
+  requireTeacherOrStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,

@@ -106,7 +106,7 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
       ),
       createNavItem(
         "enrollments",
-        "Inscriptions",
+        "Réinscriptions",
         "UserPlus",
         PERMISSIONS.MANAGE_ENROLLMENTS,
         "Inscriptions et réinscriptions"
@@ -117,13 +117,6 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
         "Award",
         PERMISSIONS.VIEW_PROFESSEURS,
         "Gestion du corps professoral"
-      ),
-      createNavItem(
-        "guardians",
-        "Parents/Tuteurs",
-        "UsersRound",
-        PERMISSIONS.VIEW_GUARDIANS,
-        "Gestion des parents et tuteurs"
       ),
     ],
     academicItems: [
@@ -209,26 +202,13 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.VIEW_EXPENSES,
         "Gestion des annonces"
       ),
-      createNavItem(
-        "settings",
-        "Paramètres",
-        "Settings",
-        PERMISSIONS.VIEW_SETTINGS,
-        "Configuration générale"
-      ),
+
       createNavItem(
         "audit-logs",
         "Journal d'audit",
         "ShieldAlert",
         PERMISSIONS.VIEW_AUDIT_LOGS,
         "Traçabilité des actions"
-      ),
-      createNavItem(
-        "backup",
-        "Sauvegardes",
-        "Database",
-        PERMISSIONS.MANAGE_BACKUP,
-        "Sauvegarde et restauration"
       ),
     ],
   },
@@ -325,74 +305,15 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
     mainItems: [
       createNavItem(
         "dashboard",
-        "Mon tableau de bord",
+        "Tableau de bord",
         "Home",
         PERMISSIONS.VIEW_DASHBOARD,
-        "Espace personnel"
-      ),
-      createNavItem(
-        "grades",
-        "Mes notes",
-        "FileText",
-        PERMISSIONS.VIEW_OWN_GRADES,
-        "Mes résultats académiques"
-      ),
-      createNavItem(
-        "attendance",
-        "Mes présences",
-        "ClipboardCheck",
-        PERMISSIONS.VIEW_OWN_ATTENDANCE,
-        "Mon assiduité"
-      ),
-      createNavItem(
-        "subject",
-        "Mes cours",
-        "BookOpen",
-        PERMISSIONS.VIEW_OWN_SUBJECTS,
-        "Cours inscrits"
-      ),
-      createNavItem(
-        "schedule",
-        "Mon emploi du temps",
-        "CalendarDays",
-        PERMISSIONS.VIEW_SCHEDULE,
-        "Planning personnel"
+        "Vue d'ensemble personnelle"
       ),
     ],
-    academicItems: [
-      createNavItem(
-        "payments",
-        "Mes paiements",
-        "DollarSign",
-        PERMISSIONS.VIEW_OWN_PAYMENTS,
-        "Mes frais de scolarité"
-      ),
-    ],
-    documentItems: [
-      createNavItem(
-        "student-cards",
-        "Ma carte élève",
-        "CreditCard",
-        PERMISSIONS.VIEW_OWN_GRADES,
-        "Télécharger ma carte"
-      ),
-      createNavItem(
-        "transcripts",
-        "Mes bulletins",
-        "ScrollText",
-        PERMISSIONS.VIEW_OWN_GRADES,
-        "Relevés de notes"
-      ),
-    ],
-    adminItems: [
-      createNavItem(
-        "settings",
-        "Mon profil",
-        "Settings",
-        PERMISSIONS.VIEW_SETTINGS,
-        "Paramètres personnels"
-      ),
-    ],
+    academicItems: [],
+    documentItems: [],
+    adminItems: [],
   },
 
   Professeur: {
@@ -422,86 +343,115 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
     mainItems: [
       createNavItem(
         "dashboard",
-        "Tableau de direction",
+        "Tableau de bord",
         "Home",
         PERMISSIONS.VIEW_DASHBOARD,
-        "Vue institutionnelle"
-      ),
-      createNavItem(
-        "analytics",
-        "Statistiques",
-        "ChartBar",
-        PERMISSIONS.VIEW_ANALYTICS,
-        "Indicateurs de performance"
+        "Vue d'ensemble du système"
       ),
       createNavItem(
         "students",
         "Élèves",
         "Users",
         PERMISSIONS.VIEW_STUDENTS,
-        "Effectifs et statistiques"
+        "Gestion des élèves"
+      ),
+      createNavItem(
+        "enrollments",
+        "Réinscriptions",
+        "UserPlus",
+        PERMISSIONS.MANAGE_ENROLLMENTS,
+        "Inscriptions et réinscriptions"
       ),
       createNavItem(
         "professeurs",
         "Professeurs",
         "Award",
         PERMISSIONS.VIEW_PROFESSEURS,
-        "Corps professoral"
+        "Gestion du corps professoral"
       ),
       createNavItem(
-        "grades",
-        "Résultats",
-        "FileBarChart",
-        PERMISSIONS.VIEW_GRADES,
-        "Performances globales"
+        "guardians",
+        "Parents/Tuteurs",
+        "UsersRound",
+        PERMISSIONS.VIEW_GUARDIANS,
+        "Gestion des parents et tuteurs"
       ),
     ],
     academicItems: [
       createNavItem(
-        "reports",
-        "Finances",
-        "Receipt",
-        PERMISSIONS.VIEW_FINANCIALS,
-        "Situation financière"
+        "subject",
+        "Matières",
+        "BookOpen",
+        PERMISSIONS.MANAGE_SUBJECTS,
+        "Gestion des matières"
       ),
       createNavItem(
-        "attendance",
-        "Présences",
-        "ClipboardCheck",
-        PERMISSIONS.VIEW_ATTENDANCE,
-        "Statistiques de présence"
+        "grades",
+        "Notes",
+        "FileText",
+        PERMISSIONS.MANAGE_GRADES,
+        "Saisie et gestion des notes"
       ),
       createNavItem(
-        "announcements",
-        "Communication",
-        "Megaphone",
-        PERMISSIONS.SEND_ANNOUNCEMENTS,
-        "Annonces institutionnelles"
+        "schedule",
+        "Emploi du temps",
+        "CalendarDays",
+        PERMISSIONS.VIEW_SCHEDULE,
+        "Planning des cours"
+      ),
+      createNavItem(
+        "class_assignment",
+        "Catalogue des Cours",
+        "Bookmark",
+        PERMISSIONS.MANAGE_SUBJECTS,
+        "Catalogue de cours par classe"
       ),
     ],
     documentItems: [
       createNavItem(
-        "reports",
-        "Rapports",
-        "FileBarChart",
-        PERMISSIONS.GENERATE_REPORTS,
-        "Documents officiels"
+        "transcripts",
+        "Bulletins",
+        "ScrollText",
+        PERMISSIONS.GENERATE_TRANSCRIPTS,
+        "Édition des bulletins de notes"
       ),
     ],
     adminItems: [
       createNavItem(
-        "settings",
-        "Configuration",
-        "Settings",
+        "classes",
+        "Classes/Niveaux",
+        "Building",
         PERMISSIONS.VIEW_SETTINGS,
-        "Paramètres institution"
+        "Gestion des classes et niveaux"
       ),
       createNavItem(
-        "audit-logs",
-        "Audit",
-        "ShieldAlert",
-        PERMISSIONS.VIEW_AUDIT_LOGS,
-        "Suivi des activités"
+        "fees",
+        "Frais scolaires",
+        "Wallet",
+        PERMISSIONS.MANAGE_FEES,
+        "Gestion des frais de scolarité"
+      ),
+
+      createNavItem(
+        "payments",
+        "Paiements",
+        "DollarSign",
+        PERMISSIONS.VIEW_PAYMENTS,
+        "Gestion des paiements"
+      ),
+      createNavItem(
+        "events",
+        "Evennements",
+        "CalendarDays",
+        PERMISSIONS.VIEW_EXPENSES,
+        "Gestion des evennement"
+      ),
+      createNavItem(
+        "announcements",
+        "Annonces",
+        "Megaphone",
+        PERMISSIONS.VIEW_EXPENSES,
+        "Gestion des annonces"
       ),
     ],
   },

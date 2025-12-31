@@ -8,9 +8,7 @@ import { Router } from "express";
 import {
   requireAuth,
   requireAdmin,
-  requireStaff,
   requireTeacherOrStaff,
-  requireAnyAuth,
   validateRequestBody,
   validateContentType,
   sanitizeInput,

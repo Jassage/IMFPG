@@ -3,6 +3,7 @@
  * @description Service pour la gestion des matières
  */
 
+import { success } from "zod";
 import { PrismaClient, SubjectType } from "../../generated/prisma";
 import { AuditData } from "../types/auth";
 
@@ -25,6 +26,7 @@ export interface CreateSubjectData {
   type: SubjectType;
   passingGrade?: number;
   description?: string;
+  maxGrade: number;
 }
 
 export interface UpdateSubjectData {
@@ -35,6 +37,7 @@ export interface UpdateSubjectData {
   passingGrade?: number;
   description?: string;
   coefficient?: number;
+  maxGrade: number;
 }
 
 export interface ApiResponse {
@@ -189,7 +192,15 @@ export class SubjectService {
     auditData: AuditData
   ) {
     try {
-      const { code, name, coefficient, type, passingGrade, description } = data;
+      const {
+        code,
+        name,
+        coefficient,
+        type,
+        passingGrade,
+        maxGrade,
+        description,
+      } = data;
 
       // Vérifier si le code existe déjà
       const existingSubject = await prisma.subject.findUnique({
@@ -201,6 +212,20 @@ export class SubjectService {
           success: false,
           message: "Une matière avec ce code existe déjà",
           code: "SUBJECT_CODE_EXISTS",
+        };
+      }
+
+      const existsubj = await prisma.subject.findFirst({
+        where: {
+          name,
+        },
+      });
+
+      if (existsubj) {
+        return {
+          success: false,
+          message: "Une matière avec ce nom existe déjà",
+          code: "SUBJECT_NAME_EXISTS",
         };
       }
 
@@ -219,8 +244,9 @@ export class SubjectService {
           name,
           coefficient: coefficient || 1,
           type: type || ("Obligatoire" as SubjectType),
-          passingGrade: passingGrade || 60,
+          passingGrade: passingGrade || 50,
           description,
+          maxGrade: maxGrade,
           createdById: userId,
         },
         include: {
@@ -246,7 +272,6 @@ export class SubjectService {
         },
       };
     } catch (error: any) {
-      console.error("❌ SubjectService - createSubject error:", error);
       throw error;
     }
   }
@@ -267,6 +292,7 @@ export class SubjectService {
         type,
         passingGrade,
         description,
+        maxGrade,
         coefficient,
       } = data;
 
@@ -321,6 +347,7 @@ export class SubjectService {
       if (passingGrade !== undefined) updateData.passingGrade = passingGrade;
       if (description !== undefined) updateData.description = description;
       if (coefficient !== undefined) updateData.coefficient = coefficient;
+      if (maxGrade !== undefined) updateData.maxGrade = maxGrade;
 
       // Mettre à jour la matière
       const updatedSubject = await prisma.subject.update({

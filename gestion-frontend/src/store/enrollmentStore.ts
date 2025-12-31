@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import api from "../services/api";
 import { Enrollment } from "../types/academic";
+import { FeeStructure } from "@/types/enrollementTypes";
 
 type EnrollmentStore = {
   enrollments: Enrollment[];
@@ -324,15 +325,13 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   deleteEnrollment: async (id) => {
     set({ loading: true, error: null });
     try {
-      console.log("🗑️ Suppression inscription:", id);
-      await api.delete(`/enrollments/${id}`);
-      console.log(" Inscription supprimée");
+      await api.delete(`/enrollments/${id}/delete`);
 
       await get().fetchEnrollments(); // Recharge les données
     } catch (err) {
-      console.error(" Failed to delete enrollment:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({ error: "Erreur lors de la suppression de l'inscription" });
+      const errMsg = err.response?.data || err.message || "Unknown error";
+      console.error(" Failed to delete enrollment:", errMsg);
       throw err;
     } finally {
       set({ loading: false });
@@ -440,35 +439,60 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   /**
    * @desc Récupère les structures de frais disponibles
    */
-  getAvailableFeeStructures: async () => {
-    set({ loading: true, error: null });
+  getAvailableFeeStructures: async (): Promise<FeeStructure[]> => {
     try {
-      const response = await api.get("/fee-structures");
+      console.log("🔍 Récupération des structures de frais disponibles...");
+
+      const response = await api.get("/fee-structures?isActive=true");
       console.log("📥 Réponse structures de frais:", response.data);
 
-      // Gérer différents formats de réponse
-      let feeStructures = [];
+      let feeStructures: FeeStructure[] = [];
 
+      // EXTRACTION CORRECTE DES DONNÉES
       if (
-        response.data.feeStructures &&
+        response.data?.data?.feeStructures &&
+        Array.isArray(response.data.data.feeStructures)
+      ) {
+        feeStructures = response.data.data.feeStructures;
+        console.log(
+          "✅ Frais extraits de data.feeStructures:",
+          feeStructures.length
+        );
+      } else if (
+        response.data?.feeStructures &&
         Array.isArray(response.data.feeStructures)
       ) {
         feeStructures = response.data.feeStructures;
+        console.log(
+          "✅ Frais extraits de feeStructures:",
+          feeStructures.length
+        );
       } else if (Array.isArray(response.data)) {
         feeStructures = response.data;
-      } else if (response.data.data && Array.isArray(response.data.data)) {
+        console.log("✅ Frais extraits directement:", feeStructures.length);
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
         feeStructures = response.data.data;
+        console.log("✅ Frais extraits de data:", feeStructures.length);
       }
 
-      console.log(` ${feeStructures.length} structures de frais trouvées`);
+      console.log(`📊 ${feeStructures.length} structures de frais trouvées`);
+
+      // Log détaillé pour déboguer
+      feeStructures.forEach((fee, index) => {
+        console.log(`📋 Frais ${index + 1}:`, {
+          id: fee.id,
+          name: fee.name,
+          amount: fee.amount,
+          academicYear: fee.academicYear,
+          isActive: fee.isActive,
+          academicYearId: fee.academicYearId,
+        });
+      });
+
       return feeStructures;
-    } catch (err) {
-      console.error(" Failed to fetch fee structures:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
-      set({ error: "Erreur lors du chargement des structures de frais" });
-      throw err;
-    } finally {
-      set({ loading: false });
+    } catch (error) {
+      console.error("❌ Erreur récupération frais:", error);
+      return [];
     }
   },
 

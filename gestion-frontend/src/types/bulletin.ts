@@ -4,9 +4,19 @@ export enum GradeStatus {
   Reprendre = "Reprendre",
 }
 
-export enum GradeSession {
-  Normale = "Normale",
-  Reprise = "Reprise",
+export enum ControlType {
+  CONTROLE_1 = "CONTROLE_1",
+  CONTROLE_2 = "CONTROLE_2",
+  CONTROLE_3 = "CONTROLE_3",
+  CONTROLE_4 = "CONTROLE_4",
+}
+
+export enum DocumentType {
+  BULLETIN = "BULLETIN",
+  RELEVE = "RELEVE",
+  ATTESTATION_NIVEAU = "ATTESTATION_NIVEAU",
+  ATTESTATION_FIN_ETUDES = "ATTESTATION_FIN_ETUDES",
+  CERTIFICAT_SCOLARITE = "CERTIFICAT_SCOLARITE",
 }
 
 export interface Student {
@@ -32,14 +42,28 @@ export interface Student {
   grades?: Grade[];
 }
 
+export interface Subject {
+  id: string;
+  code: string;
+  name: string;
+  coefficient: number;
+  type: string;
+  passingGrade: number;
+  maxGrade: number;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdById: string;
+}
+
 export interface Grade {
   id: string;
   studentId: string;
   subjectId: string;
   assignmentId: string;
-  grade: number;
+  grade: number; // Note sur maxGrade
+  normalizedGrade?: number; // Note sur 20
   status: GradeStatus;
-  session: GradeSession;
   controlType: ControlType;
   createdAt: Date;
   academicYearId: string;
@@ -50,19 +74,16 @@ export interface Grade {
   subject?: Subject;
   student?: Student;
   classAssignment?: ClassAssignment;
-}
-
-export interface Subject {
-  id: string;
-  code: string;
-  name: string;
-  coefficient: number;
-  type: string;
-  passingGrade: number;
-  description?: string;
-  createdAt: Date;
-  updatedAt: Date;
-  createdById: string;
+  // Pour les contrôles multiples
+  controlGrades?: Record<
+    ControlType,
+    {
+      grade: number;
+      normalizedGrade?: number;
+      date?: Date;
+      comments?: string;
+    }
+  >;
 }
 
 export interface ClassAssignment {
@@ -93,29 +114,27 @@ export interface Professeur {
   userId?: string;
 }
 
+export interface Enrollment {
+  id?: string;
+  studentId?: string;
+  schoolClass?: {
+    id?: string;
+    name: string;
+    level: string;
+    academicYear?: AcademicYear;
+  };
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface AcademicYear {
   id: string;
   year: string;
-  startDate: Date;
-  endDate: Date;
+  startDate?: Date;
+  endDate?: Date;
   isCurrent: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface Enrollment {
-  id: string;
-  studentId: string;
-  classId: string;
-  enrollmentDate: Date;
-  status: string;
-  academicYearId: string;
-  isReenrollment: boolean;
-  previousEnrollmentId?: string;
-  reenrollmentDate?: Date;
-  reenrollmentNotes?: string;
-  academicYear?: AcademicYear;
-  schoolClass?: SchoolClass;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface SchoolClass {
@@ -129,6 +148,8 @@ export interface SchoolClass {
 }
 
 export interface BulletinData {
+  showAllControls: boolean;
+  statisticsByControl?: Record<string, BulletinStatistics>;
   student: Student;
   academicYear: AcademicYear;
   controlType: ControlType;
@@ -147,13 +168,8 @@ export interface BulletinData {
     documentNumber: string;
     controlPeriod: string;
   };
-}
-
-export interface GradeWithDetails extends Grade {
-  subjectName: string;
-  coefficient: number;
-  passingGrade: number;
-  professeurName: string;
+  selectedControlTypes?: ControlType[];
+  showSelectedControls?: boolean;
 }
 
 export interface BulletinStatistics {
@@ -165,6 +181,8 @@ export interface BulletinStatistics {
   maxGrade?: number;
   rankInClass?: number;
   classAverage?: number;
+  totalSubjects?: number;
+  passingSubjects?: number;
 }
 
 export interface DocumentConfig {
@@ -221,17 +239,51 @@ export interface BulletinGenerationRequest {
   includeComments?: boolean;
 }
 
-export enum ControlType {
-  CONTROLE_1 = "CONTROLE_1",
-  CONTROLE_2 = "CONTROLE_2",
-  CONTROLE_3 = "CONTROLE_3",
-  CONTROLE_4 = "CONTROLE_4",
+export interface GradeWithDetails {
+  id: string;
+  grade: number;
+  normalizedGrade: number; // Note sur 20
+  subjectName: string;
+  coefficient: number;
+  passingGrade: number;
+  maxGrade: number;
+  professeurName: string;
+  session?: string;
+  controlType: ControlType;
+  controlGrades?: {
+    [key in ControlType]?: {
+      grade: number;
+      normalizedGrade?: number;
+      date?: Date;
+      comments?: string;
+    };
+  };
+  subject?: Subject;
+  classAssignment?: {
+    professeur?: {
+      firstName: string;
+      lastName: string;
+    };
+  };
 }
 
-export enum DocumentType {
-  BULLETIN = "BULLETIN",
-  RELEVE = "RELEVE",
-  ATTESTATION_NIVEAU = "ATTESTATION_NIVEAU",
-  ATTESTATION_FIN_ETUDES = "ATTESTATION_FIN_ETUDES",
-  CERTIFICAT_SCOLARITE = "CERTIFICAT_SCOLARITE",
-}
+// Utilitaires pour normaliser les notes
+export const normalizeGrade = (
+  grade: number,
+  maxGrade: number = 20
+): number => {
+  if (maxGrade === 20) return grade;
+  if (maxGrade === 30) return (grade * 20) / 30;
+  if (maxGrade === 10) return grade * 2;
+  return grade;
+};
+
+export const denormalizeGrade = (
+  normalizedGrade: number,
+  maxGrade: number = 20
+): number => {
+  if (maxGrade === 20) return normalizedGrade;
+  if (maxGrade === 30) return (normalizedGrade * 30) / 20;
+  if (maxGrade === 10) return normalizedGrade / 2;
+  return normalizedGrade;
+};

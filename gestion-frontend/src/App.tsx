@@ -16,17 +16,20 @@ import { useDataContext } from "./contexts/DataContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { AppInitializer } from "./components/AppInitializer";
-import { initializeAuthStore, useAuthStore } from "./store/authStore";
+// import { initializeAuthStore, useAuthStore } from "./store/authStore";
 import { useEnrollmentStore } from "./store/enrollmentStore";
 import { useAcademicYearStore } from "./store/academicYearStore";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { ForgotPassword } from "./components/ForgotPassword";
-import { LoginPage } from "./components/login";
+// import { LoginPage } from "./components/login";
 import { useBackupStore } from "./store/backupStore";
 import { UnauthorizedPage } from "./components/UnauthorizedPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import useStudentStore from "./store/studentStore";
 import { ForcePasswordChange } from "./components/auth/ForcePasswordChange";
+import { ToastContainer, toast } from "react-toastify";
+import { useAuthStore } from "./store/authStore";
+import { LoginPage } from "./components/login";
 
 const queryClient = new QueryClient();
 
@@ -69,8 +72,6 @@ const RoleBasedRedirect = () => {
       return <Navigate to="/admin/dashboard" replace />;
     case "Secretaire":
       return <Navigate to="/secretary/dashboard" replace />;
-    case "Parent":
-      return <Navigate to="/parent/dashboard" replace />;
     case "Student":
       return <Navigate to="/student/dashboard" replace />;
     case "Professeur":
@@ -225,7 +226,12 @@ const AppContent = () => {
             path="/professeurs/:id"
             element={
               <ProtectedRoute
-                allowedRoles={["Admin", "Secretaire", "Directeur"]}
+                allowedRoles={[
+                  "Admin",
+                  "Secretaire",
+                  "Directeur",
+                  "Professeur",
+                ]}
               >
                 <Index />
               </ProtectedRoute>
@@ -246,24 +252,6 @@ const AppContent = () => {
                 ]}
               >
                 <ForcePasswordChange />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute
-                allowedRoles={[
-                  "Admin",
-                  "Secretaire",
-                  "Parent",
-                  "Student",
-                  "Professeur",
-                  "Directeur",
-                ]}
-              >
-                <SettingsPage />
               </ProtectedRoute>
             }
           />
@@ -312,7 +300,7 @@ const App = () => {
         console.log("🚀 Initialisation de l'application...");
 
         // 1. Initialiser l'auth UNE SEULE FOIS
-        await initializeAuthStore();
+        // await initializeAuthStore();
 
         // 2. Vérifier l'authentification
         const { isAuthenticated, token, user } = useAuthStore.getState();
@@ -451,7 +439,6 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster title={""} description={""} variant={""} />
-        <Sonner />
         <AppInitializer>
           <AppContent />
         </AppInitializer>
@@ -465,6 +452,18 @@ const AppWrapper = () => {
   return (
     <BrowserRouter>
       <App />
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+      />
     </BrowserRouter>
   );
 };

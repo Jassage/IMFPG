@@ -292,7 +292,7 @@ export const getAcademicYearById = async (req: Request, res: Response) => {
                 id: true,
                 firstName: true,
                 lastName: true,
-                studentId: true,
+                studentCode: true,
               },
             },
           },

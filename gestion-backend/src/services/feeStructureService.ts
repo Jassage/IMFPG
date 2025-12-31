@@ -256,8 +256,6 @@ export class FeeStructureService {
         },
       });
 
-      console.log("✅ Structure créée:", newFeeStructure.id);
-
       return {
         success: true,
         message: "Structure de frais créée avec succès",

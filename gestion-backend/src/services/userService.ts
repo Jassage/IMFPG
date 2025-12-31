@@ -5,7 +5,7 @@
  */
 
 import { PrismaClient } from "../../generated/prisma";
-import { StudentService } from "./studentService";
+import studentService from "./studentService";
 
 const prisma = new PrismaClient();
 
@@ -42,6 +42,7 @@ export class UserService {
             status: true,
           },
         },
+
         studentRecord: {
           select: {
             id: true,
@@ -87,7 +88,6 @@ export class UserService {
       throw new Error("Utilisateur non trouvé");
     }
 
-    // Structure de base du profil
     const profileData: any = {
       id: user.id,
       firstName: user.firstName,
@@ -101,10 +101,18 @@ export class UserService {
       avatar: user.avatar,
     };
 
-    // Données spécifiques au rôle
+    // Même logique de rôle
     switch (user.role) {
       case "Professeur":
         profileData.professeur = user.professeur;
+        break;
+      case "Student":
+        profileData.studentRecord = user.studentRecord || {
+          id: user.id,
+          studentCode: `TEMP-${user.id.substring(0, 8)}`,
+          classId: null,
+          schoolClass: null,
+        };
         break;
       case "Parent":
         profileData.parent = user.parentAccount;
@@ -117,11 +125,6 @@ export class UserService {
             })
           );
         }
-        break;
-      case "Admin":
-      case "Secretaire":
-      case "Directeur":
-        // Pas de données supplémentaires pour ces rôles
         break;
     }
 
@@ -257,6 +260,7 @@ export class UserService {
             status: true,
           },
         },
+
         studentRecord: {
           select: {
             id: true,
@@ -316,20 +320,35 @@ export class UserService {
       avatar: user.avatar,
     };
 
-    // Données spécifiques au rôle
+    // Données spécifiques au rôle - VERSION SIMPLIFIÉE
     switch (user.role) {
       case "Professeur":
         profileData.professeur = user.professeur;
         break;
 
       case "Student":
-        profileData.student = user.studentRecord;
+        console.log(`[DEBUG] Récupération studentRecord pour: ${user.email}`);
+
         if (user.studentRecord) {
-          // Récupérer les données complètes de l'élève
-          const studentProfile = await StudentService.getStudentProfile(
-            user.studentRecord.id
+          profileData.studentRecord = user.studentRecord;
+          console.log(
+            `[DEBUG] StudentRecord trouvé via relation:`,
+            user.studentRecord
           );
-          profileData.studentDetails = studentProfile;
+        } else {
+          console.warn(
+            `[WARN] Aucun studentRecord lié à l'utilisateur ${user.email}`
+          );
+
+          profileData.studentRecord = {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            studentCode: `TEMP-${user.id.substring(0, 8)}`,
+            classId: null,
+            schoolClass: null,
+          };
         }
         break;
 
@@ -349,7 +368,7 @@ export class UserService {
       case "Admin":
       case "Secretaire":
       case "Directeur":
-        // Pas de données supplémentaires pour ces rôles
+        // Pas de données supplémentaires
         break;
     }
 

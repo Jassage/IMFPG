@@ -444,17 +444,6 @@ export const useAuthStore = create<AuthState>()(
       updateActivity: () => {
         set({ lastActivity: Date.now() });
       },
-
-      // RÉCUPÉRATION DES DOYENS POTENTIELS
-      fetchPotentialDeans: async (): Promise<any[]> => {
-        try {
-          const response = await api.get("/users/potential-deans");
-          return response.data;
-        } catch (error) {
-          console.error(" Erreur récupération doyens:", error);
-          throw error;
-        }
-      },
     }),
     {
       name: "auth-storage",

@@ -58,6 +58,7 @@ interface StudentManagementState {
   exportStudents: (filters?: any) => Promise<any>;
   clearError: () => void;
   clearStudents: () => void;
+  findStudentByEmail: (email: string) => Promise<Student | null>;
 }
 
 interface CreateStudentData {
@@ -109,14 +110,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
       const { filters } = get();
       const { search = "", page = 1, limit = 20, status, classId } = params;
 
-      console.log("📡 Fetching students with params:", {
-        search,
-        page,
-        limit,
-        status: status || filters.status,
-        classId: classId || filters.classId,
-      });
-
       const response = await api.get("/students", {
         params: {
           search: search || undefined,
@@ -127,18 +120,14 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
         },
       });
 
-      console.log("✅ API Response complete:", response.data);
-
       const responseData = response.data;
 
-      // CORRECTION CRITIQUE : Structure de la réponse
+      // Structure de la réponse
       let studentsList: Student[] = [];
       let paginationData: Partial<Pagination> = {};
 
       if (responseData.success) {
         // La réponse a deux structures possibles :
-        // 1. responseData.data.students & responseData.data.pagination
-        // 2. responseData.data directement
 
         if (responseData.data && responseData.data.data) {
           // Structure imbriquée : data.data
@@ -157,22 +146,17 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
         }
       }
 
-      console.log("📊 Students parsed:", studentsList);
-      console.log("📊 Pagination parsed:", paginationData);
-
       set({
         students: studentsList,
         loading: false,
         pagination: {
-           page,
+          page,
           limit,
-          total:studentsList.length,
+          total: studentsList.length,
           totalPages: paginationData.totalPages || 1,
         },
       });
     } catch (error: any) {
-      console.error("❌ Error fetching students:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -194,47 +178,51 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     }
   },
   fetchStudentById: async (id: string) => {
-    set({ loading: true });
+    set({ loading: true, error: null });
     try {
-      console.log("📡 Fetching student by ID:", id);
-
       const response = await api.get(`/students/${id}`);
-      console.log("✅ Student details response:", response.data);
 
       const responseData = response.data;
 
-      // CORRECTION ICI : Structure de réponse corrigée
-      let student: Student;
+      let student: Student | null = null;
 
-      if (responseData.success && responseData.data) {
-        student = responseData.data.student || responseData.data;
-      } else {
-        student = responseData.data || responseData;
+      // La réponse contient directement l'étudiant
+      if (responseData?.id) {
+        student = responseData as Student;
+      }
+      // Option 2: La réponse est { success: true, data: student }
+      else if (responseData?.success && responseData?.data) {
+        student = responseData.data as Student;
+
+        // Si c'est encore un objet imbriqué (data.student)
+        if (student && typeof student === "object" && "student" in student) {
+          student = (student as any).student as Student;
+        }
+      }
+      //La réponse est { data: student }
+      else if (responseData?.data && responseData.data.id) {
+        student = responseData.data as Student;
       }
 
-      if (!student) {
-        throw new Error("Aucune donnée d'étudiant trouvée");
-      }
-
+      // Mettre à jour le store
       set({
-        loading: false,
         currentStudent: student,
+        loading: false,
         error: null,
       });
 
       return student;
     } catch (error: any) {
-      console.error("❌ Error fetching student by ID:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
         error.message ||
-        "Erreur de chargement";
+        "Impossible de charger les données de l'étudiant";
 
       set({
         error: errorMessage,
         loading: false,
+        currentStudent: null,
       });
 
       toast({
@@ -247,18 +235,48 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     }
   },
 
+  // Dans votre studentStore.ts, ajoutez :
+  // Dans studentStore.ts, ajouter cette méthode :
+  findStudentByEmail: async (email: string) => {
+    set({ loading: true, error: null });
+
+    try {
+      // Chercher par email
+      const response = await api.get(
+        `/students?email=${encodeURIComponent(email)}`
+      );
+
+      let student = null;
+
+      if (
+        response.data?.data?.students &&
+        response.data.data.students.length > 0
+      ) {
+        student = response.data.data.students[0];
+      } else if (response.data?.students && response.data.students.length > 0) {
+        student = response.data.students[0];
+      }
+
+      set({ loading: false });
+      return student;
+    } catch (error: any) {
+      set({
+        loading: false,
+        error: error.response?.data?.message || "Erreur de recherche",
+      });
+      return null;
+    }
+  },
+
   createStudent: async (studentData: CreateStudentData) => {
     set({ loading: true, error: null });
     try {
-      console.log("📤 Creating student with data:", studentData);
-
       const dataToSend = {
         ...studentData,
         status: studentData.status || "Active",
       };
 
       const response = await api.post("/students", dataToSend);
-      console.log("✅ Create student response:", response.data);
 
       const responseData = response.data;
       let newStudent: Student;
@@ -286,8 +304,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
 
       return newStudent;
     } catch (error: any) {
-      console.error("❌ Error creating student:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -312,10 +328,7 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   updateStudent: async (id: string, studentData: Partial<Student>) => {
     set({ loading: true, error: null });
     try {
-      console.log("📝 Updating student:", id, studentData);
-
       const response = await api.put(`/students/${id}`, studentData);
-      console.log("✅ Update student response:", response.data);
 
       const responseData = response.data;
       let updatedStudent: Student;
@@ -349,8 +362,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
 
       return updatedStudent;
     } catch (error: any) {
-      console.error("❌ Error updating student:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -375,8 +386,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   deleteStudent: async (id: string) => {
     set({ loading: true, error: null });
     try {
-      console.log("🗑️ Deleting student:", id);
-
       await api.delete(`/students/${id}`);
 
       set((state) => ({
@@ -389,8 +398,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
         description: "Étudiant supprimé avec succès",
       });
     } catch (error: any) {
-      console.error("❌ Error deleting student:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -419,13 +426,10 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   ) => {
     set({ loading: true, error: null });
     try {
-      console.log("🔄 Updating student status:", id, status);
-
       const response = await api.put(`/students/${id}/status`, {
         status,
         reason,
       });
-      console.log("✅ Update status response:", response.data);
 
       const responseData = response.data;
       let updatedStudent: Student;
@@ -455,8 +459,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
 
       return updatedStudent;
     } catch (error: any) {
-      console.error("❌ Error updating student status:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -481,12 +483,9 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   assignStudentToClass: async (studentId: string, classId: string) => {
     set({ loading: true, error: null });
     try {
-      console.log("🏫 Assigning student to class:", studentId, classId);
-
       const response = await api.put(`/students/${studentId}/assign-class`, {
         classId,
       });
-      console.log("✅ Assign class response:", response.data);
 
       const responseData = response.data;
       let updatedStudent: Student;
@@ -516,8 +515,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
 
       return updatedStudent;
     } catch (error: any) {
-      console.error("❌ Error assigning student to class:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -543,7 +540,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await api.get("/students/statistics");
-      console.log("📊 Statistics response:", response.data);
 
       const responseData = response.data;
 
@@ -557,8 +553,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
         return responseData.data || responseData;
       }
     } catch (error: any) {
-      console.error("❌ Error fetching statistics:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -578,7 +572,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await api.post("/students/import", { students });
-      console.log("📥 Import response:", response.data);
 
       const responseData = response.data;
       set({ loading: false });
@@ -590,8 +583,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
         return responseData;
       }
     } catch (error: any) {
-      console.error("❌ Error importing students:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -617,8 +608,6 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
       set({ loading: false });
       return response.data;
     } catch (error: any) {
-      console.error("❌ Error exporting students:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||

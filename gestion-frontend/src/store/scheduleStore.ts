@@ -379,7 +379,6 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       });
       return response.data.conflicts || [];
     } catch (error) {
-      console.error("Error checking conflicts:", error);
       return [];
     }
   },
@@ -411,9 +410,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         classAssignments: assignmentsRes.data.assignments || [],
         academicYears: yearsRes.data || [],
       });
-    } catch (error) {
-      console.error("Error loading reference data:", error);
-    }
+    } catch (error) {}
   },
 
   // Utilitaires

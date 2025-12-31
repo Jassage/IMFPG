@@ -14,6 +14,7 @@ import {
   sanitizeInput,
   handleValidationErrors,
   requireTeacher,
+  requireTeacherOrStaff,
 } from "../middleware";
 
 import {
@@ -63,7 +64,7 @@ router.get("/check-cin", checkCINAvailability);
  * @description Récupère la liste des étudiants avec pagination et filtres
  * @access Staff/Admin/Teacher
  */
-router.get("/", requireAuth, requireStaff, sanitizeInput, getStudents);
+router.get("/", requireAuth, sanitizeInput, getStudents);
 
 /**
  * @route GET /api/students/search
@@ -97,7 +98,7 @@ router.get("/export", requireAuth, requireAdmin, sanitizeInput, exportStudents);
  * @description Récupère un étudiant par ID
  * @access Staff/Admin/Teacher
  */
-router.get("/:id", requireAuth, requireStaff, sanitizeInput, getStudentById);
+router.get("/:id", requireAuth, sanitizeInput, getStudentById);
 
 /**
  * @route POST /api/students
@@ -107,7 +108,7 @@ router.get("/:id", requireAuth, requireStaff, sanitizeInput, getStudentById);
 router.post(
   "/",
   requireAuth,
-  requireAdmin,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,

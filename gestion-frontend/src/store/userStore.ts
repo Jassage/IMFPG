@@ -97,7 +97,6 @@ export const useUserStore = create<UserManagementState>((set, get) => ({
     try {
       const { filters } = get();
 
-      
       const response = await api.get(`/auth/users`, {
         params: {
           search: filters.search || undefined,
@@ -150,7 +149,6 @@ export const useUserStore = create<UserManagementState>((set, get) => ({
   createUser: async (userData: CreateUserData) => {
     set({ loading: true, error: null });
     try {
-  
       const response = await api.post("/auth/users", userData);
       const newUser = response.data.data.user;
 
@@ -175,7 +173,6 @@ export const useUserStore = create<UserManagementState>((set, get) => ({
   ) => {
     set({ loading: true, error: null });
     try {
-     
       const { password, ...updateData } = userData;
 
       const response = await api.put(`/auth/users/${id}`, updateData);
@@ -201,7 +198,6 @@ export const useUserStore = create<UserManagementState>((set, get) => ({
   deleteUser: async (id: string) => {
     set({ loading: true, error: null });
     try {
-   
       await api.delete(`/auth/users/${id}`);
 
       set((state) => ({

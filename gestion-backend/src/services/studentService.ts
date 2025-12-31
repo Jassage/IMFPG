@@ -126,6 +126,21 @@ export class StudentService {
           createdAt: true,
           updatedAt: true,
           classId: true,
+          enrollments: {
+            select: {
+              id: true,
+              schoolClass: {
+                select: {
+                  id: true,
+                  name: true,
+                  level: true,
+                },
+              },
+            },
+            orderBy: { enrollmentDate: "desc" },
+
+            take: 1,
+          },
           schoolClass: {
             select: {
               id: true,
@@ -139,6 +154,16 @@ export class StudentService {
               email: true,
               role: true,
             },
+          },
+          studentFees: {
+            select: {
+              id: true,
+              totalAmount: true,
+              dueDate: true,
+              status: true,
+            },
+            orderBy: { dueDate: "desc" },
+            take: 1,
           },
           _count: {
             select: {
@@ -255,7 +280,6 @@ export class StudentService {
           select: {
             id: true,
             grade: true,
-            session: true,
             subject: {
               select: {
                 id: true,
@@ -263,18 +287,6 @@ export class StudentService {
                 coefficient: true,
               },
             },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        },
-        payments: {
-          select: {
-            id: true,
-            amount: true,
-            createdAt: true,
-            paymentMethod: true,
-            status: true,
-            description: true,
           },
           orderBy: { createdAt: "desc" },
           take: 10,
@@ -368,15 +380,6 @@ export class StudentService {
         }
 
         // Vérifier l'unicité du CIN si fourni
-        if (cin) {
-          const existingCIN = await tx.student.findUnique({
-            where: { cin },
-          });
-
-          if (existingCIN) {
-            throw new Error("CIN_ALREADY_EXISTS");
-          }
-        }
 
         // Vérifier que la classe existe si classId est fourni
         let schoolClassConnection = undefined;
@@ -631,44 +634,128 @@ export class StudentService {
   /**
    * Supprime un étudiant
    */
+  /**
+   * Supprime un étudiant
+   */
   async deleteStudent(id: string): Promise<void> {
-    // Vérifier si l'étudiant existe
-    const student = await prisma.student.findUnique({
-      where: { id },
-      include: {
-        user: true,
-        guardians: true,
-        enrollments: true,
-        grades: true,
-        payments: true,
-      },
-    });
-
-    if (!student) {
-      throw new Error("STUDENT_NOT_FOUND");
-    }
-
-    // Utiliser une transaction pour garantir l'intégrité
-    await prisma.$transaction(async (tx) => {
-      // Supprimer les gardiens d'abord
-      if (student.guardians.length > 0) {
-        await tx.guardian.deleteMany({
-          where: { studentId: id },
-        });
-      }
-
-      // Supprimer l'utilisateur associé s'il existe
-      if (student.user) {
-        await tx.user.delete({
-          where: { id: student.user.id },
-        });
-      }
-
-      // Supprimer définitivement l'étudiant
-      await tx.student.delete({
+    try {
+      // Vérifier si l'étudiant existe AVANT la transaction
+      const student = await prisma.student.findUnique({
         where: { id },
+        include: {
+          user: true,
+          guardians: true,
+          enrollments: true,
+          grades: true,
+          studentFees: {
+            include: {
+              payments: true,
+            },
+          },
+        },
       });
-    });
+
+      if (!student) {
+        throw new Error("STUDENT_NOT_FOUND");
+      }
+
+      // Utiliser une transaction pour garantir l'intégrité
+      await prisma.$transaction(
+        async (tx) => {
+          try {
+            // 1. Supprimer les paiements associés aux frais
+            if (student.studentFees && student.studentFees.length > 0) {
+              const feeIds = student.studentFees.map((fee) => fee.id);
+
+              // Supprimer les paiements d'abord
+              await tx.feePayment.deleteMany({
+                where: {
+                  studentFeeId: {
+                    in: feeIds,
+                  },
+                },
+              });
+
+              // Puis supprimer les frais
+              await tx.studentFee.deleteMany({
+                where: {
+                  studentId: id,
+                },
+              });
+            }
+
+            // 2. Supprimer les notes
+            if (student.grades && student.grades.length > 0) {
+              await tx.grade.deleteMany({
+                where: { studentId: id },
+              });
+            }
+
+            // 3. Supprimer les inscriptions
+            if (student.enrollments && student.enrollments.length > 0) {
+              await tx.enrollment.deleteMany({
+                where: { studentId: id },
+              });
+            }
+
+            // 4. Supprimer les gardiens
+            if (student.guardians && student.guardians.length > 0) {
+              await tx.guardian.deleteMany({
+                where: { studentId: id },
+              });
+            }
+
+            // 5. Supprimer l'utilisateur associé s'il existe
+            if (student.user) {
+              await tx.user.delete({
+                where: { id: student.user.id },
+              });
+            }
+
+            // 6. Vérifier à nouveau que l'étudiant existe avant de supprimer
+            const studentExists = await tx.student.findUnique({
+              where: { id },
+              select: { id: true },
+            });
+
+            if (!studentExists) {
+              throw new Error("STUDENT_ALREADY_DELETED");
+            }
+
+            // 7. Supprimer définitivement l'étudiant
+            await tx.student.delete({
+              where: { id },
+            });
+          } catch (error: any) {
+            // Log l'erreur avec un message court pour l'audit
+            console.error("Erreur lors de la suppression de l'étudiant:", {
+              studentId: id,
+              error: error.message?.substring(0, 100) || "Erreur inconnue",
+              code: error.code,
+            });
+
+            // Relancer l'erreur pour la gestion externe
+            throw error;
+          }
+        },
+        {
+          maxWait: 10000,
+          timeout: 30000,
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        }
+      );
+    } catch (error: any) {
+      // Log l'erreur finale avec un message court
+      console.error("Échec de la suppression de l'étudiant:", {
+        studentId: id,
+        error: error.message?.substring(0, 200) || "Erreur inconnue",
+      });
+
+      // Propager l'erreur avec un message court pour l'audit
+      throw new Error(
+        `Échec de suppression: ${error.message?.substring(0, 100) || "Erreur inconnue"}`
+      );
+    }
   }
 
   /**
@@ -1162,6 +1249,228 @@ export class StudentService {
     });
 
     return !existingStudent;
+  }
+
+  /**
+   * Récupère le profil complet d'un étudiant par son ID utilisateur
+   */
+  async getStudentProfile(userId: string): Promise<any> {
+    // Trouver l'étudiant associé à cet utilisateur
+    const student = await prisma.student.findFirst({
+      where: {
+        user: {
+          id: userId,
+        },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        studentCode: true,
+        email: true,
+        phone: true,
+        dateOfBirth: true,
+        placeOfBirth: true,
+        address: true,
+        photo: true,
+        bloodGroup: true,
+        allergies: true,
+        disabilities: true,
+        status: true,
+        sexe: true,
+        cin: true,
+        createdAt: true,
+        updatedAt: true,
+        classId: true,
+        schoolClass: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+            capacity: true,
+            status: true,
+          },
+        },
+        enrollments: {
+          select: {
+            id: true,
+            academicYearId: true,
+            enrollmentDate: true,
+            status: true,
+            academicYear: {
+              select: {
+                id: true,
+                year: true,
+                isCurrent: true,
+              },
+            },
+            schoolClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+          orderBy: { enrollmentDate: "desc" },
+          take: 5,
+        },
+        guardians: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            relationship: true,
+            isPrimary: true,
+          },
+          orderBy: { isPrimary: "desc" },
+        },
+        studentFees: {
+          select: {
+            id: true,
+            totalAmount: true,
+            paidAmount: true,
+            dueDate: true,
+            status: true,
+          },
+        },
+        _count: {
+          select: {
+            grades: true,
+
+            studentFees: true,
+          },
+        },
+      },
+    });
+
+    if (!student) {
+      throw new Error("STUDENT_NOT_FOUND");
+    }
+
+    // Récupérer les notes récentes
+    const recentGrades = await prisma.grade.findMany({
+      where: {
+        studentId: student.id,
+      },
+      select: {
+        id: true,
+        grade: true,
+
+        status: true,
+        controlType: true,
+        subject: {
+          select: {
+            id: true,
+            name: true,
+            coefficient: true,
+            code: true,
+          },
+        },
+        academicYear: {
+          select: {
+            id: true,
+            year: true,
+          },
+        },
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+
+    // Calculer la moyenne générale
+    const grades = await prisma.grade.findMany({
+      where: {
+        studentId: student.id,
+      },
+      select: {
+        grade: true,
+        subject: {
+          select: {
+            coefficient: true,
+          },
+        },
+      },
+    });
+
+    let totalWeighted = 0;
+    let totalCoefficient = 0;
+
+    grades.forEach((grade) => {
+      const coefficient = grade.subject?.coefficient || 1;
+      totalWeighted += grade.grade * coefficient;
+      totalCoefficient += coefficient;
+    });
+
+    const average = totalCoefficient > 0 ? totalWeighted / totalCoefficient : 0;
+
+    // Récupérer les frais en attente
+    const pendingFees = await prisma.studentFee.findMany({
+      where: {
+        studentId: student.id,
+        OR: [{ status: "Pending" }, { status: "Partially_Paid" }],
+      },
+      select: {
+        id: true,
+        feeStructure: {
+          select: {
+            name: true,
+            description: true,
+          },
+        },
+        totalAmount: true,
+        paidAmount: true,
+        dueDate: true,
+        status: true,
+      },
+      orderBy: { dueDate: "asc" },
+      take: 5,
+    });
+
+    // Récupérer les paiements récents
+    const feeIds = student.studentFees?.map((f) => f.id) ?? [];
+    const recentPayments =
+      feeIds.length === 0
+        ? []
+        : await prisma.feePayment.findMany({
+            where: {
+              studentFeeId: { in: feeIds },
+            },
+            select: {
+              id: true,
+              amount: true,
+              paymentMethod: true,
+              description: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+            take: 5,
+          });
+
+    return {
+      ...student,
+      academicProfile: {
+        average: parseFloat(average.toFixed(2)),
+        totalGrades: grades.length,
+        recentGrades,
+      },
+      financialProfile: {
+        pendingFees,
+        recentPayments,
+        totalPending: pendingFees.reduce(
+          (sum, fee) => sum + (fee.totalAmount - fee.paidAmount),
+          0
+        ),
+      },
+
+      summary: {
+        totalGrades: student._count.grades,
+        totalFees: student._count.studentFees,
+      },
+    };
   }
 }
 

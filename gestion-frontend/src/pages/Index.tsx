@@ -74,7 +74,6 @@ import { StudentsManager } from "@/components/StudentsManager";
 import { SystemBackupManager } from "@/components/SystemBackupManager";
 import { GuardiansManager } from "@/components/GuardiansManager";
 import ClassAssignmentManager from "@/components/ClassAssignmentManager";
-import AnnouncementsPage from "./AnnouncementsPage";
 import EventManager from "@/components/EventManager";
 import { ClassTimetable } from "@/components/ClassTimetable";
 import { PaymentManager } from "@/components/PaymentManager";
@@ -83,8 +82,9 @@ import { TimetableManager } from "@/components/TimetableManager";
 import { GradeManager } from "@/components/GradesManager";
 import { usePermissions } from "@/hooks/usePermissions";
 import BulletinPage from "./BulletinPage";
-import SubjectProf from "@/components/SubjectProf";
 import ProfessorGradeManager from "@/components/ProfessorGradesManager";
+import AnnouncementManager from "@/components/AnnouncementManager";
+import TranscriptsPage from "./transcriptPages";
 
 // Types pour les rôles
 type UserRole =
@@ -295,19 +295,6 @@ const Index = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // // Vérifier les permissions
-  // useEffect(() => {
-  //   if (user && !hasPermission(`view_${activeTab}`)) {
-  //     toast({
-  //       title: "Accès non autorisé",
-  //       description:
-  //         "Vous n'avez pas les permissions pour accéder à cette section",
-  //       variant: "destructive",
-  //     });
-  //     setActiveTab("dashboard");
-  //   }
-  // }, [activeTab, user, hasPermission, toast]);
-
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     setShowSearchResults(value.trim().length > 0);
@@ -392,14 +379,8 @@ const Index = () => {
     // Tableau de correspondance pour les composants
     const tabComponents: Partial<Record<ActiveTab, React.ReactNode>> = {
       dashboard: <RoleBasedDashboard role={user.role as UserRole} />,
-      students:
-        user?.role === "Professeur" ? (
-          <div>Vue des élèves pour professeur</div>
-        ) : (
-          <StudentsManager />
-        ),
-      subject:
-        user?.role === "Professeur" ? <SubjectProf /> : <SubjectsManager />,
+      students: <StudentsManager />,
+      subject: <SubjectsManager />,
       grades:
         user?.role === "Professeur" ? (
           <ProfessorGradeManager professorId={user.id} />
@@ -417,11 +398,12 @@ const Index = () => {
       settings: <SettingsPage />,
       "audit-logs": <AuditLogsManager />,
       analytics: <AnalyticsDashboard />,
-      announcements: <AnnouncementsPage />,
+      announcements: <AnnouncementManager />,
       events: <EventManager />,
-      schedule: <TimetableManager />,
+      schedule: <ScheduleManager />,
       transcripts: <BulletinPage />,
       class_assignment: <ClassAssignmentManager />,
+      // transcripts: <TranscriptsPage />,
     };
 
     // Retourner le composant ou une vue par défaut
@@ -456,7 +438,7 @@ const Index = () => {
     switch (role?.toLowerCase()) {
       case "admin":
         return <Shield className="h-4 w-4 text-red-500" />;
-      case "direction":
+      case "directeur":
         return <GraduationCap className="h-4 w-4 text-purple-500" />;
       case "professeur":
         return <Award className="h-4 w-4 text-blue-500" />;
@@ -654,10 +636,6 @@ const Index = () => {
               )}
             </Button>
 
-            <Button variant="ghost" size="icon" onClick={handleSettingsClick}>
-              <Settings className="h-4 w-4" />
-            </Button>
-
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="rounded-full gap-2">
@@ -714,14 +692,6 @@ const Index = () => {
                   </>
                 )}
 
-                <DropdownMenuItem onClick={handleProfileClick}>
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Mon Profil</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleSettingsClick}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Paramètres</span>
-                </DropdownMenuItem>
                 <DropdownMenuSeparator />
 
                 <div className="px-2 py-1 text-xs text-muted-foreground">

@@ -66,13 +66,7 @@ router.get("/:id", requireAuth, requireStaff, sanitizeInput, getScheduleById);
  * @query {string} [startDate] - Date de début (optionnel)
  * @query {string} [endDate] - Date de fin (optionnel)
  */
-router.get(
-  "/class/:classId",
-  requireAuth,
-  requireStaff,
-  sanitizeInput,
-  getClassTimetable
-);
+router.get("/class/:classId", requireAuth, sanitizeInput, getClassTimetable);
 
 /**
  * @route GET /api/academic/schedules/professor/:professeurId

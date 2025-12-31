@@ -221,18 +221,9 @@ const studentSchema = z.object({
     .optional()
     .or(z.literal("")),
 
-  // MODIFIÉ : Statut optionnel (sera toujours "Active" par défaut côté backend)
   status: z.enum(["Active", "Inactive", "Graduated", "Suspended"]).optional(),
 
   sexe: z.string().optional(),
-
-  // SUPPRIMÉ : cin (plus utilisé)
-  // cin: z
-  //   .string()
-  //   .min(8, "Le CIN doit contenir au moins 8 caractères")
-  //   .max(12, "Le CIN ne peut pas dépasser 12 caractères")
-  //   .optional()
-  //   .or(z.literal("")),
 
   // Inscription à la classe
   classId: z
@@ -367,9 +358,7 @@ export const StudentForm = ({
       bloodGroup: EMPTY_VALUES.NO_BLOOD_GROUP,
       allergies: "",
       disabilities: "",
-      // MODIFIÉ : Pas de statut par défaut dans le formulaire, sera géré côté backend
       sexe: EMPTY_VALUES.NO_SEX,
-      // SUPPRIMÉ : cin
       classId: "",
       academicYearId: "",
       guardians: [
@@ -404,10 +393,6 @@ export const StudentForm = ({
         return;
       }
 
-      console.log(
-        "Mode édition - Chargement des données de l'étudiant:",
-        student.id
-      );
       setIsLoadingDetails(true);
       setServerError(null);
 
@@ -418,15 +403,6 @@ export const StudentForm = ({
         if (!fullStudent) {
           throw new Error("Impossible de charger les données de l'étudiant");
         }
-
-        console.log("✅ Étudiant chargé avec succès:", {
-          id: fullStudent.id,
-          name: `${fullStudent.firstName} ${fullStudent.lastName}`,
-          hasGuardians: fullStudent.guardians?.length > 0,
-          hasEnrollments: fullStudent.enrollments?.length > 0,
-          classId: fullStudent.classId,
-          status: fullStudent.status,
-        });
 
         // Préparer les données pour le formulaire
         const studentData: Partial<StudentFormData> = {
@@ -441,10 +417,8 @@ export const StudentForm = ({
           bloodGroup: fullStudent.bloodGroup || EMPTY_VALUES.NO_BLOOD_GROUP,
           allergies: fullStudent.allergies || "",
           disabilities: fullStudent.disabilities || "",
-          // MODIFIÉ : Garder le statut existant pour l'édition
           status: (fullStudent.status as "Active") || "Active",
           sexe: fullStudent.sexe || EMPTY_VALUES.NO_SEX,
-          // SUPPRIMÉ : cin
           classId: fullStudent.classId || EMPTY_VALUES.NO_CLASS,
         };
 
@@ -511,8 +485,6 @@ export const StudentForm = ({
           description: "Les données de l'étudiant ont été chargées avec succès",
         });
       } catch (error: any) {
-        console.error("❌ Erreur lors du chargement des données:", error);
-
         const errorMessage =
           error.message || "Erreur lors du chargement des données";
         setServerError(errorMessage);
@@ -645,15 +617,6 @@ export const StudentForm = ({
 
   // Soumission du formulaire
   const handleSubmit = async (data: StudentFormData) => {
-    console.log("📤 Soumission du formulaire:", {
-      mode: student ? "Édition" : "Création",
-      data: {
-        ...data,
-        guardiansCount: data.guardians.length,
-        // Le statut n'est pas envoyé, sera "Active" par défaut côté backend
-      },
-    });
-
     setIsSubmitting(true);
     setValidationErrors([]);
     setServerError(null);
@@ -669,7 +632,6 @@ export const StudentForm = ({
         dateOfBirth: data.dateOfBirth || undefined,
         placeOfBirth: data.placeOfBirth ? data.placeOfBirth.trim() : "",
         address: data.address ? data.address.trim() : "",
-        // SUPPRIMÉ : cin
         allergies: data.allergies ? data.allergies.trim() : "",
         disabilities: data.disabilities ? data.disabilities.trim() : "",
         bloodGroup:
@@ -677,7 +639,6 @@ export const StudentForm = ({
             ? undefined
             : data.bloodGroup,
         sexe: data.sexe === EMPTY_VALUES.NO_SEX ? undefined : data.sexe,
-        // MODIFIÉ : Ne pas envoyer le statut pour la création, il sera "Active" par défaut
         ...(student && data.status ? { status: data.status } : {}),
         guardians: data.guardians.map((guardian) => ({
           ...guardian,
@@ -689,14 +650,11 @@ export const StudentForm = ({
         })),
       };
 
-      console.log("✅ Données nettoyées pour soumission:", cleanData);
 
       await onSubmit(cleanData);
 
       // Le toast de succès est géré par le parent
     } catch (error: any) {
-      console.error("❌ Erreur lors de la soumission:", error);
-
       // Gestion des erreurs de validation du serveur
       if (error.response?.data?.errors) {
         const errors = Object.values(
@@ -706,7 +664,8 @@ export const StudentForm = ({
 
         toast({
           title: "Erreur de validation",
-          description: "Veuillez vérifier les données saisies",
+          description:
+            errors.join(" ") || "Veuillez vérifier les données saisies",
           variant: "destructive",
         });
       } else {
@@ -837,7 +796,7 @@ export const StudentForm = ({
         <div className="flex flex-col items-center justify-center py-12">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
           <p className="text-lg font-medium text-gray-700 mb-2">
-            Chargement des données de l'étudiant...
+            Chargement des données de l'élève...
           </p>
           <p className="text-sm text-gray-500">
             Veuillez patienter pendant le chargement des informations
@@ -875,7 +834,7 @@ export const StudentForm = ({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">
-            {student ? "Modifier l'étudiant" : "Nouvel étudiant"}
+            {student ? "Modifier l'élève" : "Nouvel élève"}
           </h3>
           <Badge variant={completedTabs.size === 3 ? "default" : "outline"}>
             {calculateCompletion()}% complété
@@ -908,7 +867,7 @@ export const StudentForm = ({
       >
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="student-info" className="relative">
-            Informations étudiant
+            Informations élèves
             {completedTabs.has("student-info") &&
               !form.formState.errors.firstName &&
               !form.formState.errors.lastName &&

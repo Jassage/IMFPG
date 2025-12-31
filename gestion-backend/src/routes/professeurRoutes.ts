@@ -16,6 +16,7 @@ import {
   requireAdmin,
   requireAuth,
   requireStaff,
+  requireTeacherOrStaff,
   sanitizeInput,
   validateContentType,
   validateRequestBody,
@@ -136,7 +137,7 @@ router.put(
 router.get(
   "/:id/full-details",
   requireAuth,
-  requireAdmin,
+  requireTeacherOrStaff,
   getProfesseurFullDetails
 );
 
@@ -163,4 +164,5 @@ router.delete(
   requireAuth,
   detachUserFromProfesseur
 );
+
 export default router;

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { ControlType } from "@/types/bulletin";
-import { Calendar, Filter, Layers, User } from "lucide-react";
+import { Calendar, Filter, Layers, Loader2 } from "lucide-react";
 
 interface FilterPanelProps {
   filters: {
@@ -46,9 +46,22 @@ const CLASS_LEVELS = [
 
 export const FilterPanel: React.FC<FilterPanelProps> = ({
   filters,
-  academicYears,
+  academicYears = [],
   onFilterChange,
 }) => {
+  const [loading, setLoading] = useState(false);
+
+  // Initialiser avec une année académique par défaut si nécessaire
+  useEffect(() => {
+    if (academicYears.length > 0 && !filters.academicYearId) {
+      const currentYear = academicYears.find((year) => year.isCurrent);
+      const defaultYear = currentYear || academicYears[0];
+      if (defaultYear) {
+        onFilterChange({ academicYearId: defaultYear.id });
+      }
+    }
+  }, [academicYears, filters.academicYearId, onFilterChange]);
+
   return (
     <Card>
       <CardHeader>
@@ -63,23 +76,57 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
           <Label className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
             Année Académique
+            {loading && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
           </Label>
           <Select
             value={filters.academicYearId}
-            onValueChange={(value) => onFilterChange({ academicYearId: value })}
+            onValueChange={(value) => {
+              console.log("Selected academic year:", value);
+              onFilterChange({ academicYearId: value });
+            }}
+            disabled={academicYears.length === 0}
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Sélectionner une année" />
+            <SelectTrigger className="w-full">
+              <SelectValue
+                placeholder={
+                  academicYears.length === 0
+                    ? "Chargement..."
+                    : "Sélectionner une année"
+                }
+              />
             </SelectTrigger>
             <SelectContent>
-              {academicYears.map((year) => (
-                <SelectItem key={year.id} value={year.id}>
-                  {year.year}
-                  {year.isCurrent && " (En cours)"}
+              {academicYears.length === 0 ? (
+                <SelectItem value="loading" disabled>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Chargement des années...
+                  </div>
                 </SelectItem>
-              ))}
+              ) : (
+                <>
+                  <SelectItem value="all">Toutes les années</SelectItem>
+                  {academicYears.map((year) => (
+                    <SelectItem key={year.id} value={year.id}>
+                      <div className="flex items-center justify-between">
+                        <span>{year.year}</span>
+                        {year.isCurrent && (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-2">
+                            En cours
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </>
+              )}
             </SelectContent>
           </Select>
+          {academicYears.length > 0 && (
+            <p className="text-xs text-gray-500">
+              {academicYears.length} année(s) académique(s) disponible(s)
+            </p>
+          )}
         </div>
 
         {/* Type de contrôle */}

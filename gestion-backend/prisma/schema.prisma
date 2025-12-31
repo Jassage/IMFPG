@@ -135,7 +135,8 @@ model Subject {
   name         String
   coefficient  Int               @default(1) 
   type         SubjectType
-  passingGrade Int               @default(60)
+  passingGrade Int               @default(50)
+  maxGrade     Int
   description  String?
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
@@ -276,31 +277,10 @@ model AcademicYear {
   assignments ClassAssignment[]
   enrollments Enrollment[]
   grades      Grade[]
-  payments    Payment[]
   studentFees StudentFee[]
   transcripts Transcript[]
 
   @@map("academic_years")
-}
-
-model Expense {
-  id            String        @id @default(cuid())
-  category      String
-  amount        Float
-  description   String?
-  date          DateTime
-  paymentMethod String
-  status        ExpenseStatus @default(Pending)
-  createdBy     String
-  approvedBy    String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  approver      User?         @relation("ExpenseApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
-  creator       User          @relation("ExpenseCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-
-  @@index([approvedBy])
-  @@index([createdBy])
-  @@map("expenses")
 }
 
 model FeeStructure {
@@ -431,7 +411,6 @@ model Grade {
   assignmentId   String
   grade          Float
   status         GradeStatus
-  session        GradeSession
   controlType       ControlType
   createdAt      DateTime     @default(now())
   academicYearId String
@@ -446,33 +425,13 @@ model Grade {
   classAssignment  ClassAssignment   @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   transcriptGrades TranscriptGrade[]
 
-  @@unique([studentId, subjectId, academicYearId, controlType, session, assignmentId])
+  @@unique([studentId, subjectId, academicYearId, controlType, assignmentId])
   @@index([academicYearId, controlType])
   @@index([studentId, academicYearId])
   @@index([studentId, subjectId])
   @@index([assignmentId])
   @@index([subjectId])
   @@map("grades")
-}
-
-model Payment {
-  id             String       @id @default(cuid())
-  studentId      String
-  amount         Float
-  type           String
-  status         String
-  paidDate       DateTime?
-  description    String?
-  academicYearId String
-  createdAt      DateTime     @default(now())
-  paymentMethod  String       @default("Cash")
-  updatedAt      DateTime     @default(now())
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@index([academicYearId])
-  @@index([studentId])
-  @@map("payments")
 }
 
 model Professeur {
@@ -493,8 +452,6 @@ model Professeur {
   schedules   Schedule[]
   @@map("professeurs")
 }
-
-
 
 model User {
   id               String     @id @default(cuid())
@@ -520,8 +477,6 @@ model User {
   // Relations
   auditLogs        AuditLog[]
   loginAttempts    LoginAttempt[]
-  approvedExpenses Expense[]      @relation("ExpenseApprover")
-  createdExpenses  Expense[]      @relation("ExpenseCreator")
   professeur       Professeur?
   studentRecord    Student? // Relation avec Student
   createdSubjects  Subject[]      @relation("CreatedSubject")
@@ -559,7 +514,7 @@ model Student {
   enrollments Enrollment[] // Changé de enrollment? à enrollments[]
   grades      Grade[]
   guardians   Guardian[]
-  payments    Payment[]
+
   user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
   studentFees StudentFee[]
   transcripts Transcript[]

@@ -36,16 +36,18 @@ interface ImportResult {
   };
 }
 
-// UNE SEULE DÉFINITION DE L'INTERFACE
+// Interface corrigée
 export interface GradeStore {
   grades: Grade[];
   loading: boolean;
-  isSaving: boolean; // Cette propriété était manquante dans l'initialisation
+  isSaving: boolean;
   error: string | null;
+  studentGrades: Grade[]; // NOUVEAU: Stocker les notes spécifiques à l'étudiant
+  gradeStatistics: any; // NOUVEAU: Stocker les statistiques
 
   fetchGrades: (filters?: GradeFilters) => Promise<void>;
   fetchGradeById: (id: string) => Promise<Grade>;
-  fetchStudentGrades: (studentId: string) => Promise<Grade[]>;
+  fetchStudentGrades: (studentId: string) => Promise<Grade[]>; // Cette fonction doit mettre à jour le store
   fetchSubjectGrades: (subjectId: string) => Promise<Grade[]>;
 
   addGrade: (
@@ -104,13 +106,15 @@ export interface GradeStore {
 }
 
 export const useGradeStore = create<GradeStore>((set, get) => ({
-  // ÉTAT INITIAL - AJOUTEZ isSaving
+  // ÉTAT INITIAL
   grades: [],
+  studentGrades: [], // NOUVEAU
+  gradeStatistics: null, // NOUVEAU
   loading: false,
-  isSaving: false, // ← AJOUTEZ CETTE LIGNE
+  isSaving: false,
   error: null,
 
-  // store/gradeStore.ts - CORRIGER LA FONCTION fetchGrades
+  // fetchGrades reste inchangé
   fetchGrades: async (filters = {}) => {
     set({ loading: true, error: null });
     try {
@@ -124,56 +128,35 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
 
       const response = await api.get(`/grades?${params}`);
 
-      console.log("📊 API Response for grades:", {
-        status: response.status,
-        data: response.data,
-        isArray: Array.isArray(response.data),
-        hasData: !!response.data?.data,
-        hasGrades: !!response.data?.grades,
-        dataContent: response.data?.data, // Ajout pour debug
-      });
-
       if (response.status !== 200) {
         throw new Error(`Erreur HTTP ${response.status}`);
       }
 
       let gradesData = [];
 
-      // CORRECTION : La structure de réponse semble être {success: true, message: string, data: {...}}
-      // Regardons d'abord dans response.data.data.grades ou response.data.data
       if (response.data?.success && response.data.data) {
-        // Si data contient directement un tableau
         if (Array.isArray(response.data.data)) {
           gradesData = response.data.data;
-        }
-        // Si data est un objet avec une propriété grades
-        else if (
+        } else if (
           response.data.data.grades &&
           Array.isArray(response.data.data.grades)
         ) {
           gradesData = response.data.data.grades;
-        }
-        // Si data est un objet avec une propriété results
-        else if (
+        } else if (
           response.data.data.results &&
           Array.isArray(response.data.data.results)
         ) {
           gradesData = response.data.data.results;
-        }
-        // Si data est un objet et nous devons extraire les valeurs
-        else if (
+        } else if (
           typeof response.data.data === "object" &&
           response.data.data !== null
         ) {
-          // Essayons d'extraire toutes les valeurs qui sont des objets avec un id
           const allValues = Object.values(response.data.data);
           gradesData = allValues.filter(
             (item) => item && typeof item === "object" && "id" in item
           );
         }
-      }
-      // Structure alternative directe
-      else if (Array.isArray(response.data)) {
+      } else if (Array.isArray(response.data)) {
         gradesData = response.data;
       } else if (response.data?.grades && Array.isArray(response.data.grades)) {
         gradesData = response.data.grades;
@@ -184,8 +167,6 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         gradesData = response.data.results;
       }
 
-      console.log("✅ Extracted grades:", gradesData);
-
       set({
         grades: gradesData,
         loading: false,
@@ -193,7 +174,6 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Erreur inconnue";
-      console.error("❌ Error fetching grades:", errorMessage);
       set({ error: errorMessage, loading: false });
       throw error;
     }
@@ -219,7 +199,16 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
   },
 
   fetchStudentGrades: async (studentId: string) => {
+    // ⚠️ CORRECTION 1: Vérifier si déjà en cours
+    const state = get();
+    if (state.loading) {
+      console.log("⏭️ Already loading, skipping:", studentId);
+      return [];
+    }
+
+    console.log(`📊 [START] Fetching grades for student ${studentId}`);
     set({ loading: true, error: null });
+
     try {
       const response = await api.get(`/grades/student/${studentId}`);
 
@@ -227,12 +216,91 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         throw new Error(`Erreur HTTP ${response.status}`);
       }
 
-      set({ loading: false });
-      return response.data?.grades || response.data || [];
+      console.log("📋 Student grades API response structure:", {
+        data: response.data,
+        hasSuccess: !!response.data?.success,
+        hasData: !!response.data?.data,
+        dataKeys: response.data?.data ? Object.keys(response.data.data) : [],
+      });
+
+      let gradesData = [];
+      let statistics = null;
+
+      // ⚠️ CORRECTION 2: Extraction plus robuste
+      if (response.data?.success) {
+        // Cas 1: data.grades existe
+        if (
+          response.data.data?.grades &&
+          Array.isArray(response.data.data.grades)
+        ) {
+          gradesData = response.data.data.grades;
+          statistics = response.data.data.statistics || null;
+        }
+        // Cas 2: data est directement le tableau
+        else if (Array.isArray(response.data.data)) {
+          gradesData = response.data.data;
+        }
+        // Cas 3: data contient un autre nom
+        else if (
+          response.data.data?.results &&
+          Array.isArray(response.data.data.results)
+        ) {
+          gradesData = response.data.data.results;
+        }
+        // Cas 4: data est un objet avec propriétés qui sont des tableaux
+        else if (response.data.data && typeof response.data.data === "object") {
+          const arrays = Object.values(response.data.data).filter((val) =>
+            Array.isArray(val)
+          );
+          if (arrays.length > 0) {
+            gradesData = arrays[0];
+          }
+        }
+      }
+      // Si pas de structure success/data
+      else if (Array.isArray(response.data)) {
+        gradesData = response.data;
+      } else if (response.data?.grades && Array.isArray(response.data.grades)) {
+        gradesData = response.data.grades;
+        statistics = response.data.statistics || null;
+      }
+
+      console.log(`✅ Extracted ${gradesData.length} grades for student`);
+
+      // ⚠️ CORRECTION 3: Une seule mise à jour du state
+      const currentState = get();
+
+      set({
+        loading: false,
+        studentGrades: gradesData,
+        gradeStatistics: statistics,
+        // Mettre à jour les notes générales uniquement si nouvelles
+        grades: [
+          ...currentState.grades,
+          ...gradesData.filter(
+            (g) => !currentState.grades.some((existing) => existing.id === g.id)
+          ),
+        ],
+      });
+
+      console.log(
+        `📊 [END] Stored ${gradesData.length} student grades in store`
+      );
+
+      // ⚠️ IMPORTANT: Toujours retourner les données
+      return gradesData;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Erreur inconnue";
-      set({ error: errorMessage, loading: false });
+      console.error("❌ Error fetching student grades:", errorMessage);
+
+      // ⚠️ CORRECTION 4: Toujours arrêter le loading en cas d'erreur
+      set({
+        error: errorMessage,
+        loading: false,
+        studentGrades: [], // Réinitialiser pour éviter les boucles
+      });
+
       throw error;
     }
   },
@@ -254,6 +322,11 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
       set({ error: errorMessage, loading: false });
       throw error;
     }
+  },
+
+  // Ajouter cette fonction pour récupérer les notes du store
+  getStudentGradesFromStore: () => {
+    return get().studentGrades;
   },
 
   addGrade: async (gradeData) => {
@@ -306,15 +379,18 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         grades: state.grades.map((grade) =>
           grade.id === id ? { ...grade, ...updatedGrade } : grade
         ),
+        studentGrades: state.studentGrades.map((grade) =>
+          grade.id === id ? { ...grade, ...updatedGrade } : grade
+        ),
         loading: false,
-        isSaving: false, // ← AJOUTEZ isSaving: false
+        isSaving: false,
       }));
 
       return updatedGrade;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Erreur inconnue";
-      set({ error: errorMessage, loading: false, isSaving: false }); // ← AJOUTEZ isSaving: false
+      set({ error: errorMessage, loading: false, isSaving: false });
       throw error;
     }
   },
@@ -330,6 +406,7 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
 
       set((state) => ({
         grades: state.grades.filter((grade) => grade.id !== id),
+        studentGrades: state.studentGrades.filter((grade) => grade.id !== id),
         loading: false,
       }));
     } catch (error) {
@@ -353,14 +430,12 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
     >[]
   ) => {
     try {
-      console.log(" Starting bulk add for", gradesData.length, "grades");
       set({ loading: true, isSaving: true, error: null });
 
       const createdGrades: Grade[] = [];
 
       try {
         const response = await api.post("/grades/bulk", gradesData);
-        console.log(" Bulk add successful:", response.data);
 
         let gradesArray: Grade[] = [];
 
@@ -385,15 +460,10 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         for (const gradeData of gradesData) {
           try {
             const response = await api.post("/grades", gradeData);
-            console.log(" Grade added for student:", gradeData.studentId);
             createdGrades.push(response.data);
 
             await new Promise((resolve) => setTimeout(resolve, 50));
           } catch (error) {
-            console.error(
-              ` Error adding grade for student ${gradeData.studentId}:`,
-              error
-            );
             const errorMessage =
               error instanceof Error ? error.message : "Erreur inconnue";
             toast.error(errorMessage);
@@ -408,13 +478,10 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         isSaving: false,
       }));
 
-      console.log("📊 Created", createdGrades.length, "grades");
-
       await get().fetchGrades();
 
       return createdGrades;
     } catch (error) {
-      console.error(" Error in bulkAddGrades:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Erreur inconnue";
       toast.error(errorMessage);
@@ -436,10 +503,10 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
     controlType,
     session
   ) => {
-    const { grades } = get();
+    const { studentGrades } = get(); // Utiliser studentGrades plutôt que grades
 
     return (
-      grades.find(
+      studentGrades.find(
         (grade) =>
           grade.studentId === studentId &&
           grade.subjectId === subjectId &&

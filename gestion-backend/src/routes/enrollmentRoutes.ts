@@ -28,6 +28,7 @@ import {
   createBulkEnrollments,
   getEnrollmentHistory,
   getAvailableFeeStructures,
+  deleteEnrollment,
 } from "../controllers/enrollmentController";
 import {
   validateCreateEnrollment,
@@ -106,7 +107,7 @@ router.get(
 router.post(
   "/",
   requireAuth,
-  requireAdmin,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -194,6 +195,19 @@ router.get(
   requireAuth,
   requireStaff,
   getAvailableFeeStructures
+);
+
+/**
+ * @route GET /api/enrollments/:id/delete
+ * @description Supprime une inscription par ID (à utiliser avec prudence)
+ * @access Admin
+ */
+router.delete(
+  "/:id/delete",
+  requireAuth,
+  requireAdmin,
+  sanitizeInput,
+  deleteEnrollment
 );
 
 export default router;

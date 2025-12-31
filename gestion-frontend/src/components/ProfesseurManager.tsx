@@ -17,7 +17,6 @@ import {
   Briefcase,
   ChevronDown,
   ChevronUp,
-  Clock,
   CheckCircle,
   XCircle,
   UserPlus,
@@ -29,16 +28,17 @@ import {
   GraduationCap,
   Award,
   ShieldAlert,
-  CalendarDays,
   Eye,
   ArrowLeft,
   Info,
   UserX,
   Key,
-  MailOpen,
   Link2,
   Unlink,
   Check,
+  AlertTriangleIcon,
+  X,
+  ChevronRight,
 } from "lucide-react";
 import {
   Dialog,
@@ -76,7 +76,6 @@ import {
 import { z } from "zod";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,7 +87,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Professeur } from "@/types/academic";
 import useProfesseurStore, {
@@ -103,6 +101,13 @@ import {
 } from "@/components/ui/tooltip";
 import { ProfesseurDetails } from "./professorDetails";
 import api from "@/services/api";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Fonction pour générer un identifiant unique
 const generateProfesseurId = (
@@ -301,6 +306,13 @@ export const ProfesseursManager = () => {
   });
   const [loadingUsers, setLoadingUsers] = useState(false);
 
+  // États pour le responsive
+  const [isMobile, setIsMobile] = useState(false);
+  const [isMobileViewOpen, setIsMobileViewOpen] = useState(false);
+  const [selectedProfesseurForMobile, setSelectedProfesseurForMobile] =
+    useState<Professeur | StoreProfesseur | null>(null);
+  const [showFiltersDialog, setShowFiltersDialog] = useState(false);
+
   // Initialisation du formulaire
   const {
     register,
@@ -310,8 +322,6 @@ export const ProfesseursManager = () => {
     setValue,
     watch,
     control,
-    trigger,
-    clearErrors,
     setError,
   } = useForm<ProfesseurFormData>({
     resolver: zodResolver(professeurSchema),
@@ -340,6 +350,20 @@ export const ProfesseursManager = () => {
   useEffect(() => {
     fetchProfesseurs();
   }, [fetchProfesseurs, filters]);
+
+  // Détection de la taille de l'écran
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkIfMobile();
+    window.addEventListener("resize", checkIfMobile);
+
+    return () => {
+      window.removeEventListener("resize", checkIfMobile);
+    };
+  }, []);
 
   // Effet pour générer le matricule automatiquement
   useEffect(() => {
@@ -457,6 +481,12 @@ export const ProfesseursManager = () => {
       qualifications: "",
       createUserAccount: false,
     });
+  };
+
+  // Fonction pour ouvrir la vue mobile
+  const handleMobileView = (professeur: Professeur | StoreProfesseur) => {
+    setSelectedProfesseurForMobile(professeur);
+    setIsMobileViewOpen(true);
   };
 
   // Vérifier si l'email est unique
@@ -747,36 +777,6 @@ export const ProfesseursManager = () => {
     }
   };
 
-  // const handleSendInvitation = async (
-  //   professeur: Professeur | StoreProfesseur
-  // ) => {
-  //   if (!professeur.userId) {
-  //     toast({
-  //       title: "Avertissement",
-  //       description: "Ce professeur n'a pas de compte utilisateur associé",
-  //       variant: "destructive",
-  //     });
-  //     return;
-  //   }
-
-  //   try {
-  //     await api.post(`/auth/send-invitation/${professeur.id}`);
-
-  //     toast({
-  //       title: " Invitation envoyée",
-  //       description: "Un email d'invitation a été envoyé au professeur",
-  //     });
-  //   } catch (error: any) {
-  //     toast({
-  //       title: " Erreur",
-  //       description:
-  //         error.response?.data?.message ||
-  //         "Erreur lors de l'envoi de l'invitation",
-  //       variant: "destructive",
-  //     });
-  //   }
-  // };
-
   const attachUserToProfesseur = async (
     professeurId: string,
     userData: any
@@ -946,27 +946,6 @@ export const ProfesseursManager = () => {
       </div>
     );
 
-  if (error) {
-    return (
-      <div className="p-6 rounded-lg border border-red-200 bg-red-50">
-        <div className="flex items-center">
-          <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-          <h3 className="text-lg font-semibold text-red-700">
-            Erreur de chargement
-          </h3>
-        </div>
-        <p className="mt-2 text-red-600">{error}</p>
-        <Button
-          onClick={() => fetchProfesseurs()}
-          variant="outline"
-          className="mt-4 border-red-200 text-red-700 hover:bg-red-100"
-        >
-          Réessayer
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <TooltipProvider>
       <div className="space-y-6">
@@ -991,7 +970,7 @@ export const ProfesseursManager = () => {
                   {(selectedProfesseur?._count?.assignments || 0) > 0 && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
                       <p className="text-amber-800 text-sm">
-                        ⚠️ Ce professeur a{" "}
+                        <AlertTriangleIcon /> Ce professeur a{" "}
                         {selectedProfesseur._count.assignments} cours assignés.
                         La suppression pourrait affecter le planning des cours.
                       </p>
@@ -1034,8 +1013,8 @@ export const ProfesseursManager = () => {
                 ?
                 {actionType === "deactivate" && (
                   <p className="mt-2 text-amber-600 text-sm">
-                    ⚠️ Ce professeur ne pourra plus être assigné à de nouveaux
-                    cours.
+                    <AlertTriangleIcon /> Ce professeur ne pourra plus être
+                    assigné à de nouveaux cours.
                   </p>
                 )}
               </AlertDialogDescription>
@@ -1160,7 +1139,7 @@ export const ProfesseursManager = () => {
                       setAttachUserForm({
                         ...attachUserForm,
                         createIfNotExists: e.target.checked,
-                        userId: "", // Réinitialiser si on passe en mode création
+                        userId: "",
                       })
                     }
                     className="h-4 w-4"
@@ -1213,6 +1192,344 @@ export const ProfesseursManager = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Dialogue pour les filtres mobiles */}
+        <Dialog open={showFiltersDialog} onOpenChange={setShowFiltersDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Filter className="h-5 w-5" />
+                Filtres
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Statut</Label>
+                <Select
+                  value={filters.status}
+                  onValueChange={(value) =>
+                    setFilters({ status: value === "all" ? "" : value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Statut" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="Actif">Actif</SelectItem>
+                    <SelectItem value="Inactif">Inactif</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Spécialité</Label>
+                <Select
+                  value={filters.speciality}
+                  onValueChange={(value) =>
+                    setFilters({ speciality: value === "all" ? "" : value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Spécialité" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes spécialités</SelectItem>
+                    <SelectItem value="Mathématiques">Mathématiques</SelectItem>
+                    <SelectItem value="Physique">Physique</SelectItem>
+                    <SelectItem value="Chimie">Chimie</SelectItem>
+                    <SelectItem value="Sciences de la Vie et de la Terre">
+                      SVT
+                    </SelectItem>
+                    <SelectItem value="Informatique">Informatique</SelectItem>
+                    <SelectItem value="Français">Français</SelectItem>
+                    <SelectItem value="Anglais">Anglais</SelectItem>
+                    <SelectItem value="Arabe">Arabe</SelectItem>
+                    <SelectItem value="Histoire-Géographie">
+                      Histoire-Géo
+                    </SelectItem>
+                    <SelectItem value="Philosophie">Philosophie</SelectItem>
+                    <SelectItem value="Espagnol">Espagnol</SelectItem>
+                    <SelectItem value="Éducation Physique et Sportive">
+                      EPS
+                    </SelectItem>
+                    <SelectItem value="Arts Plastiques">
+                      Arts Plastiques
+                    </SelectItem>
+                    <SelectItem value="Musique">Musique</SelectItem>
+                    <SelectItem value="Économie">Économie</SelectItem>
+                    <SelectItem value="Gestion">Gestion</SelectItem>
+                    <SelectItem value="Autre">Autre</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFilters({ status: "", speciality: "" });
+                  setShowFiltersDialog(false);
+                }}
+              >
+                Réinitialiser
+              </Button>
+              <Button onClick={() => setShowFiltersDialog(false)}>
+                Appliquer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Sheet pour la vue détaillée mobile */}
+        <Sheet open={isMobileViewOpen} onOpenChange={setIsMobileViewOpen}>
+          <SheetContent side="right" className="w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Détails du professeur
+              </SheetTitle>
+            </SheetHeader>
+
+            <ScrollArea className="h-full pr-4">
+              {selectedProfesseurForMobile && (
+                <div className="py-6 space-y-6">
+                  {/* Section Professeur */}
+                  <div className="flex flex-col items-center space-y-4">
+                    <Avatar className="h-20 w-20 border-4">
+                      <AvatarFallback className="text-xl bg-primary/10 text-primary">
+                        {getInitials(
+                          selectedProfesseurForMobile.firstName,
+                          selectedProfesseurForMobile.lastName
+                        )}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="text-center">
+                      <h2 className="text-xl font-bold">
+                        {selectedProfesseurForMobile.firstName}{" "}
+                        {selectedProfesseurForMobile.lastName}
+                      </h2>
+                      <div className="flex items-center justify-center gap-2 mt-2">
+                        <Badge
+                          variant={getStatusBadgeVariant(
+                            selectedProfesseurForMobile.status
+                          )}
+                          className={
+                            selectedProfesseurForMobile.status === "Actif"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-800"
+                          }
+                        >
+                          {selectedProfesseurForMobile.status}
+                        </Badge>
+
+                        {selectedProfesseurForMobile.userId ? (
+                          <Badge variant="outline" className="bg-green-50">
+                            <User className="h-3 w-3 mr-1" />
+                            Compte
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-gray-50">
+                            <UserX className="h-3 w-3 mr-1" />
+                            Sans compte
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Informations de contact */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                      Contact
+                    </h3>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-blue-50 flex items-center justify-center">
+                          <Mail className="h-4 w-4 text-blue-500" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm text-muted-foreground">Email</p>
+                          <p className="font-medium truncate">
+                            {selectedProfesseurForMobile.email}
+                          </p>
+                        </div>
+                      </div>
+
+                      {selectedProfesseurForMobile.phone && (
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-green-50 flex items-center justify-center">
+                            <Phone className="h-4 w-4 text-green-500" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm text-muted-foreground">
+                              Téléphone
+                            </p>
+                            <p className="font-medium font-mono">
+                              {formatPhoneNumber(
+                                selectedProfesseurForMobile.phone
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Informations professionnelles */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                      Informations professionnelles
+                    </h3>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Award className="h-4 w-4 text-purple-500" />
+                          <p className="text-sm text-muted-foreground">
+                            Spécialité
+                          </p>
+                        </div>
+                        <p className="font-medium">
+                          {selectedProfesseurForMobile.speciality ||
+                            "Non spécifié"}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Hash className="h-4 w-4 text-primary" />
+                          <p className="text-sm text-muted-foreground">
+                            Matricule
+                          </p>
+                        </div>
+                        <p className="font-medium font-mono">
+                          {selectedProfesseurForMobile.matricule || "N/A"}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4 text-orange-500" />
+                          <p className="text-sm text-muted-foreground">
+                            Cours assignés
+                          </p>
+                        </div>
+                        <p className="font-medium">
+                          {selectedProfesseurForMobile._count?.assignments || 0}
+                        </p>
+                      </div>
+
+                      {selectedProfesseurForMobile.hireDate && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-blue-500" />
+                            <p className="text-sm text-muted-foreground">
+                              Date d'embauche
+                            </p>
+                          </div>
+                          <p className="font-medium">
+                            {new Date(
+                              selectedProfesseurForMobile.hireDate
+                            ).toLocaleDateString()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="space-y-3 pt-4 border-t">
+                    <Button
+                      variant="default"
+                      className="w-full"
+                      onClick={() => {
+                        setIsMobileViewOpen(false);
+                        handleEdit(selectedProfesseurForMobile);
+                      }}
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Modifier
+                    </Button>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {selectedProfesseurForMobile.userId ? (
+                        <Button
+                          variant="outline"
+                          className="text-amber-600"
+                          onClick={() => {
+                            setIsMobileViewOpen(false);
+                            handleDetachUser(selectedProfesseurForMobile);
+                          }}
+                        >
+                          <Unlink className="h-4 w-4 mr-2" />
+                          Détacher
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          className="text-green-600"
+                          onClick={() => {
+                            setIsMobileViewOpen(false);
+                            handleAttachUser(selectedProfesseurForMobile);
+                          }}
+                        >
+                          <Link2 className="h-4 w-4 mr-2" />
+                          Associer
+                        </Button>
+                      )}
+
+                      {selectedProfesseurForMobile.status === "Actif" ? (
+                        <Button
+                          variant="outline"
+                          className="text-amber-600"
+                          onClick={() => {
+                            setIsMobileViewOpen(false);
+                            setSelectedProfesseur(selectedProfesseurForMobile);
+                            setActionType("deactivate");
+                            setShowStatusDialog(true);
+                          }}
+                        >
+                          <XCircle className="h-4 w-4 mr-2" />
+                          Désactiver
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          className="text-green-600"
+                          onClick={() => {
+                            setIsMobileViewOpen(false);
+                            setSelectedProfesseur(selectedProfesseurForMobile);
+                            setActionType("activate");
+                            setShowStatusDialog(true);
+                          }}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Activer
+                        </Button>
+                      )}
+                    </div>
+
+                    <Button
+                      variant="destructive"
+                      className="w-full"
+                      onClick={() => {
+                        setIsMobileViewOpen(false);
+                        setSelectedProfesseur(selectedProfesseurForMobile);
+                        setShowDeleteDialog(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Supprimer
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
 
         {/* En-tête */}
         <div className="flex flex-col space-y-4 md:flex-row md:justify-between md:items-center md:space-y-0">
@@ -1506,18 +1823,6 @@ export const ProfesseursManager = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label
-                        htmlFor="address"
-                        className="flex items-center gap-2"
-                      >
-                        Adresse
-                      </Label>
-                      <Textarea
-                        id="address"
-                        {...register("address")}
-                        placeholder="Adresse complète..."
-                        rows={2}
-                      />
                       {errors.address && (
                         <p className="text-sm text-red-500 flex items-center gap-1">
                           <AlertCircle className="h-3 w-3" />
@@ -1531,7 +1836,7 @@ export const ProfesseursManager = () => {
                 <Separator />
 
                 {/* Section Professionnelle */}
-                <div className="space-y-4">
+                <div className="space-y-2">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                     <Briefcase className="h-4 w-4" />
                     Informations professionnelles
@@ -1600,111 +1905,6 @@ export const ProfesseursManager = () => {
                         </p>
                       )}
                     </div>
-
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="hireDate"
-                        className="flex items-center gap-2"
-                      >
-                        <CalendarDays className="h-4 w-4" />
-                        Date d'embauche
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="hireDate"
-                          type="date"
-                          {...register("hireDate")}
-                          className={errors.hireDate ? "border-red-500" : ""}
-                          max={new Date().toISOString().split("T")[0]}
-                          min="2000-01-01"
-                        />
-                      </div>
-                      {errors.hireDate && (
-                        <p className="text-sm text-red-500 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {errors.hireDate.message}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Doit être entre 2000-01-01 et aujourd'hui
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="status"
-                        className="flex items-center gap-2"
-                      >
-                        <ShieldAlert className="h-4 w-4" />
-                        Statut
-                      </Label>
-                      <Controller
-                        name="status"
-                        control={control}
-                        render={({ field }) => (
-                          <Select
-                            value={field.value}
-                            onValueChange={field.onChange}
-                          >
-                            <SelectTrigger id="status">
-                              <SelectValue placeholder="Statut" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem
-                                value="Actif"
-                                className="flex items-center gap-2"
-                              >
-                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                Actif
-                              </SelectItem>
-                              <SelectItem
-                                value="Inactif"
-                                className="flex items-center gap-2"
-                              >
-                                <div className="w-2 h-2 rounded-full bg-gray-400"></div>
-                                Inactif
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                      {errors.status && (
-                        <p className="text-sm text-red-500 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {errors.status.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="qualifications"
-                      className="flex items-center gap-2"
-                    >
-                      <Award className="h-4 w-4" />
-                      Qualifications & Diplômes
-                    </Label>
-                    <Textarea
-                      id="qualifications"
-                      {...register("qualifications")}
-                      placeholder="Listez les diplômes, certifications, expériences..."
-                      rows={3}
-                      className="resize-none"
-                    />
-                    <div className="flex justify-between">
-                      {errors.qualifications && (
-                        <p className="text-sm text-red-500 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {errors.qualifications.message}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground ml-auto">
-                        {watch("qualifications")?.length || 0}/500 caractères
-                      </p>
-                    </div>
                   </div>
                 </div>
 
@@ -1730,7 +1930,8 @@ export const ProfesseursManager = () => {
                         <p>Statut: {editingProfesseur.user?.status}</p>
                         {editingProfesseur.user?.mustResetPassword && (
                           <p className="text-amber-600 mt-1">
-                            ⚠️ L'utilisateur doit définir son mot de passe
+                            <AlertTriangleIcon /> L'utilisateur doit définir son
+                            mot de passe
                           </p>
                         )}
                       </div>
@@ -1752,7 +1953,7 @@ export const ProfesseursManager = () => {
                         </Label>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Un compte avec le rôle "PROFESSOR" sera créé
+                        Un compte avec le rôle "Professeur" sera créé
                         automatiquement. Le professeur recevra un email avec ses
                         identifiants.
                       </p>
@@ -1847,53 +2048,87 @@ export const ProfesseursManager = () => {
               />
             </div>
 
-            <div className="flex gap-2 flex-wrap">
-              <Select
-                value={filters.status}
-                onValueChange={(value) =>
-                  setFilters({ status: value === "all" ? "" : value })
-                }
-              >
-                <SelectTrigger className="w-[150px] bg-background">
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Statut" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les statuts</SelectItem>
-                  <SelectItem value="Actif">Actif</SelectItem>
-                  <SelectItem value="Inactif">Inactif</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Filtres pour desktop */}
+            {!isMobile ? (
+              <div className="flex gap-2 flex-wrap">
+                <Select
+                  value={filters.status}
+                  onValueChange={(value) =>
+                    setFilters({ status: value === "all" ? "" : value })
+                  }
+                >
+                  <SelectTrigger className="w-[150px] bg-background">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Statut" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="Actif">Actif</SelectItem>
+                    <SelectItem value="Inactif">Inactif</SelectItem>
+                  </SelectContent>
+                </Select>
 
-              <Select
-                value={filters.speciality}
-                onValueChange={(value) =>
-                  setFilters({ speciality: value === "all" ? "" : value })
-                }
-              >
-                <SelectTrigger className="w-[180px] bg-background">
-                  <Briefcase className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Spécialité" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes spécialités</SelectItem>
-                  <SelectItem value="Mathématiques">Mathématiques</SelectItem>
-                  <SelectItem value="Physique">Physique</SelectItem>
-                  <SelectItem value="Chimie">Chimie</SelectItem>
-                  <SelectItem value="Sciences de la Vie et de la Terre">
-                    SVT
-                  </SelectItem>
-                  <SelectItem value="Informatique">Informatique</SelectItem>
-                  <SelectItem value="Français">Français</SelectItem>
-                  <SelectItem value="Anglais">Anglais</SelectItem>
-                  <SelectItem value="Arabe">Arabe</SelectItem>
-                  <SelectItem value="Histoire-Géographie">
-                    Histoire-Géo
-                  </SelectItem>
-                  <SelectItem value="Philosophie">Philosophie</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+                <Select
+                  value={filters.speciality}
+                  onValueChange={(value) =>
+                    setFilters({ speciality: value === "all" ? "" : value })
+                  }
+                >
+                  <SelectTrigger className="w-[180px] bg-background">
+                    <Briefcase className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Spécialité" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes spécialités</SelectItem>
+                    <SelectItem value="Mathématiques">Mathématiques</SelectItem>
+                    <SelectItem value="Physique">Physique</SelectItem>
+                    <SelectItem value="Chimie">Chimie</SelectItem>
+                    <SelectItem value="Sciences de la Vie et de la Terre">
+                      SVT
+                    </SelectItem>
+                    <SelectItem value="Informatique">Informatique</SelectItem>
+                    <SelectItem value="Français">Français</SelectItem>
+                    <SelectItem value="Anglais">Anglais</SelectItem>
+                    <SelectItem value="Arabe">Arabe</SelectItem>
+                    <SelectItem value="Histoire-Géographie">
+                      Histoire-Géo
+                    </SelectItem>
+                    <SelectItem value="Philosophie">Philosophie</SelectItem>
+                    <SelectItem value="Espagnol">Espagnol</SelectItem>
+                    <SelectItem value="Éducation Physique et Sportive">
+                      EPS
+                    </SelectItem>
+                    <SelectItem value="Arts Plastiques">
+                      Arts Plastiques
+                    </SelectItem>
+                    <SelectItem value="Musique">Musique</SelectItem>
+                    <SelectItem value="Économie">Économie</SelectItem>
+                    <SelectItem value="Gestion">Gestion</SelectItem>
+                    <SelectItem value="Autre">Autre</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              // Filtres pour mobile
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowFiltersDialog(true)}
+                >
+                  <Filter className="h-4 w-4 mr-2" />
+                  Filtres
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setSearchTerm("")}
+                  disabled={!searchTerm}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1952,379 +2187,547 @@ export const ProfesseursManager = () => {
           </Card>
         </div>
 
-        {/* Tableau des professeurs */}
-        <Card className="shadow-lg border">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead className="min-w-[200px]">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        <span>Professeur</span>
-                      </div>
-                    </TableHead>
-                    <TableHead
-                      className="cursor-pointer hover:bg-muted transition-colors min-w-[150px]"
-                      onClick={() => handleSort("email")}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4" />
-                        <span>Contact</span>
-                        <SortIcon columnKey="email" />
-                      </div>
-                    </TableHead>
-                    <TableHead className="min-w-[120px]">
-                      <div className="flex items-center gap-2">
-                        <Award className="h-4 w-4" />
-                        <span>Spécialité</span>
-                      </div>
-                    </TableHead>
-                    <TableHead className="min-w-[120px]">
-                      <div className="flex items-center gap-2">
-                        <Hash className="h-4 w-4" />
-                        <span>Matricule</span>
-                      </div>
-                    </TableHead>
-                    <TableHead className="min-w-[100px]">
-                      <div className="flex items-center gap-2">
-                        <BookOpen className="h-4 w-4" />
-                        <span>Assignations</span>
-                      </div>
-                    </TableHead>
-                    <TableHead className="min-w-[120px]">
-                      <div className="flex items-center gap-2">
-                        <ShieldAlert className="h-4 w-4" />
-                        <span>Statut & Compte</span>
-                      </div>
-                    </TableHead>
-                    <TableHead className="text-right min-w-[140px]">
-                      Actions
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedProfesseurs.map((professeur) => (
-                    <TableRow
-                      key={professeur.id}
-                      className="hover:bg-muted/30 transition-colors"
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-10 w-10 border-2">
-                            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                              {getInitials(
-                                professeur.firstName,
-                                professeur.lastName
-                              )}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="font-semibold">
-                              {professeur.firstName} {professeur.lastName}
-                            </div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {professeur.hireDate
-                                ? `Embauche: ${new Date(
-                                    professeur.hireDate
-                                  ).toLocaleDateString()}`
-                                : "Sans date d'embauche"}
-                            </div>
-                          </div>
+        {/* Tableau des professeurs - Desktop */}
+        {!isMobile ? (
+          <Card className="shadow-lg border hidden md:block">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="min-w-[200px]">
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          <span>Professeur</span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-3 w-3 text-muted-foreground" />
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="text-sm truncate max-w-[150px] cursor-help">
-                                  {professeur.email}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>{professeur.email}</p>
-                              </TooltipContent>
-                            </Tooltip>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:bg-muted transition-colors min-w-[150px]"
+                        onClick={() => handleSort("email")}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4" />
+                          <span>Contact</span>
+                          <SortIcon columnKey="email" />
+                        </div>
+                      </TableHead>
+                      <TableHead className="min-w-[120px]">
+                        <div className="flex items-center gap-2">
+                          <Award className="h-4 w-4" />
+                          <span>Spécialité</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="min-w-[120px]">
+                        <div className="flex items-center gap-2">
+                          <Hash className="h-4 w-4" />
+                          <span>Matricule</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="min-w-[100px]">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4" />
+                          <span>Assignations</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="min-w-[120px]">
+                        <div className="flex items-center gap-2">
+                          <ShieldAlert className="h-4 w-4" />
+                          <span>Statut & Compte</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="text-right min-w-[140px]">
+                        Actions
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedProfesseurs.map((professeur) => (
+                      <TableRow
+                        key={professeur.id}
+                        className="hover:bg-muted/30 transition-colors"
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-10 w-10 border-2">
+                              <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                                {getInitials(
+                                  professeur.firstName,
+                                  professeur.lastName
+                                )}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="font-semibold">
+                                {professeur.firstName} {professeur.lastName}
+                              </div>
+                              <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                {professeur.hireDate
+                                  ? `Embauche: ${new Date(
+                                      professeur.hireDate
+                                    ).toLocaleDateString()}`
+                                  : "Sans date d'embauche"}
+                              </div>
+                            </div>
                           </div>
-                          {professeur.phone && (
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                              <Phone className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm font-mono">
-                                {formatPhoneNumber(professeur.phone)}
-                              </span>
+                              <Mail className="h-3 w-3 text-muted-foreground" />
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-sm truncate max-w-[150px] cursor-help">
+                                    {professeur.email}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{professeur.email}</p>
+                                </TooltipContent>
+                              </Tooltip>
                             </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {professeur.speciality ? (
-                          <Badge
-                            variant="outline"
-                            className="truncate max-w-[120px]"
-                          >
-                            {professeur.speciality}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">
-                            Non spécifié
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-mono font-bold text-primary bg-primary/10 px-2 py-1 rounded inline-block text-sm">
-                          {professeur.matricule || "N/A"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <BookOpen className="h-3 w-3" />
-                            <span className="text-sm">
-                              {professeur._count?.assignments || 0} cours
-                            </span>
+                            {professeur.phone && (
+                              <div className="flex items-center gap-2">
+                                <Phone className="h-3 w-3 text-muted-foreground" />
+                                <span className="text-sm font-mono">
+                                  {formatPhoneNumber(professeur.phone)}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-2">
-                          <Badge
-                            variant={getStatusBadgeVariant(professeur.status)}
-                            className={`${
-                              professeur.status === "Actif"
-                                ? "bg-green-100 text-green-800 hover:bg-green-100 border-green-200"
-                                : "bg-gray-100 text-gray-800 hover:bg-gray-100 border-gray-200"
-                            }`}
-                          >
-                            {professeur.status}
-                          </Badge>
-
-                          {professeur.userId ? (
-                            <div className="flex flex-wrap gap-1">
-                              <Badge
-                                variant="outline"
-                                className="text-xs bg-green-50 text-green-700 border-green-200"
-                              >
-                                <User className="h-2 w-2 mr-1" />
-                                Compte actif
-                              </Badge>
-                              {professeur.user?.mustResetPassword && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs bg-amber-50 text-amber-700 border-amber-200"
-                                >
-                                  <Key className="h-2 w-2 mr-1" />
-                                  MDP à définir
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
+                        </TableCell>
+                        <TableCell>
+                          {professeur.speciality ? (
                             <Badge
                               variant="outline"
-                              className="text-xs bg-gray-50 text-gray-500 border-gray-200"
+                              className="truncate max-w-[120px]"
                             >
-                              <UserX className="h-2 w-2 mr-1" />
-                              Sans compte
+                              {professeur.speciality}
                             </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">
+                              Non spécifié
+                            </span>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewDetails(professeur)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Voir les détails</p>
-                            </TooltipContent>
-                          </Tooltip>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-mono font-bold text-primary bg-primary/10 px-2 py-1 rounded inline-block text-sm">
+                            {professeur.matricule || "N/A"}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <BookOpen className="h-3 w-3" />
+                              <span className="text-sm">
+                                {professeur._count?.assignments || 0} cours
+                              </span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-2">
+                            <Badge
+                              variant={getStatusBadgeVariant(professeur.status)}
+                              className={`${
+                                professeur.status === "Actif"
+                                  ? "bg-green-100 text-green-800 hover:bg-green-100 border-green-200"
+                                  : "bg-gray-100 text-gray-800 hover:bg-gray-100 border-gray-200"
+                              }`}
+                            >
+                              {professeur.status}
+                            </Badge>
 
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                              >
-                                <svg
-                                  className="h-4 w-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
+                            {professeur.userId ? (
+                              <div className="flex flex-wrap gap-1">
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs bg-green-50 text-green-700 border-green-200"
                                 >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                                  />
-                                </svg>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuItem
-                                onClick={() => handleEdit(professeur)}
+                                  <User className="h-2 w-2 mr-1" />
+                                  Compte actif
+                                </Badge>
+                                {professeur.user?.mustResetPassword && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs bg-amber-50 text-amber-700 border-amber-200"
+                                  >
+                                    <Key className="h-2 w-2 mr-1" />
+                                    MDP à définir
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-gray-50 text-gray-500 border-gray-200"
                               >
-                                <Edit className="h-4 w-4 mr-2" />
-                                Modifier
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
+                                <UserX className="h-2 w-2 mr-1" />
+                                Sans compte
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleViewDetails(professeur)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Voir les détails</p>
+                              </TooltipContent>
+                            </Tooltip>
 
-                              {/* Gestion du compte utilisateur */}
-                              {professeur.userId ? (
-                                <>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                >
+                                  <svg
+                                    className="h-4 w-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                                    />
+                                  </svg>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuItem
+                                  onClick={() => handleEdit(professeur)}
+                                >
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Modifier
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+
+                                {/* Gestion du compte utilisateur */}
+                                {professeur.userId ? (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        handleDetachUser(professeur)
+                                      }
+                                      className="text-amber-600"
+                                    >
+                                      <Unlink className="h-4 w-4 mr-2" />
+                                      Détacher le compte
+                                    </DropdownMenuItem>
+                                  </>
+                                ) : (
                                   <DropdownMenuItem
-                                    onClick={() => handleDetachUser(professeur)}
+                                    onClick={() => handleAttachUser(professeur)}
+                                    className="text-green-600"
+                                  >
+                                    <Link2 className="h-4 w-4 mr-2" />
+                                    Associer un compte
+                                  </DropdownMenuItem>
+                                )}
+
+                                <DropdownMenuSeparator />
+                                {professeur.status === "Actif" ? (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setSelectedProfesseur(professeur);
+                                      setActionType("deactivate");
+                                      setShowStatusDialog(true);
+                                    }}
                                     className="text-amber-600"
                                   >
-                                    <Unlink className="h-4 w-4 mr-2" />
-                                    Détacher le compte
+                                    <XCircle className="h-4 w-4 mr-2" />
+                                    Désactiver
                                   </DropdownMenuItem>
-                                </>
-                              ) : (
+                                ) : (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setSelectedProfesseur(professeur);
+                                      setActionType("activate");
+                                      setShowStatusDialog(true);
+                                    }}
+                                    className="text-green-600"
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    Activer
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => handleAttachUser(professeur)}
-                                  className="text-green-600"
+                                  onClick={() => {
+                                    setSelectedProfesseur(professeur);
+                                    setShowDeleteDialog(true);
+                                  }}
+                                  className="text-red-600"
                                 >
-                                  <Link2 className="h-4 w-4 mr-2" />
-                                  Associer un compte
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Supprimer
                                 </DropdownMenuItem>
-                              )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
 
-                              <DropdownMenuSeparator />
-                              {professeur.status === "Actif" ? (
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedProfesseur(professeur);
-                                    setActionType("deactivate");
-                                    setShowStatusDialog(true);
-                                  }}
-                                  className="text-amber-600"
-                                >
-                                  <XCircle className="h-4 w-4 mr-2" />
-                                  Désactiver
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedProfesseur(professeur);
-                                    setActionType("activate");
-                                    setShowStatusDialog(true);
-                                  }}
-                                  className="text-green-600"
-                                >
-                                  <CheckCircle className="h-4 w-4 mr-2" />
-                                  Activer
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedProfesseur(professeur);
-                                  setShowDeleteDialog(true);
-                                }}
-                                className="text-red-600"
+                {sortedProfesseurs.length === 0 && (
+                  <div className="text-center py-16">
+                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-4">
+                      <User className="h-10 w-10 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">
+                      Aucun professeur trouvé
+                    </h3>
+                    <p className="text-muted-foreground mb-6">
+                      {searchTerm || filters.status || filters.speciality
+                        ? "Aucun résultat pour vos critères de recherche"
+                        : "Commencez par créer votre premier professeur"}
+                    </p>
+                    {!searchTerm && !filters.status && !filters.speciality && (
+                      <Button onClick={resetForm} className="shadow-md">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Créer un professeur
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          // Vue mobile - Liste de cartes
+          <div className="space-y-4 md:hidden">
+            {sortedProfesseurs.map((professeur) => (
+              <Card key={professeur.id} className="overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-12 w-12 border-2">
+                      <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                        {getInitials(professeur.firstName, professeur.lastName)}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-lg truncate">
+                            {professeur.firstName} {professeur.lastName}
+                          </h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge
+                              variant={getStatusBadgeVariant(professeur.status)}
+                              className={`text-xs ${
+                                professeur.status === "Actif"
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-gray-100 text-gray-800"
+                              }`}
+                            >
+                              {professeur.status}
+                            </Badge>
+
+                            {professeur.userId ? (
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-green-50"
                               >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Supprimer
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                <User className="h-2 w-2 mr-1" />
+                                Compte
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-gray-50"
+                              >
+                                <UserX className="h-2 w-2 mr-1" />
+                                Sans compte
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
 
-              {sortedProfesseurs.length === 0 && (
-                <div className="text-center py-16">
-                  <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-4">
-                    <User className="h-10 w-10 text-muted-foreground" />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleMobileView(professeur)}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm truncate">
+                            {professeur.email}
+                          </span>
+                        </div>
+
+                        {professeur.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-sm font-mono">
+                              {formatPhoneNumber(professeur.phone)}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          <Award className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm">
+                            {professeur.speciality ||
+                              "Spécialité non spécifiée"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Hash className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm font-mono font-semibold text-primary">
+                            {professeur.matricule || "N/A"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm">
+                            {professeur._count?.assignments || 0} cours assignés
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEdit(professeur)}
+                          className="flex-1"
+                        >
+                          <Edit className="h-3 w-3 mr-1" />
+                          Modifier
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewDetails(professeur)}
+                          className="flex-1"
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          Détails
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {sortedProfesseurs.length === 0 && (
+              <Card>
+                <CardContent className="text-center py-8">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
+                    <User className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold mb-2">
                     Aucun professeur trouvé
                   </h3>
-                  <p className="text-muted-foreground mb-6">
+                  <p className="text-muted-foreground mb-4 text-sm">
                     {searchTerm || filters.status || filters.speciality
                       ? "Aucun résultat pour vos critères de recherche"
                       : "Commencez par créer votre premier professeur"}
                   </p>
                   {!searchTerm && !filters.status && !filters.speciality && (
-                    <Button onClick={resetForm} className="shadow-md">
+                    <Button onClick={resetForm} className="w-full">
                       <Plus className="h-4 w-4 mr-2" />
                       Créer un professeur
                     </Button>
                   )}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
 
         {/* Pagination et informations */}
-        {professeurs.length > 0 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
-            <div className="text-sm text-muted-foreground">
-              <div className="flex flex-wrap gap-4">
-                <span>
-                  Affichage de{" "}
-                  <span className="font-semibold">
-                    {sortedProfesseurs.length}
-                  </span>{" "}
-                  professeur{sortedProfesseurs.length > 1 ? "s" : ""} sur{" "}
-                  <span className="font-semibold">{professeurs.length}</span>
-                </span>
-                <span className="flex items-center gap-1">
-                  <User className="h-3 w-3" />
-                  <span className="font-semibold">
-                    {professeursWithAccount}
-                  </span>{" "}
-                  avec compte (
-                  {totalProfesseurs > 0
-                    ? Math.round(
-                        (professeursWithAccount / totalProfesseurs) * 100
-                      )
-                    : 0}
-                  %)
-                </span>
+        {professeurs.length > 0 &&
+          sortedProfesseurs.length > 0 &&
+          !isMobile && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
+              <div className="text-sm text-muted-foreground">
+                <div className="flex flex-wrap gap-4">
+                  <span>
+                    Affichage de{" "}
+                    <span className="font-semibold">
+                      {sortedProfesseurs.length}
+                    </span>{" "}
+                    professeur{sortedProfesseurs.length > 1 ? "s" : ""} sur{" "}
+                    <span className="font-semibold">{professeurs.length}</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    <span className="font-semibold">
+                      {professeursWithAccount}
+                    </span>{" "}
+                    avec compte (
+                    {totalProfesseurs > 0
+                      ? Math.round(
+                          (professeursWithAccount / totalProfesseurs) * 100
+                        )
+                      : 0}
+                    %)
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters({ page: (filters.page || 1) - 1 })}
+                  disabled={filters.page === 1}
+                  className="shadow-sm"
+                >
+                  Précédent
+                </Button>
+                <div className="flex items-center px-3 py-1 bg-background border rounded-md shadow-sm">
+                  <span className="text-sm font-medium">
+                    Page {filters.page || 1}
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters({ page: (filters.page || 1) + 1 })}
+                  disabled={(filters.page || 1) * 10 >= professeurs.length}
+                  className="shadow-sm"
+                >
+                  Suivant
+                </Button>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setFilters({ page: (filters.page || 1) - 1 })}
-                disabled={filters.page === 1}
-                className="shadow-sm"
-              >
-                Précédent
-              </Button>
-              <div className="flex items-center px-3 py-1 bg-background border rounded-md shadow-sm">
-                <span className="text-sm font-medium">
-                  Page {filters.page || 1}
-                </span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setFilters({ page: (filters.page || 1) + 1 })}
-                disabled={(filters.page || 1) * 10 >= professeurs.length}
-                className="shadow-sm"
-              >
-                Suivant
-              </Button>
-            </div>
+          )}
+
+        {/* Informations pour mobile */}
+        {isMobile && sortedProfesseurs.length > 0 && (
+          <div className="text-center text-sm text-muted-foreground py-4 border-t">
+            <p>
+              Affichage de {sortedProfesseurs.length} professeur
+              {sortedProfesseurs.length > 1 ? "s" : ""} •{" "}
+              {professeursWithAccount} avec compte (
+              {Math.round((professeursWithAccount / totalProfesseurs) * 100)}%)
+            </p>
           </div>
         )}
       </div>

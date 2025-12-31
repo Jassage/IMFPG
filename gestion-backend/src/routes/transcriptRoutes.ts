@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express from "express";
 import {
   getAllTranscripts,
   getTranscriptById,
@@ -6,12 +6,10 @@ import {
   updateTranscript,
   deleteTranscript,
   downloadTranscript,
+  calculateStatistics,
 } from "../controllers/transcriptController";
-import { authenticateToken } from "../middleware/auth.middleware";
-import { deanPermissions } from "../middleware/deanPermissions";
 
-const router = Router();
-router.use(authenticateToken, deanPermissions);
+const router = express.Router();
 
 router.get("/", getAllTranscripts);
 router.get("/:id", getTranscriptById);
@@ -19,5 +17,6 @@ router.post("/", createTranscript);
 router.put("/:id", updateTranscript);
 router.delete("/:id", deleteTranscript);
 router.get("/:id/download", downloadTranscript);
+router.post("/calculate-statistics", calculateStatistics);
 
 export default router;

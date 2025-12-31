@@ -20,7 +20,8 @@ export const extractAuditData = (req: Request): AuditData => {
   return {
     ipAddress: req.ip || req.connection.remoteAddress || "unknown",
     userAgent: req.get("User-Agent") || "unknown",
-    userId: userId, // Maintenant toujours string | null
+    userId: userId,
+    userRole: "",
   };
 };
 
@@ -36,7 +37,8 @@ export const createSafeAuditData = (
   return {
     ipAddress: data.ipAddress || "unknown",
     userAgent: data.userAgent || "unknown",
-    userId: data.userId !== undefined ? data.userId : null, // Convertir undefined en null
+    userId: data.userId !== undefined ? data.userId : null,
+    userRole: "",
   };
 };
 

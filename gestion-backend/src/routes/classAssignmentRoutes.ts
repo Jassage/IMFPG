@@ -136,13 +136,20 @@ router.delete(
 router.get(
   "/class/:classId",
   requireAuth,
-  requireStaff,
   sanitizeInput,
   getClassAssignmentsByClass
 );
 
+/**
+ * @route GET /api/academic/class-assignments/class/:classId/level/:classLevel
+ * @description Récupère les assignations d'une classe et niveau spécifiques
+ * @access Staff/Admin
+ * @param {string} classId - ID de la classe
+ * @param {string} classLevel - Niveau de classe
+ * @query {string} academicYearId - ID de l'année académique
+ */
 router.get(
-  "/class-assignments/class/:classId/filter",
+  "/class/:classId/level/:classLevel",
   requireAuth,
   requireStaff,
   sanitizeInput,

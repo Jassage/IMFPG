@@ -54,7 +54,7 @@ export const getStudents = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - getStudents error:", error);
+    console.error(" StudentController - getStudents error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -204,12 +204,6 @@ export const createStudent = async (
       },
     });
 
-    // Envoyer l'email de bienvenue si demandé
-    if (req.body.sendWelcomeEmail && result.user) {
-      // TODO: Implémenter l'envoi d'email
-      console.log(` Email de bienvenue à envoyer à: ${result.student.email}`);
-    }
-
     const response: StudentControllerResponse = {
       success: true,
       message: "Étudiant créé avec succès",
@@ -305,7 +299,7 @@ export const updateStudent = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - updateStudent error:", error);
+    console.error(" StudentController - updateStudent error:", error);
 
     // Gestion des erreurs spécifiques
     let statusCode = 500;
@@ -383,7 +377,7 @@ export const deleteStudent = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - deleteStudent error:", error);
+    console.error(" StudentController - deleteStudent error:", error);
 
     // Gestion des erreurs spécifiques
     let statusCode = 500;
@@ -456,7 +450,7 @@ export const updateStudentStatus = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - updateStudentStatus error:", error);
+    console.error(" StudentController - updateStudentStatus error:", error);
 
     // Gestion des erreurs spécifiques
     let statusCode = 500;
@@ -533,7 +527,7 @@ export const assignStudentToClass = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - assignStudentToClass error:", error);
+    console.error(" StudentController - assignStudentToClass error:", error);
 
     // Gestion des erreurs spécifiques
     let statusCode = 500;
@@ -608,7 +602,7 @@ export const getStudentStatistics = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - getStudentStatistics error:", error);
+    console.error(" StudentController - getStudentStatistics error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -668,7 +662,7 @@ export const importStudents = async (
 
     res.status(201).json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - importStudents error:", error);
+    console.error(" StudentController - importStudents error:", error);
 
     // Gestion des erreurs spécifiques
     let statusCode = 500;
@@ -737,7 +731,7 @@ export const searchStudents = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - searchStudents error:", error);
+    console.error(" StudentController - searchStudents error:", error);
 
     const response: StudentControllerResponse = {
       success: false,
@@ -784,10 +778,7 @@ export const checkEmailAvailability = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error(
-      "❌ StudentController - checkEmailAvailability error:",
-      error
-    );
+    console.error(" StudentController - checkEmailAvailability error:", error);
 
     const response: StudentControllerResponse = {
       success: false,
@@ -834,7 +825,7 @@ export const checkCINAvailability = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - checkCINAvailability error:", error);
+    console.error(" StudentController - checkCINAvailability error:", error);
 
     const response: StudentControllerResponse = {
       success: false,
@@ -882,7 +873,7 @@ export const getStudentsByClass = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ StudentController - getStudentsByClass error:", error);
+    console.error(" StudentController - getStudentsByClass error:", error);
 
     const response: StudentControllerResponse = {
       success: false,
@@ -993,7 +984,7 @@ export const exportStudents = async (
       res.json(response);
     }
   } catch (error: any) {
-    console.error("❌ StudentController - exportStudents error:", error);
+    console.error(" StudentController - exportStudents error:", error);
 
     await createAuditLog({
       ...auditData,

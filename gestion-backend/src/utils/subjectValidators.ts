@@ -32,15 +32,6 @@ export const validateCreateSubject = [
     .withMessage("Le coefficient doit être entre 1 et 10")
     .default(1),
 
-  body("type")
-    .trim()
-    .notEmpty()
-    .withMessage("Le type est requis")
-    .isIn(Object.values(SubjectType))
-    .withMessage(
-      `Type invalide. Valeurs autorisées: ${Object.values(SubjectType).join(", ")}`
-    ),
-
   body("passingGrade")
     .optional()
     .isInt({ min: 0, max: 100 })

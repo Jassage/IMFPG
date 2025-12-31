@@ -6,9 +6,10 @@ import { AxiosResponse } from "axios";
 interface FeeStructureStore {
   extractDataFromResponse(response: AxiosResponse<any, any>): any;
   handleError(err: any, arg1: string): any;
-  // State
+
+  // State - CORRECTION ICI: studentFees est maintenant un Record
   feeStructures: FeeStructure[];
-  studentFees: StudentFee[];
+  studentFees: Record<string, StudentFee[]>; // CHANGÉ: StudentFee[] -> Record<string, StudentFee[]>
   loading: boolean;
   error: string | null;
   lastUpdated: number;
@@ -70,23 +71,58 @@ interface FeeStructureStore {
   ) => Promise<FeeStructure[]>;
   clearStudentFees: () => void;
   clearError: () => void;
+  getStudentFeesByStudentId: (studentId: string) => Promise<StudentFee[]>;
+  updateExistingFee: (
+    studentFeeId: string,
+    data: Partial<StudentFee>
+  ) => Promise<StudentFee>;
+  checkExistingFees: (
+    studentId: string,
+    academicYearId: string,
+    feeStructureId?: string
+  ) => Promise<{
+    exists: boolean;
+    fees: StudentFee[];
+    specificFee?: StudentFee | null;
+  }>;
+
+  // NOUVELLE FONCTION: Supprimer les doublons
+  removeDuplicatesFromFees: (fees: StudentFee[]) => StudentFee[];
 }
 
 export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
   feeStructures: [],
-  studentFees: [],
+  studentFees: {}, // CHANGÉ: [] -> {}
   loading: false,
   error: null,
   lastUpdated: Date.now(),
   pagination: null,
 
+  // Fonction utilitaire pour supprimer les doublons
+  removeDuplicatesFromFees: (fees: StudentFee[]): StudentFee[] => {
+    const seen = new Set<string>();
+    const uniqueFees: StudentFee[] = [];
+
+    for (const fee of fees) {
+      if (!seen.has(fee.id)) {
+        seen.add(fee.id);
+        uniqueFees.push(fee);
+      } else {
+        console.warn(`⚠️ Frais en double détecté: ${fee.id}`);
+      }
+    }
+
+    console.log(
+      `✅ ${uniqueFees.length} frais uniques après nettoyage (sur ${fees.length} total)`
+    );
+    return uniqueFees;
+  },
+
   // Fonction utilitaire pour extraire les données du format de réponse du service
   extractDataFromResponse: (response: any): any => {
-    // Nouveau format du service : { success, message, data }
     if (response.data?.success !== undefined) {
       return response.data.data || response.data;
     }
-    // Format ancien ou direct
     return response.data;
   },
 
@@ -136,7 +172,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       let url = "/fee-structures";
       const params = new URLSearchParams();
 
-      // Ajouter les filtres aux paramètres
       if (filters.academicYear)
         params.append("academicYear", filters.academicYear);
       if (filters.page) params.append("page", filters.page.toString());
@@ -153,26 +188,18 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       const result = get().extractDataFromResponse(response);
 
       if (result) {
-        // Extraire les données selon le format
         let feeStructuresData: FeeStructure[] = [];
         let paginationData = null;
 
-        // Format nouveau service
         if (result.feeStructures) {
           feeStructuresData = result.feeStructures;
           paginationData = result.pagination;
-        }
-        // Format ancien contrôleur
-        else if (Array.isArray(result)) {
+        } else if (Array.isArray(result)) {
           feeStructuresData = result;
-        }
-        // Format direct
-        else if (result.data?.feeStructures) {
+        } else if (result.data?.feeStructures) {
           feeStructuresData = result.data.feeStructures;
           paginationData = result.data.pagination;
-        }
-        // Format de recherche
-        else if (result.data?.feeStructures) {
+        } else if (result.data?.feeStructures) {
           feeStructuresData = result.data.feeStructures;
         }
 
@@ -278,10 +305,17 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       const result = get().extractDataFromResponse(response);
 
       if (result) {
-        set((state) => ({
-          studentFees: state.studentFees.filter((fee) => fee.id !== id),
+        // CORRECTION: Mise à jour pour le nouveau format
+        const updatedStudentFees: Record<string, StudentFee[]> = {};
+
+        Object.entries(get().studentFees).forEach(([studentId, fees]) => {
+          updatedStudentFees[studentId] = fees.filter((fee) => fee.id !== id);
+        });
+
+        set({
+          studentFees: updatedStudentFees,
           loading: false,
-        }));
+        });
         return result;
       }
       throw new Error("Aucune donnée reçue du serveur");
@@ -293,15 +327,110 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
     }
   },
 
-  // Assigner des frais à un étudiant
+  // Assigner une structure de frais à un étudiant
+  checkExistingFees: async (
+    studentId: string,
+    academicYearId: string,
+    feeStructureId?: string
+  ) => {
+    try {
+      console.log("🔍 Vérification frais existants:", {
+        studentId,
+        academicYearId,
+        feeStructureId,
+      });
+
+      // Récupérer tous les frais de l'étudiant
+      const response = await api.get(`/student-fees/student/${studentId}`);
+      const data = response.data;
+
+      let fees: StudentFee[] = [];
+
+      if (Array.isArray(data)) {
+        fees = data;
+      } else if (data?.data && Array.isArray(data.data)) {
+        fees = data.data;
+      } else if (data?.studentFees && Array.isArray(data.studentFees)) {
+        fees = data.studentFees;
+      }
+
+      // Filtrer par année académique
+      const feesForYear = fees.filter(
+        (fee) => fee.academicYearId === academicYearId
+      );
+
+      // Filtrer par structure de frais si spécifiée
+      const existingFee = feeStructureId
+        ? feesForYear.find((fee) => fee.feeStructureId === feeStructureId)
+        : null;
+
+      return {
+        exists: !!existingFee || feesForYear.length > 0,
+        fees: feesForYear,
+        specificFee: existingFee,
+      };
+    } catch (error) {
+      console.error("❌ Erreur vérification frais existants:", error);
+      return { exists: false, fees: [] };
+    }
+  },
+
+  // Version améliorée de assignFeeToStudent
   assignFeeToStudent: async (
     studentId: string,
     academicYearId: string,
     feeStructureId: string,
-    studentCode: string
+    studentCode: string,
+    options?: { force?: boolean; updateIfExists?: boolean }
   ) => {
+    const { force = false, updateIfExists = false } = options || {};
+
     set({ loading: true, error: null });
+
     try {
+      console.log("📤 Assignation frais (version améliorée):", {
+        studentId,
+        academicYearId,
+        feeStructureId,
+        studentCode,
+        options,
+      });
+
+      if (!force) {
+        const { exists, fees, specificFee } = await get().checkExistingFees(
+          studentId,
+          academicYearId,
+          feeStructureId
+        );
+
+        if (exists) {
+          if (specificFee) {
+            if (updateIfExists) {
+              console.log(
+                "🔄 Frais existant trouvé, mise à jour:",
+                specificFee.id
+              );
+              const updatedFee = await get().updateExistingFee(specificFee.id, {
+                totalAmount: specificFee.totalAmount,
+              });
+              return updatedFee;
+            } else {
+              throw {
+                type: "FEE_ALREADY_EXISTS",
+                message: "Des frais existent déjà pour cette combinaison",
+                existingFee: specificFee,
+                allFees: fees,
+              };
+            }
+          } else {
+            console.log(
+              "⚠️ L'étudiant a déjà des frais pour cette année:",
+              fees.length
+            );
+          }
+        }
+      }
+
       const response = await api.post("/student-fees/assign", {
         studentId,
         academicYearId,
@@ -309,19 +438,103 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
         studentCode,
       });
 
-      const result = get().extractDataFromResponse(response);
+      console.log("✅ Réponse API assign:", response.data);
+
+      const result = response.data?.data || response.data;
 
       if (result) {
         const newStudentFee = result.studentFee || result;
-        set((state) => ({
-          studentFees: [...state.studentFees, newStudentFee],
-          loading: false,
-        }));
+
+        // CORRECTION: Mise à jour pour le nouveau format
+        set((state) => {
+          const currentFees = state.studentFees[studentId] || [];
+          const updatedFees = [...currentFees, newStudentFee];
+
+          return {
+            studentFees: {
+              ...state.studentFees,
+              [studentId]: updatedFees,
+            },
+            loading: false,
+            lastUpdated: Date.now(),
+          };
+        });
+
         return newStudentFee;
       }
+
       throw new Error("Aucune donnée reçue du serveur");
     } catch (err: any) {
-      return get().handleError(err, "Erreur lors de l'assignation des frais");
+      console.error("❌ Erreur assignFeeToStudent:", err);
+
+      if (err.type === "FEE_ALREADY_EXISTS") {
+        set({
+          error: err.message,
+          loading: false,
+        });
+        throw err;
+      }
+
+      const errorMessage =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        "Erreur lors de l'assignation des frais";
+
+      set({ error: errorMessage, loading: false });
+      throw new Error(errorMessage);
+    }
+  },
+
+  // Mettre à jour un frais existant
+  updateExistingFee: async (
+    studentFeeId: string,
+    data: Partial<StudentFee>
+  ) => {
+    set({ loading: true, error: null });
+
+    try {
+      console.log("📝 Mise à jour frais existant:", studentFeeId, data);
+
+      const response = await api.put(`/student-fees/${studentFeeId}`, data);
+
+      const result = response.data?.data || response.data;
+
+      if (result) {
+        const updatedFee = result.studentFee || result;
+
+        // CORRECTION: Mise à jour pour le nouveau format
+        set((state) => {
+          const updatedStudentFees: Record<string, StudentFee[]> = {};
+
+          Object.entries(state.studentFees).forEach(([studentId, fees]) => {
+            updatedStudentFees[studentId] = fees.map((fee) =>
+              fee.id === studentFeeId ? updatedFee : fee
+            );
+          });
+
+          return {
+            studentFees: updatedStudentFees,
+            loading: false,
+            lastUpdated: Date.now(),
+          };
+        });
+
+        return updatedFee;
+      }
+
+      throw new Error("Aucune donnée reçue du serveur");
+    } catch (err: any) {
+      console.error("❌ Erreur updateExistingFee:", err);
+
+      const errorMessage =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        "Erreur lors de la mise à jour des frais";
+
+      set({ error: errorMessage, loading: false });
+      throw new Error(errorMessage);
     }
   },
 
@@ -337,8 +550,18 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
           ? result
           : result.studentFees || result.data?.studentFees || [];
 
+        // CORRECTION: Organiser par étudiant
+        const feesByStudent: Record<string, StudentFee[]> = {};
+
+        allFees.forEach((fee: StudentFee) => {
+          if (!feesByStudent[fee.studentId]) {
+            feesByStudent[fee.studentId] = [];
+          }
+          feesByStudent[fee.studentId].push(fee);
+        });
+
         set({
-          studentFees: allFees,
+          studentFees: feesByStudent,
           loading: false,
         });
         return allFees;
@@ -352,42 +575,200 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
     }
   },
 
-  // Récupérer les frais d'un étudiant
-  getStudentFees: async (studentId: string) => {
+  // Récupérer les frais d'un étudiant - FONCTION CORRIGÉE
+  getStudentFees: async (studentId: string): Promise<StudentFee[]> => {
+    console.log("🔍 getStudentFees appelé pour:", studentId);
+
+    // Retourner du cache si disponible
+    const cachedFees = get().studentFees[studentId];
+    if (cachedFees && cachedFees.length > 0) {
+      console.log("📦 Utilisation du cache:", cachedFees.length, "frais");
+      return cachedFees;
+    }
+
     set({ loading: true, error: null });
+
     try {
-      const response = await api.get(`/student-fees?studentId=${studentId}`);
-      const result = get().extractDataFromResponse(response);
+      console.log("🌐 Appel API pour étudiant:", studentId);
+      const response = await api.get(`/student-fees/student/${studentId}`);
 
-      if (result) {
-        const fees = Array.isArray(result)
-          ? result
-          : result.studentFees || result.data?.studentFees || [];
+      console.log("📥 Réponse brute:", response);
+      console.log("📥 Données brutes:", response.data);
 
-        // Mettre à jour le store
-        const existingStudentFees = get().studentFees.filter(
-          (f) => f.studentId !== studentId
+      let feesData = response.data;
+
+      if (
+        feesData &&
+        typeof feesData === "object" &&
+        feesData.data &&
+        Array.isArray(feesData.data)
+      ) {
+        console.log("📊 Format: { data: [...] }");
+        feesData = feesData.data;
+      } else if (Array.isArray(feesData)) {
+        console.log("📊 Format: Array[...]");
+      } else if (feesData && typeof feesData === "object") {
+        console.log(
+          "📊 Format: Object avec propriétés:",
+          Object.keys(feesData)
         );
-        set({
-          studentFees: [...existingStudentFees, ...fees],
-          loading: false,
-        });
-        return fees;
+
+        if (feesData.studentFees && Array.isArray(feesData.studentFees)) {
+          feesData = feesData.studentFees;
+        } else if (feesData.fees && Array.isArray(feesData.fees)) {
+          feesData = feesData.fees;
+        } else if (Array.isArray(feesData)) {
+        } else {
+          feesData = [feesData];
+        }
       }
+
+      const fees: StudentFee[] = Array.isArray(feesData) ? feesData : [];
+
+      // SUPPRIMER LES DOUBLONS
+      const uniqueFees = get().removeDuplicatesFromFees(fees);
+
+      console.log("✅ Frais extraits:", uniqueFees.length, "éléments");
+
+      // CORRECTION: Mise à jour pour le nouveau format
+      set((state) => ({
+        studentFees: {
+          ...state.studentFees,
+          [studentId]: uniqueFees,
+        },
+        loading: false,
+        lastUpdated: Date.now(),
+      }));
+
+      return uniqueFees;
+    } catch (error: any) {
+      console.error("❌ Erreur dans getStudentFees:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Erreur lors de la récupération des frais";
+
+      set({ error: errorMessage, loading: false });
+
       return [];
-    } catch (err: any) {
-      return get().handleError(
-        err,
-        "Erreur lors de la récupération des frais étudiants"
-      );
+    }
+  },
+
+  // Version alternative plus simple
+  getStudentFeesByStudentId: async (
+    studentId: string
+  ): Promise<StudentFee[]> => {
+    console.log("🔍 getStudentFeesByStudentId appelé pour:", studentId);
+
+    set({ loading: true, error: null });
+
+    try {
+      const endpoint = `/student-fees/student/${studentId}`;
+      console.log("🌐 Appel API:", endpoint);
+
+      const response = await api.get(endpoint);
+
+      console.group("📊 DÉBOGAGE RÉPONSE API");
+      console.log("Status:", response.status);
+      console.log("Headers:", response.headers);
+      console.log("Data brute:", response.data);
+      console.log("Type de data:", typeof response.data);
+      console.log("Est un tableau?", Array.isArray(response.data));
+      if (response.data && typeof response.data === "object") {
+        console.log("Clés de l'objet:", Object.keys(response.data));
+      }
+      console.groupEnd();
+
+      let feesArray: any[] = [];
+
+      if (Array.isArray(response.data)) {
+        console.log("✅ Données reçues comme tableau direct");
+        feesArray = response.data;
+      } else if (response.data && typeof response.data === "object") {
+        console.log("🔄 Données reçues comme objet, recherche de tableau...");
+
+        const possibleArrayKeys = [
+          "data",
+          "studentFees",
+          "fees",
+          "items",
+          "results",
+        ];
+
+        for (const key of possibleArrayKeys) {
+          if (response.data[key] && Array.isArray(response.data[key])) {
+            console.log(`✅ Tableau trouvé dans la propriété: ${key}`);
+            feesArray = response.data[key];
+            break;
+          }
+        }
+
+        if (feesArray.length === 0 && response.data.id) {
+          console.log("✅ Objet unique trouvé, conversion en tableau");
+          feesArray = [response.data];
+        }
+      }
+
+      console.log(`📋 ${feesArray.length} frais trouvés`);
+
+      const studentFees: StudentFee[] = feesArray.map((fee: any) => ({
+        id: fee.id,
+        studentId: fee.studentId,
+        feeStructureId: fee.feeStructureId,
+        totalAmount: fee.totalAmount,
+        paidAmount: fee.paidAmount,
+        remainingAmount:
+          fee.remainingAmount ??
+          (fee.totalAmount !== undefined
+            ? fee.totalAmount - (fee.paidAmount ?? 0)
+            : undefined),
+        status: fee.status,
+        dueDate: fee.dueDate,
+        createdAt: fee.createdAt,
+        updatedAt: fee.updatedAt,
+        academicYearId: fee.academicYearId,
+        feeStructure: fee.feeStructure,
+        student: fee.student,
+        payments: fee.payments || [],
+      }));
+
+      // SUPPRIMER LES DOUBLONS
+      const uniqueFees = get().removeDuplicatesFromFees(studentFees);
+
+      // CORRECTION: Mise à jour pour le nouveau format
+      set((state) => ({
+        studentFees: {
+          ...state.studentFees,
+          [studentId]: uniqueFees,
+        },
+        loading: false,
+      }));
+
+      return uniqueFees;
+    } catch (error: any) {
+      console.error("❌ Erreur getStudentFeesByStudentId:", error);
+
+      if (error.response) {
+        console.error("📊 Détails erreur:");
+        console.error("- Status:", error.response.status);
+        console.error("- Headers:", error.response.headers);
+        console.error("- Data:", error.response.data);
+      }
+
+      const errorMessage = error.response?.data?.message || error.message;
+      set({ error: errorMessage, loading: false });
+
+      return [];
     }
   },
 
   // Récupérer les frais d'un étudiant pour une année spécifique
-  getStudentFeeByYear: async (studentId: string, academicYear: string) => {
+  getStudentFeeByYear: async (studentId: string, academicYearId: string) => {
     try {
       const response = await api.get(
-        `/student-fees?studentId=${studentId}&academicYear=${academicYear}`
+        `/student-fees?studentId=${studentId}&academicYear=${academicYearId}`
       );
       const result = get().extractDataFromResponse(response);
 
@@ -410,12 +791,22 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
 
       if (result) {
         const updatedFee = result.data || result;
-        set((state) => ({
-          studentFees: state.studentFees.map((fee) =>
-            fee.id === id ? updatedFee : fee
-          ),
-          loading: false,
-        }));
+
+        // CORRECTION: Mise à jour pour le nouveau format
+        set((state) => {
+          const updatedStudentFees: Record<string, StudentFee[]> = {};
+
+          Object.entries(state.studentFees).forEach(([studentId, fees]) => {
+            updatedStudentFees[studentId] = fees.map((fee) =>
+              fee.id === id ? updatedFee : fee
+            );
+          });
+
+          return {
+            studentFees: updatedStudentFees,
+            loading: false,
+          };
+        });
         return updatedFee;
       }
       throw new Error("Aucune donnée reçue du serveur");
@@ -521,7 +912,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       if (result) {
         let feeStructures: FeeStructure[] = [];
 
-        // Gérer différents formats de réponse
         if (Array.isArray(result)) {
           feeStructures = result.filter((fee: FeeStructure) => fee.isActive);
         } else if (result.feeStructures) {
@@ -565,12 +955,21 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       if (result) {
         const updatedFee = result.studentFee || result;
 
-        set((state) => ({
-          studentFees: state.studentFees.map((fee) =>
-            fee.id === studentFeeId ? updatedFee : fee
-          ),
-          loading: false,
-        }));
+        // CORRECTION: Mise à jour pour le nouveau format
+        set((state) => {
+          const updatedStudentFees: Record<string, StudentFee[]> = {};
+
+          Object.entries(state.studentFees).forEach(([studentId, fees]) => {
+            updatedStudentFees[studentId] = fees.map((fee) =>
+              fee.id === studentFeeId ? updatedFee : fee
+            );
+          });
+
+          return {
+            studentFees: updatedStudentFees,
+            loading: false,
+          };
+        });
 
         return result;
       }
@@ -613,20 +1012,29 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       const result = get().extractDataFromResponse(response);
 
       if (result) {
-        set((state) => ({
-          studentFees: state.studentFees.map((fee) => {
-            if (fee.payments) {
-              return {
-                ...fee,
-                payments: fee.payments.map((payment) =>
-                  payment.id === id ? result : payment
-                ),
-              };
-            }
-            return fee;
-          }),
-          loading: false,
-        }));
+        // CORRECTION: Mise à jour pour le nouveau format
+        set((state) => {
+          const updatedStudentFees: Record<string, StudentFee[]> = {};
+
+          Object.entries(state.studentFees).forEach(([studentId, fees]) => {
+            updatedStudentFees[studentId] = fees.map((fee) => {
+              if (fee.payments) {
+                return {
+                  ...fee,
+                  payments: fee.payments.map((payment) =>
+                    payment.id === id ? result : payment
+                  ),
+                };
+              }
+              return fee;
+            });
+          });
+
+          return {
+            studentFees: updatedStudentFees,
+            loading: false,
+          };
+        });
         return result;
       }
       throw new Error("Aucune donnée reçue du serveur");
@@ -646,22 +1054,31 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       const result = get().extractDataFromResponse(response);
 
       if (result) {
-        set((state) => ({
-          studentFees: state.studentFees.map((fee) => {
-            if (fee.payments) {
-              const deletedPayment = fee.payments.find((p) => p.id === id);
-              return {
-                ...fee,
-                payments: fee.payments.filter((payment) => payment.id !== id),
-                paidAmount: deletedPayment
-                  ? fee.paidAmount - deletedPayment.amount
-                  : fee.paidAmount,
-              };
-            }
-            return fee;
-          }),
-          loading: false,
-        }));
+        // CORRECTION: Mise à jour pour le nouveau format
+        set((state) => {
+          const updatedStudentFees: Record<string, StudentFee[]> = {};
+
+          Object.entries(state.studentFees).forEach(([studentId, fees]) => {
+            updatedStudentFees[studentId] = fees.map((fee) => {
+              if (fee.payments) {
+                const deletedPayment = fee.payments.find((p) => p.id === id);
+                return {
+                  ...fee,
+                  payments: fee.payments.filter((payment) => payment.id !== id),
+                  paidAmount: deletedPayment
+                    ? fee.paidAmount - deletedPayment.amount
+                    : fee.paidAmount,
+                };
+              }
+              return fee;
+            });
+          });
+
+          return {
+            studentFees: updatedStudentFees,
+            loading: false,
+          };
+        });
         return result;
       }
       throw new Error("Aucune donnée reçue du serveur");
@@ -675,7 +1092,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
 
   // Nettoyer les frais étudiants
   clearStudentFees: () => {
-    set({ studentFees: [] });
+    set({ studentFees: {} }); // CHANGÉ: [] -> {}
   },
 
   // Nettoyer les erreurs

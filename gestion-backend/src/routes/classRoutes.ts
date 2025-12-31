@@ -13,6 +13,7 @@ import {
   validateContentType,
   sanitizeInput,
   handleValidationErrors,
+  requireTeacherOrStaff,
 } from "../middleware";
 
 import {
@@ -35,7 +36,7 @@ const router = Router();
  * @description Récupère la liste des classes
  * @access Staff/Admin
  */
-router.get("/", requireAuth, requireStaff, getClasses);
+router.get("/", requireAuth, requireTeacherOrStaff, getClasses);
 
 /**
  * @route GET /api/academic/classes/:id

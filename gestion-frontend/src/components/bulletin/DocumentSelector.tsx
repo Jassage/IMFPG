@@ -1,64 +1,33 @@
 import React from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText,
+  FileCheck,
   Award,
-  Layers,
   GraduationCap,
-  ScrollText,
+  School,
+  BadgeCheck,
+  FileSignature,
+  BookOpen,
 } from "lucide-react";
 import { DocumentType } from "@/types/bulletin";
-
-interface DocumentConfig {
-  type: DocumentType;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-}
-
-const DOCUMENTS: DocumentConfig[] = [
-  {
-    type: DocumentType.BULLETIN,
-    title: "Bulletin Scolaire",
-    description: "Document officiel avec notes et statistiques",
-    icon: <FileText className="h-5 w-5" />,
-  },
-  {
-    type: DocumentType.RELEVE,
-    title: "Relevé de Notes",
-    description: "Relevé détaillé des notes par matière",
-    icon: <ScrollText className="h-5 w-5" />,
-  },
-  {
-    type: DocumentType.ATTESTATION_NIVEAU,
-    title: "Attestation de Niveau",
-    description: "Certificat attestant du niveau atteint",
-    icon: <Layers className="h-5 w-5" />,
-  },
-  {
-    type: DocumentType.ATTESTATION_FIN_ETUDES,
-    title: "Attestation de Fin d'Études",
-    description: "Attestation de réussite complète",
-    icon: <GraduationCap className="h-5 w-5" />,
-  },
-  {
-    type: DocumentType.CERTIFICAT_SCOLARITE,
-    title: "Certificat de Scolarité",
-    description: "Certificat de fréquentation scolaire",
-    icon: <Award className="h-5 w-5" />,
-  },
-];
 
 interface DocumentSelectorProps {
   selected: DocumentType;
   onSelect: (type: DocumentType) => void;
 }
+
+const DOCUMENT_TYPES = [
+  {
+    type: DocumentType.BULLETIN,
+    title: "Bulletin Scolaire",
+    description:
+      "Bulletin trimestriel ou annuel avec les notes et appréciations",
+    icon: <FileText className="h-6 w-6" />,
+    color: "bg-blue-100 text-blue-700 border-blue-300",
+  },
+];
 
 export const DocumentSelector: React.FC<DocumentSelectorProps> = ({
   selected,
@@ -68,51 +37,108 @@ export const DocumentSelector: React.FC<DocumentSelectorProps> = ({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
+          <FileSignature className="h-5 w-5" />
           Type de Document
         </CardTitle>
-        <CardDescription>
-          Sélectionnez le type de document à générer
-        </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-          {DOCUMENTS.map((doc) => (
-            <button
-              key={doc.type}
-              onClick={() => onSelect(doc.type)}
-              className={`
-                p-4 rounded-lg border transition-all duration-200 text-left
-                ${
-                  selected === doc.type
-                    ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                    : "border-gray-200 hover:border-primary/50 hover:bg-gray-50"
-                }
-              `}
-            >
-              <div className="flex items-center gap-3 mb-2">
+        <Tabs
+          value={selected}
+          onValueChange={(value) => onSelect(value as DocumentType)}
+        >
+          <TabsList className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+            {DOCUMENT_TYPES.map((doc) => (
+              <TabsTrigger
+                key={doc.type}
+                value={doc.type}
+                className="flex flex-col items-center gap-2 py-3"
+              >
                 <div
-                  className={`
-                  p-2 rounded-full
-                  ${
-                    selected === doc.type
-                      ? "bg-primary/10 text-primary"
-                      : "bg-gray-100 text-gray-600"
-                  }
-                `}
+                  className={`p-2 rounded-full ${doc.color.replace(
+                    "border-",
+                    "border "
+                  )}`}
                 >
                   {doc.icon}
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-sm">{doc.title}</h3>
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                    {doc.description}
-                  </p>
+                <span className="text-xs font-medium">{doc.title}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {DOCUMENT_TYPES.map((doc) => (
+            <TabsContent key={doc.type} value={doc.type} className="mt-4">
+              <div
+                className={`p-4 rounded-lg border ${doc.color} bg-opacity-10`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`p-3 rounded-lg ${doc.color} bg-opacity-20`}>
+                    {doc.icon}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-lg">{doc.title}</h4>
+                    <p className="text-gray-600 mt-1">{doc.description}</p>
+                    <div className="mt-3">
+                      <h5 className="font-semibold text-sm text-gray-700 mb-2">
+                        Ce document contient:
+                      </h5>
+                      <ul className="text-sm text-gray-600 space-y-1">
+                        {doc.type === DocumentType.BULLETIN && (
+                          <>
+                            <li>✓ Notes par matière</li>
+                            <li>✓ Moyennes et statistiques</li>
+                            <li>✓ Appréciations des professeurs</li>
+                            <li>✓ Décision du conseil de classe</li>
+                          </>
+                        )}
+                        {doc.type === DocumentType.RELEVE && (
+                          <>
+                            <li>✓ Liste complète des notes</li>
+                            <li>✓ Coefficients et mentions</li>
+                            <li>✓ Historique des résultats</li>
+                            <li>✓ Certification officielle</li>
+                          </>
+                        )}
+                        {doc.type === DocumentType.ATTESTATION_NIVEAU && (
+                          <>
+                            <li>✓ Niveau scolaire atteint</li>
+                            <li>✓ Date d'obtention</li>
+                            <li>✓ Signature du directeur</li>
+                            <li>✓ Cachet de l'établissement</li>
+                          </>
+                        )}
+                        {doc.type === DocumentType.ATTESTATION_FIN_ETUDES && (
+                          <>
+                            <li>✓ Certificat de fin d'études</li>
+                            <li>✓ Mention obtenue</li>
+                            <li>✓ Date de délivrance</li>
+                            <li>✓ Valeur officielle</li>
+                          </>
+                        )}
+                        {doc.type === DocumentType.CERTIFICAT_SCOLARITE && (
+                          <>
+                            <li>✓ État d'inscription</li>
+                            <li>✓ Période de scolarité</li>
+                            <li>✓ Niveau actuel</li>
+                            <li>✓ Justificatif officiel</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">
+                      Format: PDF officiel
+                    </span>
+                    <BadgeCheck className="h-5 w-5 text-green-600" />
+                  </div>
                 </div>
               </div>
-            </button>
+            </TabsContent>
           ))}
-        </div>
+        </Tabs>
       </CardContent>
     </Card>
   );

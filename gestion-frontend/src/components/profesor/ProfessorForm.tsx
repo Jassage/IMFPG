@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { useProfessorStore } from "../../store/professorStore";
-import { useCourseAssignmentStore } from "../../store/courseAssignmentStore";
 import {
   Card,
   CardContent,

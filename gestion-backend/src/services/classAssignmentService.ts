@@ -771,10 +771,10 @@ export class ClassAssignmentService {
    */
   static async getClassAssignmentsByClassAndLevel(
     classId: string,
-    level: string,
+    classLevel: string,
     academicYearId?: string
   ) {
-    if (!level) {
+    if (!classLevel) {
       throw {
         status: 400,
         response: {
@@ -786,7 +786,7 @@ export class ClassAssignmentService {
     }
 
     const where: any = {
-      classLevel: level,
+      classLevel: classLevel,
     };
 
     if (academicYearId) {
@@ -832,7 +832,7 @@ export class ClassAssignmentService {
         assignments,
         total: assignments.length,
         classId,
-        level,
+        classLevel,
       },
     };
   }

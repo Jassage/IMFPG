@@ -49,7 +49,7 @@ export const LoginPage = () => {
         return "/student/dashboard";
       case "Professeur":
         return "/professor/dashboard";
-      case "Direction":
+      case "Directeur":
         return "/director/dashboard";
       default:
         return "/login";

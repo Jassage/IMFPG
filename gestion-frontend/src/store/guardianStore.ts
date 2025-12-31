@@ -124,7 +124,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         });
       }
     } catch (error: any) {
-      console.error("❌ fetchGuardians error:", error);
 
       let errorMessage = "Erreur de connexion au serveur";
       if (error.code === "ECONNABORTED") {
@@ -169,7 +168,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return null;
       }
     } catch (error: any) {
-      console.error("❌ fetchGuardianById error:", error);
 
       set({
         loading: false,
@@ -218,7 +216,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return null;
       }
     } catch (error: any) {
-      console.error("❌ addGuardian error:", error);
 
       let errorMessage = "Erreur lors de la création";
       if (error.response?.data?.error) {
@@ -283,7 +280,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return null;
       }
     } catch (error: any) {
-      console.error("❌ updateGuardian error:", error);
 
       let errorMessage = "Erreur lors de la mise à jour";
       if (error.response?.data?.error) {
@@ -343,7 +339,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return false;
       }
     } catch (error: any) {
-      console.error("❌ deleteGuardian error:", error);
 
       set({
         loading: false,
@@ -407,7 +402,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         });
       }
     } catch (error: any) {
-      console.error("❌ setPrimaryGuardian error:", error);
 
       set({
         loading: false,
@@ -452,7 +446,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         });
       }
     } catch (error: any) {
-      console.error("❌ fetchParents error:", error);
 
       set({
         loading: false,
@@ -484,7 +477,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return null;
       }
     } catch (error: any) {
-      console.error("❌ fetchParentById error:", error);
 
       set({
         loading: false,
@@ -529,7 +521,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return { success: false, error: response.data.error };
       }
     } catch (error: any) {
-      console.error("❌ createParentAccount error:", error);
 
       const errorMessage =
         error.response?.data?.error || "Erreur lors de la création";
@@ -580,7 +571,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return false;
       }
     } catch (error: any) {
-      console.error("❌ linkGuardianToParent error:", error);
 
       set({ loading: false, error: "Erreur lors de la liaison" });
       return false;
@@ -621,7 +611,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return false;
       }
     } catch (error: any) {
-      console.error("❌ unlinkGuardianFromParent error:", error);
 
       set({ loading: false, error: "Erreur lors de la suppression du lien" });
       return false;
@@ -664,7 +653,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return false;
       }
     } catch (error: any) {
-      console.error("❌ addChildToParent error:", error);
 
       set({ loading: false, error: "Erreur lors de l'ajout de l'enfant" });
       return false;
@@ -699,16 +687,13 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
         return false;
       }
     } catch (error: any) {
-      console.error("❌ removeChildFromParent error:", error);
 
       set({ loading: false, error: "Erreur lors du retrait de l'enfant" });
       return false;
     }
   },
 
-  // ============================================
-  // RECHERCHE ET UTILITAIRES
-  // ============================================
+
 
   searchExistingParent: async (email?: string, phone?: string) => {
     if (!email && !phone) {
@@ -732,7 +717,6 @@ export const useGuardianStore = create<GuardianStore>((set, get) => ({
 
       return response.data;
     } catch (error: any) {
-      console.error("❌ searchExistingParent error:", error);
 
       return {
         success: false,

@@ -1,6 +1,6 @@
 // CORRECTION dans api.ts - Version corrigée
 import axios from "axios";
-import { toast } from "sonner";
+import { toast } from "react-toastify";
 
 const api = axios.create({
   baseURL: "http://localhost:4000/api",
@@ -64,7 +64,7 @@ api.interceptors.response.use(
       console.log(`❌ API Error: ${status} ${url}`);
     }
 
-    // ✅ CORRECTION IMPORTANTE: NE PAS rediriger pour les requêtes d'authentification
+    //  NE PAS rediriger pour les requêtes d'authentification
     if (status === 401) {
       // Routes où une erreur 401 est normale et ne doit pas rediriger
       const authRoutes = [
@@ -117,6 +117,7 @@ api.interceptors.response.use(
 api.interceptors.response.use(
   (response) => {
     console.log(" API Response:", response.status, response.config.url);
+    // toast.success(response.data.message);
     return response;
   },
   (error) => {

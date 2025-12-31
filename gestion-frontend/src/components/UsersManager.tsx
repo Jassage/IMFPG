@@ -189,24 +189,10 @@ export const UsersManager = () => {
 
   const getAvailableRoles = () => {
     if (currentUser?.role === "Admin") {
-      return [
-        "Admin",
-        "Directeur",
-        "Student",
-        "Secretaire",
-        "Professeur",
-        "Parent",
-      ];
+      return ["Admin", "Directeur", "Student", "Secretaire", "Professeur"];
     }
     // Autres logiques selon les permissions
-    return [
-      "Amin",
-      "Parent",
-      "Student",
-      "Professeur",
-      "Secretaire",
-      "Directeur",
-    ];
+    return ["Amin", "Student", "Professeur", "Secretaire", "Directeur"];
   };
 
   // Fonction pour ouvrir le formulaire d'édition
@@ -230,7 +216,7 @@ export const UsersManager = () => {
       lastName: "",
       email: "",
       phone: "",
-      role: "Parent",
+      role: "Secretaire",
       status: "Actif",
       password: "",
     });
@@ -246,7 +232,7 @@ export const UsersManager = () => {
           lastName: data.lastName,
           email: data.email,
           phone: data.phone,
-          role: data.role,
+          role: data.role as User["role"],
           status: data.status,
         });
 
@@ -261,7 +247,7 @@ export const UsersManager = () => {
           lastName: data.lastName,
           email: data.email,
           phone: data.phone,
-          role: data.role,
+          role: data.role as User["role"],
           status: data.status,
           password: data.password as string,
           avatar: "",
@@ -463,15 +449,6 @@ export const UsersManager = () => {
 
   if (loading && users.length === 0)
     return <div className="flex justify-center p-8">Chargement...</div>;
-
-  if (error) {
-    return (
-      <div className="p-4 text-red-500">
-        <p>Erreur de chargement des utilisateurs</p>
-        <p className="text-sm">{error}</p>
-      </div>
-    );
-  }
 
   const checkDependencies = async (userId: string) => {
     try {

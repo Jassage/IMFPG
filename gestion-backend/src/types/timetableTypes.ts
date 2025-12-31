@@ -70,12 +70,6 @@ export interface Schedule {
 
 // Enums pour correspondre à votre schéma
 export enum ClassLevel {
-  CP1 = "CP1",
-  CP2 = "CP2",
-  CE1 = "CE1",
-  CE2 = "CE2",
-  CM1 = "CM1",
-  CM2 = "CM2",
   Sixieme = "Sixieme",
   Cinquieme = "Cinquieme",
   Quatrieme = "Quatrieme",
@@ -83,6 +77,10 @@ export enum ClassLevel {
   Seconde = "Seconde",
   Premiere = "Premiere",
   Terminale = "Terminale",
+  NSI = "NSI",
+  NSII = "NSII",
+  NSIII = "NSIII",
+  NSIV = "NSIV",
 }
 
 export enum SubjectType {
@@ -123,6 +121,38 @@ export interface CreateAssignmentData {
   schedules?: CreateScheduleData[];
 }
 
+// types/api.ts
+export interface ApiResponse {
+  success: boolean;
+  message: string;
+  data?: any;
+  code?: string;
+  metadata?: {
+    subject?: string;
+    class?: string;
+    dayOfWeek?: string;
+    time?: string;
+    changes?: string[];
+    duration?: string;
+    generated?: number;
+    errors?: number;
+    successRate?: string;
+    [key: string]: any;
+  };
+}
+
+export interface ScheduleMetadata {
+  subject?: string;
+  class?: string;
+  dayOfWeek?: string;
+  time?: string;
+  changes?: string[];
+  duration?: string;
+  generated?: number;
+  errors?: number;
+  successRate?: string;
+  [key: string]: any;
+}
 // Types pour les réponses
 export interface TimetableControllerResponse {
   success: boolean;

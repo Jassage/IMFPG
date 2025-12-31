@@ -40,34 +40,12 @@ import {
   Plus,
   Download,
   Eye,
-  Settings,
-  Bell,
-  History,
-  BarChart3,
   ShieldAlert,
   Key,
-  ExternalLink,
-  Layers,
   Users2,
-  Book,
-  School,
   MailCheck,
-  PhoneCall,
-  MapPinHouse,
-  FileCheck,
-  ClipboardList,
-  CalendarRange,
-  TrendingUp,
   MoreVertical,
   Trash2,
-  ChevronDown,
-  ChevronUp,
-  Filter,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   AlertTriangle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -79,14 +57,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   AlertDialog,
@@ -98,12 +69,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Professeur as StoreProfesseur } from "@/store/professorStore";
 import useProfesseurStore from "@/store/professorStore";
 import { useAuthStore } from "@/store/authStore";
@@ -728,17 +694,6 @@ export const ProfesseurDetails = ({
           <TabsContent value="courses" className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold">Cours assignés</h2>
-              <Button
-                onClick={() =>
-                  navigate(
-                    `/assignments/new?professeurId=${currentProfesseur.id}`
-                  )
-                }
-                size="sm"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Assigner un nouveau cours
-              </Button>
             </div>
 
             {assignments && assignments.length > 0 ? (
@@ -815,16 +770,6 @@ export const ProfesseurDetails = ({
                   <p className="text-muted-foreground mb-6">
                     Ce professeur n'est pas encore assigné à des cours.
                   </p>
-                  <Button
-                    onClick={() =>
-                      navigate(
-                        `/assignments/new?professeurId=${currentProfesseur.id}`
-                      )
-                    }
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Assigner le premier cours
-                  </Button>
                 </CardContent>
               </Card>
             )}

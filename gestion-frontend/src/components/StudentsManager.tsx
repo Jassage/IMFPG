@@ -1,5 +1,5 @@
-// components/students/StudentsManager.tsx - VERSION CORRIGÉE
-import { useEffect, useMemo, useState, useCallback } from "react";
+// components/students/StudentsManager.tsx - VERSION CORRIGÉE COMPLÈTE
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   Plus,
   Search,
@@ -8,7 +8,6 @@ import {
   UserCheck,
   GraduationCap,
   Download,
-  Upload,
   Filter,
   MoreVertical,
   User,
@@ -28,6 +27,9 @@ import {
   AlertCircle,
   Loader2,
   AlertTriangle,
+  Eye,
+  Users,
+  BookOpen,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,13 +70,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMediaQuery } from "@/hooks/use-media-query";
 import { useAuthStore } from "@/store/authStore";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StudentForm } from "./students/StudentForm";
 import { useClassStore } from "@/store/classStore";
 import { StudentDetails } from "./students/StudentDetails";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 
 // Constantes pour les valeurs "vides"
 const EMPTY_VALUES = {
@@ -111,6 +115,17 @@ const getStatusBadgeVariant = (status: Student["status"]) => {
   return variants[status] || "secondary";
 };
 
+// Fonction pour formater les dates en toute sécurité
+const formatSafeDate = (dateString: any): string => {
+  if (!dateString) return "";
+  try {
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? "" : date.toLocaleDateString("fr-FR");
+  } catch {
+    return "";
+  }
+};
+
 // Composant Squelette de chargement
 const StudentSkeleton = () => (
   <Card className="p-4 animate-pulse">
@@ -125,9 +140,10 @@ const StudentSkeleton = () => (
   </Card>
 );
 
-// Composant Carte Étudiant
+// Composant Carte Étudiant optimisé
 const StudentCard = ({
   student,
+  studentClass,
   onViewDetails,
   onEdit,
   onDelete,
@@ -136,6 +152,7 @@ const StudentCard = ({
   isSelecting,
 }: {
   student: Student;
+  studentClass?: { id: string; name: string } | null;
   onViewDetails: (student: Student) => void;
   onEdit: (student: Student) => void;
   onDelete: (studentId: string) => void;
@@ -143,14 +160,12 @@ const StudentCard = ({
   onSelect: (studentId: string) => void;
   isSelecting: boolean;
 }) => {
-  const { classes } = useClassStore();
-
-  const studentClass = student.classId
-    ? classes.find((c) => c.id === student.classId)
-    : null;
+  const { user } = useAuthStore();
+  const canManageStudents =
+    user?.role === "Admin" || user?.role === "Directeur";
 
   return (
-    <Card className="mb-4 relative hover:shadow-md transition-shadow duration-200">
+    <Card className="mb-4 relative hover:shadow-md transition-shadow duration-200 border">
       {isSelecting && (
         <div className="absolute top-4 left-4 z-10">
           <Checkbox
@@ -182,14 +197,16 @@ const StudentCard = ({
               </div>
               <div className="text-sm text-muted-foreground truncate flex items-center gap-1">
                 <Mail className="h-3 w-3" />
-                {student.email}
+                {student.email || "Aucun email"}
               </div>
               <div className="mt-2 flex flex-wrap gap-1">
                 <Badge variant={getStatusBadgeVariant(student.status)}>
                   {getStatusLabel(student.status)}
                 </Badge>
                 {studentClass && (
-                  <Badge variant="outline">{studentClass.name}</Badge>
+                  <Badge variant="outline" className="max-w-[150px] truncate">
+                    {studentClass.name}
+                  </Badge>
                 )}
               </div>
             </div>
@@ -204,20 +221,24 @@ const StudentCard = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onViewDetails(student)}>
-                <GraduationCap className="h-4 w-4 mr-2" />
-                Détails
+                <Eye className="h-4 w-4 mr-2" />
+                Voir détails
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEdit(student)}>
-                <Edit className="h-4 w-4 mr-2" />
-                Modifier
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onDelete(student.id)}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Supprimer
-              </DropdownMenuItem>
+              {canManageStudents && (
+                <>
+                  <DropdownMenuItem onClick={() => onEdit(student)}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Modifier
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => onDelete(student.id)}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Supprimer
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -246,7 +267,7 @@ const StudentCard = ({
                 Date de naissance
               </div>
               <div className="truncate">
-                {new Date(student.dateOfBirth).toLocaleDateString("fr-FR")}
+                {formatSafeDate(student.dateOfBirth)}
               </div>
             </div>
           )}
@@ -265,7 +286,7 @@ const StudentCard = ({
   );
 };
 
-// Composant Pagination
+// Composant Pagination amélioré
 const Pagination = ({
   currentPage,
   totalPages,
@@ -273,6 +294,7 @@ const Pagination = ({
   itemsPerPage,
   onItemsPerPageChange,
   totalItems,
+  isLoading,
 }: {
   currentPage: number;
   totalPages: number;
@@ -280,19 +302,22 @@ const Pagination = ({
   itemsPerPage: number;
   onItemsPerPageChange: (value: number) => void;
   totalItems: number;
+  isLoading: boolean;
 }) => {
-  const startIndex = (currentPage - 1) * itemsPerPage + 1;
+  const startIndex = totalItems > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
   const endIndex = Math.min(currentPage * itemsPerPage, totalItems);
 
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2 py-4 border-t">
       <div className="text-sm text-muted-foreground">
-        {totalItems > 0 ? (
+        {isLoading ? (
+          "Chargement..."
+        ) : totalItems > 0 ? (
           <>
             Affichage de {startIndex} à {endIndex} sur {totalItems} étudiant(s)
           </>
         ) : (
-          <>Aucun étudiant</>
+          "Aucun étudiant"
         )}
       </div>
 
@@ -307,6 +332,7 @@ const Pagination = ({
               onItemsPerPageChange(Number(value));
               onPageChange(1);
             }}
+            disabled={isLoading}
           >
             <SelectTrigger className="h-8 w-[70px]">
               <SelectValue placeholder={itemsPerPage} />
@@ -327,7 +353,7 @@ const Pagination = ({
               variant="outline"
               className="h-8 w-8 p-0"
               onClick={() => onPageChange(1)}
-              disabled={currentPage === 1}
+              disabled={currentPage === 1 || isLoading}
             >
               <ChevronsLeft className="h-4 w-4" />
             </Button>
@@ -335,7 +361,7 @@ const Pagination = ({
               variant="outline"
               className="h-8 w-8 p-0"
               onClick={() => onPageChange(currentPage - 1)}
-              disabled={currentPage === 1}
+              disabled={currentPage === 1 || isLoading}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -346,7 +372,7 @@ const Pagination = ({
               variant="outline"
               className="h-8 w-8 p-0"
               onClick={() => onPageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
+              disabled={currentPage === totalPages || isLoading}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -354,7 +380,7 @@ const Pagination = ({
               variant="outline"
               className="h-8 w-8 p-0"
               onClick={() => onPageChange(totalPages)}
-              disabled={currentPage === totalPages}
+              disabled={currentPage === totalPages || isLoading}
             >
               <ChevronsRight className="h-4 w-4" />
             </Button>
@@ -373,6 +399,7 @@ const BulkActionsBar = ({
   onBulkStatusChange,
   onBulkExport,
   onBulkAssignClass,
+  isLoading,
 }: {
   selectedCount: number;
   onDeselectAll: () => void;
@@ -380,6 +407,7 @@ const BulkActionsBar = ({
   onBulkStatusChange: (status: Student["status"]) => void;
   onBulkExport: () => void;
   onBulkAssignClass: () => void;
+  isLoading: boolean;
 }) => {
   return (
     <Card className="bg-blue-50 border-blue-200 mb-4">
@@ -395,27 +423,38 @@ const BulkActionsBar = ({
           <div className="flex flex-wrap gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={isLoading}
+                >
                   Modifier le statut
                   <ChevronDown className="ml-2 h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => onBulkStatusChange("Active")}>
+                <DropdownMenuItem
+                  onClick={() => onBulkStatusChange("Active")}
+                  disabled={isLoading}
+                >
                   Marquer comme actif
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => onBulkStatusChange("Inactive")}
+                  disabled={isLoading}
                 >
                   Marquer comme inactif
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => onBulkStatusChange("Graduated")}
+                  disabled={isLoading}
                 >
                   Marquer comme diplômé
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => onBulkStatusChange("Suspended")}
+                  disabled={isLoading}
                 >
                   Marquer comme suspendu
                 </DropdownMenuItem>
@@ -427,6 +466,7 @@ const BulkActionsBar = ({
               size="sm"
               className="h-8"
               onClick={onBulkAssignClass}
+              disabled={isLoading}
             >
               <Building className="h-3 w-3 mr-1" />
               Affecter classe
@@ -437,6 +477,7 @@ const BulkActionsBar = ({
               size="sm"
               className="h-8"
               onClick={onBulkExport}
+              disabled={isLoading}
             >
               <Download className="h-3 w-3 mr-1" />
               Exporter
@@ -447,6 +488,7 @@ const BulkActionsBar = ({
               size="sm"
               className="h-8"
               onClick={onBulkDelete}
+              disabled={isLoading}
             >
               <Trash2 className="h-3 w-3 mr-1" />
               Supprimer
@@ -457,6 +499,7 @@ const BulkActionsBar = ({
               size="sm"
               className="h-8"
               onClick={onDeselectAll}
+              disabled={isLoading}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -495,7 +538,22 @@ export const StudentsManager = () => {
 
   const { classes, fetchClasses } = useClassStore();
   const { user } = useAuthStore();
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
+
+  // Simple media query hook alternative
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+
+    checkScreenSize();
+    window.addEventListener("resize", checkScreenSize);
+
+    return () => {
+      window.removeEventListener("resize", checkScreenSize);
+    };
+  }, []);
 
   // État local
   const [searchTerm, setSearchTerm] = useState("");
@@ -508,6 +566,7 @@ export const StudentsManager = () => {
   const [isSelecting, setIsSelecting] = useState(false);
   const [showAssignClassModal, setShowAssignClassModal] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState("");
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // État du formulaire avec gestion d'erreur
   const [formState, setFormState] = useState<FormState>({
@@ -522,15 +581,17 @@ export const StudentsManager = () => {
   const [selectedStudentDetails, setSelectedStudentDetails] =
     useState<Student | null>(null);
 
+  // Référence pour l'annulation
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Initialisation des données
   useEffect(() => {
     const initializeData = async () => {
       try {
-        console.log("🔄 Initializing data...");
         await Promise.all([fetchStudents(), fetchClasses()]);
-        console.log("✅ Data initialized successfully");
+        setIsInitialized(true);
       } catch (err) {
-        console.error("❌ Erreur lors de l'initialisation:", err);
+        console.error("Erreur d'initialisation:", err);
         toast({
           title: "Erreur d'initialisation",
           description: "Impossible de charger les données initiales",
@@ -545,7 +606,6 @@ export const StudentsManager = () => {
   // Gestion des erreurs globales
   useEffect(() => {
     if (globalError) {
-      console.error("❌ Global error:", globalError);
       toast({
         title: "Erreur",
         description: globalError,
@@ -565,15 +625,16 @@ export const StudentsManager = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Charger les Éleves avec recherche
+  // Charger les Éleves avec recherche et gestion d'annulation
   useEffect(() => {
+    // Annuler la requête précédente
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     const loadStudents = async () => {
-      console.log("🔄 Loading students with:", {
-        search: debouncedSearchTerm,
-        page: currentPage,
-        limit: itemsPerPage,
-        filters,
-      });
+      abortControllerRef.current = new AbortController();
+
       try {
         await fetchStudents({
           search: debouncedSearchTerm,
@@ -582,21 +643,35 @@ export const StudentsManager = () => {
           status: filters.status,
           classId: filters.classId,
         });
-        console.log("✅ Students loaded:", students.length);
-      } catch (err) {
-        console.error("❌ Erreur lors du chargement des Éleves:", err);
+      } catch (err: any) {
+        // Ignorer les erreurs d'annulation
+        if (err.name === "AbortError") {
+          console.log("Requête annulée");
+          return;
+        }
+
+        console.error("Erreur chargement étudiants:", err);
+        toast({
+          title: "Erreur",
+          description: "Impossible de charger les étudiants",
+          variant: "destructive",
+        });
       }
     };
 
     loadStudents();
+
+    // Cleanup
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [debouncedSearchTerm, currentPage, itemsPerPage, fetchStudents, filters]);
 
   // Filtrage des Éleves
   const filteredStudents = useMemo(() => {
-    console.log("🔍 Filtering students:", {
-      total: students.length,
-      filters,
-    });
+    if (!isInitialized) return [];
 
     return students.filter((student) => {
       if (!student || !student.id) return false;
@@ -613,32 +688,39 @@ export const StudentsManager = () => {
 
       return matchesStatus && matchesClass;
     });
-  }, [students, filters]);
+  }, [students, filters, isInitialized]);
 
   // Pagination
-  const totalPages = Math.ceil(pagination.total / itemsPerPage);
-  const paginatedStudents = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const result = filteredStudents.slice(
-      startIndex,
-      startIndex + itemsPerPage
-    );
-    console.log("📄 Paginated students:", {
-      currentPage,
-      itemsPerPage,
-      startIndex,
-      endIndex: startIndex + itemsPerPage,
+  const totalItems = pagination.total || filteredStudents.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+  // Calcul des statistiques
+  const statistics = useMemo(() => {
+    const activeCount = filteredStudents.filter(
+      (s) => s.status === "Active"
+    ).length;
+    const inactiveCount = filteredStudents.filter(
+      (s) => s.status === "Inactive"
+    ).length;
+    const graduatedCount = filteredStudents.filter(
+      (s) => s.status === "Graduated"
+    ).length;
+    const assignedCount = filteredStudents.filter((s) => s.classId).length;
+
+    return {
       total: filteredStudents.length,
-      resultCount: result.length,
-    });
-    return result;
-  }, [filteredStudents, currentPage, itemsPerPage]);
+      active: activeCount,
+      inactive: inactiveCount,
+      graduated: graduatedCount,
+      assigned: assignedCount,
+      unassigned: filteredStudents.length - assignedCount,
+    };
+  }, [filteredStudents]);
 
   // Gestion de l'édition d'un étudiant
   const handleEditStudent = useCallback(
     async (student: Student) => {
       try {
-        console.log("✏️ Editing student:", student.id);
         setFormState({
           isOpen: true,
           mode: "edit",
@@ -651,7 +733,6 @@ export const StudentsManager = () => {
           setViewMode("list");
         }
       } catch (err) {
-        console.error("❌ Erreur lors de la préparation de l'édition:", err);
         setFormState((prev) => ({
           ...prev,
           error: "Impossible de charger les données de l'étudiant",
@@ -662,18 +743,15 @@ export const StudentsManager = () => {
   );
 
   const handleViewDetails = useCallback((student: Student) => {
-    console.log("👁️ Viewing details for student:", student.id);
     setSelectedStudentDetails(student);
     setViewMode("details");
   }, []);
 
   const handleDeleteStudent = useCallback((studentId: string) => {
-    console.log("🗑️ Requesting delete for student:", studentId);
     setStudentToDelete(studentId);
   }, []);
 
   const handleBackToList = useCallback(() => {
-    console.log("↩️ Back to list");
     setViewMode("list");
     setSelectedStudentDetails(null);
     setSelectedStudents([]);
@@ -682,8 +760,6 @@ export const StudentsManager = () => {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!studentToDelete) return;
-
-    console.log("✅ Confirming delete:", studentToDelete);
 
     try {
       if (studentToDelete.includes(",")) {
@@ -705,11 +781,13 @@ export const StudentsManager = () => {
 
       setStudentToDelete(null);
       setSelectedStudents([]);
-    } catch (error) {
-      console.error("❌ Erreur lors de la suppression:", error);
+      setIsSelecting(false);
+    } catch (error: any) {
+      console.error("Erreur suppression:", error);
       toast({
         title: "Erreur",
-        description: "Une erreur s'est produite lors de la suppression",
+        description:
+          error.message || "Une erreur s'est produite lors de la suppression",
         variant: "destructive",
       });
     }
@@ -725,24 +803,21 @@ export const StudentsManager = () => {
   }, []);
 
   const toggleSelectAll = useCallback(() => {
-    if (selectedStudents.length === paginatedStudents.length) {
+    if (selectedStudents.length === filteredStudents.length) {
       setSelectedStudents([]);
     } else {
-      setSelectedStudents(paginatedStudents.map((s) => s.id));
+      setSelectedStudents(filteredStudents.map((s) => s.id));
     }
-  }, [selectedStudents, paginatedStudents]);
+  }, [selectedStudents, filteredStudents]);
 
   const handleBulkDelete = useCallback(() => {
     if (selectedStudents.length === 0) return;
-    console.log("🗑️ Bulk delete for:", selectedStudents);
     setStudentToDelete(selectedStudents.join(","));
   }, [selectedStudents]);
 
   const handleBulkStatusChange = useCallback(
     async (newStatus: Student["status"]) => {
       if (selectedStudents.length === 0) return;
-
-      console.log("🔄 Bulk status change to:", newStatus, selectedStudents);
 
       try {
         const updatePromises = selectedStudents.map((studentId) => {
@@ -761,11 +836,12 @@ export const StudentsManager = () => {
         });
 
         setSelectedStudents([]);
-      } catch (error) {
-        console.error("❌ Erreur lors de la mise à jour groupée:", error);
+      } catch (error: any) {
+        console.error("Erreur mise à jour statut:", error);
         toast({
           title: "Erreur",
           description:
+            error.message ||
             "Une erreur s'est produite lors de la mise à jour des statuts",
           variant: "destructive",
         });
@@ -776,17 +852,11 @@ export const StudentsManager = () => {
 
   const handleBulkAssignClass = useCallback(() => {
     if (selectedStudents.length === 0) return;
-    console.log("🏫 Bulk assign class for:", selectedStudents);
     setShowAssignClassModal(true);
   }, [selectedStudents]);
 
   const handleConfirmAssignClass = useCallback(async () => {
     if (selectedStudents.length === 0 || !selectedClassId) return;
-
-    console.log("✅ Confirming bulk assign:", {
-      students: selectedStudents,
-      classId: selectedClassId,
-    });
 
     try {
       const updatePromises = selectedStudents.map((studentId) => {
@@ -803,133 +873,100 @@ export const StudentsManager = () => {
       setSelectedStudents([]);
       setShowAssignClassModal(false);
       setSelectedClassId("");
-    } catch (error) {
+      setIsSelecting(false);
+    } catch (error: any) {
       console.error("❌ Erreur lors de l'affectation groupée:", error);
       toast({
         title: "Erreur",
         description:
+          error.message ||
           "Une erreur s'est produite lors de l'affectation à la classe",
         variant: "destructive",
       });
     }
   }, [selectedStudents, selectedClassId, assignStudentToClass]);
 
+  // Fonction d'export améliorée
+  const exportToExcel = useCallback(
+    (studentsToExport: Student[], filename: string) => {
+      if (studentsToExport.length === 0) {
+        toast({
+          title: "Aucune donnée",
+          description: "Aucun étudiant à exporter",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      try {
+        const data = studentsToExport.map((student) => {
+          const studentClass = student.classId
+            ? classes.find((c) => c.id === student.classId)
+            : null;
+
+          return {
+            "Code Étudiant": student.studentCode || "",
+            Prénom: student.firstName || "",
+            Nom: student.lastName || "",
+            Email: student.email || "",
+            Téléphone: student.phone || "",
+            Statut: getStatusLabel(student.status),
+            Classe: studentClass?.name || "Non assigné",
+            "Date de Naissance": formatSafeDate(student.dateOfBirth),
+            "Lieu de Naissance": student.placeOfBirth || "",
+            Adresse: student.address || "",
+            "Groupe Sanguin": student.bloodGroup || "",
+            Allergies: student.allergies || "",
+            Handicaps: student.disabilities || "",
+            Sexe: student.sexe || "",
+            "Date de Création": formatSafeDate(student.createdAt),
+          };
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Éleves");
+        XLSX.writeFile(workbook, filename);
+
+        toast({
+          title: "Export réussi",
+          description: `Les données de ${studentsToExport.length} Éleves ont été exportées`,
+        });
+      } catch (error) {
+        console.error("❌ Erreur lors de l'export:", error);
+        toast({
+          title: "Erreur d'export",
+          description: "Une erreur s'est produite lors de l'exportation",
+          variant: "destructive",
+        });
+      }
+    },
+    [classes]
+  );
+
   const handleBulkExport = useCallback(() => {
     if (selectedStudents.length === 0) return;
 
-    console.log("📤 Bulk export for:", selectedStudents.length, "students");
+    const selectedStudentsData = students.filter((student) =>
+      selectedStudents.includes(student.id)
+    );
 
-    try {
-      const selectedStudentsData = students.filter((student) =>
-        selectedStudents.includes(student.id)
-      );
-
-      const data = selectedStudentsData.map((student) => {
-        const studentClass = student.classId
-          ? classes.find((c) => c.id === student.classId)
-          : null;
-
-        return {
-          "Code Étudiant": student.studentCode || "",
-          Prénom: student.firstName || "",
-          Nom: student.lastName || "",
-          Email: student.email || "",
-          Téléphone: student.phone || "",
-          Statut: getStatusLabel(student.status),
-          Classe: studentClass?.name || "Non assigné",
-          "Date de Naissance": student.dateOfBirth
-            ? new Date(student.dateOfBirth).toLocaleDateString("fr-FR")
-            : "",
-          "Lieu de Naissance": student.placeOfBirth || "",
-          Adresse: student.address || "",
-          "Groupe Sanguin": student.bloodGroup || "",
-          Allergies: student.allergies || "",
-          Handicaps: student.disabilities || "",
-          Sexe: student.sexe || "",
-          "Date de Création": student.createdAt
-            ? new Date(student.createdAt).toLocaleDateString("fr-FR")
-            : "",
-        };
-      });
-
-      const worksheet = XLSX.utils.json_to_sheet(data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Éleves");
-      XLSX.writeFile(workbook, "etudiants-selection.xlsx");
-
-      toast({
-        title: "Export réussi",
-        description: `Les données de ${selectedStudents.length} Éleves ont été exportées`,
-      });
-    } catch (error) {
-      console.error("❌ Erreur lors de l'export:", error);
-      toast({
-        title: "Erreur d'export",
-        description: "Une erreur s'est produite lors de l'exportation",
-        variant: "destructive",
-      });
-    }
-  }, [selectedStudents, students, classes]);
+    exportToExcel(
+      selectedStudentsData,
+      `etudiants-selection-${new Date().toISOString().split("T")[0]}.xlsx`
+    );
+  }, [selectedStudents, students, exportToExcel]);
 
   const exportAllToExcel = useCallback(() => {
-    console.log("📤 Export all students:", filteredStudents.length);
-
-    try {
-      const data = filteredStudents.map((student) => {
-        const studentClass = student.classId
-          ? classes.find((c) => c.id === student.classId)
-          : null;
-
-        return {
-          "Code Étudiant": student.studentCode || "",
-          Prénom: student.firstName || "",
-          Nom: student.lastName || "",
-          Email: student.email || "",
-          Téléphone: student.phone || "",
-          Statut: getStatusLabel(student.status),
-          Classe: studentClass?.name || "Non assigné",
-          "Date de Naissance": student.dateOfBirth
-            ? new Date(student.dateOfBirth).toLocaleDateString("fr-FR")
-            : "",
-          "Lieu de Naissance": student.placeOfBirth || "",
-          Adresse: student.address || "",
-          "Groupe Sanguin": student.bloodGroup || "",
-          Allergies: student.allergies || "",
-          Handicaps: student.disabilities || "",
-          Sexe: student.sexe || "",
-          "Date de Création": student.createdAt
-            ? new Date(student.createdAt).toLocaleDateString("fr-FR")
-            : "",
-        };
-      });
-
-      const worksheet = XLSX.utils.json_to_sheet(data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Éleves");
-      XLSX.writeFile(workbook, "etudiants.xlsx");
-
-      toast({
-        title: "Export réussi",
-        description: `Les données de ${filteredStudents.length} Éleves ont été exportées`,
-      });
-    } catch (error) {
-      console.error("❌ Erreur lors de l'export:", error);
-      toast({
-        title: "Erreur d'export",
-        description: "Une erreur s'est produite lors de l'exportation",
-        variant: "destructive",
-      });
-    }
-  }, [filteredStudents, classes]);
+    exportToExcel(
+      filteredStudents,
+      `etudiants-${new Date().toISOString().split("T")[0]}.xlsx`
+    );
+  }, [filteredStudents, exportToExcel]);
 
   // Gestion de la soumission du formulaire
   const handleFormSubmit = useCallback(
     async (studentData: any) => {
-      console.log("📤 Form submit:", {
-        mode: formState.mode,
-        data: studentData,
-      });
-
       setFormState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       try {
@@ -990,7 +1027,6 @@ export const StudentsManager = () => {
   );
 
   const handleOpenCreateForm = useCallback(() => {
-    console.log("➕ Opening create form");
     setFormState({
       isOpen: true,
       mode: "create",
@@ -1001,7 +1037,6 @@ export const StudentsManager = () => {
   }, []);
 
   const handleCloseForm = useCallback(() => {
-    console.log("❌ Closing form");
     setFormState({
       isOpen: false,
       mode: "create",
@@ -1010,6 +1045,10 @@ export const StudentsManager = () => {
       error: null,
     });
   }, []);
+
+  // Vérifier les permissions
+  const canManageStudents =
+    user?.role === "Admin" || user?.role === "Directeur";
 
   // Affichage des détails de l'étudiant
   if (viewMode === "details" && selectedStudentDetails) {
@@ -1043,15 +1082,9 @@ export const StudentsManager = () => {
     );
   }
 
+  // Rendu du contenu principal
   const renderContent = () => {
-    console.log("🎨 Rendering content:", {
-      loading,
-      studentsCount: students.length,
-      filteredCount: filteredStudents.length,
-      paginatedCount: paginatedStudents.length,
-    });
-
-    if (loading && students.length === 0) {
+    if (!isInitialized && loading) {
       return (
         <div className="space-y-4 p-4">
           {[...Array(5)].map((_, i) => (
@@ -1061,10 +1094,10 @@ export const StudentsManager = () => {
       );
     }
 
-    if (students.length === 0 && !loading) {
+    if (filteredStudents.length === 0 && !loading) {
       return (
         <div className="text-center py-12">
-          <User className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
+          <Users className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
           <h3 className="text-lg font-semibold text-muted-foreground">
             Aucun étudiant trouvé
           </h3>
@@ -1073,33 +1106,15 @@ export const StudentsManager = () => {
               ? "Aucun étudiant ne correspond à vos critères de recherche"
               : "Aucun étudiant n'a été ajouté pour le moment"}
           </p>
-          {!debouncedSearchTerm && !filters.status && !filters.classId && (
-            <Button onClick={handleOpenCreateForm} className="mt-4">
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter le premier étudiant
-            </Button>
-          )}
-        </div>
-      );
-    }
-
-    if (filteredStudents.length === 0 && !loading) {
-      return (
-        <div className="text-center py-12">
-          <AlertTriangle className="h-16 w-16 mx-auto text-yellow-500/50 mb-4" />
-          <h3 className="text-lg font-semibold text-muted-foreground">
-            Aucun résultat
-          </h3>
-          <p className="text-muted-foreground mt-1">
-            Aucun étudiant ne correspond à vos filtres
-          </p>
-          <Button
-            variant="outline"
-            onClick={() => setFilters({ status: "", classId: "" })}
-            className="mt-4"
-          >
-            Réinitialiser les filtres
-          </Button>
+          {!debouncedSearchTerm &&
+            !filters.status &&
+            !filters.classId &&
+            canManageStudents && (
+              <Button onClick={handleOpenCreateForm} className="mt-4">
+                <Plus className="h-4 w-4 mr-2" />
+                Ajouter le premier étudiant
+              </Button>
+            )}
         </div>
       );
     }
@@ -1110,16 +1125,19 @@ export const StudentsManager = () => {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead key="select-header" className="w-[50px]">
-                  <Checkbox
-                    checked={
-                      selectedStudents.length === paginatedStudents.length &&
-                      paginatedStudents.length > 0
-                    }
-                    onCheckedChange={toggleSelectAll}
-                    aria-label="Sélectionner tous les Éleves"
-                  />
-                </TableHead>
+                {isSelecting && (
+                  <TableHead key="select-header" className="w-[50px]">
+                    <Checkbox
+                      checked={
+                        selectedStudents.length === filteredStudents.length &&
+                        filteredStudents.length > 0
+                      }
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Sélectionner tous les Éleves"
+                      disabled={loading}
+                    />
+                  </TableHead>
+                )}
                 <TableHead key="code-header" className="w-[150px]">
                   Code Étudiant
                 </TableHead>
@@ -1147,7 +1165,7 @@ export const StudentsManager = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedStudents.map((student) => {
+              {filteredStudents.map((student) => {
                 const studentClass = student.classId
                   ? classes.find((c) => c.id === student.classId)
                   : null;
@@ -1157,15 +1175,18 @@ export const StudentsManager = () => {
                     key={student.id}
                     className="hover:bg-muted/30 transition-colors"
                   >
-                    <TableCell key={`${student.id}-select`}>
-                      <Checkbox
-                        checked={selectedStudents.includes(student.id)}
-                        onCheckedChange={() =>
-                          toggleStudentSelection(student.id)
-                        }
-                        aria-label={`Sélectionner ${student.firstName} ${student.lastName}`}
-                      />
-                    </TableCell>
+                    {isSelecting && (
+                      <TableCell key={`${student.id}-select`}>
+                        <Checkbox
+                          checked={selectedStudents.includes(student.id)}
+                          onCheckedChange={() =>
+                            toggleStudentSelection(student.id)
+                          }
+                          aria-label={`Sélectionner ${student.firstName} ${student.lastName}`}
+                          disabled={loading}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell key={`${student.id}-code`}>
                       <div className="font-mono text-sm font-medium">
                         {student.studentCode}
@@ -1188,7 +1209,7 @@ export const StudentsManager = () => {
                       </div>
                     </TableCell>
                     <TableCell key={`${student.id}-email`}>
-                      <div className="text-sm">{student.email}</div>
+                      <div className="text-sm truncate">{student.email}</div>
                     </TableCell>
                     <TableCell key={`${student.id}-phone`}>
                       <div className="text-sm">{student.phone || "-"}</div>
@@ -1212,11 +1233,11 @@ export const StudentsManager = () => {
                           onClick={() => handleViewDetails(student)}
                           title="Voir détails"
                           aria-label="Voir détails"
+                          disabled={loading}
                         >
-                          <GraduationCap className="h-4 w-4" />
+                          <Eye className="h-4 w-4" />
                         </Button>
-                        {(user?.role === "Admin" ||
-                          user?.role === "Directeur") && (
+                        {canManageStudents && (
                           <>
                             <Button
                               variant="ghost"
@@ -1225,6 +1246,7 @@ export const StudentsManager = () => {
                               onClick={() => handleEditStudent(student)}
                               title="Modifier"
                               aria-label="Modifier"
+                              disabled={loading}
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -1235,6 +1257,7 @@ export const StudentsManager = () => {
                               onClick={() => handleDeleteStudent(student.id)}
                               title="Supprimer"
                               aria-label="Supprimer"
+                              disabled={loading}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -1254,31 +1277,28 @@ export const StudentsManager = () => {
     // Vue mobile/tablette
     return (
       <div className="space-y-4 p-4">
-        {paginatedStudents.map((student) => (
-          <StudentCard
-            key={student.id}
-            student={student}
-            onViewDetails={handleViewDetails}
-            onEdit={handleEditStudent}
-            onDelete={handleDeleteStudent}
-            isSelected={selectedStudents.includes(student.id)}
-            onSelect={toggleStudentSelection}
-            isSelecting={isSelecting}
-          />
-        ))}
+        {filteredStudents.map((student) => {
+          const studentClass = student.classId
+            ? classes.find((c) => c.id === student.classId)
+            : null;
+
+          return (
+            <StudentCard
+              key={student.id}
+              student={student}
+              studentClass={studentClass}
+              onViewDetails={handleViewDetails}
+              onEdit={handleEditStudent}
+              onDelete={handleDeleteStudent}
+              isSelected={selectedStudents.includes(student.id)}
+              onSelect={toggleStudentSelection}
+              isSelecting={isSelecting}
+            />
+          );
+        })}
       </div>
     );
   };
-
-  console.log("📊 State summary:", {
-    totalStudents: students.length,
-    filteredStudents: filteredStudents.length,
-    paginatedStudents: paginatedStudents.length,
-    loading,
-    currentPage,
-    totalPages,
-    filters,
-  });
 
   return (
     <div className="space-y-6">
@@ -1299,7 +1319,7 @@ export const StudentsManager = () => {
             variant="outline"
             className="gap-2"
             onClick={exportAllToExcel}
-            disabled={students.length === 0 || loading}
+            disabled={filteredStudents.length === 0 || loading}
           >
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">Exporter</span>
@@ -1310,22 +1330,97 @@ export const StudentsManager = () => {
             variant="outline"
             className="gap-2"
             onClick={() => setIsSelecting(!isSelecting)}
-            disabled={students.length === 0 || loading}
+            disabled={filteredStudents.length === 0 || loading}
           >
             <CheckCircle className="h-4 w-4" />
             <span className="hidden sm:inline">Sélection</span>
           </Button>
 
           {/* Bouton Nouvel Étudiant */}
-          <Button
-            onClick={handleOpenCreateForm}
-            className="gap-2"
-            disabled={loading}
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Nouvel éleve</span>
-          </Button>
+          {canManageStudents && (
+            <Button
+              onClick={handleOpenCreateForm}
+              className="gap-2"
+              disabled={loading}
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Nouvel élève</span>
+            </Button>
+          )}
         </div>
+      </div>
+
+      {/* Statistiques */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Total
+                </p>
+                <p className="text-2xl font-bold mt-1">{statistics.total}</p>
+              </div>
+              <div className="p-2 rounded-lg bg-blue-100">
+                <Users className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Actifs
+                </p>
+                <p className="text-2xl font-bold mt-1 text-green-600">
+                  {statistics.active}
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-green-100">
+                <UserCheck className="h-5 w-5 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Diplômés
+                </p>
+                <p className="text-2xl font-bold mt-1 text-purple-600">
+                  {statistics.graduated}
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-purple-100">
+                <GraduationCap className="h-5 w-5 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Assignés
+                </p>
+                <p className="text-2xl font-bold mt-1 text-amber-600">
+                  {statistics.assigned}
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-amber-100">
+                <BookOpen className="h-5 w-5 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Barre d'actions groupées */}
@@ -1337,6 +1432,7 @@ export const StudentsManager = () => {
           onBulkStatusChange={handleBulkStatusChange}
           onBulkExport={handleBulkExport}
           onBulkAssignClass={handleBulkAssignClass}
+          isLoading={loading}
         />
       )}
 
@@ -1352,6 +1448,7 @@ export const StudentsManager = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 h-11 w-full"
                 aria-label="Rechercher des Éleves"
+                disabled={loading}
               />
             </div>
 
@@ -1364,6 +1461,7 @@ export const StudentsManager = () => {
                     status: value === EMPTY_VALUES.ALL ? "" : value,
                   })
                 }
+                disabled={loading}
               >
                 <SelectTrigger
                   className="w-full lg:w-32"
@@ -1388,6 +1486,7 @@ export const StudentsManager = () => {
                     classId: value === EMPTY_VALUES.ALL ? "" : value,
                   })
                 }
+                disabled={loading}
               >
                 <SelectTrigger
                   className="w-full lg:w-40"
@@ -1421,7 +1520,7 @@ export const StudentsManager = () => {
             </CardTitle>
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-sm">
-                {pagination.total} éleve{pagination.total !== 1 ? "s" : ""}
+                {statistics.total} élève{statistics.total !== 1 ? "s" : ""}
               </Badge>
               {loading && (
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -1432,14 +1531,15 @@ export const StudentsManager = () => {
         <CardContent className="p-0">{renderContent()}</CardContent>
 
         {/* Pagination */}
-        {students.length > 0 && !loading && (
+        {filteredStudents.length > 0 && (
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={setCurrentPage}
             itemsPerPage={itemsPerPage}
             onItemsPerPageChange={setItemsPerPage}
-            totalItems={pagination.total || filteredStudents.length}
+            totalItems={totalItems}
+            isLoading={loading}
           />
         )}
       </Card>
@@ -1449,13 +1549,11 @@ export const StudentsManager = () => {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {formState.mode === "create"
-                ? "Nouvel Étudiant"
-                : "Modifier Étudiant"}
+              {formState.mode === "create" ? "Nouvel Élève" : "Modifier Élève"}
             </DialogTitle>
             <DialogDescription>
               {formState.mode === "create"
-                ? "Ajouter un nouvel étudiant dans le système"
+                ? "Ajouter un nouvel élève dans le système"
                 : `Modification de ${formState.student?.firstName} ${formState.student?.lastName}`}
             </DialogDescription>
           </DialogHeader>
@@ -1497,7 +1595,11 @@ export const StudentsManager = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+            <Select
+              value={selectedClassId}
+              onValueChange={setSelectedClassId}
+              disabled={loading}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Sélectionner une classe" />
               </SelectTrigger>
@@ -1518,14 +1620,22 @@ export const StudentsManager = () => {
             <Button
               variant="outline"
               onClick={() => setShowAssignClassModal(false)}
+              disabled={loading}
             >
               Annuler
             </Button>
             <Button
               onClick={handleConfirmAssignClass}
-              disabled={!selectedClassId}
+              disabled={!selectedClassId || loading}
             >
-              Confirmer
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Traitement...
+                </>
+              ) : (
+                "Confirmer"
+              )}
             </Button>
           </div>
         </DialogContent>
@@ -1545,8 +1655,8 @@ export const StudentsManager = () => {
           studentToDelete && studentToDelete.includes(",")
             ? `Êtes-vous sûr de vouloir supprimer ${
                 studentToDelete.split(",").length
-              } Éleves ? Cette action est irréversible.`
-            : "Êtes-vous sûr de vouloir supprimer cet étudiant ? Cette action est irréversible."
+              } Élèves ? Cette action est irréversible.`
+            : "Êtes-vous sûr de vouloir supprimer cet élève ? Cette action est irréversible."
         }
         confirmLabel="Supprimer"
         cancelLabel="Annuler"

@@ -13,15 +13,10 @@ import academicYearRoutes from "./routes/academicYear.routes";
 import classesRoutes from "./routes/classRoutes";
 import guardianRoutes from "./routes/guardianRoutes";
 import gradeRoutes from "./routes/gradeRoutes";
-// import userRoutes from "./routes/userRoutes";
 import scheduleRoutes from "./routes/scheduleRoutes";
-// import attendanceRoutes from "./routes/attendanceRoutes";
-// import paymentRoutes from "./routes/paymentRoutes";
-// import expensRoutes from "./routes/expenseRoutes";
 import feePaymentRoutes from "./routes/feePaymentRoutes";
 import announcementRoutes from "./routes/announcementRoutes";
 import eventRoutes from "./routes/eventRoutes";
-// import analyticsRoutes from "./routes/analyticsRoutes";
 
 import classeAssignmentRoutes from "./routes/classAssignmentRoutes";
 import feeStructureRoutes from "./routes/feeStructureRoutes";
@@ -29,6 +24,7 @@ import studentFeeRoutes from "./routes/studentFeeRoutes";
 import auditRoutes from "./routes/auditRoutes";
 import backupRoutes from "./routes/backupRoutes";
 import timetableRoutes from "./routes/timetableRoutes";
+import transcriptRoutes from "./routes/transcriptRoutes";
 
 import {
   ensureAcademicYearsExist,
@@ -36,14 +32,12 @@ import {
   updateCurrentAcademicYear,
 } from "./services/academicYearService";
 import path from "path";
-import { auditMiddleware } from "./middleware/auditMiddleware";
+
 import {
-  checkSessionTimeout,
   cleanupExpiredSessions,
   trackUserActivity,
 } from "./middleware/sessionTimeout";
 import { initializeAcademicYearCron } from "./services/cronService";
-import { time } from "console";
 import { requirePasswordChange } from "./middleware/requirePasswordChange";
 
 dotenv.config();
@@ -54,10 +48,8 @@ const app = express();
 app.use(cors());
 cleanupExpiredSessions();
 app.use(trackUserActivity);
-
-// app.use(auditMiddleware);
 app.use(express.json());
-// Servir les fichiers uploads
+
 app.use(
   "/uploads/profiles",
   express.static(path.join(process.cwd(), "uploads", "profiles"))
@@ -67,7 +59,7 @@ app.use(
   express.static(path.join(process.cwd(), "uploads", "imports"))
 );
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 5000;
 
 // Appliquer le middleware de vérification de changement de mot de passe
 app.use("/api", requirePasswordChange);
@@ -88,12 +80,12 @@ app.use("/api/schedules", scheduleRoutes);
 app.use("/api/timetables", timetableRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/announcements", announcementRoutes);
-// app.use("/api/analytics", analyticsRoutes);
 app.use("/api/fee-structures", feeStructureRoutes);
 app.use("/api/student-fees", studentFeeRoutes);
 app.use("/api/fee-payments", feePaymentRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/backup", backupRoutes);
+app.use("/api/transcripts", transcriptRoutes);
 app.use((req, res, next) => {
   // Vérifie si aucune route n'a matché
   if (!req.route) {

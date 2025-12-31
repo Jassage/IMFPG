@@ -58,9 +58,21 @@ interface TimetableStore {
     constraints?: any
   ) => Promise<void>;
 
+  // Vérification de conflits
+  checkScheduleConflicts: (data: {
+    professeurId: string;
+    classId: string;
+    dayOfWeek: string;
+    startTime: string;
+    endTime: string;
+    classroom?: string;
+    excludeScheduleId?: string;
+  }) => Promise<{ hasConflict: boolean; conflicts: any[] }>;
+
   // Filters
   setFilters: (filters: Partial<TimetableStore["filters"]>) => void;
   clearFilters: () => void;
+  clearError: () => void;
 
   // Getters
   getFilteredEvents: () => TimetableEvent[];
@@ -89,6 +101,7 @@ export const useTimetableStore = create<TimetableStore>((set, get) => ({
     }
   },
 
+  // Fonction pour récupérer l'emploi du temps d'une classe
   fetchClassTimetable: async (
     classId: string,
     options?: { academicYearId?: string }
@@ -178,6 +191,89 @@ export const useTimetableStore = create<TimetableStore>((set, get) => ({
     }
   },
 
+  // Vérification des conflits d'horaire
+  checkScheduleConflicts: async (data: {
+    professeurId: string;
+    classId: string;
+    dayOfWeek: string;
+    startTime: string;
+    endTime: string;
+    classroom?: string;
+    excludeScheduleId?: string;
+  }) => {
+    set({ loading: true, error: null, errorDetails: null });
+
+    try {
+      // Préparer les paramètres
+      const params: Record<string, string> = {
+        professeurId: data.professeurId,
+        classId: data.classId,
+        dayOfWeek: data.dayOfWeek,
+        startTime: data.startTime,
+        endTime: data.endTime,
+      };
+
+      if (data.classroom) {
+        params.classroom = data.classroom;
+      }
+
+      if (data.excludeScheduleId) {
+        params.excludeScheduleId = data.excludeScheduleId;
+      }
+
+      const queryString = new URLSearchParams(params).toString();
+      console.log(queryString);
+      const response = await api.get(
+        `/schedules/check-conflicts?${queryString}`
+      );
+
+      // Vérifier si la réponse est valide
+      if (!response.data) {
+        throw new Error("Réponse invalide du serveur");
+      }
+
+      // Retourner le résultat des conflits
+      const result = {
+        hasConflict: response.data.hasConflict || false,
+        conflicts: response.data.conflicts || [],
+      };
+
+      console.log("Vérification des conflits:", {
+        params,
+        result,
+      });
+
+      set({ loading: false, error: null, errorDetails: null });
+      return result;
+    } catch (error: any) {
+      console.error("Erreur lors de la vérification des conflits:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        "Erreur lors de la vérification des conflits";
+
+      set({
+        loading: false,
+        error: errorMessage,
+        errorDetails: {
+          code: error.response?.status,
+          data: error.response?.data,
+          originalError: error.message,
+        },
+        lastErrorTime: new Date(),
+      });
+
+      // Pour ne pas bloquer l'interface utilisateur en cas d'erreur,
+      // on retourne un résultat par défaut
+      toast.error(errorMessage);
+      return {
+        hasConflict: false, // Par défaut, on assume qu'il n'y a pas de conflit
+        conflicts: [],
+      };
+    }
+  },
+
   getEventsForDay: (dayOfWeek: number) => {
     const { events } = get();
     return events
@@ -207,12 +303,67 @@ export const useTimetableStore = create<TimetableStore>((set, get) => ({
 
   addSchedule: async (assignmentId: string, scheduleData: any) => {
     set({ loading: true, error: null, errorDetails: null });
+
     try {
       console.log(" Creating schedule with data:", {
         assignmentId,
         scheduleData,
       });
 
+      // Récupérer d'abord l'assignation pour avoir le professeurId
+      let professeurId = "";
+      try {
+        const assignmentResponse = await api.get(
+          `/class-assignments/${assignmentId}`
+        );
+        professeurId =
+          assignmentResponse.data?.data?.professeurId ||
+          assignmentResponse.data?.professeurId ||
+          assignmentResponse.data?.professeur?.id;
+
+        console.log(" Found professeurId:", professeurId);
+      } catch (assignmentError) {
+        console.warn("Could not fetch assignment details:", assignmentError);
+      }
+
+      // Vérifier les conflits AVANT d'ajouter
+      if (professeurId) {
+        const conflictCheck = await get().checkScheduleConflicts({
+          professeurId: professeurId,
+          classId: scheduleData.classId,
+          dayOfWeek: scheduleData.dayOfWeek,
+          startTime: scheduleData.startTime,
+          endTime: scheduleData.endTime,
+          classroom: scheduleData.classroom,
+        });
+
+        if (conflictCheck.hasConflict) {
+          const errorMessage = conflictCheck.conflicts
+            .map((conflict: any) => {
+              if (conflict.type === "PROFESSEUR_CONFLICT") {
+                return `Le professeur a déjà un cours à ce créneau horaire`;
+              } else if (conflict.type === "CLASS_CONFLICT") {
+                return `La classe a déjà un cours à ce créneau horaire`;
+              } else if (conflict.type === "CLASSROOM_CONFLICT") {
+                return `La salle est déjà occupée à ce créneau horaire`;
+              }
+              return conflict.message;
+            })
+            .join("\n");
+
+          set({
+            loading: false,
+            error: errorMessage,
+            errorDetails: { conflicts: conflictCheck.conflicts },
+            lastErrorTime: new Date(),
+          });
+
+          toast.error(`Conflits détectés:\n${errorMessage}`);
+          throw new Error("CONFLICT_ERROR");
+        }
+      }
+
+      // Maintenant créer l'horaire
       const response = await api.post(
         `/timetables/assignments/${assignmentId}/schedules`,
         scheduleData
@@ -265,46 +416,73 @@ export const useTimetableStore = create<TimetableStore>((set, get) => ({
 
       return newSchedule;
     } catch (error: any) {
-      console.error(" Error adding schedule:", error);
-
-      // Déterminer le message d'erreur
+      // Gestion améliorée des erreurs
       let errorMessage = "Erreur lors de l'ajout de l'horaire";
       let errorCode = "UNKNOWN_ERROR";
 
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-        errorCode = error.response.data.code || "API_ERROR";
-      } else if (error.message) {
-        errorMessage = error.message;
+      if (error.message === "CONFLICT_ERROR") {
+        // Ne pas re-lancer l'erreur de conflit, elle a déjà été gérée
+        set({ loading: false });
+        return;
       }
 
       if (error.response?.data?.code === "PROFESSEUR_CONFLICT") {
-        errorMessage = "Le professeur a déjà un cours à ce créneau horaire";
+        errorMessage =
+          "Le professeur a déjà un cours à ce créneau horaire. Veuillez choisir un autre créneau.";
       } else if (error.response?.data?.code === "CLASS_CONFLICT") {
-        errorMessage = "La classe a déjà un cours à ce créneau horaire";
+        errorMessage = "La classe a déjà un cours à ce créneau horaire.";
       } else if (error.response?.data?.code === "INVALID_TIME_RANGE") {
-        errorMessage = "Les horaires spécifiés sont invalides";
+        errorMessage =
+          "Les horaires spécifiés sont invalides. L'heure de fin doit être après l'heure de début.";
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
       }
 
       set({
         loading: false,
         error: errorMessage,
-        errorDetails: {
-          code: errorCode,
-          status: error.response?.status,
-          data: error.response?.data,
-          originalError: error.message,
-        },
-        lastErrorTime: new Date(),
+        errorDetails: error.response?.data,
       });
 
       toast.error(errorMessage);
       throw error;
     }
   },
+
   updateSchedule: async (scheduleId: string, scheduleData: any) => {
     set({ loading: true, error: null, errorDetails: null });
     try {
+      // Récupérer l'horaire existant pour vérifier les conflits
+      const existingSchedule = get().schedules.find((s) => s.id === scheduleId);
+
+      if (existingSchedule) {
+        const conflictCheck = await get().checkScheduleConflicts({
+          professeurId: existingSchedule.professeurId,
+          classId: scheduleData.classId || existingSchedule.classId,
+          dayOfWeek: scheduleData.dayOfWeek || existingSchedule.dayOfWeek,
+          startTime: scheduleData.startTime || existingSchedule.startTime,
+          endTime: scheduleData.endTime || existingSchedule.endTime,
+          classroom: scheduleData.classroom || existingSchedule.classroom,
+          excludeScheduleId: scheduleId,
+        });
+
+        if (conflictCheck.hasConflict) {
+          const errorMessage = conflictCheck.conflicts
+            .map((conflict: any) => conflict.message)
+            .join("\n");
+
+          set({
+            loading: false,
+            error: errorMessage,
+            errorDetails: { conflicts: conflictCheck.conflicts },
+            lastErrorTime: new Date(),
+          });
+
+          toast.error(`Conflits détectés:\n${errorMessage}`);
+          throw new Error(errorMessage);
+        }
+      }
+
       const response = await api.put(`/schedules/${scheduleId}`, scheduleData);
 
       if (!response.data?.success) {
@@ -416,22 +594,58 @@ export const useTimetableStore = create<TimetableStore>((set, get) => ({
     academicYearId: string,
     constraints?: any
   ) => {
+    set({ loading: true, error: null, errorDetails: null });
     try {
       const response = await api.post(`/generate/class/${classId}`, {
         academicYearId,
         constraints,
       });
 
-      const newSchedules = response.data?.data?.generatedSchedules || [];
+      if (!response.data?.success) {
+        const errorMessage =
+          response.data?.message || "Erreur lors de la génération";
+        set({
+          loading: false,
+          error: errorMessage,
+          errorDetails: response.data,
+          lastErrorTime: new Date(),
+        });
+
+        toast.error(errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const newSchedules = response.data?.data?.schedules || [];
       if (newSchedules.length > 0) {
         set((state) => ({
           schedules: [...state.schedules, ...newSchedules],
+          loading: false,
+          error: null,
+          errorDetails: null,
         }));
       }
 
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating timetable:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        "Erreur lors de la génération";
+
+      set({
+        loading: false,
+        error: errorMessage,
+        errorDetails: {
+          code: error.response?.status,
+          data: error.response?.data,
+          originalError: error.message,
+        },
+        lastErrorTime: new Date(),
+      });
+
+      toast.error(errorMessage);
       throw error;
     }
   },

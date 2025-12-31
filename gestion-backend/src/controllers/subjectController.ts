@@ -183,14 +183,15 @@ export const createSubject = async (
     res.status(201).json(result);
   } catch (error: any) {
     console.error("❌ SubjectController - createSubject error:", error);
-
+    const errorMessage = error.message;
+    const truncatedErrorMessage = errorMessage.substring(0, 500);
     await createAuditLog({
       ...auditData,
       action: "SUBJECT_CREATION_ERROR",
       entity: "Subject",
       description: "Erreur lors de la création de la matière",
       status: "ERROR",
-      errorMessage: error.message,
+      errorMessage: truncatedErrorMessage,
     });
 
     const response: ApiResponse = {

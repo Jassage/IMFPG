@@ -1478,20 +1478,6 @@ const checkUserDependencies = async (
     dependencies.auditLogs = auditLogs;
   }
 
-  // 2. Vérifier les tokens de réinitialisation (si table séparée)
-  // const resetTokens = await prisma.passwordResetToken.count({
-  //   where: { userId },
-  // });
-  // if (resetTokens > 0) {
-  //   dependencies.resetTokens = resetTokens;
-  // }
-
-  // 3. Vérifier d'autres relations selon votre application
-  // - Messages
-  // - Commentaires
-  // - Commandes
-  // - etc.
-
   return Object.keys(dependencies).length > 0 ? dependencies : null;
 };
 

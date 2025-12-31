@@ -303,12 +303,6 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Award",
         PERMISSIONS.VIEW_PROFESSEURS
       ),
-      createNavigationItem(
-        "guardians",
-        "Parents",
-        "UsersRound",
-        PERMISSIONS.VIEW_GUARDIANS
-      ),
     ],
     academicItems: [
       createNavigationItem(
@@ -387,23 +381,12 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Receipt",
         PERMISSIONS.VIEW_EXPENSES
       ),
-      createNavigationItem(
-        "settings",
-        "Paramètres",
-        "Settings",
-        PERMISSIONS.VIEW_SETTINGS
-      ),
+
       createNavigationItem(
         "audit-logs",
         "Journal d'audit",
         "ShieldAlert",
         PERMISSIONS.VIEW_AUDIT_LOGS
-      ),
-      createNavigationItem(
-        "backup",
-        "Sauvegardes",
-        "Database",
-        PERMISSIONS.MANAGE_BACKUP
       ),
     ],
   },
@@ -424,7 +407,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
       ),
       createNavigationItem(
         "enrollments",
-        "Inscriptions",
+        "ReInscriptions",
         "UserPlus",
         PERMISSIONS.PROCESS_ENROLLMENTS
       ),
@@ -435,48 +418,9 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.VIEW_GUARDIANS
       ),
     ],
-    academicItems: [
-      createNavigationItem(
-        "payments",
-        "Paiements",
-        "DollarSign",
-        PERMISSIONS.VIEW_PAYMENTS
-      ),
-      createNavigationItem(
-        "attendance",
-        "Présences",
-        "ClipboardCheck",
-        PERMISSIONS.VIEW_ATTENDANCE
-      ),
-      createNavigationItem(
-        "schedule",
-        "Emploi du temps",
-        "CalendarDays",
-        PERMISSIONS.VIEW_SCHEDULE
-      ),
-    ],
-    documentItems: [
-      createNavigationItem(
-        "student-cards",
-        "Cartes élèves",
-        "CreditCard",
-        PERMISSIONS.GENERATE_DOCUMENTS
-      ),
-      createNavigationItem(
-        "transcripts",
-        "Bulletins",
-        "ScrollText",
-        PERMISSIONS.GENERATE_DOCUMENTS
-      ),
-    ],
-    adminItems: [
-      createNavigationItem(
-        "settings",
-        "Préférences",
-        "Settings",
-        PERMISSIONS.VIEW_SETTINGS
-      ),
-    ],
+    academicItems: [],
+    documentItems: [],
+    adminItems: [],
   },
 
   Parent: {
@@ -493,12 +437,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "FileText",
         PERMISSIONS.VIEW_CHILDREN_GRADES
       ),
-      createNavigationItem(
-        "attendance",
-        "Présences",
-        "ClipboardCheck",
-        PERMISSIONS.VIEW_CHILDREN_ATTENDANCE
-      ),
+
       createNavigationItem(
         "payments",
         "Paiements",
@@ -513,22 +452,8 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
       ),
     ],
     academicItems: [],
-    documentItems: [
-      createNavigationItem(
-        "transcripts",
-        "Bulletins",
-        "ScrollText",
-        PERMISSIONS.VIEW_OWN_GRADES
-      ),
-    ],
-    adminItems: [
-      createNavigationItem(
-        "settings",
-        "Mon compte",
-        "Settings",
-        PERMISSIONS.VIEW_SETTINGS
-      ),
-    ],
+    documentItems: [],
+    adminItems: [],
   },
 
   Student: {
@@ -545,12 +470,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "FileText",
         PERMISSIONS.VIEW_OWN_GRADES
       ),
-      createNavigationItem(
-        "attendance",
-        "Mes présences",
-        "ClipboardCheck",
-        PERMISSIONS.VIEW_OWN_ATTENDANCE
-      ),
+
       createNavigationItem(
         "subject",
         "Mes cours",
@@ -572,28 +492,8 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.VIEW_OWN_PAYMENTS
       ),
     ],
-    documentItems: [
-      createNavigationItem(
-        "student-cards",
-        "Ma carte élève",
-        "CreditCard",
-        PERMISSIONS.VIEW_OWN_GRADES
-      ),
-      createNavigationItem(
-        "transcripts",
-        "Mes bulletins",
-        "ScrollText",
-        PERMISSIONS.VIEW_OWN_GRADES
-      ),
-    ],
-    adminItems: [
-      createNavigationItem(
-        "settings",
-        "Mon profil",
-        "Settings",
-        PERMISSIONS.VIEW_SETTINGS
-      ),
-    ],
+    documentItems: [],
+    adminItems: [],
   },
 
   Professeur: {
@@ -604,29 +504,12 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Home",
         PERMISSIONS.VIEW_DASHBOARD
       ),
-      createNavigationItem(
-        "subject",
-        "Mes matières",
-        "BookOpen",
-        PERMISSIONS.VIEW_OWN_SUBJECTS
-      ),
+
       createNavigationItem(
         "grades",
         "Saisie des notes",
         "FileEdit",
         PERMISSIONS.MANAGE_OWN_GRADES
-      ),
-      createNavigationItem(
-        "attendance",
-        "Présences",
-        "ClipboardCheck",
-        PERMISSIONS.MANAGE_ATTENDANCE
-      ),
-      createNavigationItem(
-        "students",
-        "Mes élèves",
-        "Users",
-        PERMISSIONS.VIEW_OWN_STUDENTS
       ),
     ],
     academicItems: [
@@ -636,44 +519,18 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "CalendarDays",
         PERMISSIONS.VIEW_SCHEDULE
       ),
-      createNavigationItem(
-        "announcements",
-        "Annonces",
-        "Megaphone",
-        PERMISSIONS.SEND_ANNOUNCEMENTS
-      ),
     ],
-    documentItems: [
-      createNavigationItem(
-        "reports",
-        "Rapports de classe",
-        "FileBarChart",
-        PERMISSIONS.GENERATE_REPORTS
-      ),
-    ],
-    adminItems: [
-      createNavigationItem(
-        "settings",
-        "Paramètres",
-        "Settings",
-        PERMISSIONS.VIEW_SETTINGS
-      ),
-    ],
+    documentItems: [],
+    adminItems: [],
   },
 
   Directeur: {
     mainItems: [
       createNavigationItem(
         "dashboard",
-        "Tableau de direction",
+        "Accueil",
         "Home",
         PERMISSIONS.VIEW_DASHBOARD
-      ),
-      createNavigationItem(
-        "analytics",
-        "Statistiques",
-        "ChartBar",
-        PERMISSIONS.VIEW_ANALYTICS
       ),
       createNavigationItem(
         "students",
@@ -682,58 +539,71 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.VIEW_STUDENTS
       ),
       createNavigationItem(
+        "enrollments",
+        "Inscriptions",
+        "UserPlus",
+        PERMISSIONS.MANAGE_ENROLLMENTS
+      ),
+      createNavigationItem(
         "professeurs",
         "Professeurs",
         "Award",
         PERMISSIONS.VIEW_PROFESSEURS
       ),
       createNavigationItem(
-        "grades",
-        "Résultats",
-        "FileBarChart",
-        PERMISSIONS.VIEW_GRADES
+        "guardians",
+        "Parents",
+        "UsersRound",
+        PERMISSIONS.VIEW_GUARDIANS
       ),
     ],
     academicItems: [
       createNavigationItem(
-        "reports",
-        "Finances",
-        "Receipt",
-        PERMISSIONS.VIEW_FINANCIALS
+        "subject",
+        "Matières",
+        "BookOpen",
+        PERMISSIONS.VIEW_SUBJECTS
       ),
       createNavigationItem(
-        "attendance",
-        "Présences",
-        "ClipboardCheck",
-        PERMISSIONS.VIEW_ATTENDANCE
+        "grades",
+        "Notes",
+        "FileText",
+        PERMISSIONS.MANAGE_GRADES
+      ),
+
+      createNavigationItem(
+        "schedule",
+        "Emploi du temps",
+        "CalendarDays",
+        PERMISSIONS.VIEW_SCHEDULE
       ),
       createNavigationItem(
-        "announcements",
-        "Communication",
-        "Megaphone",
-        PERMISSIONS.SEND_ANNOUNCEMENTS
+        "class_assignment",
+        "Catalogue Cours",
+        "RotateCcw",
+        PERMISSIONS.MANAGE_SUBJECTS
       ),
     ],
     documentItems: [
       createNavigationItem(
-        "reports",
-        "Rapports",
-        "FileBarChart",
-        PERMISSIONS.GENERATE_REPORTS
+        "transcripts",
+        "Bulletins",
+        "ScrollText",
+        PERMISSIONS.GENERATE_TRANSCRIPTS
       ),
     ],
     adminItems: [
       createNavigationItem(
-        "settings",
-        "Configuration",
-        "Settings",
+        "classes",
+        "Classes",
+        "Building",
         PERMISSIONS.VIEW_SETTINGS
       ),
       createNavigationItem(
-        "audit-logs",
-        "Audit",
-        "ShieldAlert",
-        PERMISSIONS.VIEW_AUDIT_LOGS
+        "fees",
+        "Frais scolaires",
+        "Wallet",
+        PERMISSIONS.MANAGE_FEES
       ),
     ],
   },

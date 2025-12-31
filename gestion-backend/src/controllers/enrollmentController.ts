@@ -60,7 +60,7 @@ export const getEnrollments = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ EnrollmentController - getEnrollments error:", error);
+    console.error(" EnrollmentController - getEnrollments error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -110,7 +110,7 @@ export const getEnrollmentById = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ EnrollmentController - getEnrollmentById error:", error);
+    console.error(" EnrollmentController - getEnrollmentById error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -162,12 +162,12 @@ export const createEnrollment = async (
       entityId: (result as any).data?.enrollment?.id,
       description: `Inscription créée pour l'étudiant ${data.studentId}`,
       status: "SUCCESS",
-      metadata: result.metadata,
+      metadata: (result as any).metadata,
     });
 
     res.status(201).json(result);
   } catch (error: any) {
-    console.error("❌ EnrollmentController - createEnrollment error:", error);
+    console.error("EnrollmentController - createEnrollment error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -219,12 +219,12 @@ export const updateEnrollment = async (
       entityId: id,
       description: `Inscription mise à jour`,
       status: "SUCCESS",
-      metadata: result.metadata,
+      metadata: (result as any).metadata,
     });
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ EnrollmentController - updateEnrollment error:", error);
+    console.error(" EnrollmentController - updateEnrollment error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -256,7 +256,7 @@ export const unenrollStudent = async (
 
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const reason = req.body?.reason || "Non spécifié";
     const result = await enrollmentService.unenrollStudent(
       id,
       reason,
@@ -275,12 +275,12 @@ export const unenrollStudent = async (
       entityId: id,
       description: "Étudiant désinscrit",
       status: "SUCCESS",
-      metadata: result.metadata,
+      metadata: (result as any).metadata,
     });
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ EnrollmentController - unenrollStudent error:", error);
+    console.error(" EnrollmentController - unenrollStudent error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -332,12 +332,12 @@ export const reenrollStudent = async (
       entityId: result.data?.enrollment?.id,
       description: "Étudiant réinscrit",
       status: "SUCCESS",
-      metadata: result.metadata,
+      metadata: (result as any).metadata,
     });
 
     res.status(201).json(result);
   } catch (error: any) {
-    console.error("❌ EnrollmentController - reenrollStudent error:", error);
+    console.error(" EnrollmentController - reenrollStudent error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -391,10 +391,7 @@ export const validateReenrollment = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error(
-      "❌ EnrollmentController - validateReenrollment error:",
-      error
-    );
+    console.error(" EnrollmentController - validateReenrollment error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -443,7 +440,7 @@ export const getStudentEnrollments = async (
     res.json(result);
   } catch (error: any) {
     console.error(
-      "❌ EnrollmentController - getStudentEnrollments error:",
+      " EnrollmentController - getStudentEnrollments error:",
       error
     );
 
@@ -493,7 +490,7 @@ export const getEnrollmentStats = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ EnrollmentController - getEnrollmentStats error:", error);
+    console.error(" EnrollmentController - getEnrollmentStats error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -541,13 +538,13 @@ export const createBulkEnrollments = async (
       entity: "Enrollment",
       description: `Inscriptions en masse créées`,
       status: "SUCCESS",
-      metadata: result.metadata,
+      metadata: (result as any).metadata,
     });
 
     res.status(201).json(result);
   } catch (error: any) {
     console.error(
-      "❌ EnrollmentController - createBulkEnrollments error:",
+      " EnrollmentController - createBulkEnrollments error:",
       error
     );
 
@@ -597,10 +594,7 @@ export const getEnrollmentHistory = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error(
-      "❌ EnrollmentController - getEnrollmentHistory error:",
-      error
-    );
+    console.error(" EnrollmentController - getEnrollmentHistory error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -632,7 +626,7 @@ export const getAvailableFeeStructures = async (
     const result = await enrollmentService.getAvailableFeeStructures();
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur récupération structures de frais:", error);
+    console.error(" Erreur récupération structures de frais:", error);
 
     const response: ApiResponse = {
       success: false,
@@ -640,6 +634,49 @@ export const getAvailableFeeStructures = async (
       code: "INTERNAL_ERROR",
     };
 
+    res.status(500).json(response);
+  }
+};
+
+/** * @desc Supprime une inscription par ID (à utiliser avec prudence)
+ */
+export const deleteEnrollment = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+  try {
+    const { id } = req.params;
+    const result = await enrollmentService.deleteEnrollment(id, auditData);
+    if (!result.success && result.code === "ENROLLMENT_NOT_FOUND") {
+      res.status(404).json(result);
+      return;
+    }
+    await createAuditLog({
+      ...auditData,
+      action: "ENROLLMENT_DELETED",
+      entity: "Enrollment",
+      entityId: id,
+      description: "Inscription supprimée",
+      status: "SUCCESS",
+      metadata: (result as any).metadata,
+    });
+    res.json(result);
+  } catch (error: any) {
+    console.error(" EnrollmentController - deleteEnrollment error:", error);
+    await createAuditLog({
+      ...auditData,
+      action: "ENROLLMENT_DELETION_ERROR",
+      entity: "Enrollment",
+      description: "Erreur lors de la suppression de l'inscription",
+      status: "ERROR",
+      errorMessage: error.message,
+    });
+    const response: ApiResponse = {
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    };
     res.status(500).json(response);
   }
 };

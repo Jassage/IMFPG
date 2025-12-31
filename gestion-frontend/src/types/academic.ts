@@ -34,6 +34,7 @@ export type BloodGroup =
   | "O_NEGATIVE";
 
 export interface Student {
+  academicYearId: any;
   id: string;
   firstName: string;
   lastName: string;
@@ -125,6 +126,7 @@ export interface SchoolClass {
 }
 
 export interface Enrollment {
+  class: any;
   id: string;
   studentCode: string;
   classId: string;
@@ -190,6 +192,7 @@ export interface StudentApiResponse extends ApiResponse<Student> {}
 export interface StudentsApiResponse extends ApiResponse<Student[]> {}
 
 export interface Subject {
+  maxGrade: number;
   id: string;
   code: string;
   name: string;
@@ -241,23 +244,19 @@ export interface UpdateSubjectData {
 }
 
 export interface User {
+  professeurId: any;
   id: string;
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
-  facultyId?: string;
-  role:
-    | "Admin"
-    | "Professeur"
-    | "Secretaire"
-    | "Directeur"
-    | "Student"
-    | "Parent";
+  role: "Admin" | "Professeur" | "Secretaire" | "Directeur" | "Student";
   status: "Actif" | "Inactif";
   lastLogin?: string;
   avatar?: string;
   createdAt: string;
+  professeur?: Professeur;
+  studentRecord?: Student;
 }
 
 export interface Transcript {
@@ -572,6 +571,7 @@ export interface ImportResult {
 }
 
 export interface Grade {
+  controlGrades: {};
   id: string;
   studentId: string;
   subjectId: string;

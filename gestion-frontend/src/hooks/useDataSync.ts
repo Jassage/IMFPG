@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAcademicStore } from '../store/academicStore';
-import { apiService } from '../services/api';
+// import { apiService } from '../services/api';
 import { 
   mockFaculties, 
   mockUsers, 

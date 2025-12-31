@@ -1,35 +1,62 @@
-// src/services/emailService.ts
-import nodemailer from "nodemailer";
+/**
+ * @file emailService.ts
+ * @description Service d'envoi d'emails
+ */
 
+import nodemailer from "nodemailer";
+import prisma from "../prisma";
+
+// Configuration du transporteur SMTP
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
   port: parseInt(process.env.SMTP_PORT || "587"),
-  secure: false,
+  secure: process.env.SMTP_SECURE === "true",
   auth: {
     user: process.env.SMTP_USER,
-    pass: "gfro yxde jdob tojf",
+    pass: process.env.SMTP_PASS,
   },
+  tls: {
+    rejectUnauthorized: false,
+  },
+});
+
+// Vérifier la configuration SMTP
+transporter.verify(function (error, success) {
+  if (error) {
+    console.error("❌ Erreur configuration SMTP:", error);
+  } else {
+    console.log("✅ Serveur SMTP prêt à envoyer des emails");
+  }
 });
 
 interface EmailOptions {
   to: string;
   subject: string;
   html: string;
+  attachments?: any[];
 }
 
-export const sendEmail = async (options: EmailOptions) => {
+export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
   try {
     const mailOptions = {
-      from: process.env.SMTP_FROM || "no_reply@ujeph.com",
+      from:
+        process.env.SMTP_FROM ||
+        `"${process.env.APP_NAME || "Plateforme Éducative"}" <${process.env.SMTP_USER}>`,
       to: options.to,
       subject: options.subject,
       html: options.html,
+      attachments: options.attachments || [],
     };
 
-    await transporter.sendMail(mailOptions);
-    console.log("Email envoyé à:", options.to);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(
+      ` Email envoyé à ${options.to} - Message ID: ${info.messageId}`
+    );
+
+    return true;
   } catch (error) {
-    console.error("Erreur envoi email:", error);
-    throw new Error("Erreur lors de l'envoi de l'email");
+    console.error(` Erreur lors de l'envoi de l'email à ${options.to}:`, error);
+
+    throw new Error("EMAIL_SEND_FAILED");
   }
 };
