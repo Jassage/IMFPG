@@ -1030,7 +1030,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                 <SelectTrigger>
                   <SelectValue placeholder="Année académique" />
                 </SelectTrigger>
-                <SelectContent>{renderYearOptions}</SelectContent>
+                <SelectContent>
+                  {renderYearOptions}
+                </SelectContent>
               </Select>
             </div>
 
@@ -1265,10 +1267,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                     "18:00",
                     "18:30",
                   ].map((time) => (
-                    <div
-                      key={`time-row-${time}`}
-                      className="grid grid-cols-7 border-b"
-                    >
+                    <div key={`time-row-${time}`} className="grid grid-cols-7 border-b">
                       <div className="p-3 border-r text-sm text-muted-foreground bg-muted/30">
                         {time}
                       </div>

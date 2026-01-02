@@ -58,8 +58,6 @@ export const getSubjects = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ SubjectController - getSubjects error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "SUBJECTS_LIST_ERROR",
@@ -108,7 +106,7 @@ export const getSubjectById = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ SubjectController - getSubjectById error:", error);
+    console.error(" SubjectController - getSubjectById error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -182,7 +180,7 @@ export const createSubject = async (
 
     res.status(201).json(result);
   } catch (error: any) {
-    console.error("❌ SubjectController - createSubject error:", error);
+    console.error(" SubjectController - createSubject error:", error);
     const errorMessage = error.message;
     const truncatedErrorMessage = errorMessage.substring(0, 500);
     await createAuditLog({
@@ -241,10 +239,10 @@ export const updateSubject = async (
     console.log("✅ Matière mise à jour:", id);
     res.json(result);
   } catch (error: any) {
-    console.error("❌ SubjectController - updateSubject error:", error);
-    console.error("❌ Error name:", error.name);
-    console.error("❌ Error message:", error.message);
-    console.error("❌ Error code:", error.code);
+    console.error(" SubjectController - updateSubject error:", error);
+    console.error(" Error name:", error.name);
+    console.error(" Error message:", error.message);
+    console.error(" Error code:", error.code);
 
     await createAuditLog({
       ...auditData,
@@ -295,7 +293,7 @@ export const deleteSubject = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ SubjectController - deleteSubject error:", error);
+    console.error(" SubjectController - deleteSubject error:", error);
 
     await createAuditLog({
       ...auditData,

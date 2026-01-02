@@ -2,6 +2,7 @@ import { create } from "zustand";
 import api from "../services/api";
 import { Enrollment } from "../types/academic";
 import { FeeStructure } from "@/types/enrollementTypes";
+import { toast } from "react-toastify";
 
 type EnrollmentStore = {
   enrollments: Enrollment[];
@@ -150,8 +151,6 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
 
       return enrollment;
     } catch (err) {
-      console.error(" Failed to fetch enrollment:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({
         error: "Erreur lors du chargement de l'inscription",
         loading: false,
@@ -196,8 +195,6 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         loading: false,
       });
     } catch (err) {
-      console.error(" Failed to fetch student enrollments:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({
         error: "Erreur lors du chargement des inscriptions",
         loading: false,
@@ -216,13 +213,10 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         : "/enrollments/stats";
 
       const response = await api.get(url);
-      console.log("📥 Statistiques d'inscription:", response.data);
 
       // Gérer différents formats de réponse
       return response.data.data || response.data;
     } catch (err) {
-      console.error(" Failed to fetch enrollment stats:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({
         error: "Erreur lors du chargement des statistiques",
         loading: false,
@@ -240,13 +234,10 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await api.get(`/enrollments/history/${studentId}`);
-      console.log("📥 Historique d'inscription:", response.data);
 
       // Gérer différents formats de réponse
       return response.data.data || response.data;
     } catch (err) {
-      console.error(" Failed to fetch enrollment history:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({
         error: "Erreur lors du chargement de l'historique",
         loading: false,
@@ -275,15 +266,11 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         selectedFeeStructures: enrollmentData.selectedFeeStructures || [],
       };
 
-      console.log("📤 Envoi création inscription:", payload);
       const response = await api.post("/enrollments", payload);
-      console.log(" Réponse création inscription:", response.data);
 
       await get().fetchEnrollments(); // Recharge les données
       return response.data;
     } catch (err) {
-      console.error(" Failed to add enrollment:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({ error: "Erreur lors de l'ajout de l'inscription" });
       throw err;
     } finally {
@@ -292,33 +279,100 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   },
 
   /**
-   * @desc Met à jour une inscription existante
+   * @desc Met à jour une inscription existante - VERSION CORRIGÉE
+   */
+  /**
+   * @desc Met à jour une inscription existante - VERSION CORRIGÉE
    */
   updateEnrollment: async (id, enrollmentData) => {
     set({ loading: true, error: null });
     try {
-      const payload = {
-        classId: enrollmentData.classId,
-        status: enrollmentData.status,
-        enrollmentDate: enrollmentData.enrollmentDate,
-      };
+      console.log(
+        "📤 Mise à jour inscription ID:",
+        id,
+        "Données:",
+        enrollmentData
+      );
 
-      console.log("📤 Envoi mise à jour inscription:", { id, payload });
+      const payload: any = {};
+
+      // N'envoyer que les champs qui ont changé et qui sont valides
+      if (enrollmentData.classId !== undefined)
+        payload.classId = enrollmentData.classId;
+
+      // Le statut ne peut être que Active, Suspended ou Completed
+      if (
+        enrollmentData.status !== undefined &&
+        ["Active", "Suspended", "Completed"].includes(enrollmentData.status)
+      ) {
+        payload.status = enrollmentData.status;
+      }
+
+      // Formater la date correctement
+      if (enrollmentData.enrollmentDate !== undefined) {
+        payload.enrollmentDate = new Date(
+          enrollmentData.enrollmentDate
+        ).toISOString();
+      }
+
       const response = await api.put(`/enrollments/${id}`, payload);
-      console.log(" Réponse mise à jour inscription:", response.data);
 
-      await get().fetchEnrollments(); // Recharge les données
-      return response.data;
-    } catch (err) {
-      console.error(" Failed to update enrollment:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
-      set({ error: "Erreur lors de la mise à jour de l'inscription" });
+      if (
+        response &&
+        (response.status === 200 || response.status === 204 || response.data)
+      ) {
+        // Mettre à jour le store localement
+        set((state) => {
+          const updatedEnrollments = (state.enrollments || []).map(
+            (enrollment) =>
+              enrollment.id === id
+                ? {
+                    ...enrollment,
+                    ...payload,
+                    // Si la classe est changée, mettre à jour la référence minimale de la classe
+                    ...(payload.classId && {
+                      schoolClass:
+                        enrollment.schoolClass &&
+                        enrollment.schoolClass.id === payload.classId
+                          ? enrollment.schoolClass
+                          : { id: payload.classId },
+                    }),
+                    updatedAt: new Date().toISOString(),
+                  }
+                : enrollment
+          );
+
+          return { enrollments: updatedEnrollments, loading: false };
+        });
+
+        toast.success(
+          response.data?.message || "Inscription mise à jour avec succès"
+        );
+
+        // Recharger les données après un court délai pour synchronisation
+        setTimeout(async () => {
+          await get().fetchEnrollments();
+        }, 1000);
+
+        return response.data;
+      } else {
+        throw new Error(response.data?.message || "Échec de la mise à jour");
+      }
+    } catch (err: any) {
+      console.error("❌ Erreur:", err);
+
+      let errorMessage = "Erreur lors de la mise à jour";
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+
+      set({ error: errorMessage, loading: false });
+      toast.error(errorMessage);
       throw err;
-    } finally {
-      set({ loading: false });
     }
   },
-
   /**
    * @desc Supprime une inscription
    */
@@ -331,7 +385,6 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
     } catch (err) {
       set({ error: "Erreur lors de la suppression de l'inscription" });
       const errMsg = err.response?.data || err.message || "Unknown error";
-      console.error(" Failed to delete enrollment:", errMsg);
       throw err;
     } finally {
       set({ loading: false });
@@ -353,15 +406,11 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         notes: data.notes,
       };
 
-      console.log("📤 Réinscription étudiant:", payload);
       const response = await api.post("/enrollments/reenroll", payload);
-      console.log(" Réponse réinscription:", response.data);
 
       await get().fetchEnrollments(); // Recharge les données
       return response.data;
     } catch (err) {
-      console.error(" Failed to reenroll student:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({ error: "Erreur lors de la réinscription" });
       throw err;
     } finally {
@@ -375,17 +424,13 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   unenrollStudent: async (id, reason) => {
     set({ loading: true, error: null });
     try {
-      console.log("🚫 Désinscription étudiant:", { id, reason });
       const response = await api.delete(`/enrollments/${id}/unenroll`, {
         data: { reason },
       });
-      console.log(" Réponse désinscription:", response.data);
 
       await get().fetchEnrollments(); // Recharge les données
       return response.data;
     } catch (err) {
-      console.error(" Failed to unenroll student:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({ error: "Erreur lors de la désinscription" });
       throw err;
     } finally {
@@ -399,14 +444,10 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   validateReenrollment: async (studentId) => {
     set({ loading: true, error: null });
     try {
-      console.log("🔍 Validation réinscription étudiant:", studentId);
       const response = await api.get(`/enrollments/validate/${studentId}`);
-      console.log(" Réponse validation:", response.data);
 
       return response.data;
     } catch (err) {
-      console.error(" Failed to validate reenrollment:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({ error: "Erreur lors de la validation" });
       throw err;
     } finally {
@@ -420,15 +461,11 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   createBulkEnrollments: async (enrollments) => {
     set({ loading: true, error: null });
     try {
-      console.log("📦 Création inscriptions en masse:", enrollments.length);
       const response = await api.post("/enrollments/bulk", { enrollments });
-      console.log(" Réponse inscriptions en masse:", response.data);
 
       await get().fetchEnrollments(); // Recharge les données
       return response.data;
     } catch (err) {
-      console.error(" Failed to create bulk enrollments:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({ error: "Erreur lors des inscriptions en masse" });
       throw err;
     } finally {
@@ -441,10 +478,7 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
    */
   getAvailableFeeStructures: async (): Promise<FeeStructure[]> => {
     try {
-      console.log("🔍 Récupération des structures de frais disponibles...");
-
       const response = await api.get("/fee-structures?isActive=true");
-      console.log("📥 Réponse structures de frais:", response.data);
 
       let feeStructures: FeeStructure[] = [];
 
@@ -454,44 +488,19 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         Array.isArray(response.data.data.feeStructures)
       ) {
         feeStructures = response.data.data.feeStructures;
-        console.log(
-          "✅ Frais extraits de data.feeStructures:",
-          feeStructures.length
-        );
       } else if (
         response.data?.feeStructures &&
         Array.isArray(response.data.feeStructures)
       ) {
         feeStructures = response.data.feeStructures;
-        console.log(
-          "✅ Frais extraits de feeStructures:",
-          feeStructures.length
-        );
       } else if (Array.isArray(response.data)) {
         feeStructures = response.data;
-        console.log("✅ Frais extraits directement:", feeStructures.length);
       } else if (response.data?.data && Array.isArray(response.data.data)) {
         feeStructures = response.data.data;
-        console.log("✅ Frais extraits de data:", feeStructures.length);
       }
-
-      console.log(`📊 ${feeStructures.length} structures de frais trouvées`);
-
-      // Log détaillé pour déboguer
-      feeStructures.forEach((fee, index) => {
-        console.log(`📋 Frais ${index + 1}:`, {
-          id: fee.id,
-          name: fee.name,
-          amount: fee.amount,
-          academicYear: fee.academicYear,
-          isActive: fee.isActive,
-          academicYearId: fee.academicYearId,
-        });
-      });
 
       return feeStructures;
     } catch (error) {
-      console.error("❌ Erreur récupération frais:", error);
       return [];
     }
   },
@@ -516,10 +525,8 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
    */
   getEnrollmentsByClass: (classId) => {
     const { enrollments } = get();
-    console.log(`🔍 Recherche inscriptions pour classId: ${classId}`);
 
     if (!Array.isArray(enrollments)) {
-      console.warn(" enrollments n'est pas un tableau:", enrollments);
       return [];
     }
 
@@ -531,12 +538,8 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
    */
   getEnrollmentsByAcademicYear: (academicYearId) => {
     const { enrollments } = get();
-    console.log(
-      `🔍 Recherche inscriptions pour academicYearId: ${academicYearId}`
-    );
 
     if (!Array.isArray(enrollments)) {
-      console.warn(" enrollments n'est pas un tableau:", enrollments);
       return [];
     }
 
@@ -548,10 +551,8 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
    */
   getEnrollmentsByStatus: (status) => {
     const { enrollments } = get();
-    console.log(`🔍 Recherche inscriptions avec statut: ${status}`);
 
     if (!Array.isArray(enrollments)) {
-      console.warn(" enrollments n'est pas un tableau:", enrollments);
       return [];
     }
 
@@ -568,12 +569,6 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
   ) => {
     set({ loading: true, error: null });
     try {
-      console.log("💰 Assignation frais à l'inscription:", {
-        enrollmentId,
-        feeStructureId,
-        academicYearId,
-      });
-
       const response = await api.post(
         `/enrollments/${enrollmentId}/assign-fees`,
         {
@@ -582,12 +577,8 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
         }
       );
 
-      console.log(" Réponse assignation frais:", response.data);
-
       return response.data;
     } catch (err) {
-      console.error(" Failed to assign fees to enrollment:", err);
-      console.error(" Réponse d'erreur:", err.response?.data);
       set({ error: "Erreur lors de l'assignation des frais" });
       throw err;
     } finally {

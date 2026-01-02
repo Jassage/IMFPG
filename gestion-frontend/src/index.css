@@ -290,7 +290,7 @@
   font-size: 18px;
   font-weight: bold;
   margin-bottom: 10px;
-  color: #003366;
+  color: #0c7def;
   text-transform: uppercase;
 }
 
@@ -360,5 +360,20 @@
 
   .p-mobile {
     padding: 1rem;
+  }
+}
+
+/* Ajoutez dans votre global.css si nécessaire */
+@layer components {
+  .avatar-gradient {
+    @apply bg-gradient-to-br from-blue-500 to-purple-600;
+  }
+
+  .status-badge {
+    @apply px-2 py-1 rounded-full text-xs font-medium;
+  }
+
+  .info-grid {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
   }
 }

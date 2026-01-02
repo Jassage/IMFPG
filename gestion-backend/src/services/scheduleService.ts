@@ -67,10 +67,10 @@ export class ScheduleService {
    * Vérifie si deux créneaux se chevauchent
    */
   private static checkTimeOverlap(
-    start1: string, // HH:MM:SS
-    end1: string, // HH:MM:SS
-    start2: string, // HH:MM:SS
-    end2: string // HH:MM:SS
+    start1: string,
+    end1: string,
+    start2: string,
+    end2: string
   ): boolean {
     // Convertir en minutes pour comparaison
     const toMinutes = (time: string): number => {
@@ -93,8 +93,8 @@ export class ScheduleService {
     professeurId: string,
     classId: string,
     dayOfWeek: string,
-    startTime: string, // Format ISO: "2000-01-01T08:00:00.000Z"
-    endTime: string, // Format ISO: "2000-01-01T09:30:00.000Z"
+    startTime: string,
+    endTime: string,
     classroom?: string | null,
     excludeScheduleId?: string
   ): Promise<ConflictCheck> {
@@ -377,8 +377,8 @@ export class ScheduleService {
           classId,
           professeurId: assignment.professeurId,
           dayOfWeek,
-          startTime: startTimeStr, // Stocké en HH:MM:SS
-          endTime: endTimeStr, // Stocké en HH:MM:SS
+          startTime: startTimeStr,
+          endTime: endTimeStr,
           classroom: classroom || null,
           recurrence: recurrence || null,
           untilDate: untilDate ? new Date(untilDate) : null,

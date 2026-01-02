@@ -78,7 +78,7 @@ export const useBulletinData = ({
     return grades
       .map((grade, index) => {
         if (!grade) {
-          console.log(`⚠️ Grade at index ${index} is null or undefined`);
+          console.log(`z Grade at index ${index} is null or undefined`);
           return null;
         }
 

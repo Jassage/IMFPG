@@ -616,8 +616,8 @@ const AdminDashboard = () => {
         studentName:
           enrollment.student?.firstName ||
           `Étudiant #${enrollment.studentCode?.substring(0, 8) || "Inconnu"}`,
-        className: enrollment.class?.name || "Classe inconnue",
-        date: enrollment.enrollmentDate || enrollment.createdAt,
+        className: enrollment.schoolClass?.name || "Classe inconnue",
+        date: enrollment.createdAt || enrollment.createdAt,
         status: enrollment.status || "Active",
       }));
   }, [enrollments]);
@@ -650,7 +650,7 @@ const AdminDashboard = () => {
         activities.push({
           type: "payment",
           title: "Paiement reçu",
-          description: `${p.studentName} - ${p.amount.toLocaleString()} HTG`,
+          description: `${p.studentName} - ${p.amount} HTG`,
           time: p.date
             ? `Il y a ${Math.floor(
                 (Date.now() - new Date(p.date).getTime()) / (1000 * 60 * 60)

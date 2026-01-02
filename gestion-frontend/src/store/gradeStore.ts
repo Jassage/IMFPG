@@ -42,12 +42,12 @@ export interface GradeStore {
   loading: boolean;
   isSaving: boolean;
   error: string | null;
-  studentGrades: Grade[]; // NOUVEAU: Stocker les notes spécifiques à l'étudiant
-  gradeStatistics: any; // NOUVEAU: Stocker les statistiques
+  studentGrades: Grade[];
+  gradeStatistics: any;
 
   fetchGrades: (filters?: GradeFilters) => Promise<void>;
   fetchGradeById: (id: string) => Promise<Grade>;
-  fetchStudentGrades: (studentId: string) => Promise<Grade[]>; // Cette fonction doit mettre à jour le store
+  fetchStudentGrades: (studentId: string) => Promise<Grade[]>;
   fetchSubjectGrades: (subjectId: string) => Promise<Grade[]>;
 
   addGrade: (
@@ -108,8 +108,8 @@ export interface GradeStore {
 export const useGradeStore = create<GradeStore>((set, get) => ({
   // ÉTAT INITIAL
   grades: [],
-  studentGrades: [], // NOUVEAU
-  gradeStatistics: null, // NOUVEAU
+  studentGrades: [],
+  gradeStatistics: null,
   loading: false,
   isSaving: false,
   error: null,
@@ -199,7 +199,6 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
   },
 
   fetchStudentGrades: async (studentId: string) => {
-    // ⚠️ CORRECTION 1: Vérifier si déjà en cours
     const state = get();
     if (state.loading) {
       console.log("⏭️ Already loading, skipping:", studentId);
@@ -265,9 +264,6 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
         statistics = response.data.statistics || null;
       }
 
-      console.log(`✅ Extracted ${gradesData.length} grades for student`);
-
-      // ⚠️ CORRECTION 3: Une seule mise à jour du state
       const currentState = get();
 
       set({
@@ -452,11 +448,6 @@ export const useGradeStore = create<GradeStore>((set, get) => ({
 
         createdGrades.push(...gradesArray);
       } catch (bulkError) {
-        console.log(
-          " Bulk endpoint failed, falling back to individual requests:",
-          bulkError
-        );
-
         for (const gradeData of gradesData) {
           try {
             const response = await api.post("/grades", gradeData);

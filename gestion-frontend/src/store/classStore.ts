@@ -7,6 +7,9 @@ import { create } from "zustand";
 
 // Types
 export interface SchoolClass {
+  minAge: any;
+  maxAge: any;
+  description: string;
   id: string;
   name: string;
   level: string;

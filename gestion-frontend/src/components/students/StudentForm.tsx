@@ -1,4 +1,4 @@
-// components/students/StudentForm.tsx - VERSION AMÉLIORÉE SANS CIN
+// components/students/StudentForm.tsx - VERSION CORRIGÉE
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -129,7 +129,7 @@ const guardianSchema = z.object({
   isPrimary: z.boolean().default(false),
 });
 
-// MODIFIÉ : Schéma principal SANS CIN et avec statut optionnel (toujours "Active" par défaut)
+// CORRIGÉ : Schéma principal avec date de naissance obligatoire
 const studentSchema = z.object({
   // Informations personnelles
   firstName: z
@@ -167,17 +167,26 @@ const studentSchema = z.object({
       }
     ),
 
+  // CORRIGÉ : Date de naissance rendue obligatoire
   dateOfBirth: z
     .string()
-    .optional()
+    .min(1, "La date de naissance est requise")
     .refine(
       (date) => {
-        if (!date) return true;
-        if (!isValidDate(date)) return false;
+        if (!date || !isValidDate(date)) return false;
 
         const birthDate = new Date(date);
         const today = new Date();
-        const age = today.getFullYear() - birthDate.getFullYear();
+
+        // Calculer l'âge précis
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        const dayDiff = today.getDate() - birthDate.getDate();
+
+        // Ajuster l'âge si l'anniversaire n'est pas encore passé cette année
+        if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+          age--;
+        }
 
         // Vérifier si l'étudiant a au moins 13 ans
         if (age < 13) return false;
@@ -410,7 +419,7 @@ export const StudentForm = ({
           lastName: fullStudent.lastName || "",
           email: fullStudent.email || "",
           phone: fullStudent.phone || "",
-          dateOfBirth: formatDateForInput(fullStudent.dateOfBirth),
+          dateOfBirth: formatDateForInput(fullStudent.dateOfBirth) || "",
           placeOfBirth: fullStudent.placeOfBirth || "",
           address: fullStudent.address || "",
           photo: fullStudent.photo || "",
@@ -537,11 +546,12 @@ export const StudentForm = ({
     let completed = 0;
     let total = 0;
 
-    // Champs obligatoires de base
+    // Champs obligatoires de base - CORRIGÉ : ajout de dateOfBirth
     const requiredFields = [
       { key: "firstName", value: values.firstName },
       { key: "lastName", value: values.lastName },
       { key: "email", value: values.email },
+      { key: "dateOfBirth", value: values.dateOfBirth }, // ← AJOUTÉ
       { key: "classId", value: values.classId },
       { key: "academicYearId", value: values.academicYearId },
     ];
@@ -578,11 +588,10 @@ export const StudentForm = ({
         "lastName",
         "email",
         "phone",
-        "dateOfBirth",
+        "dateOfBirth", // ← AJOUTÉ ici aussi
       ],
       guardians: ["guardians"],
       enrollment: ["classId", "academicYearId"],
-      // MODIFIÉ : Retiré "status" car optionnel
     };
 
     const fields = tabValidations[currentTab];
@@ -629,7 +638,7 @@ export const StudentForm = ({
         lastName: data.lastName.trim(),
         email: data.email.trim().toLowerCase(),
         phone: data.phone ? data.phone.trim() : "",
-        dateOfBirth: data.dateOfBirth || undefined,
+        dateOfBirth: data.dateOfBirth, // ← Maintenant toujours présent
         placeOfBirth: data.placeOfBirth ? data.placeOfBirth.trim() : "",
         address: data.address ? data.address.trim() : "",
         allergies: data.allergies ? data.allergies.trim() : "",
@@ -649,7 +658,6 @@ export const StudentForm = ({
           address: guardian.address ? guardian.address.trim() : "",
         })),
       };
-
 
       await onSubmit(cleanData);
 
@@ -871,7 +879,8 @@ export const StudentForm = ({
             {completedTabs.has("student-info") &&
               !form.formState.errors.firstName &&
               !form.formState.errors.lastName &&
-              !form.formState.errors.email && (
+              !form.formState.errors.email &&
+              !form.formState.errors.dateOfBirth && (
                 <Check className="h-3 w-3 ml-1 text-green-500" />
               )}
           </TabsTrigger>
@@ -1041,12 +1050,14 @@ export const StudentForm = ({
                       )}
                     />
 
+                    {/* CORRIGÉ : Date de naissance avec étoile */}
                     <FormField
                       control={form.control}
                       name="dateOfBirth"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Date de naissance</FormLabel>
+                          <FormLabel>Date de naissance *</FormLabel>{" "}
+                          {/* ← ÉTOILE AJOUTÉE */}
                           <FormControl>
                             <Input
                               {...field}
@@ -1066,6 +1077,9 @@ export const StudentForm = ({
                             />
                           </FormControl>
                           <FormMessage />
+                          <FormDescription className="text-xs">
+                            L'étudiant doit avoir entre 13 et 25 ans
+                          </FormDescription>
                         </FormItem>
                       )}
                     />
@@ -1460,7 +1474,7 @@ export const StudentForm = ({
               </Card>
             </TabsContent>
 
-            {/* Onglet Inscription - MODIFIÉ : Sans le champ statut */}
+            {/* Onglet Inscription */}
             <TabsContent value="enrollment" className="space-y-6">
               <Card>
                 <CardHeader>
@@ -1559,7 +1573,7 @@ export const StudentForm = ({
                     />
                   </div>
 
-                  {/* MODIFIÉ : Afficher le champ statut seulement pour l'édition */}
+                  {/* Afficher le champ statut seulement pour l'édition */}
                   {student && (
                     <FormField
                       control={form.control}

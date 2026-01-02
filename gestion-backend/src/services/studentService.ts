@@ -634,9 +634,6 @@ export class StudentService {
   /**
    * Supprime un étudiant
    */
-  /**
-   * Supprime un étudiant
-   */
   async deleteStudent(id: string): Promise<void> {
     try {
       // Vérifier si l'étudiant existe AVANT la transaction

@@ -7,9 +7,8 @@ interface FeeStructureStore {
   extractDataFromResponse(response: AxiosResponse<any, any>): any;
   handleError(err: any, arg1: string): any;
 
-  // State - CORRECTION ICI: studentFees est maintenant un Record
   feeStructures: FeeStructure[];
-  studentFees: Record<string, StudentFee[]>; // CHANGÉ: StudentFee[] -> Record<string, StudentFee[]>
+  studentFees: Record<string, StudentFee[]>;
   loading: boolean;
   error: string | null;
   lastUpdated: number;
@@ -86,7 +85,7 @@ interface FeeStructureStore {
     specificFee?: StudentFee | null;
   }>;
 
-  // NOUVELLE FONCTION: Supprimer les doublons
+  // Supprimer les doublons
   removeDuplicatesFromFees: (fees: StudentFee[]) => StudentFee[];
 }
 
@@ -108,12 +107,12 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
         seen.add(fee.id);
         uniqueFees.push(fee);
       } else {
-        console.warn(`⚠️ Frais en double détecté: ${fee.id}`);
+        console.warn(` Frais en double détecté: ${fee.id}`);
       }
     }
 
     console.log(
-      `✅ ${uniqueFees.length} frais uniques après nettoyage (sur ${fees.length} total)`
+      `${uniqueFees.length} frais uniques après nettoyage (sur ${fees.length} total)`
     );
     return uniqueFees;
   },
@@ -142,7 +141,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
   createFeeStructure: async (feeData) => {
     set({ loading: true, error: null });
     try {
-      console.log("📤 Création structure frais:", feeData);
+      console.log(" Création structure frais:", feeData);
       const response = await api.post("/fee-structures", feeData);
 
       const result = get().extractDataFromResponse(response);
@@ -183,7 +182,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       if (params.toString()) url += `?${params.toString()}`;
 
       const response = await api.get(url);
-      console.log("✅ Réponse API fee structures:", response.data);
+      console.log("Réponse API fee structures:", response.data);
 
       const result = get().extractDataFromResponse(response);
 
@@ -248,7 +247,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
   updateFeeStructure: async (id: string, feeData: Partial<FeeStructure>) => {
     set({ loading: true, error: null });
     try {
-      console.log("📝 Mise à jour structure frais:", { id, feeData });
+      console.log(" Mise à jour structure frais:", { id, feeData });
       const response = await api.put(`/fee-structures/${id}`, feeData);
 
       const result = get().extractDataFromResponse(response);
@@ -305,7 +304,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       const result = get().extractDataFromResponse(response);
 
       if (result) {
-        // CORRECTION: Mise à jour pour le nouveau format
         const updatedStudentFees: Record<string, StudentFee[]> = {};
 
         Object.entries(get().studentFees).forEach(([studentId, fees]) => {
@@ -370,7 +368,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
         specificFee: existingFee,
       };
     } catch (error) {
-      console.error("❌ Erreur vérification frais existants:", error);
+      console.error(" Erreur vérification frais existants:", error);
       return { exists: false, fees: [] };
     }
   },
@@ -388,7 +386,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      console.log("📤 Assignation frais (version améliorée):", {
+      console.log(" Assignation frais (version améliorée):", {
         studentId,
         academicYearId,
         feeStructureId,
@@ -424,7 +422,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
             }
           } else {
             console.log(
-              "⚠️ L'étudiant a déjà des frais pour cette année:",
+              " L'étudiant a déjà des frais pour cette année:",
               fees.length
             );
           }
@@ -438,7 +436,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
         studentCode,
       });
 
-      console.log("✅ Réponse API assign:", response.data);
+      console.log("Réponse API assign:", response.data);
 
       const result = response.data?.data || response.data;
 
@@ -465,7 +463,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
 
       throw new Error("Aucune donnée reçue du serveur");
     } catch (err: any) {
-      console.error("❌ Erreur assignFeeToStudent:", err);
+      console.error(" Erreur assignFeeToStudent:", err);
 
       if (err.type === "FEE_ALREADY_EXISTS") {
         set({
@@ -494,7 +492,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      console.log("📝 Mise à jour frais existant:", studentFeeId, data);
+      console.log(" Mise à jour frais existant:", studentFeeId, data);
 
       const response = await api.put(`/student-fees/${studentFeeId}`, data);
 
@@ -503,7 +501,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       if (result) {
         const updatedFee = result.studentFee || result;
 
-        // CORRECTION: Mise à jour pour le nouveau format
         set((state) => {
           const updatedStudentFees: Record<string, StudentFee[]> = {};
 
@@ -525,7 +522,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
 
       throw new Error("Aucune donnée reçue du serveur");
     } catch (err: any) {
-      console.error("❌ Erreur updateExistingFee:", err);
+      console.error(" Erreur updateExistingFee:", err);
 
       const errorMessage =
         err.response?.data?.message ||
@@ -550,7 +547,7 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
           ? result
           : result.studentFees || result.data?.studentFees || [];
 
-        // CORRECTION: Organiser par étudiant
+        // Organiser par étudiant
         const feesByStudent: Record<string, StudentFee[]> = {};
 
         allFees.forEach((fee: StudentFee) => {
@@ -575,25 +572,18 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
     }
   },
 
-  // Récupérer les frais d'un étudiant - FONCTION CORRIGÉE
+  // Récupérer les frais d'un étudiant
   getStudentFees: async (studentId: string): Promise<StudentFee[]> => {
-    console.log("🔍 getStudentFees appelé pour:", studentId);
-
     // Retourner du cache si disponible
     const cachedFees = get().studentFees[studentId];
     if (cachedFees && cachedFees.length > 0) {
-      console.log("📦 Utilisation du cache:", cachedFees.length, "frais");
       return cachedFees;
     }
 
     set({ loading: true, error: null });
 
     try {
-      console.log("🌐 Appel API pour étudiant:", studentId);
       const response = await api.get(`/student-fees/student/${studentId}`);
-
-      console.log("📥 Réponse brute:", response);
-      console.log("📥 Données brutes:", response.data);
 
       let feesData = response.data;
 
@@ -603,16 +593,10 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
         feesData.data &&
         Array.isArray(feesData.data)
       ) {
-        console.log("📊 Format: { data: [...] }");
         feesData = feesData.data;
       } else if (Array.isArray(feesData)) {
         console.log("📊 Format: Array[...]");
       } else if (feesData && typeof feesData === "object") {
-        console.log(
-          "📊 Format: Object avec propriétés:",
-          Object.keys(feesData)
-        );
-
         if (feesData.studentFees && Array.isArray(feesData.studentFees)) {
           feesData = feesData.studentFees;
         } else if (feesData.fees && Array.isArray(feesData.fees)) {
@@ -628,9 +612,8 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       // SUPPRIMER LES DOUBLONS
       const uniqueFees = get().removeDuplicatesFromFees(fees);
 
-      console.log("✅ Frais extraits:", uniqueFees.length, "éléments");
+      console.log("Frais extraits:", uniqueFees.length, "éléments");
 
-      // CORRECTION: Mise à jour pour le nouveau format
       set((state) => ({
         studentFees: {
           ...state.studentFees,
@@ -642,8 +625,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
 
       return uniqueFees;
     } catch (error: any) {
-      console.error("❌ Erreur dans getStudentFees:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -660,35 +641,20 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
   getStudentFeesByStudentId: async (
     studentId: string
   ): Promise<StudentFee[]> => {
-    console.log("🔍 getStudentFeesByStudentId appelé pour:", studentId);
-
     set({ loading: true, error: null });
 
     try {
       const endpoint = `/student-fees/student/${studentId}`;
-      console.log("🌐 Appel API:", endpoint);
 
       const response = await api.get(endpoint);
 
-      console.group("📊 DÉBOGAGE RÉPONSE API");
-      console.log("Status:", response.status);
-      console.log("Headers:", response.headers);
-      console.log("Data brute:", response.data);
-      console.log("Type de data:", typeof response.data);
-      console.log("Est un tableau?", Array.isArray(response.data));
-      if (response.data && typeof response.data === "object") {
-        console.log("Clés de l'objet:", Object.keys(response.data));
-      }
       console.groupEnd();
 
       let feesArray: any[] = [];
 
       if (Array.isArray(response.data)) {
-        console.log("✅ Données reçues comme tableau direct");
         feesArray = response.data;
       } else if (response.data && typeof response.data === "object") {
-        console.log("🔄 Données reçues comme objet, recherche de tableau...");
-
         const possibleArrayKeys = [
           "data",
           "studentFees",
@@ -699,19 +665,15 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
 
         for (const key of possibleArrayKeys) {
           if (response.data[key] && Array.isArray(response.data[key])) {
-            console.log(`✅ Tableau trouvé dans la propriété: ${key}`);
             feesArray = response.data[key];
             break;
           }
         }
 
         if (feesArray.length === 0 && response.data.id) {
-          console.log("✅ Objet unique trouvé, conversion en tableau");
           feesArray = [response.data];
         }
       }
-
-      console.log(`📋 ${feesArray.length} frais trouvés`);
 
       const studentFees: StudentFee[] = feesArray.map((fee: any) => ({
         id: fee.id,
@@ -737,7 +699,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       // SUPPRIMER LES DOUBLONS
       const uniqueFees = get().removeDuplicatesFromFees(studentFees);
 
-      // CORRECTION: Mise à jour pour le nouveau format
       set((state) => ({
         studentFees: {
           ...state.studentFees,
@@ -748,15 +709,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
 
       return uniqueFees;
     } catch (error: any) {
-      console.error("❌ Erreur getStudentFeesByStudentId:", error);
-
-      if (error.response) {
-        console.error("📊 Détails erreur:");
-        console.error("- Status:", error.response.status);
-        console.error("- Headers:", error.response.headers);
-        console.error("- Data:", error.response.data);
-      }
-
       const errorMessage = error.response?.data?.message || error.message;
       set({ error: errorMessage, loading: false });
 
@@ -777,7 +729,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       }
       return null;
     } catch (err: any) {
-      console.error("Erreur getStudentFeeByYear:", err);
       return null;
     }
   },
@@ -954,8 +905,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
 
       if (result) {
         const updatedFee = result.studentFee || result;
-
-        // CORRECTION: Mise à jour pour le nouveau format
         set((state) => {
           const updatedStudentFees: Record<string, StudentFee[]> = {};
 
@@ -995,7 +944,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       }
       return [];
     } catch (err: any) {
-      console.error("Erreur getPaymentHistory:", err);
       throw new Error(
         err.response?.data?.error ||
           err.message ||
@@ -1012,7 +960,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       const result = get().extractDataFromResponse(response);
 
       if (result) {
-        // CORRECTION: Mise à jour pour le nouveau format
         set((state) => {
           const updatedStudentFees: Record<string, StudentFee[]> = {};
 
@@ -1054,7 +1001,6 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       const result = get().extractDataFromResponse(response);
 
       if (result) {
-        // CORRECTION: Mise à jour pour le nouveau format
         set((state) => {
           const updatedStudentFees: Record<string, StudentFee[]> = {};
 

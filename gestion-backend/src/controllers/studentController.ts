@@ -348,64 +348,49 @@ export const updateStudent = async (
  * @route DELETE /api/students/:id
  * @access Admin/Staff
  */
-export const deleteStudent = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  const auditData = extractAuditData(req);
-
+export /**
+ * Supprime un étudiant
+ */
+const deleteStudent = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const studentId = req.params.id;
 
-    await StudentService.deleteStudent(id);
-
-    // Log d'audit
-    await createAuditLog({
-      ...auditData,
-      action: StudentActionTypes.STUDENT_DELETED,
-      entity: "Student",
-      entityId: id,
-      userId: auditData.userId,
-      description: "Étudiant supprimé définitivement",
-      status: "SUCCESS",
-    });
-
-    const response: StudentControllerResponse = {
-      success: true,
-      message: "Étudiant supprimé définitivement avec succès",
-    };
-
-    res.json(response);
-  } catch (error: any) {
-    console.error(" StudentController - deleteStudent error:", error);
-
-    // Gestion des erreurs spécifiques
-    let statusCode = 500;
-    let errorCode = "INTERNAL_ERROR";
-    let errorMessage = "Erreur interne du serveur";
-
-    if (error.message === "STUDENT_NOT_FOUND") {
-      statusCode = 404;
-      errorCode = "STUDENT_NOT_FOUND";
-      errorMessage = "Étudiant non trouvé";
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        error: "ID de l'étudiant requis",
+      });
     }
 
-    await createAuditLog({
-      ...auditData,
-      action: StudentActionTypes.STUDENT_DELETION_ERROR,
-      entity: "Student",
-      description: "Erreur lors de la suppression de l'étudiant",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 500),
+    await StudentService.deleteStudent(studentId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Étudiant supprimé avec succès",
     });
+  } catch (error: any) {
+    console.error("StudentController - deleteStudent error:", error);
 
-    const response: StudentControllerResponse = {
+    // Gérer spécifiquement le cas où l'étudiant est déjà supprimé
+    if (error.message.includes("STUDENT_ALREADY_DELETED")) {
+      return res.status(200).json({
+        success: true,
+        message: "Étudiant déjà supprimé",
+      });
+    }
+
+    // Gérer le cas où l'étudiant n'est pas trouvé
+    if (error.message.includes("STUDENT_NOT_FOUND")) {
+      return res.status(404).json({
+        success: false,
+        error: "Étudiant non trouvé",
+      });
+    }
+
+    return res.status(500).json({
       success: false,
-      message: errorMessage,
-      code: errorCode,
-    };
-
-    res.status(statusCode).json(response);
+      error: "Erreur lors de la suppression de l'étudiant",
+    });
   }
 };
 

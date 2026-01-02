@@ -119,7 +119,7 @@ export const LoginPage = () => {
 
           <CardHeader className="space-y-1 text-center pb-4">
             <CardTitle className="text-2xl font-bold text-gray-900">
-              Connexion au Portail
+              SYSG-IMFP
             </CardTitle>
             <CardDescription className="text-gray-600">
               Accédez à votre espace personnel
@@ -156,7 +156,7 @@ export const LoginPage = () => {
                     id="email"
                     name="email"
                     type="email"
-                    placeholder="ex: etudiant@ujeph.edu.ht"
+                    placeholder="ex: etudiant@imfp.edu.ht"
                     value={formData.email}
                     onChange={handleChange}
                     className="pl-11 pr-4 py-3 border-2 border-gray-200 focus:border-blue-500 transition-colors duration-200"

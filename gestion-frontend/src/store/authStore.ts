@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import api from "../services/api";
 import { User } from "../types/academic";
-import { toast } from "sonner";
+import { toast } from "react-toastify";
 
 interface AuthState {
   user: User | null;
@@ -295,7 +295,7 @@ export const useAuthStore = create<AuthState>()(
 
       // MÉTHODE DE DÉCONNEXION
       logout: (reason = "Déconnexion utilisateur") => {
-        console.log(`🔒 Déconnexion: ${reason}`);
+        console.log(` Déconnexion: ${reason}`);
 
         // Nettoyer
         if (api?.defaults?.headers) {

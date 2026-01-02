@@ -56,7 +56,6 @@ import { UsersManager } from "../components/UsersManager";
 import { AnalyticsDashboard } from "../components/AnalyticsDashboard";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuthStore } from "@/store/authStore";
-import { ExpenseManager } from "@/components/ExpenseManager";
 import { FeeStructureManager } from "@/components/FeeStructureManager";
 import { AuditLogsManager } from "@/components/AuditLogsManager";
 import { Card, CardContent } from "@/components/ui/card";
@@ -182,7 +181,7 @@ const MobileSidebar = ({
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20 text-white">
                     <img
                       src="/logo.png"
-                      alt="UJEPH Logo"
+                      alt="IMFP Logo"
                       className="h-10 w-10 object-contain"
                     />
                   </div>
@@ -394,7 +393,6 @@ const Index = () => {
       classes: <ClassesManager />,
       fees: <FeeStructureManager />,
       payments: <PaymentManager />,
-      expenses: <ExpenseManager />,
       settings: <SettingsPage />,
       "audit-logs": <AuditLogsManager />,
       analytics: <AnalyticsDashboard />,
@@ -599,7 +597,7 @@ const Index = () => {
             </p>
           </div>
 
-          {activeTab !== "settings" && hasPermission("use_search") && (
+          {/* {activeTab !== "settings" && hasPermission("use_search") && (
             <div className="hidden sm:flex items-center gap-2 flex-1 max-w-md">
               <div className="relative flex-1" ref={searchRef}>
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -621,7 +619,7 @@ const Index = () => {
                 )}
               </div>
             </div>
-          )}
+          )} */}
 
           <div className="hidden md:flex items-center gap-2">
             <Button

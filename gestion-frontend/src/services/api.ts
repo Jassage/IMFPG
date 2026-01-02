@@ -3,7 +3,7 @@ import axios from "axios";
 import { toast } from "react-toastify";
 
 const api = axios.create({
-  baseURL: "http://localhost:4000/api",
+  baseURL: "http://localhost:5000/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -33,7 +33,7 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
-    console.error("❌ Request error:", error);
+    console.error(" Request error:", error);
     return Promise.reject(error);
   }
 );
@@ -41,10 +41,6 @@ api.interceptors.request.use(
 // Intercepteur de réponse CORRIGÉ
 api.interceptors.response.use(
   (response) => {
-    // Debug: seulement en développement
-    if (process.env.NODE_ENV === "development") {
-      console.log(`✅ API Response: ${response.status} ${response.config.url}`);
-    }
     return response;
   },
   (error) => {
@@ -52,17 +48,11 @@ api.interceptors.response.use(
 
     // Pas de réponse = erreur réseau
     if (!response) {
-      console.error("❌ Network error:", error.message);
       return Promise.reject(new Error("Erreur de connexion au serveur"));
     }
 
     const { status } = response;
     const url = config?.url;
-
-    // Debug
-    if (process.env.NODE_ENV === "development") {
-      console.log(`❌ API Error: ${status} ${url}`);
-    }
 
     //  NE PAS rediriger pour les requêtes d'authentification
     if (status === 401) {
@@ -72,7 +62,7 @@ api.interceptors.response.use(
         "/auth/register",
         "/auth/verify-password",
         "/auth/verify",
-        "/auth/me", // ✅ AJOUT CRITIQUE: ne pas rediriger pour /auth/me
+        "/auth/me", //
       ];
 
       const isAuthRoute = authRoutes.some((route) => url?.includes(route));
@@ -117,7 +107,7 @@ api.interceptors.response.use(
 api.interceptors.response.use(
   (response) => {
     console.log(" API Response:", response.status, response.config.url);
-    // toast.success(response.data.message);
+    toast.success(response.data.message);
     return response;
   },
   (error) => {
@@ -133,12 +123,6 @@ api.interceptors.response.use(
       toast.error(errorMessage);
     }
 
-    if (error.request) {
-      console.error("🌐 No Response:", error.request);
-    }
-
-    console.error("🔧 Error Config:", error.config);
-
     return Promise.reject(error);
   }
 );
@@ -146,13 +130,6 @@ api.interceptors.response.use(
 // Intercepteur pour les requêtes
 api.interceptors.request.use(
   (config) => {
-    console.log("📤 API Request:", {
-      method: config.method,
-      url: config.url,
-      params: config.params,
-      data: config.data,
-    });
-
     // Ajouter le token d'authentification si disponible
     const token = localStorage.getItem("token");
     if (token) {
@@ -162,34 +139,7 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
-    console.error("❌ Request error:", error);
-    return Promise.reject(error);
-  }
-);
-
-// Intercepteur pour les réponses
-api.interceptors.response.use(
-  (response) => {
-    console.log("📥 API Response:", {
-      status: response.status,
-      url: response.config.url,
-      data: response.data,
-    });
-    return response;
-  },
-  (error) => {
-    console.error("❌ Response error:", {
-      status: error.response?.status,
-      data: error.response?.data,
-      url: error.config?.url,
-    });
-
-    if (error.response?.status === 401) {
-      // Rediriger vers la page de login
-      localStorage.removeItem("token");
-      window.location.href = "/login";
-    }
-
+    console.error(" Request error:", error);
     return Promise.reject(error);
   }
 );
