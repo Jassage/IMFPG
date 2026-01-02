@@ -1,49 +1,58 @@
 "use strict";
 /**
  * @file validationMiddleware.ts
- * @description Middlewares de validation des données et sanitisation
- * @version 1.0.0
+ * @description Middlewares de validation des données et sanitisation - Version améliorée
+ * @version 2.0.0
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateFileUpload = exports.rateLimitByUser = exports.validatePagination = exports.sanitizeInput = exports.validateContentType = exports.validateRequestBody = exports.handleValidationErrors = void 0;
+exports.logValidationSuccess = exports.validateEmail = exports.validateUUID = exports.validateFileUpload = exports.rateLimitByUser = exports.validatePagination = exports.sanitizeInput = exports.validateContentType = exports.validateRequestBody = exports.handleValidationErrors = void 0;
 const express_validator_1 = require("express-validator");
 const auditController_1 = require("../controllers/auditController");
 const authUtils_1 = require("../controllers/auth/authUtils");
 /**
  * @middleware handleValidationErrors
- * @description Gère les erreurs de validation de express-validator
+ * @description Gère les erreurs de validation de express-validator avec améliorations
  */
 const handleValidationErrors = (req, res, next) => {
-    const errors = (0, express_validator_1.validationResult)(req);
-    if (!errors.isEmpty()) {
-        const auditData = (0, authUtils_1.createSafeAuditData)((0, authUtils_1.extractAuditData)(req));
-        const formattedErrors = errors.array().map((error) => ({
-            field: error.type === "field" ? error.path : "unknown",
-            message: error.msg,
-            value: error.type === "field" ? error.value : undefined,
-            type: error.type,
-        }));
-        // Log d'audit pour les erreurs de validation
-        (0, auditController_1.createAuditLog)({
-            ...auditData,
-            action: "VALIDATION_ERROR",
-            entity: "Validation",
-            description: "Erreur de validation des données de requête",
-            status: "ERROR",
-            metadata: {
+    try {
+        const errors = (0, express_validator_1.validationResult)(req);
+        if (!errors.isEmpty()) {
+            const auditData = (0, authUtils_1.createSafeAuditData)((0, authUtils_1.extractAuditData)(req));
+            const formattedErrors = errors
+                .array()
+                .map((error) => ({
+                field: error.type === "field" ? error.path : "unknown",
+                message: error.msg,
+                value: error.type === "field" ? error.value : undefined,
+                type: error.type,
+            }));
+            // Log d'audit pour les erreurs de validation
+            (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "VALIDATION_ERROR",
+                entity: "Validation",
+                description: "Erreur de validation des données de requête",
+                status: "ERROR",
+                metadata: {
+                    errors: formattedErrors,
+                    url: req.url,
+                    method: req.method,
+                    endpoint: req.baseUrl + req.path,
+                },
+            }).catch((err) => { });
+            return res.status(400).json({
+                success: false,
+                message: "Données de requête invalides",
+                code: "VALIDATION_ERROR",
                 errors: formattedErrors,
-                url: req.url,
-                method: req.method,
-            },
-        }).catch(console.error);
-        return res.status(400).json({
-            success: false,
-            message: "Données de requête invalides",
-            code: "VALIDATION_ERROR",
-            errors: formattedErrors,
-        });
+                timestamp: new Date().toISOString(),
+            });
+        }
+        next();
     }
-    next();
+    catch (error) {
+        next(error);
+    }
 };
 exports.handleValidationErrors = handleValidationErrors;
 /**
@@ -51,27 +60,36 @@ exports.handleValidationErrors = handleValidationErrors;
  * @description Valide que le corps de la requête n'est pas vide pour les méthodes POST/PUT/PATCH
  */
 const validateRequestBody = (req, res, next) => {
-    if ((req.method === "POST" || req.method === "PUT" || req.method === "PATCH") &&
-        Object.keys(req.body).length === 0) {
-        const auditData = (0, authUtils_1.createSafeAuditData)((0, authUtils_1.extractAuditData)(req));
-        (0, auditController_1.createAuditLog)({
-            ...auditData,
-            action: "EMPTY_BODY",
-            entity: "Validation",
-            description: "Tentative d'envoi de requête avec corps vide",
-            status: "ERROR",
-            metadata: {
-                url: req.url,
-                method: req.method,
-            },
-        }).catch(console.error);
-        return res.status(400).json({
-            success: false,
-            message: "Le corps de la requête ne peut pas être vide",
-            code: "EMPTY_BODY",
-        });
+    try {
+        if ((req.method === "POST" ||
+            req.method === "PUT" ||
+            req.method === "PATCH") &&
+            Object.keys(req.body).length === 0) {
+            const auditData = (0, authUtils_1.createSafeAuditData)((0, authUtils_1.extractAuditData)(req));
+            (0, auditController_1.createAuditLog)({
+                ...auditData,
+                action: "EMPTY_BODY",
+                entity: "Validation",
+                description: "Tentative d'envoi de requête avec corps vide",
+                status: "ERROR",
+                metadata: {
+                    url: req.url,
+                    method: req.method,
+                    endpoint: req.baseUrl + req.path,
+                },
+            }).catch((err) => { });
+            return res.status(400).json({
+                success: false,
+                message: "Le corps de la requête ne peut pas être vide",
+                code: "EMPTY_BODY",
+                timestamp: new Date().toISOString(),
+            });
+        }
+        next();
     }
-    next();
+    catch (error) {
+        next(error);
+    }
 };
 exports.validateRequestBody = validateRequestBody;
 /**
@@ -81,68 +99,92 @@ exports.validateRequestBody = validateRequestBody;
  */
 const validateContentType = (allowedTypes = ["application/json"]) => {
     return (req, res, next) => {
-        const contentType = req.get("Content-Type");
-        if (req.method === "POST" ||
-            req.method === "PUT" ||
-            req.method === "PATCH") {
-            if (!contentType ||
-                !allowedTypes.some((type) => contentType.includes(type))) {
-                const auditData = (0, authUtils_1.createSafeAuditData)((0, authUtils_1.extractAuditData)(req));
-                (0, auditController_1.createAuditLog)({
-                    ...auditData,
-                    action: "UNSUPPORTED_MEDIA_TYPE",
-                    entity: "Validation",
-                    description: "Content-Type non supporté",
-                    status: "ERROR",
-                    metadata: {
-                        contentType,
-                        allowedTypes,
-                        url: req.url,
-                        method: req.method,
-                    },
-                }).catch(console.error);
-                return res.status(415).json({
-                    success: false,
-                    message: `Content-Type non supporté. Types autorisés: ${allowedTypes.join(", ")}`,
-                    code: "UNSUPPORTED_MEDIA_TYPE",
-                });
+        try {
+            if (req.method === "POST" ||
+                req.method === "PUT" ||
+                req.method === "PATCH") {
+                const contentType = req.get("Content-Type");
+                if (!contentType ||
+                    !allowedTypes.some((type) => contentType.includes(type))) {
+                    const auditData = (0, authUtils_1.createSafeAuditData)((0, authUtils_1.extractAuditData)(req));
+                    (0, auditController_1.createAuditLog)({
+                        ...auditData,
+                        action: "UNSUPPORTED_MEDIA_TYPE",
+                        entity: "Validation",
+                        description: "Content-Type non supporté",
+                        status: "ERROR",
+                        metadata: {
+                            contentType,
+                            allowedTypes,
+                            url: req.url,
+                            method: req.method,
+                        },
+                    }).catch((err) => { });
+                    return res.status(415).json({
+                        success: false,
+                        message: `Content-Type non supporté. Types autorisés: ${allowedTypes.join(", ")}`,
+                        code: "UNSUPPORTED_MEDIA_TYPE",
+                        timestamp: new Date().toISOString(),
+                    });
+                }
             }
+            next();
         }
-        next();
+        catch (error) {
+            next(error);
+        }
     };
 };
 exports.validateContentType = validateContentType;
 /**
  * @middleware sanitizeInput
- * @description Nettoie et sécurise les entrées utilisateur
+ * @description Nettoie et sécurise les entrées utilisateur contre XSS et injections
  */
 const sanitizeInput = (req, res, next) => {
-    // Sanitizer les paramètres de query
-    if (req.query) {
-        Object.keys(req.query).forEach((key) => {
-            if (typeof req.query[key] === "string") {
-                req.query[key] = sanitizeString(req.query[key]);
-            }
-        });
+    try {
+        // Sanitizer les paramètres de query
+        if (req.query) {
+            Object.keys(req.query).forEach((key) => {
+                if (typeof req.query[key] === "string") {
+                    req.query[key] = sanitizeString(req.query[key]);
+                }
+                else if (Array.isArray(req.query[key])) {
+                    req.query[key] = req.query[key].map(sanitizeString);
+                }
+            });
+        }
+        // Sanitizer les paramètres de route
+        if (req.params) {
+            Object.keys(req.params).forEach((key) => {
+                if (typeof req.params[key] === "string") {
+                    req.params[key] = sanitizeString(req.params[key]);
+                }
+            });
+        }
+        // Sanitizer le body
+        if (req.body && typeof req.body === "object") {
+            req.body = sanitizeObject(req.body);
+        }
+        // Sanitizer les headers sensibles
+        if (req.headers) {
+            const sensitiveHeaders = ["authorization", "cookie"];
+            sensitiveHeaders.forEach((header) => {
+                if (req.headers[header]) {
+                    // Ne pas logger les headers sensibles
+                    delete req.headers[header];
+                }
+            });
+        }
+        next();
     }
-    // Sanitizer les paramètres de route
-    if (req.params) {
-        Object.keys(req.params).forEach((key) => {
-            if (typeof req.params[key] === "string") {
-                req.params[key] = sanitizeString(req.params[key]);
-            }
-        });
+    catch (error) {
+        next();
     }
-    // Sanitizer le body
-    if (req.body && typeof req.body === "object") {
-        req.body = sanitizeObject(req.body);
-    }
-    next();
 };
 exports.sanitizeInput = sanitizeInput;
 /**
  * @function sanitizeString
- * @description Nettoie une chaîne de caractères
+ * @description Nettoie une chaîne de caractères contre XSS et injections
  * @param {string} value - Chaîne à nettoyer
  * @returns {string} Chaîne nettoyée
  */
@@ -151,9 +193,14 @@ const sanitizeString = (value) => {
         return value;
     return value
         .trim()
-        .replace(/[<>]/g, "") // Supprimer les balises HTML
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "") // Supprimer les scripts
+        .replace(/<[^>]*>/g, "") // Supprimer toutes les balises HTML
+        .replace(/javascript:/gi, "") // Supprimer les protocoles javascript
+        .replace(/on\w+="[^"]*"/gi, "") // Supprimer les attributs d'événements
+        .replace(/on\w+='[^']*'/gi, "") // Supprimer les attributs d'événements
+        .replace(/on\w+=\w+\([^)]*\)/gi, "") // Supprimer les attributs d'événements
         .replace(/\s+/g, " ") // Remplacer les espaces multiples par un seul
-        .substring(0, 10000); // Limiter la longueur
+        .substring(0, 10000); // Limiter la longueur pour prévenir les attaques DoS
 };
 /**
  * @function sanitizeObject
@@ -168,7 +215,10 @@ const sanitizeObject = (obj) => {
     if (Array.isArray(obj)) {
         return obj.map(sanitizeObject);
     }
-    if (obj && typeof obj === "object") {
+    if (obj &&
+        typeof obj === "object" &&
+        !(obj instanceof Date) &&
+        !(obj instanceof File)) {
         return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, sanitizeObject(value)]));
     }
     return obj;
@@ -178,172 +228,371 @@ const sanitizeObject = (obj) => {
  * @description Valide et normalise les paramètres de pagination
  */
 const validatePagination = (req, res, next) => {
-    const { page, limit, sort, order } = req.query;
-    // Validation de la page
-    if (page) {
-        const pageNum = parseInt(page, 10);
-        if (isNaN(pageNum) || pageNum < 1) {
-            return res.status(400).json({
-                success: false,
-                message: "Le paramètre 'page' doit être un nombre positif",
-                code: "INVALID_PAGE",
-            });
+    try {
+        const { page, limit, sort, order } = req.query;
+        // Validation de la page
+        if (page) {
+            const pageNum = parseInt(page, 10);
+            if (isNaN(pageNum) || pageNum < 1) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Le paramètre 'page' doit être un nombre positif",
+                    code: "INVALID_PAGE",
+                    timestamp: new Date().toISOString(),
+                });
+            }
+            req.query.page = pageNum.toString();
         }
-        req.query.page = pageNum.toString();
-    }
-    // Validation de la limite
-    if (limit) {
-        const limitNum = parseInt(limit, 10);
-        if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
-            return res.status(400).json({
-                success: false,
-                message: "Le paramètre 'limit' doit être un nombre entre 1 et 100",
-                code: "INVALID_LIMIT",
-            });
+        // Validation de la limite
+        if (limit) {
+            const limitNum = parseInt(limit, 10);
+            if (isNaN(limitNum) || limitNum < 1 || limitNum > 200) {
+                // Augmenté à 200 pour plus de flexibilité
+                return res.status(400).json({
+                    success: false,
+                    message: "Le paramètre 'limit' doit être un nombre entre 1 et 200",
+                    code: "INVALID_LIMIT",
+                    timestamp: new Date().toISOString(),
+                });
+            }
+            req.query.limit = limitNum.toString();
         }
-        req.query.limit = limitNum.toString();
-    }
-    // Validation du tri
-    if (sort && typeof sort === "string") {
-        // Liste des champs autorisés pour le tri
-        const allowedSortFields = [
-            "createdAt",
-            "updatedAt",
-            "firstName",
-            "lastName",
-            "email",
-            "name",
-        ];
-        if (!allowedSortFields.includes(sort)) {
-            return res.status(400).json({
-                success: false,
-                message: `Champ de tri non autorisé. Champs autorisés: ${allowedSortFields.join(", ")}`,
-                code: "INVALID_SORT_FIELD",
-            });
+        // Validation du tri
+        if (sort && typeof sort === "string") {
+            // Liste des champs autorisés pour le tri (peut être étendue selon les besoins)
+            const allowedSortFields = [
+                "createdAt",
+                "updatedAt",
+                "firstName",
+                "lastName",
+                "email",
+                "name",
+                "date",
+                "title",
+                "status",
+                "classLevel",
+                "year",
+                "startDate",
+                "endDate",
+            ];
+            if (!allowedSortFields.includes(sort)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Champ de tri non autorisé. Champs autorisés: ${allowedSortFields.join(", ")}`,
+                    code: "INVALID_SORT_FIELD",
+                    timestamp: new Date().toISOString(),
+                });
+            }
         }
-    }
-    // Validation de l'ordre
-    if (order && typeof order === "string") {
-        const normalizedOrder = order.toLowerCase();
-        if (normalizedOrder !== "asc" && normalizedOrder !== "desc") {
-            return res.status(400).json({
-                success: false,
-                message: "L'ordre de tri doit être 'asc' ou 'desc'",
-                code: "INVALID_ORDER",
-            });
+        // Validation de l'ordre
+        if (order && typeof order === "string") {
+            const normalizedOrder = order.toLowerCase();
+            if (normalizedOrder !== "asc" && normalizedOrder !== "desc") {
+                return res.status(400).json({
+                    success: false,
+                    message: "L'ordre de tri doit être 'asc' ou 'desc'",
+                    code: "INVALID_ORDER",
+                    timestamp: new Date().toISOString(),
+                });
+            }
+            req.query.order = normalizedOrder;
         }
-        req.query.order = normalizedOrder;
+        next();
     }
-    next();
+    catch (error) {
+        next(error);
+    }
 };
 exports.validatePagination = validatePagination;
 /**
  * @middleware rateLimitByUser
- * @description Rate limiting basé sur l'utilisateur
+ * @description Rate limiting basé sur l'utilisateur avec améliorations
  * @param {object} options - Options du rate limiting
  */
 const rateLimitByUser = (options) => {
-    const { windowMs, max } = options;
+    const { windowMs, max, skipSuccessfulRequests = false, message = "Trop de requêtes. Veuillez réessayer plus tard.", } = options;
     const requests = new Map();
-    return (req, res, next) => {
-        const userId = req.userId || req.ip || "anonymous";
+    // Nettoyage périodique des vieilles entrées
+    setInterval(() => {
         const now = Date.now();
         const windowStart = now - windowMs;
-        // Nettoyer les vieilles entrées
-        for (const [key, timestamps] of requests.entries()) {
-            const validTimestamps = timestamps.filter((timestamp) => timestamp > windowStart);
+        for (const [key, data] of requests.entries()) {
+            const validTimestamps = data.timestamps.filter((timestamp) => timestamp > windowStart);
             if (validTimestamps.length === 0) {
                 requests.delete(key);
             }
             else {
-                requests.set(key, validTimestamps);
+                requests.set(key, {
+                    timestamps: validTimestamps,
+                    count: validTimestamps.length,
+                });
             }
         }
-        // Vérifier les requêtes de l'utilisateur
-        const userRequests = requests.get(userId) || [];
-        const recentRequests = userRequests.filter((timestamp) => timestamp > windowStart);
-        if (recentRequests.length >= max) {
-            const auditData = (0, authUtils_1.createSafeAuditData)((0, authUtils_1.extractAuditData)(req));
-            (0, auditController_1.createAuditLog)({
-                ...auditData,
-                action: "RATE_LIMIT_EXCEEDED",
-                entity: "Security",
-                description: "Limite de requêtes dépassée",
-                status: "ERROR",
-                metadata: {
-                    userId,
-                    requests: recentRequests.length,
-                    max,
-                    windowMs,
-                },
-            }).catch(console.error);
-            return res.status(429).json({
-                success: false,
-                message: "Trop de requêtes. Veuillez réessayer plus tard.",
-                code: "RATE_LIMIT_EXCEEDED",
-                retryAfter: Math.ceil(windowMs / 1000),
+    }, windowMs / 2); // Nettoyage toutes les demi-fenêtres
+    return (req, res, next) => {
+        try {
+            const userId = req.userId || req.ip || "anonymous";
+            const now = Date.now();
+            const windowStart = now - windowMs;
+            let userData = requests.get(userId);
+            if (!userData) {
+                userData = { timestamps: [], count: 0 };
+                requests.set(userId, userData);
+            }
+            // Filtrer les timestamps dans la fenêtre actuelle
+            const recentTimestamps = userData.timestamps.filter((timestamp) => timestamp > windowStart);
+            if (recentTimestamps.length >= max) {
+                const auditData = (0, authUtils_1.createSafeAuditData)((0, authUtils_1.extractAuditData)(req));
+                (0, auditController_1.createAuditLog)({
+                    ...auditData,
+                    action: "RATE_LIMIT_EXCEEDED",
+                    entity: "Security",
+                    description: "Limite de requêtes dépassée",
+                    status: "ERROR",
+                    metadata: {
+                        userId,
+                        requests: recentTimestamps.length,
+                        max,
+                        windowMs,
+                        endpoint: req.baseUrl + req.path,
+                    },
+                }).catch((err) => { });
+                return res.status(429).json({
+                    success: false,
+                    message,
+                    code: "RATE_LIMIT_EXCEEDED",
+                    retryAfter: Math.ceil(windowMs / 1000),
+                    timestamp: new Date().toISOString(),
+                });
+            }
+            // Ajouter la requête actuelle
+            recentTimestamps.push(now);
+            requests.set(userId, {
+                timestamps: recentTimestamps,
+                count: recentTimestamps.length,
             });
+            // Ajouter les headers de rate limiting
+            res.set({
+                "X-RateLimit-Limit": max.toString(),
+                "X-RateLimit-Remaining": (max - recentTimestamps.length).toString(),
+                "X-RateLimit-Reset": new Date(now + windowMs).toISOString(),
+                "X-RateLimit-Policy": `${max};w=${windowMs / 1000}`,
+            });
+            // Si on saute les requêtes réussies, on ne compte pas cette requête si elle réussit
+            if (skipSuccessfulRequests) {
+                const originalSend = res.send;
+                res.send = function (body) {
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        // Retirer cette requête du compte
+                        const currentData = requests.get(userId);
+                        if (currentData && currentData.timestamps.length > 0) {
+                            currentData.timestamps.pop();
+                            requests.set(userId, {
+                                timestamps: currentData.timestamps,
+                                count: currentData.timestamps.length,
+                            });
+                        }
+                    }
+                    return originalSend.call(this, body);
+                };
+            }
+            next();
         }
-        // Ajouter la requête actuelle
-        recentRequests.push(now);
-        requests.set(userId, recentRequests);
-        // Ajouter les headers de rate limiting
-        res.set({
-            "X-RateLimit-Limit": max.toString(),
-            "X-RateLimit-Remaining": (max - recentRequests.length).toString(),
-            "X-RateLimit-Reset": new Date(now + windowMs).toISOString(),
-        });
-        next();
+        catch (error) {
+            next();
+        }
     };
 };
 exports.rateLimitByUser = rateLimitByUser;
 /**
  * @middleware validateFileUpload
- * @description Valide les uploads de fichiers
+ * @description Valide les uploads de fichiers avec améliorations
  * @param {object} options - Options de validation
  */
 const validateFileUpload = (options = {}) => {
-    const { maxSize = 5 * 1024 * 1024, // 5MB par défaut
+    const { maxSize = 10 * 1024 * 1024, // 10MB par défaut
     allowedMimeTypes = [
         "image/jpeg",
         "image/png",
         "image/gif",
+        "image/webp",
         "application/pdf",
-    ], maxFiles = 5, } = options;
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
+        "application/zip",
+    ], maxFiles = 10, required = false, } = options;
     return (req, res, next) => {
-        if (!req.files || (Array.isArray(req.files) && req.files.length === 0)) {
-            return next();
-        }
-        const files = Array.isArray(req.files)
-            ? req.files
-            : Object.values(req.files).flat();
-        // Vérifier le nombre de fichiers
-        if (files.length > maxFiles) {
-            return res.status(400).json({
-                success: false,
-                message: `Trop de fichiers. Maximum autorisé: ${maxFiles}`,
-                code: "TOO_MANY_FILES",
-            });
-        }
-        // Valider chaque fichier
-        for (const file of files) {
-            if (file.size > maxSize) {
+        try {
+            if (!req.files || (Array.isArray(req.files) && req.files.length === 0)) {
+                if (required) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Au moins un fichier est requis",
+                        code: "FILES_REQUIRED",
+                        timestamp: new Date().toISOString(),
+                    });
+                }
+                return next();
+            }
+            const files = Array.isArray(req.files)
+                ? req.files
+                : Object.values(req.files).flat();
+            // Vérifier le nombre de fichiers
+            if (files.length > maxFiles) {
                 return res.status(400).json({
                     success: false,
-                    message: `Fichier trop volumineux: ${file.filename}. Taille maximum: ${Math.round(maxSize / 1024 / 1024)}MB`,
-                    code: "FILE_TOO_LARGE",
+                    message: `Trop de fichiers. Maximum autorisé: ${maxFiles}`,
+                    code: "TOO_MANY_FILES",
+                    timestamp: new Date().toISOString(),
                 });
             }
-            if (!allowedMimeTypes.includes(file.mimetype)) {
+            // Valider chaque fichier
+            const validationErrors = [];
+            for (const file of files) {
+                // Vérifier la taille
+                if (file.size > maxSize) {
+                    validationErrors.push({
+                        filename: file.originalname,
+                        error: `Fichier trop volumineux. Taille maximum: ${Math.round(maxSize / 1024 / 1024)}MB`,
+                    });
+                }
+                // Vérifier le type MIME
+                if (!allowedMimeTypes.includes(file.mimetype)) {
+                    validationErrors.push({
+                        filename: file.originalname,
+                        error: `Type de fichier non autorisé. Types autorisés: ${allowedMimeTypes.join(", ")}`,
+                    });
+                }
+                // Vérifier l'extension pour sécurité supplémentaire
+                const allowedExtensions = allowedMimeTypes.map((mime) => {
+                    const ext = mime.split("/")[1];
+                    return ext === "jpeg" ? "jpg" : ext;
+                });
+                const fileExtension = file.originalname.split(".").pop()?.toLowerCase();
+                if (fileExtension && !allowedExtensions.includes(fileExtension)) {
+                    validationErrors.push({
+                        filename: file.originalname,
+                        error: `Extension de fichier non autorisée. Extensions autorisées: ${allowedExtensions.join(", ")}`,
+                    });
+                }
+                // Vérifier le nom du fichier pour sécurité
+                const sanitizedFilename = sanitizeString(file.originalname);
+                if (sanitizedFilename !== file.originalname) {
+                    validationErrors.push({
+                        filename: file.originalname,
+                        error: "Nom de fichier contenant des caractères non autorisés",
+                    });
+                }
+            }
+            if (validationErrors.length > 0) {
                 return res.status(400).json({
                     success: false,
-                    message: `Type de fichier non autorisé: ${file.filename}. Types autorisés: ${allowedMimeTypes.join(", ")}`,
-                    code: "INVALID_FILE_TYPE",
+                    message: "Erreurs de validation de fichiers",
+                    code: "FILE_VALIDATION_ERROR",
+                    errors: validationErrors,
+                    timestamp: new Date().toISOString(),
                 });
             }
+            next();
         }
-        next();
+        catch (error) {
+            next(error);
+        }
     };
 };
 exports.validateFileUpload = validateFileUpload;
+/**
+ * @middleware validateUUID
+ * @description Valide que les IDs sont des UUID valides
+ */
+const validateUUID = (req, res, next) => {
+    try {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        // Vérifier les params
+        Object.keys(req.params).forEach((key) => {
+            if (key.toLowerCase().includes("id") && req.params[key]) {
+                if (!uuidRegex.test(req.params[key])) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Le paramètre ${key} doit être un UUID valide`,
+                        code: "INVALID_UUID",
+                        timestamp: new Date().toISOString(),
+                    });
+                }
+            }
+        });
+        // Vérifier les IDs dans le body si nécessaire
+        if (req.body && typeof req.body === "object") {
+            const bodyIds = Object.keys(req.body).filter((key) => key.toLowerCase().includes("id") && req.body[key]);
+            for (const key of bodyIds) {
+                if (typeof req.body[key] === "string" &&
+                    !uuidRegex.test(req.body[key])) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Le champ ${key} doit être un UUID valide`,
+                        code: "INVALID_UUID",
+                        timestamp: new Date().toISOString(),
+                    });
+                }
+            }
+        }
+        next();
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.validateUUID = validateUUID;
+/**
+ * @middleware validateEmail
+ * @description Valide le format des emails
+ */
+const validateEmail = (field = "email") => {
+    return (req, res, next) => {
+        try {
+            const email = req.body[field];
+            if (email && typeof email === "string") {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Format d'email invalide",
+                        code: "INVALID_EMAIL",
+                        timestamp: new Date().toISOString(),
+                    });
+                }
+                // Vérifier la longueur
+                if (email.length > 254) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "L'email ne peut pas dépasser 254 caractères",
+                        code: "EMAIL_TOO_LONG",
+                        timestamp: new Date().toISOString(),
+                    });
+                }
+            }
+            next();
+        }
+        catch (error) {
+            next(error);
+        }
+    };
+};
+exports.validateEmail = validateEmail;
+/**
+ * @middleware logValidationSuccess
+ * @description Log les validations réussies (optionnel, pour debugging)
+ */
+const logValidationSuccess = (req, res, next) => {
+    try {
+        if (process.env.NODE_ENV === "development") {
+        }
+        next();
+    }
+    catch (error) {
+        next();
+    }
+};
+exports.logValidationSuccess = logValidationSuccess;
 //# sourceMappingURL=validationMiddleware.js.map

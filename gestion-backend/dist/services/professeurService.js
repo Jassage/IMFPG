@@ -434,7 +434,7 @@ exports.getProfesseurFullDetailsService = getProfesseurFullDetailsService;
  */
 const sendLoginCredentialsEmail = async (email, firstName, password) => {
     try {
-        const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:4000"}/auth/login`;
+        const loginUrl = `${process.env.FRONTEND_URL || "https://localhost:4000"}/auth/login`;
         const resetPasswordUrl = `${process.env.FRONTEND_URL || "http://localhost:4000"}/auth/reset-password`;
         const html = `
       <!DOCTYPE html>

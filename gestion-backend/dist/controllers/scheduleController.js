@@ -1,8 +1,8 @@
 "use strict";
 /**
  * @file scheduleController.ts
- * @description Contrôleurs pour la gestion des emplois du temps
- * @version 1.1.0 - Support ISO
+ * @description Contrôleurs pour la gestion des emplois du temps avec support de formats multiples
+ * @version 2.0.0
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteSchedule = exports.updateSchedule = exports.getAvailableTimeSlots = exports.checkConflicts = exports.getProfessorSchedule = exports.generateTimetable = exports.getClassTimetable = exports.getScheduleById = exports.getAllSchedules = exports.createSchedule = void 0;
@@ -10,42 +10,92 @@ const scheduleService_1 = require("../services/scheduleService");
 const authUtils_1 = require("./auth/authUtils");
 const auditController_1 = require("./auditController");
 /**
- * Valide un timestamp ISO
+ * Valide et parse un temps (support HH:MM, HH:MM:SS, ISO)
  */
-const validateISOTime = (time) => {
-    if (!time) {
-        return { valid: false, message: "Le temps est requis" };
+const validateAndParseTime = (time) => {
+    if (!time || typeof time !== "string") {
+        return {
+            valid: false,
+            message: "Le temps est requis et doit être une chaîne",
+        };
     }
     try {
-        const date = new Date(time);
-        if (isNaN(date.getTime())) {
-            return { valid: false, message: "Format ISO invalide" };
-        }
-        return { valid: true };
+        // Essayer de parser avec le service
+        const parsed = scheduleService_1.ScheduleService.parseTime(time);
+        return {
+            valid: true,
+            time: parsed.time, // HH:MM:SS formaté
+            isoTime: `2000-01-01T${parsed.time}Z`, // ISO pour l'API
+            displayTime: scheduleService_1.ScheduleService.formatTimeForDisplay(time),
+        };
     }
     catch (error) {
-        return { valid: false, message: "Format de temps invalide" };
+        return {
+            valid: false,
+            message: error.message || "Format de temps invalide",
+        };
     }
 };
 /**
- * @desc Crée un nouvel horaire - VERSION ISO
+ * Valide la durée d'un créneau
+ */
+const validateDuration = (startTime, endTime) => {
+    try {
+        const start = new Date(`2000-01-01T${startTime}Z`);
+        const end = new Date(`2000-01-01T${endTime}Z`);
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            return { valid: false, message: "Temps invalide" };
+        }
+        const duration = (end.getTime() - start.getTime()) / (1000 * 60); // minutes
+        if (duration <= 0) {
+            return {
+                valid: false,
+                message: "L'heure de fin doit être après l'heure de début",
+            };
+        }
+        if (duration < 30) {
+            return { valid: false, message: "Durée minimale: 30 minutes" };
+        }
+        if (duration > 240) {
+            return { valid: false, message: "Durée maximale: 4 heures" };
+        }
+        return { valid: true, duration };
+    }
+    catch {
+        return { valid: false, message: "Erreur de calcul de durée" };
+    }
+};
+/**
+ * @desc Crée un nouvel horaire
  */
 const createSchedule = async (req, res) => {
     const auditData = (0, authUtils_1.extractAuditData)(req);
+    const userId = auditData.userId || "system";
     try {
         const { assignmentId, classId, dayOfWeek, startTime, endTime, classroom, recurrence, untilDate, notes, } = req.body;
         // Validation des champs requis
-        if (!assignmentId || !classId || !dayOfWeek || !startTime || !endTime) {
+        const requiredFields = {
+            assignmentId,
+            classId,
+            dayOfWeek,
+            startTime,
+            endTime,
+        };
+        const missingFields = Object.entries(requiredFields)
+            .filter(([_, value]) => !value)
+            .map(([key]) => key);
+        if (missingFields.length > 0) {
             const response = {
                 success: false,
-                message: "Données manquantes: assignmentId, classId, dayOfWeek, startTime, endTime sont requis",
+                message: `Champs manquants: ${missingFields.join(", ")}`,
                 code: "MISSING_REQUIRED_FIELDS",
+                metadata: { missingFields },
             };
             res.status(400).json(response);
             return;
         }
-        // Validation des formats ISO
-        const startTimeValidation = validateISOTime(startTime);
+        // Validation des formats de temps
+        const startTimeValidation = validateAndParseTime(startTime);
         if (!startTimeValidation.valid) {
             const response = {
                 success: false,
@@ -55,7 +105,7 @@ const createSchedule = async (req, res) => {
             res.status(400).json(response);
             return;
         }
-        const endTimeValidation = validateISOTime(endTime);
+        const endTimeValidation = validateAndParseTime(endTime);
         if (!endTimeValidation.valid) {
             const response = {
                 success: false,
@@ -65,50 +115,31 @@ const createSchedule = async (req, res) => {
             res.status(400).json(response);
             return;
         }
-        // Vérifier l'ordre des temps
-        const startDate = new Date(startTime);
-        const endDate = new Date(endTime);
-        if (endDate <= startDate) {
+        // Validation de la durée
+        const durationValidation = validateDuration(startTimeValidation.time, endTimeValidation.time);
+        if (!durationValidation.valid) {
             const response = {
                 success: false,
-                message: "L'heure de fin doit être après l'heure de début",
-                code: "INVALID_TIME_RANGE",
+                message: durationValidation.message || "Durée invalide",
+                code: "INVALID_DURATION",
             };
             res.status(400).json(response);
             return;
         }
-        // Vérifier la durée
-        const duration = (endDate.getTime() - startDate.getTime()) / (1000 * 60); // minutes
-        if (duration < 30) {
-            const response = {
-                success: false,
-                message: "Durée minimale: 30 minutes",
-                code: "MIN_DURATION_NOT_MET",
-            };
-            res.status(400).json(response);
-            return;
-        }
-        if (duration > 240) {
-            const response = {
-                success: false,
-                message: "Durée maximale: 4 heures",
-                code: "MAX_DURATION_EXCEEDED",
-            };
-            res.status(400).json(response);
-            return;
-        }
-        const result = await scheduleService_1.ScheduleService.createSchedule({
+        // Préparer les données pour le service
+        const scheduleData = {
             assignmentId,
             classId,
-            dayOfWeek,
-            startTime,
-            endTime,
-            classroom,
-            recurrence,
-            untilDate,
-            notes,
-        });
-        // Créer le log d'audit avec les métadonnées disponibles
+            dayOfWeek: dayOfWeek.toUpperCase(),
+            startTime: startTimeValidation.isoTime,
+            endTime: endTimeValidation.isoTime,
+            classroom: classroom?.trim(),
+            recurrence: recurrence?.trim(),
+            untilDate: untilDate?.trim(),
+            notes: notes?.trim(),
+        };
+        const result = await scheduleService_1.ScheduleService.createSchedule(scheduleData);
+        // Créer le log d'audit
         await (0, auditController_1.createAuditLog)({
             ...auditData,
             action: "SCHEDULE_CREATED",
@@ -116,9 +147,13 @@ const createSchedule = async (req, res) => {
             entityId: result.data?.schedule?.id || "",
             description: `Horaire créé: ${result.data?.schedule?.classAssignment?.subject?.name || "Inconnu"} - ${result.data?.schedule?.schoolClass?.name || "Inconnu"}`,
             status: "SUCCESS",
-            metadata: result.metadata || {},
+            metadata: {
+                ...result.metadata,
+                userId,
+                ipAddress: req.ip,
+                userAgent: req.get("user-agent"),
+            },
         });
-        // Retourner la réponse avec métadonnées
         const response = {
             success: result.success,
             message: result.message,
@@ -137,13 +172,20 @@ const createSchedule = async (req, res) => {
             description: "Erreur lors de la création de l'horaire",
             status: "ERROR",
             errorMessage: error.message,
-            metadata: { errorCode: error.code },
+            metadata: {
+                errorCode: error.code,
+                userId,
+                ipAddress: req.ip,
+                userAgent: req.get("user-agent"),
+                requestBody: req.body,
+            },
         });
         const response = {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
             data: error.data,
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }
@@ -154,8 +196,8 @@ exports.createSchedule = createSchedule;
  */
 const getAllSchedules = async (req, res) => {
     try {
-        const { page = "1", limit = "20", classId, professeurId, dayOfWeek, status, academicYearId, } = req.query;
-        const result = await scheduleService_1.ScheduleService.getAllSchedules({
+        const { page = "1", limit = "20", classId, professeurId, dayOfWeek, status, academicYearId, classroom, subject, startDate, endDate, } = req.query;
+        const filters = {
             page: parseInt(page),
             limit: parseInt(limit),
             classId: classId,
@@ -163,7 +205,12 @@ const getAllSchedules = async (req, res) => {
             dayOfWeek: dayOfWeek,
             status: status,
             academicYearId: academicYearId,
-        });
+            classroom: classroom,
+            subject: subject,
+            startDate: startDate,
+            endDate: endDate,
+        };
+        const result = await scheduleService_1.ScheduleService.getAllSchedules(filters);
         const response = {
             success: result.success,
             message: result.message,
@@ -179,6 +226,7 @@ const getAllSchedules = async (req, res) => {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }
@@ -190,6 +238,15 @@ exports.getAllSchedules = getAllSchedules;
 const getScheduleById = async (req, res) => {
     try {
         const { id } = req.params;
+        if (!id) {
+            const response = {
+                success: false,
+                message: "ID de l'horaire requis",
+                code: "MISSING_ID",
+            };
+            res.status(400).json(response);
+            return;
+        }
         const result = await scheduleService_1.ScheduleService.getScheduleById(id);
         const response = {
             success: result.success,
@@ -206,6 +263,7 @@ const getScheduleById = async (req, res) => {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }
@@ -243,6 +301,7 @@ const getClassTimetable = async (req, res) => {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }
@@ -253,6 +312,7 @@ exports.getClassTimetable = getClassTimetable;
  */
 const generateTimetable = async (req, res) => {
     const auditData = (0, authUtils_1.extractAuditData)(req);
+    const userId = auditData.userId || "system";
     try {
         const { classId, academicYearId, constraints } = req.body;
         if (!classId || !academicYearId) {
@@ -275,7 +335,12 @@ const generateTimetable = async (req, res) => {
             entity: "Schedule",
             description: `Emploi du temps généré pour la classe ${classId}`,
             status: "SUCCESS",
-            metadata: result.metadata || {},
+            metadata: {
+                ...result.metadata,
+                userId,
+                ipAddress: req.ip,
+                userAgent: req.get("user-agent"),
+            },
         });
         const response = {
             success: result.success,
@@ -295,11 +360,18 @@ const generateTimetable = async (req, res) => {
             description: "Erreur lors de la génération de l'emploi du temps",
             status: "ERROR",
             errorMessage: error.message,
+            metadata: {
+                userId,
+                ipAddress: req.ip,
+                userAgent: req.get("user-agent"),
+                requestBody: req.body,
+            },
         });
         const response = {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }
@@ -311,7 +383,7 @@ exports.generateTimetable = generateTimetable;
 const getProfessorSchedule = async (req, res) => {
     try {
         const { professeurId } = req.params;
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, status } = req.query;
         if (!professeurId) {
             const response = {
                 success: false,
@@ -324,6 +396,7 @@ const getProfessorSchedule = async (req, res) => {
         const result = await scheduleService_1.ScheduleService.getProfessorSchedule(professeurId, {
             startDate: startDate,
             endDate: endDate,
+            status: status,
         });
         const response = {
             success: result.success,
@@ -340,29 +413,40 @@ const getProfessorSchedule = async (req, res) => {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }
 };
 exports.getProfessorSchedule = getProfessorSchedule;
 /**
- * @desc Vérifie les conflits d'horaire - VERSION ISO
+ * @desc Vérifie les conflits d'horaire
  */
 const checkConflicts = async (req, res) => {
     try {
         const { professeurId, classId, dayOfWeek, startTime, endTime, classroom, excludeScheduleId, } = req.query;
         // Validation des champs requis
-        if (!professeurId || !classId || !dayOfWeek || !startTime || !endTime) {
+        const requiredParams = {
+            professeurId,
+            classId,
+            dayOfWeek,
+            startTime,
+            endTime,
+        };
+        const missingParams = Object.entries(requiredParams)
+            .filter(([_, value]) => !value)
+            .map(([key]) => key);
+        if (missingParams.length > 0) {
             const response = {
                 success: false,
-                message: "professeurId, classId, dayOfWeek, startTime, endTime sont requis",
-                code: "MISSING_REQUIRED_FIELDS",
+                message: `Paramètres manquants: ${missingParams.join(", ")}`,
+                code: "MISSING_REQUIRED_PARAMS",
             };
             res.status(400).json(response);
             return;
         }
-        // Validation des formats ISO
-        const startTimeValidation = validateISOTime(startTime);
+        // Validation des formats de temps
+        const startTimeValidation = validateAndParseTime(startTime);
         if (!startTimeValidation.valid) {
             const response = {
                 success: false,
@@ -372,7 +456,7 @@ const checkConflicts = async (req, res) => {
             res.status(400).json(response);
             return;
         }
-        const endTimeValidation = validateISOTime(endTime);
+        const endTimeValidation = validateAndParseTime(endTime);
         if (!endTimeValidation.valid) {
             const response = {
                 success: false,
@@ -386,8 +470,8 @@ const checkConflicts = async (req, res) => {
             professeurId: professeurId,
             classId: classId,
             dayOfWeek: dayOfWeek,
-            startTime: startTime,
-            endTime: endTime,
+            startTime: startTimeValidation.isoTime,
+            endTime: endTimeValidation.isoTime,
             classroom: classroom,
             excludeScheduleId: excludeScheduleId,
         });
@@ -406,6 +490,7 @@ const checkConflicts = async (req, res) => {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }
@@ -438,22 +523,33 @@ const getAvailableTimeSlots = async (req, res) => {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }
 };
 exports.getAvailableTimeSlots = getAvailableTimeSlots;
 /**
- * @desc Met à jour un horaire - VERSION ISO
+ * @desc Met à jour un horaire
  */
 const updateSchedule = async (req, res) => {
     const auditData = (0, authUtils_1.extractAuditData)(req);
+    const userId = auditData.userId || "system";
     try {
         const { id } = req.params;
         const { dayOfWeek, startTime, endTime, classroom, recurrence, untilDate, notes, status, } = req.body;
+        if (!id) {
+            const response = {
+                success: false,
+                message: "ID de l'horaire requis",
+                code: "MISSING_ID",
+            };
+            res.status(400).json(response);
+            return;
+        }
         // Validation si startTime est fourni
         if (startTime) {
-            const startTimeValidation = validateISOTime(startTime);
+            const startTimeValidation = validateAndParseTime(startTime);
             if (!startTimeValidation.valid) {
                 const response = {
                     success: false,
@@ -466,7 +562,7 @@ const updateSchedule = async (req, res) => {
         }
         // Validation si endTime est fourni
         if (endTime) {
-            const endTimeValidation = validateISOTime(endTime);
+            const endTimeValidation = validateAndParseTime(endTime);
             if (!endTimeValidation.valid) {
                 const response = {
                     success: false,
@@ -477,50 +573,42 @@ const updateSchedule = async (req, res) => {
                 return;
             }
         }
-        // Vérifier l'ordre des temps si les deux sont fournis
+        // Si les deux temps sont fournis, vérifier la durée
         if (startTime && endTime) {
-            const startDate = new Date(startTime);
-            const endDate = new Date(endTime);
-            if (endDate <= startDate) {
-                const response = {
-                    success: false,
-                    message: "L'heure de fin doit être après l'heure de début",
-                    code: "INVALID_TIME_RANGE",
-                };
-                res.status(400).json(response);
-                return;
-            }
-            // Vérifier la durée
-            const duration = (endDate.getTime() - startDate.getTime()) / (1000 * 60);
-            if (duration < 30) {
-                const response = {
-                    success: false,
-                    message: "Durée minimale: 30 minutes",
-                    code: "MIN_DURATION_NOT_MET",
-                };
-                res.status(400).json(response);
-                return;
-            }
-            if (duration > 240) {
-                const response = {
-                    success: false,
-                    message: "Durée maximale: 4 heures",
-                    code: "MAX_DURATION_EXCEEDED",
-                };
-                res.status(400).json(response);
-                return;
+            const startTimeValidation = validateAndParseTime(startTime);
+            const endTimeValidation = validateAndParseTime(endTime);
+            if (startTimeValidation.valid && endTimeValidation.valid) {
+                const durationValidation = validateDuration(startTimeValidation.time, endTimeValidation.time);
+                if (!durationValidation.valid) {
+                    const response = {
+                        success: false,
+                        message: durationValidation.message || "Durée invalide",
+                        code: "INVALID_DURATION",
+                    };
+                    res.status(400).json(response);
+                    return;
+                }
             }
         }
-        const result = await scheduleService_1.ScheduleService.updateSchedule(id, {
-            dayOfWeek,
-            startTime,
-            endTime,
-            classroom,
-            recurrence,
-            untilDate,
-            notes,
-            status,
-        });
+        // Préparer les données pour le service
+        const updateData = {};
+        if (dayOfWeek !== undefined)
+            updateData.dayOfWeek = dayOfWeek.toUpperCase();
+        if (startTime !== undefined)
+            updateData.startTime = startTime;
+        if (endTime !== undefined)
+            updateData.endTime = endTime;
+        if (classroom !== undefined)
+            updateData.classroom = classroom?.trim();
+        if (recurrence !== undefined)
+            updateData.recurrence = recurrence?.trim();
+        if (untilDate !== undefined)
+            updateData.untilDate = untilDate?.trim();
+        if (notes !== undefined)
+            updateData.notes = notes?.trim();
+        if (status !== undefined)
+            updateData.status = status;
+        const result = await scheduleService_1.ScheduleService.updateSchedule(id, updateData);
         await (0, auditController_1.createAuditLog)({
             ...auditData,
             action: "SCHEDULE_UPDATED",
@@ -528,7 +616,13 @@ const updateSchedule = async (req, res) => {
             entityId: id,
             description: `Horaire modifié: ${result.data?.schedule?.classAssignment?.subject?.name || "Inconnu"}`,
             status: "SUCCESS",
-            metadata: result.metadata || {},
+            metadata: {
+                ...result.metadata,
+                userId,
+                ipAddress: req.ip,
+                userAgent: req.get("user-agent"),
+                updatedFields: Object.keys(updateData),
+            },
         });
         const response = {
             success: result.success,
@@ -548,12 +642,19 @@ const updateSchedule = async (req, res) => {
             description: "Erreur lors de la mise à jour de l'horaire",
             status: "ERROR",
             errorMessage: error.message,
+            metadata: {
+                userId,
+                ipAddress: req.ip,
+                userAgent: req.get("user-agent"),
+                requestBody: req.body,
+            },
         });
         const response = {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
             data: error.data,
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }
@@ -564,12 +665,13 @@ exports.updateSchedule = updateSchedule;
  */
 const deleteSchedule = async (req, res) => {
     const auditData = (0, authUtils_1.extractAuditData)(req);
+    const userId = auditData.userId || "system";
     try {
         const { id } = req.params;
         if (!id) {
             const response = {
                 success: false,
-                message: "id est requis",
+                message: "ID de l'horaire requis",
                 code: "MISSING_ID",
             };
             res.status(400).json(response);
@@ -583,7 +685,12 @@ const deleteSchedule = async (req, res) => {
             entityId: id,
             description: `Horaire supprimé: ${result.metadata?.subject || "Inconnu"} - ${result.metadata?.class || "Inconnu"}`,
             status: "SUCCESS",
-            metadata: result.metadata || {},
+            metadata: {
+                ...result.metadata,
+                userId,
+                ipAddress: req.ip,
+                userAgent: req.get("user-agent"),
+            },
         });
         const response = {
             success: result.success,
@@ -603,11 +710,18 @@ const deleteSchedule = async (req, res) => {
             description: "Erreur lors de la suppression de l'horaire",
             status: "ERROR",
             errorMessage: error.message,
+            metadata: {
+                userId,
+                ipAddress: req.ip,
+                userAgent: req.get("user-agent"),
+                scheduleId: req.params.id,
+            },
         });
         const response = {
             success: false,
             message: error.message || "Erreur interne du serveur",
             code: error.code || "INTERNAL_ERROR",
+            metadata: error.metadata,
         };
         res.status(error.status || 500).json(response);
     }

@@ -36,7 +36,6 @@ const getSubjects = async (req, res) => {
         res.json(result);
     }
     catch (error) {
-        console.error("❌ SubjectController - getSubjects error:", error);
         await (0, auditController_1.createAuditLog)({
             ...auditData,
             action: "SUBJECTS_LIST_ERROR",
@@ -77,7 +76,7 @@ const getSubjectById = async (req, res) => {
         res.json(result);
     }
     catch (error) {
-        console.error("❌ SubjectController - getSubjectById error:", error);
+        console.error(" SubjectController - getSubjectById error:", error);
         await (0, auditController_1.createAuditLog)({
             ...auditData,
             action: "SUBJECT_DETAILS_ERROR",
@@ -138,7 +137,7 @@ const createSubject = async (req, res) => {
         res.status(201).json(result);
     }
     catch (error) {
-        console.error("❌ SubjectController - createSubject error:", error);
+        console.error(" SubjectController - createSubject error:", error);
         const errorMessage = error.message;
         const truncatedErrorMessage = errorMessage.substring(0, 500);
         await (0, auditController_1.createAuditLog)({
@@ -187,10 +186,10 @@ const updateSubject = async (req, res) => {
         res.json(result);
     }
     catch (error) {
-        console.error("❌ SubjectController - updateSubject error:", error);
-        console.error("❌ Error name:", error.name);
-        console.error("❌ Error message:", error.message);
-        console.error("❌ Error code:", error.code);
+        console.error(" SubjectController - updateSubject error:", error);
+        console.error(" Error name:", error.name);
+        console.error(" Error message:", error.message);
+        console.error(" Error code:", error.code);
         await (0, auditController_1.createAuditLog)({
             ...auditData,
             action: "SUBJECT_UPDATE_ERROR",
@@ -232,7 +231,7 @@ const deleteSubject = async (req, res) => {
         res.json(result);
     }
     catch (error) {
-        console.error("❌ SubjectController - deleteSubject error:", error);
+        console.error(" SubjectController - deleteSubject error:", error);
         await (0, auditController_1.createAuditLog)({
             ...auditData,
             action: "SUBJECT_DELETION_ERROR",

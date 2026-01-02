@@ -147,44 +147,58 @@ exports.createEnrollment = createEnrollment;
 /**
  * @desc Met à jour une inscription
  */
+/**
+ * Met à jour une inscription
+ */
 const updateEnrollment = async (req, res) => {
-    const auditData = (0, authUtils_1.extractAuditData)(req);
     try {
         const { id } = req.params;
         const data = req.body;
-        const result = await enrollmentService.updateEnrollment(id, data, auditData);
-        if (!result.success) {
-            const statusCode = result.code === "ENROLLMENT_NOT_FOUND" ? 404 : 400;
-            res.status(statusCode).json(result);
-            return;
+        const auditData = (0, authUtils_1.extractAuditData)(req);
+        console.log("📝 Mise à jour inscription - ID:", id);
+        console.log("📝 Données reçues:", data);
+        // Valider que l'ID existe
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "ID de l'inscription requis",
+                code: "ENROLLMENT_ID_REQUIRED",
+            });
         }
-        await (0, auditController_1.createAuditLog)({
-            ...auditData,
-            action: "ENROLLMENT_UPDATED",
-            entity: "Enrollment",
-            entityId: id,
-            description: `Inscription mise à jour`,
-            status: "SUCCESS",
-            metadata: result.metadata,
+        // Valider les données
+        if (!data || Object.keys(data).length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Aucune donnée fournie pour la mise à jour",
+                code: "NO_DATA_PROVIDED",
+            });
+        }
+        // Nettoyer les données - ne garder que les champs autorisés
+        const allowedFields = ["classId", "status", "enrollmentDate"];
+        const cleanedData = {};
+        allowedFields.forEach((field) => {
+            if (data[field] !== undefined) {
+                cleanedData[field] = data[field];
+            }
         });
-        res.json(result);
+        // Ajouter updatedAt
+        cleanedData.updatedAt = new Date();
+        console.log("📝 Données nettoyées pour mise à jour:", cleanedData);
+        // Appeler le service
+        const result = await enrollmentService.updateEnrollment(id, cleanedData, auditData);
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json(result);
     }
     catch (error) {
-        console.error(" EnrollmentController - updateEnrollment error:", error);
-        await (0, auditController_1.createAuditLog)({
-            ...auditData,
-            action: "ENROLLMENT_UPDATE_ERROR",
-            entity: "Enrollment",
-            description: "Erreur lors de la mise à jour de l'inscription",
-            status: "ERROR",
-            errorMessage: error.message,
-        });
-        const response = {
+        console.error("❌ Controller - updateEnrollment error:", error);
+        return res.status(500).json({
             success: false,
-            message: "Erreur interne du serveur",
-            code: "INTERNAL_ERROR",
-        };
-        res.status(500).json(response);
+            message: "Erreur serveur lors de la mise à jour",
+            error: error.message,
+            code: "SERVER_ERROR",
+        });
     }
 };
 exports.updateEnrollment = updateEnrollment;

@@ -23,7 +23,7 @@ import feeStructureRoutes from "./routes/feeStructureRoutes";
 import studentFeeRoutes from "./routes/studentFeeRoutes";
 import auditRoutes from "./routes/auditRoutes";
 import backupRoutes from "./routes/backupRoutes";
-import timetableRoutes from "./routes/timetableRoutes";
+// import timetableRoutes from "./routes/timetableRoutes";
 import transcriptRoutes from "./routes/transcriptRoutes";
 
 import {

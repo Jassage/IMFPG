@@ -303,51 +303,40 @@ exports.updateStudent = updateStudent;
  * @access Admin/Staff
  */
 const deleteStudent = async (req, res) => {
-    const auditData = (0, authUtils_1.extractAuditData)(req);
     try {
-        const { id } = req.params;
-        await studentService_1.default.deleteStudent(id);
-        // Log d'audit
-        await (0, auditController_1.createAuditLog)({
-            ...auditData,
-            action: studentTypes_1.StudentActionTypes.STUDENT_DELETED,
-            entity: "Student",
-            entityId: id,
-            userId: auditData.userId,
-            description: "Étudiant supprimé définitivement",
-            status: "SUCCESS",
-        });
-        const response = {
+        const studentId = req.params.id;
+        if (!studentId) {
+            return res.status(400).json({
+                success: false,
+                error: "ID de l'étudiant requis",
+            });
+        }
+        await studentService_1.default.deleteStudent(studentId);
+        return res.status(200).json({
             success: true,
-            message: "Étudiant supprimé définitivement avec succès",
-        };
-        res.json(response);
+            message: "Étudiant supprimé avec succès",
+        });
     }
     catch (error) {
-        console.error(" StudentController - deleteStudent error:", error);
-        // Gestion des erreurs spécifiques
-        let statusCode = 500;
-        let errorCode = "INTERNAL_ERROR";
-        let errorMessage = "Erreur interne du serveur";
-        if (error.message === "STUDENT_NOT_FOUND") {
-            statusCode = 404;
-            errorCode = "STUDENT_NOT_FOUND";
-            errorMessage = "Étudiant non trouvé";
+        console.error("StudentController - deleteStudent error:", error);
+        // Gérer spécifiquement le cas où l'étudiant est déjà supprimé
+        if (error.message.includes("STUDENT_ALREADY_DELETED")) {
+            return res.status(200).json({
+                success: true,
+                message: "Étudiant déjà supprimé",
+            });
         }
-        await (0, auditController_1.createAuditLog)({
-            ...auditData,
-            action: studentTypes_1.StudentActionTypes.STUDENT_DELETION_ERROR,
-            entity: "Student",
-            description: "Erreur lors de la suppression de l'étudiant",
-            status: "ERROR",
-            errorMessage: error.message?.substring(0, 500),
-        });
-        const response = {
+        // Gérer le cas où l'étudiant n'est pas trouvé
+        if (error.message.includes("STUDENT_NOT_FOUND")) {
+            return res.status(404).json({
+                success: false,
+                error: "Étudiant non trouvé",
+            });
+        }
+        return res.status(500).json({
             success: false,
-            message: errorMessage,
-            code: errorCode,
-        };
-        res.status(statusCode).json(response);
+            error: "Erreur lors de la suppression de l'étudiant",
+        });
     }
 };
 exports.deleteStudent = deleteStudent;

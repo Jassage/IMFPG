@@ -26,7 +26,7 @@ const feeStructureRoutes_1 = __importDefault(require("./routes/feeStructureRoute
 const studentFeeRoutes_1 = __importDefault(require("./routes/studentFeeRoutes"));
 const auditRoutes_1 = __importDefault(require("./routes/auditRoutes"));
 const backupRoutes_1 = __importDefault(require("./routes/backupRoutes"));
-const timetableRoutes_1 = __importDefault(require("./routes/timetableRoutes"));
+// import timetableRoutes from "./routes/timetableRoutes";
 const transcriptRoutes_1 = __importDefault(require("./routes/transcriptRoutes"));
 const academicYearService_1 = require("./services/academicYearService");
 const path_1 = __importDefault(require("path"));
@@ -58,7 +58,7 @@ app.use("/api/class-assignments", classAssignmentRoutes_1.default);
 app.use("/api/guardians", guardianRoutes_1.default);
 app.use("/api/grades", gradeRoutes_1.default);
 app.use("/api/schedules", scheduleRoutes_1.default);
-app.use("/api/timetables", timetableRoutes_1.default);
+// app.use("/api/timetables", timetableRoutes);
 app.use("/api/events", eventRoutes_1.default);
 app.use("/api/announcements", announcementRoutes_1.default);
 app.use("/api/fee-structures", feeStructureRoutes_1.default);
@@ -77,7 +77,7 @@ app.use((req, res, next) => {
     }
     else {
         next();
-    }
+    } //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
 });
 // Fonction d'initialisation asynchrone
 const initializeApp = async () => {

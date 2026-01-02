@@ -558,9 +558,6 @@ class StudentService {
     /**
      * Supprime un étudiant
      */
-    /**
-     * Supprime un étudiant
-     */
     async deleteStudent(id) {
         try {
             // Vérifier si l'étudiant existe AVANT la transaction
