@@ -58,6 +58,7 @@ interface AssignmentItem {
     name: string;
   };
   professeur?: {
+    id: string;
     firstName: string;
     lastName: string;
   };
@@ -312,7 +313,7 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
 
             if (assignment) {
               const conflictData = {
-                professeurId: assignment.professeurId,
+                professeurId: assignment.professeur.id,
                 classId: formData.classId,
                 dayOfWeek: formData.dayOfWeek,
                 startTime: formattedData.startTime,

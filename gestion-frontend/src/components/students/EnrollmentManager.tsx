@@ -46,6 +46,10 @@ import {
   CreditCard,
   CheckSquare,
   DollarSign,
+  XCircle,
+  TrendingUp,
+  TrendingDown,
+  FileText,
 } from "lucide-react";
 import { useStudentStore } from "@/store/studentStore";
 import { useAcademicYearStore } from "@/store/academicYearStore";
@@ -53,6 +57,10 @@ import { useEnrollmentStore } from "@/store/enrollmentStore";
 import useClassStore from "@/store/classStore";
 import { useToast } from "@/hooks/use-toast";
 import { AnimatePresence, motion } from "framer-motion";
+import { useFeeStructureStore } from "@/store/feeStructureStore";
+import { toast } from "sonner";
+import { useAuthStore } from "@/store/authStore";
+import { ReenrollmentForm } from "./ReenrollmentForm";
 
 // Interfaces
 interface Student {
@@ -65,11 +73,12 @@ interface Student {
 
 interface Enrollment {
   id: string;
-  studentCode: string;
+  studentId: string;
   classId: string;
   academicYearId: string;
   status: "Active" | "Suspended" | "Completed";
   enrollmentDate: string | Date;
+  student: Student; // Ajouté
 }
 
 interface FeeStructure {
@@ -84,7 +93,252 @@ interface FeeStructure {
   };
 }
 
-// Composant Dialogue de Sélection des Frais
+interface PreviousYear {
+  id: string;
+  academicYear: string;
+  enrollmentId: string;
+  enrollmentDate: string;
+  status: string;
+}
+
+interface ValidationResult {
+  canReenroll: boolean;
+  academicStatus: string;
+  financialStatus: string;
+  disciplinaryStatus: string;
+  details: {
+    studentInfo: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      studentCode: string;
+    };
+    previousEnrollment: {
+      id: string;
+      academicYear: string;
+      className: string;
+      classLevel: number;
+      status: string;
+      academicYearId: string; // Ajouté: ID de l'année académique précédente
+    };
+    academic?: {
+      hasGrades: boolean;
+      passed: boolean;
+      averageGrade?: number;
+      normalizedAverage?: number;
+      gradingScale?: "20" | "10" | "100";
+      weightedAverage?: number;
+      grades?: Array<{
+        subject: string;
+        grade: number;
+        coefficient: number;
+        maxGrade: number;
+        normalizedGrade?: number;
+      }>;
+      requiredAverage: number;
+    };
+    financial?: {
+      eligible: boolean;
+      balance: number;
+      overdueAmount: number;
+      hasOverdueFees: boolean;
+    };
+    eligibility?: {
+      academicEligible: boolean;
+      financialEligible: boolean;
+      disciplinaryEligible: boolean;
+      notCurrentlyEnrolled: boolean;
+    };
+    // Ajouter les années précédentes disponibles
+    availablePreviousYears?: PreviousYear[];
+    reason?: string;
+  };
+}
+
+// Composant pour afficher les détails d'inéligibilité
+const IneligibilityDetails = ({
+  validation,
+}: {
+  validation: ValidationResult;
+}) => {
+  if (validation.canReenroll) {
+    return null;
+  }
+
+  return (
+    <Card className="border-l-4 border-l-red-500 mt-4">
+      <CardContent className="p-4">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <XCircle className="h-5 w-5 text-red-600" />
+            <h4 className="font-semibold text-red-800">
+              Détails d'inéligibilité
+            </h4>
+          </div>
+
+          {/* Détails académiques */}
+          {validation.details.academic &&
+            !validation.details.academic.passed && (
+              <div className="bg-red-50 p-3 rounded">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingDown className="h-4 w-4 text-red-600" />
+                  <span className="font-medium text-red-800">
+                    Problème académique
+                  </span>
+                </div>
+                {validation.details.academic.hasGrades && (
+                  <div className="space-y-2">
+                    <p className="text-sm text-red-700">
+                      <span className="font-medium">Moyenne:</span>{" "}
+                      {validation.details.academic.averageGrade?.toFixed(2) ||
+                        "N/A"}{" "}
+                      / 100
+                    </p>
+                    <p className="text-sm text-red-700">
+                      <span className="font-medium">Seuil minimum:</span> 50/100
+                    </p>
+                    {validation.details.academic.grades &&
+                      validation.details.academic.grades.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-sm font-medium text-red-800 mb-1">
+                            Notes détaillées:
+                          </p>
+                          <div className="grid grid-cols-2 gap-1">
+                            {validation.details.academic.grades.map(
+                              (grade, index) => (
+                                <div
+                                  key={index}
+                                  className="text-xs bg-red-100 p-1 rounded"
+                                >
+                                  {grade.subject}: {grade.grade}/100
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
+                  </div>
+                )}
+              </div>
+            )}
+
+          {/* Détails financiers */}
+          {validation.details.financial &&
+            !validation.details.financial.eligible && (
+              <div className="bg-amber-50 p-3 rounded">
+                <div className="flex items-center gap-2 mb-2">
+                  <CreditCard className="h-4 w-4 text-amber-600" />
+                  <span className="font-medium text-amber-800">
+                    Problème financier
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-amber-700">
+                    <span className="font-medium">Solde impayé:</span>{" "}
+                    {validation.details.financial.balance.toLocaleString()} HTG
+                  </p>
+                  <p className="text-sm text-amber-700">
+                    <span className="font-medium">Montant en retard:</span>{" "}
+                    {validation.details.financial.overdueAmount.toLocaleString()}{" "}
+                    HTG
+                  </p>
+                  <p className="text-sm text-amber-700">
+                    <span className="font-medium">Seuil maximum toléré:</span>{" "}
+                    5,000 HTG
+                  </p>
+                </div>
+              </div>
+            )}
+
+          {/* Autres raisons */}
+          {validation.details.reason && (
+            <div className="bg-gray-50 p-3 rounded">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="h-4 w-4 text-gray-600" />
+                <span className="font-medium text-gray-800">Autre raison</span>
+              </div>
+              <p className="text-sm text-gray-700">
+                {validation.details.reason}
+              </p>
+            </div>
+          )}
+
+          {/* Résumé d'éligibilité */}
+          {validation.details.eligibility && (
+            <div className="bg-blue-50 p-3 rounded">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="h-4 w-4 text-blue-600" />
+                <span className="font-medium text-blue-800">
+                  Critères d'éligibilité
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div
+                  className={`flex items-center gap-2 ${
+                    validation.details.eligibility.academicEligible
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {validation.details.eligibility.academicEligible ? (
+                    <CheckCircle className="h-4 w-4" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+                  <span className="text-sm">Académique</span>
+                </div>
+                <div
+                  className={`flex items-center gap-2 ${
+                    validation.details.eligibility.financialEligible
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {validation.details.eligibility.financialEligible ? (
+                    <CheckCircle className="h-4 w-4" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+                  <span className="text-sm">Financier</span>
+                </div>
+                <div
+                  className={`flex items-center gap-2 ${
+                    validation.details.eligibility.disciplinaryEligible
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {validation.details.eligibility.disciplinaryEligible ? (
+                    <CheckCircle className="h-4 w-4" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+                  <span className="text-sm">Disciplinaire</span>
+                </div>
+                <div
+                  className={`flex items-center gap-2 ${
+                    validation.details.eligibility.notCurrentlyEnrolled
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {validation.details.eligibility.notCurrentlyEnrolled ? (
+                    <CheckCircle className="h-4 w-4" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+                  <span className="text-sm">Non inscrit</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Composant Dialogue de Sélection des Frais (inchangé)
 const FeeSelectionDialog = ({
   feeStructures,
   selectedFeeStructures,
@@ -253,12 +507,6 @@ const FeeSelectionDialog = ({
   );
 };
 
-import { useFeeStructureStore } from "@/store/feeStructureStore";
-import { toast } from "sonner";
-import { useAuthStore } from "@/store/authStore";
-
-// import { FeeSelectionDialog } from "./FeeSelectionDialog";
-
 interface EnrollmentFormProps {
   student: Student;
   enrollment?: Enrollment | null;
@@ -294,7 +542,6 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
 
   const [showFeeDialog, setShowFeeDialog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [hasAvailableFees, setHasAvailableFees] = useState(false);
 
   // Définir l'année académique par défaut
@@ -314,7 +561,6 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
     return year?.year || academicYearId;
   };
 
-  // Dans EnrollmentForm, modifiez la fonction qui filtre les frais
   const activeFeeStructures = useMemo(() => {
     if (!formData.academicYearId) {
       return [];
@@ -327,16 +573,7 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
       const matchesYear =
         fee.academicYear === academicYearName ||
         fee.academicYear === formData.academicYearId;
-      const isActive = fee.isActive !== false; // Par défaut true si non défini
-
-      if (matchesYear && isActive) {
-        console.log("✅ Frais correspondant:", {
-          nom: fee.name,
-          anneeFrais: fee.academicYear,
-          anneeRecherchee: academicYearName,
-          actif: fee.isActive,
-        });
-      }
+      const isActive = fee.isActive !== false;
 
       return matchesYear && isActive;
     });
@@ -355,7 +592,6 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
     try {
       setSubmitting(true);
 
-      // 1. Préparer les données de l'inscription
       const enrollmentData = {
         studentId: student.id,
         classId: formData.classId,
@@ -366,7 +602,6 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
         selectedFeeStructures: formData.selectedFeeStructures,
       };
 
-      // Créer ou mettre à jour l'inscription
       let enrollmentResult;
       if (enrollment) {
         enrollmentResult = await updateEnrollment(
@@ -377,12 +612,10 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
         enrollmentResult = await addEnrollment(enrollmentData);
       }
 
-      // 3. Si des frais sont sélectionnés, les assigner à l'étudiant
       if (formData.assignFees && formData.selectedFeeStructures.length > 0) {
         try {
           const academicYearId = formData.academicYearId;
 
-          // Assigner chaque structure de frais sélectionnée
           for (const feeStructureId of formData.selectedFeeStructures) {
             await assignFeeToStudent(
               student.id,
@@ -398,9 +631,7 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
         } catch (feeError: any) {
           console.error("Erreur lors de l'assignation des frais:", feeError);
 
-          // Si l'API assign ne fonctionne pas, essayer une méthode alternative
           try {
-            // Méthode alternative : utiliser assignFeesToEnrollment
             const enrollmentId =
               enrollmentResult.id || enrollmentResult.data?.id;
             if (enrollmentId) {
@@ -452,19 +683,11 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
   const totalSelectedFees = formData.selectedFeeStructures.length;
   const totalAmount = feeStructures
     .filter((fee) => formData.selectedFeeStructures.includes(fee.id))
-    .reduce((sum, fee) => sum + (fee.amount || fee.amount || 0), 0);
-
-  // Si pas de frais disponibles, désactiver la case à cocher
+    .reduce((sum, fee) => sum + fee.amount, 0);
 
   useEffect(() => {
-    const available = activeFeeStructures.length > 0;
-    setHasAvailableFees(available);
-  }, [
-    activeFeeStructures,
-    formData.academicYearId,
-    getAcademicYearName,
-    feeStructures,
-  ]);
+    setHasAvailableFees(activeFeeStructures.length > 0);
+  }, [activeFeeStructures]);
 
   return (
     <div className="space-y-6">
@@ -492,7 +715,7 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
         </div>
       </div>
 
-      {/* Formulaire */}
+      {/* Formulaire (inchangé) */}
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Classe */}
@@ -619,7 +842,7 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
           </div>
         </div>
 
-        {/* Section Attribution des frais */}
+        {/* Section Attribution des frais (inchangé) */}
         <div className="border rounded-lg p-5 space-y-4 bg-gradient-to-b from-white to-gray-50">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -722,8 +945,7 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
                             </p>
                           </div>
                           <div className="font-semibold text-green-700 whitespace-nowrap ml-2">
-                            {(fee.amount || fee.amount || 0).toLocaleString()}{" "}
-                            HTG
+                            {fee.amount.toLocaleString()} HTG
                           </div>
                         </div>
                       ))}
@@ -806,8 +1028,12 @@ export const EnrollmentManager = () => {
   const { students, fetchStudents } = useStudentStore();
   const { academicYears, fetchAcademicYears } = useAcademicYearStore();
   const { classes, fetchClasses } = useClassStore();
-  const { enrollments, fetchEnrollments, deleteEnrollment } =
-    useEnrollmentStore();
+  const {
+    enrollments,
+    fetchEnrollments,
+    deleteEnrollment,
+    validateReenrollment,
+  } = useEnrollmentStore();
   const { getAvailableFeeStructures } = useEnrollmentStore();
 
   const { toast } = useToast();
@@ -825,6 +1051,11 @@ export const EnrollmentManager = () => {
   const [activeTab, setActiveTab] = useState("all");
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
   const { user } = useAuthStore();
+  const [reenrollmentMode, setReenrollmentMode] = useState(false);
+  const [validatingReenrollment, setValidatingReenrollment] = useState(false);
+  const [validationResult, setValidationResult] =
+    useState<ValidationResult | null>(null);
+  const [showValidationDetails, setShowValidationDetails] = useState(false);
 
   // Charger les données
   const loadData = useCallback(async () => {
@@ -866,10 +1097,10 @@ export const EnrollmentManager = () => {
     loadData();
   }, []);
 
-  // Obtenir les inscriptions d'un étudiant
-  const getStudentEnrollments = (studentCode: string) => {
+  // CORRECTION: Obtenir les inscriptions d'un étudiant
+  const getStudentEnrollments = (studentId: string) => {
     if (!Array.isArray(enrollments)) return [];
-    return enrollments.filter((e) => e.student.id === studentCode);
+    return enrollments.filter((e) => e.studentId === studentId);
   };
 
   // Obtenir le nom d'une classe
@@ -975,6 +1206,55 @@ export const EnrollmentManager = () => {
     }
   };
 
+  const handleReenrollStudent = async (student: Student) => {
+    try {
+      setValidatingReenrollment(true);
+      setSelectedStudent(student);
+      setValidationResult(null);
+      setShowValidationDetails(false);
+
+      // Valider la réinscription
+      const result = await validateReenrollment(student.id);
+
+      if (result?.success) {
+        const validation = result.data?.validation;
+        setValidationResult(validation);
+
+        if (validation?.canReenroll) {
+          // Ouvrir en mode réinscription
+          setReenrollmentMode(true);
+          setIsDialogOpen(true);
+        } else {
+          // Afficher les détails d'inéligibilité
+          setShowValidationDetails(true);
+
+          toast({
+            title: "Non éligible",
+            description: "L'étudiant n'est pas éligible pour la réinscription",
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "Erreur de validation",
+          description: result?.message || "Erreur lors de la validation",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error("Erreur validation réinscription:", error);
+      toast({
+        title: "Erreur",
+        description:
+          error.response?.data?.message ||
+          "Erreur lors de la validation de la réinscription",
+        variant: "destructive",
+      });
+    } finally {
+      setValidatingReenrollment(false);
+    }
+  };
+
   const toggleStudentExpansion = (studentId: string) => {
     setExpandedStudents((prev) => ({
       ...prev,
@@ -987,6 +1267,7 @@ export const EnrollmentManager = () => {
     setIsDialogOpen(false);
     setSelectedStudent(null);
     setSelectedEnrollment(null);
+    setReenrollmentMode(false);
   };
 
   const getEnrollmentStats = () => {
@@ -1129,6 +1410,28 @@ export const EnrollmentManager = () => {
         </CardContent>
       </Card>
 
+      {/* Détails d'inéligibilité (si visible) */}
+      <AnimatePresence>
+        {showValidationDetails && validationResult && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            <IneligibilityDetails validation={validationResult} />
+            <div className="flex justify-end mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowValidationDetails(false)}
+                size="sm"
+              >
+                Fermer les détails
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Liste des Éleves */}
       <Card>
         <CardHeader>
@@ -1208,10 +1511,15 @@ export const EnrollmentManager = () => {
                       <div className="flex flex-wrap gap-2">
                         <Button
                           size="sm"
-                          onClick={() => handleEnrollStudent(student)}
-                          className="gap-1 bg-blue-600 hover:bg-blue-700"
+                          onClick={() => handleReenrollStudent(student)}
+                          disabled={validatingReenrollment}
+                          className="gap-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                         >
-                          <UserPlus className="h-3 w-3" />
+                          {validatingReenrollment ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
                           Reinscrire
                         </Button>
                         {studentEnrollments.length > 0 && (
@@ -1357,29 +1665,75 @@ export const EnrollmentManager = () => {
       </Card>
 
       {/* Dialogue pour les inscriptions */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) {
+            setReenrollmentMode(false);
+            setSelectedStudent(null);
+            setSelectedEnrollment(null);
+            setValidationResult(null);
+            setShowValidationDetails(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl">
-              {selectedEnrollment
-                ? "Modifier l'inscription"
-                : "Nouvelle inscription"}
+            <DialogTitle className="text-xl flex items-center gap-2">
+              {reenrollmentMode ? (
+                <>
+                  <RefreshCw className="h-5 w-5 text-purple-600" />
+                  Réinscription
+                </>
+              ) : selectedEnrollment ? (
+                <>
+                  <Edit className="h-5 w-5 text-blue-600" />
+                  Modifier l'inscription
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-5 w-5 text-green-600" />
+                  Nouvelle inscription
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
-              {selectedEnrollment
+              {reenrollmentMode
+                ? "Réinscrire l'étudiant pour l'année suivante"
+                : selectedEnrollment
                 ? "Modifiez les détails de l'inscription existante"
                 : "Créez une nouvelle inscription pour cet étudiant"}
             </DialogDescription>
           </DialogHeader>
-          {selectedStudent && (
-            <EnrollmentForm
-              student={selectedStudent}
-              enrollment={selectedEnrollment}
-              onClose={() => setIsDialogOpen(false)}
-              onSuccess={handleFormSuccess}
-              feeStructures={feeStructures}
-            />
-          )}
+
+          {selectedStudent &&
+            (reenrollmentMode ? (
+              <ReenrollmentForm
+                student={selectedStudent}
+                onClose={() => {
+                  setIsDialogOpen(false);
+                  setReenrollmentMode(false);
+                }}
+                onSuccess={() => {
+                  loadData();
+                  setIsDialogOpen(false);
+                  setReenrollmentMode(false);
+                  toast({
+                    title: "Succès",
+                    description: "Réinscription effectuée avec succès",
+                  });
+                }}
+              />
+            ) : (
+              <EnrollmentForm
+                student={selectedStudent}
+                enrollment={selectedEnrollment}
+                onClose={() => setIsDialogOpen(false)}
+                onSuccess={handleFormSuccess}
+                feeStructures={feeStructures}
+              />
+            ))}
         </DialogContent>
       </Dialog>
     </div>

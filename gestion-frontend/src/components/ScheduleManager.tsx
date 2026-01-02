@@ -205,6 +205,31 @@ const ScheduleCard = React.memo(
 
 ScheduleCard.displayName = "ScheduleCard";
 
+// Fonction utilitaire pour vérifier le chevauchement des heures (côté client)
+const timeOverlap = (
+  start1: string,
+  end1: string,
+  start2: string,
+  end2: string
+) => {
+  const s1 = timeToMinutes(start1);
+  const e1 = timeToMinutes(end1);
+  const s2 = timeToMinutes(start2);
+  const e2 = timeToMinutes(end2);
+
+  return s1 < e2 && s2 < e1;
+};
+
+const timeToMinutes = (time: string) => {
+  if (!time) return 0;
+  try {
+    const [hours, minutes] = time.split(":").map(Number);
+    return hours * 60 + (minutes || 0);
+  } catch {
+    return 0;
+  }
+};
+
 export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   classId: propClassId,
   assignmentId,
@@ -262,7 +287,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
 
   // Fonction pour formater le temps avant envoi à l'API
   const formatTimeForAPI = useCallback((time: string): string => {
-    if (!time) return "";
+    if (!time) return "00:00";
 
     // Si c'est déjà au format HH:MM, l'envoyer tel quel
     if (time.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
@@ -272,7 +297,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     // Sinon, essayer de parser
     try {
       const [hours, minutes] = time.split(":");
-      return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
+      return `${hours.padStart(2, "0")}:${(minutes || "00").padStart(2, "0")}`;
     } catch {
       return "00:00";
     }
@@ -299,7 +324,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         // Format HH:MM:SS ou HH:MM
         const [hours, minutes] = time.split(":");
         date = new Date();
-        date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        date.setHours(parseInt(hours), parseInt(minutes || "0"), 0, 0);
       } else {
         // Autre format inconnu
         return "00:00";
@@ -319,6 +344,90 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       return "00:00";
     }
   }, []);
+
+  // Vérification des conflits côté client
+  const checkConflictsClientSide = useCallback(
+    (newSchedule: any, excludeScheduleId?: string) => {
+      const conflicts = [];
+
+      // Filtrer les schedules existants
+      const existingSchedules = schedules.filter(
+        (s) => !excludeScheduleId || s.id !== excludeScheduleId
+      );
+
+      // Vérifier les conflits de professeur
+      if (newSchedule.professeurId) {
+        const professorConflicts = existingSchedules.filter(
+          (schedule) =>
+            schedule.professeurId === newSchedule.professeurId &&
+            schedule.dayOfWeek === newSchedule.dayOfWeek &&
+            timeOverlap(
+              formatTimeFromISO(schedule.startTime),
+              formatTimeFromISO(schedule.endTime),
+              newSchedule.startTime,
+              newSchedule.endTime
+            )
+        );
+
+        if (professorConflicts.length > 0) {
+          conflicts.push({
+            type: "PROFESSEUR_CONFLICT",
+            message: "Le professeur a déjà un cours à ce créneau",
+          });
+        }
+      }
+
+      // Vérifier les conflits de classe
+      if (newSchedule.classId) {
+        const classConflicts = existingSchedules.filter(
+          (schedule) =>
+            schedule.classId === newSchedule.classId &&
+            schedule.dayOfWeek === newSchedule.dayOfWeek &&
+            timeOverlap(
+              formatTimeFromISO(schedule.startTime),
+              formatTimeFromISO(schedule.endTime),
+              newSchedule.startTime,
+              newSchedule.endTime
+            )
+        );
+
+        if (classConflicts.length > 0) {
+          conflicts.push({
+            type: "CLASS_CONFLICT",
+            message: "La classe a déjà un cours à ce créneau",
+          });
+        }
+      }
+
+      // Vérifier les conflits de salle
+      if (newSchedule.classroom) {
+        const classroomConflicts = existingSchedules.filter(
+          (schedule) =>
+            schedule.classroom === newSchedule.classroom &&
+            schedule.dayOfWeek === newSchedule.dayOfWeek &&
+            timeOverlap(
+              formatTimeFromISO(schedule.startTime),
+              formatTimeFromISO(schedule.endTime),
+              newSchedule.startTime,
+              newSchedule.endTime
+            )
+        );
+
+        if (classroomConflicts.length > 0) {
+          conflicts.push({
+            type: "CLASSROOM_CONFLICT",
+            message: "La salle est déjà occupée à ce créneau",
+          });
+        }
+      }
+
+      return {
+        hasConflict: conflicts.length > 0,
+        conflicts,
+      };
+    },
+    [schedules, formatTimeFromISO]
+  );
 
   // Chargement initial
   useEffect(() => {
@@ -415,6 +524,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   const getUniqueData = useCallback((data: any[], key: string = "id") => {
     const seen = new Set();
     return data.filter((item) => {
+      if (!item || !item[key]) return false;
       if (seen.has(item[key])) {
         console.warn(`Doublon détecté pour la clé ${key}:`, item[key]);
         return false;
@@ -423,6 +533,19 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       return true;
     });
   }, []);
+
+  // Log de débogage pour les assignations
+  useEffect(() => {
+    if (assignments.length > 0) {
+      console.log("Assignments structure:", {
+        count: assignments.length,
+        firstAssignment: assignments[0],
+        keys: Object.keys(assignments[0]),
+        professeurPath: assignments[0]?.professeur,
+        classPath: assignments[0]?.schoolClass,
+      });
+    }
+  }, [assignments]);
 
   // Assignations filtrées par niveau et sans doublons
   const filteredAssignments = useMemo(() => {
@@ -451,6 +574,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       schedule.classAssignment?.subject?.name ||
       schedule.subject?.name ||
       schedule.assignment?.subject?.name ||
+      schedule.name ||
       "Sans nom"
     );
   }, []);
@@ -460,12 +584,30 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       schedule.classAssignment?.professeur ||
       schedule.professeur ||
       schedule.assignment?.professeur;
-    return professeur
-      ? `${professeur.firstName || ""} ${professeur.lastName || ""}`.trim()
-      : "";
+
+    if (!professeur) return "";
+
+    if (typeof professeur === "string") return professeur;
+
+    return `${professeur.firstName || ""} ${professeur.lastName || ""}`.trim();
+  }, []);
+
+  const getProfesseurId = useCallback((schedule: any): string => {
+    const professeur =
+      schedule.classAssignment?.professeur ||
+      schedule.professeur ||
+      schedule.assignment?.professeur;
+
+    if (!professeur) return "";
+
+    if (typeof professeur === "string") return professeur;
+
+    return professeur.id || "";
   }, []);
 
   const getClassroomColor = useCallback((classroom: string): string => {
+    if (!classroom) return "bg-gray-100 text-gray-800 border-gray-200";
+
     const colors = [
       "bg-blue-100 text-blue-800 border-blue-200",
       "bg-green-100 text-green-800 border-green-200",
@@ -475,7 +617,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       "bg-indigo-100 text-indigo-800 border-indigo-200",
     ];
     const index =
-      classroom?.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) %
+      classroom.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) %
       colors.length;
     return colors[index] || "bg-gray-100 text-gray-800 border-gray-200";
   }, []);
@@ -601,12 +743,13 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   ]);
 
   // Fonction améliorée avec vérification des conflits
+
   const handleFormSubmit = useCallback(
     async (formData: any) => {
       try {
         console.log("Form data received:", formData);
 
-        // Validation des données requises
+        // Validation des données
         if (!formData.assignmentId && !selectedSchedule) {
           toast.error("Une assignation est requise pour créer un horaire");
           return;
@@ -617,14 +760,19 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           return;
         }
 
-        // Formater les heures pour l'API
+        // Formater les données pour l'API
         const formattedData = {
           ...formData,
+          // Convertir les heures au format HH:MM
           startTime: formatTimeForAPI(formData.startTime),
           endTime: formatTimeForAPI(formData.endTime),
+          // untilDate doit être null si vide
+          untilDate: formData.untilDate?.trim() ? formData.untilDate : null,
         };
 
-        // Pour une création (pas d'édition)
+        console.log("Formatted data for API:", formattedData);
+
+        // Pour une création
         if (!selectedSchedule) {
           const assignment = filteredAssignments.find(
             (a) => a.id === formattedData.assignmentId
@@ -635,74 +783,45 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             return;
           }
 
-          // Vérifier les conflits AVANT d'ajouter
+          // Vérifier les conflits côté serveur
+          let conflictCheck;
           try {
-            const professeurId =
-              assignment.professeur?.id || assignment.professeur?.id;
-
-            if (!professeurId) {
-              toast.error("Professeur non assigné à cette matière");
-              return;
-            }
-
-            const conflictCheck = await checkScheduleConflicts({
-              professeurId: professeurId,
-              classId: formattedData.classId || assignment.schoolClass?.id,
+            conflictCheck = await checkScheduleConflicts({
+              professeurId:
+                assignment.professeurId || assignment.professeur?.id,
+              classId: formattedData.classId || assignment.classId,
               dayOfWeek: formattedData.dayOfWeek,
               startTime: formattedData.startTime,
               endTime: formattedData.endTime,
               classroom: formattedData.classroom,
             });
 
+            console.log("Conflict check result:", conflictCheck);
+
             if (conflictCheck.hasConflict) {
-              const conflictMessages = conflictCheck.conflicts
-                .map((conflict: any) => {
-                  if (conflict.type === "PROFESSEUR_CONFLICT") {
-                    return `• Le professeur ${assignment.professeur?.firstName} ${assignment.professeur?.lastName} a déjà un cours à ce créneau`;
-                  } else if (conflict.type === "CLASS_CONFLICT") {
-                    return `• La classe a déjà un cours à ce créneau`;
-                  }
-                  return `• ${conflict.message}`;
-                })
+              const messages = conflictCheck.conflicts
+                .map((c: any) => `• ${c.message}`)
                 .join("\n");
 
-              toast.error(`Conflits détectés:\n${conflictMessages}`, {
+              toast.error(`Conflits détectés:\n${messages}`, {
                 duration: 8000,
+                style: {
+                  whiteSpace: "pre-line",
+                },
               });
               return;
             }
           } catch (conflictError: any) {
-            console.warn("Could not check conflicts:", conflictError);
-            // Continuer même si la vérification échoue
+            console.warn("Conflict check error:", conflictError);
+            // Continuer sans vérification de conflit si le serveur ne répond pas
           }
 
-          // Ajouter l'horaire
+          // Créer l'horaire
           await addSchedule(formattedData.assignmentId, formattedData);
           toast.success("L'horaire a été ajouté avec succès");
-        } else {
-          // Pour une édition
-          const conflictCheck = await checkScheduleConflicts({
-            professeurId: selectedSchedule.professeurId,
-            classId: formattedData.classId || selectedSchedule.classId,
-            dayOfWeek: formattedData.dayOfWeek,
-            startTime: formattedData.startTime,
-            endTime: formattedData.endTime,
-            classroom: formattedData.classroom,
-            excludeScheduleId: selectedSchedule.id,
-          });
-
-          if (conflictCheck.hasConflict) {
-            const conflictMessages = conflictCheck.conflicts
-              .map((conflict: any) => `• ${conflict.message}`)
-              .join("\n");
-
-            toast.error(`Conflits détectés:\n${conflictMessages}`, {
-              duration: 8000,
-            });
-            return;
-          }
-
-          // Mettre à jour l'horaire
+        }
+        // Pour une édition
+        else {
           await updateSchedule(selectedSchedule.id, formattedData);
           toast.success("L'horaire a été mis à jour avec succès");
         }
@@ -719,18 +838,29 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       } catch (error: any) {
         console.error("Error in handleFormSubmit:", error);
 
-        // Messages d'erreur spécifiques
         let errorMessage = "Erreur lors de l'opération";
 
-        if (error.response?.data?.code === "PROFESSEUR_CONFLICT") {
+        if (error.message?.includes("VALIDATION_ERROR")) {
+          errorMessage = `Erreurs de validation:\n${error.message}`;
+        } else if (error.message?.includes("PROFESSEUR_CONFLICT")) {
           errorMessage = "Le professeur a déjà un cours à ce créneau horaire";
-        } else if (error.response?.data?.code === "CLASS_CONFLICT") {
+        } else if (error.message?.includes("CLASS_CONFLICT")) {
           errorMessage = "La classe a déjà un cours à ce créneau horaire";
+        } else if (error.message?.includes("MAX_HOURS_PER_DAY_REACHED")) {
+          errorMessage =
+            "Le professeur a atteint le maximum d'heures pour ce jour";
         } else if (error.response?.data?.message) {
           errorMessage = error.response.data.message;
+        } else if (error.message) {
+          errorMessage = error.message;
         }
 
-        toast.error(errorMessage);
+        toast.error(errorMessage, {
+          duration: 8000,
+          style: {
+            whiteSpace: "pre-line",
+          },
+        });
       }
     },
     [
@@ -794,7 +924,11 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                   <div className="space-y-3">
                     {uniqueDaySchedules.length ? (
                       uniqueDaySchedules
-                        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+                        .sort((a, b) => {
+                          const timeA = formatTimeFromISO(a.startTime);
+                          const timeB = formatTimeFromISO(b.startTime);
+                          return timeA.localeCompare(timeB);
+                        })
                         .map((schedule, index) => (
                           <ScheduleCard
                             key={`schedule-${day.value}-${schedule.id}-${index}`}
@@ -873,7 +1007,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                           variant="outline"
                           className={getClassroomColor(schedule.classroom)}
                         >
-                          {schedule.classroom}
+                          {schedule.classroom || "Non spécifié"}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -1030,9 +1164,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                 <SelectTrigger>
                   <SelectValue placeholder="Année académique" />
                 </SelectTrigger>
-                <SelectContent>
-                  {renderYearOptions}
-                </SelectContent>
+                <SelectContent>{renderYearOptions}</SelectContent>
               </Select>
             </div>
 
@@ -1267,29 +1399,38 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                     "18:00",
                     "18:30",
                   ].map((time) => (
-                    <div key={`time-row-${time}`} className="grid grid-cols-7 border-b">
+                    <div
+                      key={`time-row-${time}`}
+                      className="grid grid-cols-7 border-b"
+                    >
                       <div className="p-3 border-r text-sm text-muted-foreground bg-muted/30">
                         {time}
                       </div>
 
                       {DAYS.map((day) => {
-                        // Convertir l'heure en minutes pour la comparaison
-                        const [hour, minute] = time.split(":").map(Number);
-                        const timeInMinutes = hour * 60 + minute;
+                        const timeInMinutes = timeToMinutes(time);
 
-                        // Trouver les cours qui débutent à cette heure exacte
-                        const schedulesStartingNow =
+                        // Trouver les cours qui chevauchent cette plage horaire
+                        const schedulesInTimeSlot =
                           schedulesByDay[day.value]?.filter((schedule) => {
                             try {
                               const scheduleStart = formatTimeFromISO(
                                 schedule.startTime
                               );
-                              const [scheduleHour, scheduleMinute] =
-                                scheduleStart.split(":").map(Number);
-                              const scheduleStartMinutes =
-                                scheduleHour * 60 + scheduleMinute;
+                              const scheduleEnd = formatTimeFromISO(
+                                schedule.endTime
+                              );
 
-                              return scheduleStartMinutes === timeInMinutes;
+                              const scheduleStartMinutes =
+                                timeToMinutes(scheduleStart);
+                              const scheduleEndMinutes =
+                                timeToMinutes(scheduleEnd);
+
+                              // Vérifier si le créneau horaire chevauche notre slot
+                              return (
+                                timeInMinutes >= scheduleStartMinutes &&
+                                timeInMinutes < scheduleEndMinutes
+                              );
                             } catch (error) {
                               return false;
                             }
@@ -1298,59 +1439,55 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                         return (
                           <div
                             key={`${day.value}-${time}`}
-                            className="p-2 border-r min-h-[60px]"
+                            className="p-2 border-r min-h-[60px] relative"
                           >
-                            {schedulesStartingNow.map((schedule, index) => {
-                              const duration = (() => {
-                                const start = formatTimeFromISO(
-                                  schedule.startTime
-                                );
-                                const end = formatTimeFromISO(schedule.endTime);
+                            {schedulesInTimeSlot.map((schedule, index) => {
+                              const startMinutes = timeToMinutes(
+                                formatTimeFromISO(schedule.startTime)
+                              );
+                              const endMinutes = timeToMinutes(
+                                formatTimeFromISO(schedule.endTime)
+                              );
+                              const durationMinutes = endMinutes - startMinutes;
 
-                                const [startHour, startMinute] = start
-                                  .split(":")
-                                  .map(Number);
-                                const [endHour, endMinute] = end
-                                  .split(":")
-                                  .map(Number);
+                              // Si c'est le début du cours, afficher le bloc
+                              if (timeInMinutes === startMinutes) {
+                                // Nombre de créneaux à occuper (chaque créneau = 30min)
+                                const slotsToOccupy = Math.ceil(
+                                  durationMinutes / 30
+                                );
 
                                 return (
-                                  endHour * 60 +
-                                  endMinute -
-                                  (startHour * 60 + startMinute)
-                                );
-                              })();
-
-                              // Nombre de créneaux à occuper (chaque créneau = 30min)
-                              const slotsToOccupy = Math.ceil(duration / 30);
-
-                              return (
-                                <div
-                                  key={`week-schedule-${schedule.id}-${index}`}
-                                  className="text-xs p-1 mb-1 rounded bg-gradient-to-r from-blue-100 to-blue-200 border border-blue-300"
-                                  style={{
-                                    height: `${slotsToOccupy * 30}px`,
-                                    minHeight: "30px",
-                                  }}
-                                  title={`${getSubjectName(
-                                    schedule
-                                  )} (${formatTimeFromISO(
-                                    schedule.startTime
-                                  )} - ${formatTimeFromISO(schedule.endTime)})`}
-                                >
-                                  <div className="font-medium truncate">
-                                    {getSubjectName(schedule)}
-                                  </div>
-                                  <div className="truncate text-[10px] opacity-75">
-                                    {getProfesseurName(schedule)}
-                                  </div>
-                                  {schedule.classroom && (
-                                    <div className="text-[10px] opacity-60">
-                                      {schedule.classroom}
+                                  <div
+                                    key={`week-schedule-${schedule.id}-${index}`}
+                                    className="text-xs p-1 mb-1 rounded bg-gradient-to-r from-blue-100 to-blue-200 border border-blue-300 absolute left-1 right-1"
+                                    style={{
+                                      height: `${slotsToOccupy * 30}px`,
+                                      zIndex: 10,
+                                    }}
+                                    title={`${getSubjectName(
+                                      schedule
+                                    )} (${formatTimeFromISO(
+                                      schedule.startTime
+                                    )} - ${formatTimeFromISO(
+                                      schedule.endTime
+                                    )})`}
+                                  >
+                                    <div className="font-medium truncate">
+                                      {getSubjectName(schedule)}
                                     </div>
-                                  )}
-                                </div>
-                              );
+                                    <div className="truncate text-[10px] opacity-75">
+                                      {getProfesseurName(schedule)}
+                                    </div>
+                                    {schedule.classroom && (
+                                      <div className="text-[10px] opacity-60">
+                                        {schedule.classroom}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              return null;
                             })}
                           </div>
                         );

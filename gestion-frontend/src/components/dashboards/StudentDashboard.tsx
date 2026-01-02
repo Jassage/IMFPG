@@ -46,7 +46,6 @@ import { useStudentStore } from "@/store/studentStore";
 import { useGradeStore } from "@/store/gradeStore";
 import { useAnnouncementStore } from "@/store/announcementStore";
 import { useAssignmentStore } from "@/store/assignmentStore";
-import { useScheduleStore } from "@/store/scheduleStore";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   LineChart,
@@ -82,6 +81,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import api from "@/services/api";
+import { useTimetableStore } from "@/store/timetableStore";
 
 // Types pour le dashboard
 interface Course {
@@ -91,6 +91,7 @@ interface Course {
     name: string;
     code: string;
     coefficient: number;
+    maxGrade?: number;
   };
   professeur?: {
     id: string;
@@ -143,8 +144,9 @@ interface GradeWithDetails {
   id: string;
   studentId: string;
   subjectId: string;
-  grade?: number;
-  note?: number;
+  grade?: number; // Note obtenue
+  maxGrade?: number; // Note maximale possible (ex: 20, 100, 40)
+  passingGrade?: number; // Note de passage (50% de maxGrade)
   status?: string | null;
   session?: string | null;
   controlType?: string | null;
@@ -153,6 +155,7 @@ interface GradeWithDetails {
     name: string;
     code: string;
     coefficient?: number;
+    maxGrade?: number;
   } | null;
   academicYearId?: string;
   classLevel?: string;
@@ -361,7 +364,7 @@ const StudentDashboard = () => {
   const { fetchStudentGrades } = useGradeStore();
   const { announcements, fetchAnnouncements } = useAnnouncementStore();
   const { assignments, fetchAssignmentsByClass } = useAssignmentStore();
-  const { schedules, fetchClassTimetable } = useScheduleStore();
+  const { schedules, fetchClassTimetable } = useTimetableStore();
   const { upcomingEvents, fetchUpcomingEvents } = useEventStore();
 
   const [activeTab, setActiveTab] = useState("overview");
@@ -411,6 +414,101 @@ const StudentDashboard = () => {
     0: "SUNDAY",
   };
 
+  // ==================== FONCTIONS UTILITAIRES POUR LES NOTES ====================
+
+  // Fonction pour obtenir la note maximale
+  const getMaxGrade = useCallback((grade: GradeWithDetails): number => {
+    return grade.subject?.maxGrade;
+  }, []);
+
+  // Fonction pour obtenir la note de passage (50% de maxGrade)
+  const getPassingGrade = useCallback(
+    (grade: GradeWithDetails): number => {
+      if (grade.passingGrade !== undefined) return grade.passingGrade;
+      return getMaxGrade(grade) * 0.5;
+    },
+    [getMaxGrade]
+  );
+
+  // Fonction pour calculer le pourcentage
+  const getGradePercentage = useCallback(
+    (grade: GradeWithDetails): number => {
+      const gradeValue = grade.grade || 0;
+      const maxGrade = getMaxGrade(grade);
+      return maxGrade > 0 ? (gradeValue / maxGrade) * 100 : 0;
+    },
+    [getMaxGrade]
+  );
+
+  // Fonction pour convertir la note en note sur 20 (pour la moyenne)
+  const getGradeOn20 = useCallback(
+    (grade: GradeWithDetails): number => {
+      const gradeValue = grade.grade || 0;
+      const maxGrade = getMaxGrade(grade);
+      return maxGrade > 0 ? (gradeValue / maxGrade) * 20 : 0;
+    },
+    [getMaxGrade]
+  );
+
+  // Fonction pour vérifier si la note est validée
+  const isGradeValidated = useCallback(
+    (grade: GradeWithDetails): boolean => {
+      const gradeValue = grade.grade || 0;
+      const passingGrade = getPassingGrade(grade);
+      return gradeValue >= passingGrade;
+    },
+    [getPassingGrade]
+  );
+
+  // Fonction pour obtenir le nom de la matière
+  const getSubjectName = (grade: GradeWithDetails): string => {
+    if (grade.subject?.name) return grade.subject.name;
+    if (grade.subject?.code) return grade.subject.code;
+    return "Matière inconnue";
+  };
+
+  // Fonction pour obtenir le coefficient
+  const getSubjectCoefficient = (grade: GradeWithDetails): number => {
+    return grade.subject?.coefficient || 1;
+  };
+
+  // Fonction pour la couleur de la note (basée sur le pourcentage)
+  const getGradeColor = useCallback(
+    (grade: GradeWithDetails) => {
+      const percentage = getGradePercentage(grade);
+      if (percentage >= 80) return "text-emerald-600 font-bold";
+      if (percentage >= 70) return "text-blue-600 font-semibold";
+      if (percentage >= 60) return "text-indigo-600";
+      if (percentage >= 50) return "text-amber-600";
+      return "text-red-600 font-semibold";
+    },
+    [getGradePercentage]
+  );
+
+  // Fonction pour le badge de statut
+  const getGradeStatusBadge = (grade: GradeWithDetails) => {
+    const isValid = isGradeValidated(grade);
+
+    if (isValid) {
+      return (
+        <Badge
+          variant="default"
+          className="gap-1 bg-green-100 text-green-800 hover:bg-green-100 text-xs"
+        >
+          <CheckCircle className="h-3 w-3" />
+          Validé
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge variant="destructive" className="gap-1 text-xs">
+        <XCircle className="h-3 w-3" />
+        Échec
+      </Badge>
+    );
+  };
+
   // Fonction pour charger toutes les données
   const loadAllData = useCallback(async () => {
     if (!user?.id || isLoadingRef.current) {
@@ -450,9 +548,8 @@ const StudentDashboard = () => {
         );
       }
 
-      // Étape 3: Charger les notes - VERSION CORRIGÉE
+      // Étape 3: Charger les notes
       try {
-        // Utiliser fetchStudentGrades directement sans appeler useGradeStore ici
         const gradesData = await fetchStudentGrades(studentId);
 
         if (gradesData && Array.isArray(gradesData) && gradesData.length > 0) {
@@ -462,6 +559,8 @@ const StudentDashboard = () => {
             studentId: g.studentId,
             subjectId: g.subjectId,
             grade: g.grade || 0,
+            maxGrade: g.maxGrade || g.subject?.defaultMaxGrade || 20,
+            passingGrade: g.passingGrade || (g.maxGrade || 20) * 0.5,
             status: g.status || null,
             session: g.session || null,
             controlType: g.controlType || null,
@@ -470,6 +569,7 @@ const StudentDashboard = () => {
               name: "Matière",
               code: "N/A",
               coefficient: g.subject?.coefficient || 1,
+              defaultMaxGrade: g.subject?.defaultMaxGrade || 20,
             },
             academicYearId: g.academicYearId,
             classLevel: g.classLevel,
@@ -477,16 +577,12 @@ const StudentDashboard = () => {
           })) as GradeWithDetails[];
 
           setStudentGrades(formattedGrades);
-
-          // Calculer et afficher les statistiques
-          const stats = calculateGradeStats(formattedGrades);
         } else {
           setStudentGrades([]);
         }
       } catch (error) {
         // Fallback: Essayer d'autres méthodes si fetchStudentGrades échoue
         try {
-          // Méthode alternative: charger depuis l'API directement
           const response = await api.get(`/grades/student/${studentId}`);
 
           if (response.data?.success && response.data.data?.grades) {
@@ -497,6 +593,8 @@ const StudentDashboard = () => {
               studentId: g.studentId,
               subjectId: g.subjectId,
               grade: g.grade || 0,
+              maxGrade: g.maxGrade || g.subject?.defaultMaxGrade || 20,
+              passingGrade: g.passingGrade || (g.maxGrade || 20) * 0.5,
               status: g.status || null,
               session: g.session || null,
               controlType: g.controlType || null,
@@ -505,6 +603,7 @@ const StudentDashboard = () => {
                 name: "Matière",
                 code: "N/A",
                 coefficient: g.subject?.coefficient || 1,
+                defaultMaxGrade: g.subject?.defaultMaxGrade || 20,
               },
               academicYearId: g.academicYearId,
               classLevel: g.classLevel,
@@ -532,10 +631,8 @@ const StudentDashboard = () => {
 
       // Étape 6: Charger les cours si classId existe
       if (classId) {
-        console.log(`📚 Chargement des cours pour la classe ${classId}...`);
         try {
           const assignmentsData = await fetchAssignmentsByClass(classId);
-          console.log("📦 Assignments data:", assignmentsData);
 
           if (
             assignmentsData &&
@@ -547,6 +644,7 @@ const StudentDashboard = () => {
               subject: assignment.subject || {
                 name: assignment.subject?.name || "Matière",
                 coefficient: assignment.subject?.coefficient || 1,
+                defaultMaxGrade: assignment.subject?.defaultMaxGrade || 20,
               },
               professeur: assignment.professeur || {
                 firstName: "Professeur",
@@ -556,20 +654,18 @@ const StudentDashboard = () => {
               academicYear: assignment.academicYear,
             }));
             setStudentCourses(coursesList);
-            console.log(`✅ ${coursesList.length} cours chargés`);
           } else {
-            console.log("ℹ️ Aucun cours trouvé pour cette classe");
             setStudentCourses([]);
           }
         } catch (error) {
-          console.error("❌ Erreur lors du chargement des cours:", error);
+          console.error(" Erreur lors du chargement des cours:", error);
           setStudentCourses([]);
         }
       } else {
         setStudentCourses([]);
       }
 
-      // Étape 7: Charger l'emploi du temps - VERSION CORRIGÉE
+      // Étape 7: Charger l'emploi du temps
       if (classId) {
         try {
           const response = await api.get(`/schedules/class/${classId}`);
@@ -578,7 +674,6 @@ const StudentDashboard = () => {
             const timetable = response.data.data.timetable;
             const schedules: Schedule[] = [];
 
-            // Transformer la structure timetable en tableau de Schedule
             Object.entries(timetable).forEach(
               ([dayOfWeek, daySchedules]: [string, any]) => {
                 if (Array.isArray(daySchedules)) {
@@ -588,7 +683,7 @@ const StudentDashboard = () => {
                         id:
                           scheduleData.id ||
                           `schedule-${dayOfWeek}-${schedules.length}`,
-                        dayOfWeek: dayOfWeek.toUpperCase(), // S'assurer que c'est en majuscules
+                        dayOfWeek: dayOfWeek.toUpperCase(),
                         startTime: scheduleData.startTime,
                         endTime: scheduleData.endTime || "12:00",
                         classroom:
@@ -636,41 +731,6 @@ const StudentDashboard = () => {
       setTimeout(() => {
         isLoadingRef.current = false;
         setLoading(false);
-
-        // Log du résumé après chargement complet
-        console.log("📊 RÉSUMÉ DES DONNÉES CHARGÉES:", {
-          user: {
-            id: user?.id,
-            email: user?.email,
-            role: user?.role,
-            hasStudentRecord: !!user?.studentRecord,
-          },
-          student: {
-            id: currentStudent?.id,
-            name: `${currentStudent?.firstName} ${currentStudent?.lastName}`,
-            studentCode: currentStudent?.studentCode,
-            classId: currentStudent?.classId,
-            className: currentStudent?.schoolClass?.name,
-          },
-          grades: {
-            count: studentGrades.length,
-            hasData: studentGrades.length > 0,
-          },
-          courses: {
-            count: studentCourses.length,
-            hasData: studentCourses.length > 0,
-          },
-          schedule: {
-            count: studentSchedule.length,
-            hasData: studentSchedule.length > 0,
-          },
-          announcements: {
-            count: filteredAnnouncements.length,
-            hasData: filteredAnnouncements.length > 0,
-          },
-        });
-
-        console.log("🏁 Chargement terminé");
       }, 500);
     }
   }, [
@@ -680,8 +740,6 @@ const StudentDashboard = () => {
     fetchAnnouncements,
     fetchUpcomingEvents,
     fetchAssignmentsByClass,
-    fetchClassTimetable,
-    schedules,
     currentStudent,
     toast,
   ]);
@@ -706,12 +764,8 @@ const StudentDashboard = () => {
       return;
     }
 
-    // Filtrer les annonces pour les étudiants
     const studentAnnouncements = announcements.filter((ann: any) => {
-      // Vérifier si l'annonce est active
       if (ann.isActive === false) return false;
-
-      // Vérifier la public cible
       const target = (ann.targetAudience || "").toLowerCase();
       return (
         target.includes("students") ||
@@ -722,7 +776,6 @@ const StudentDashboard = () => {
       );
     });
 
-    // Appliquer les filtres supplémentaires
     let filtered = studentAnnouncements;
     if (filterType !== "all") {
       filtered = studentAnnouncements.filter((ann: any) => {
@@ -739,7 +792,6 @@ const StudentDashboard = () => {
       });
     }
 
-    // Trier par date (plus récent d'abord)
     filtered.sort(
       (a: any, b: any) =>
         new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime()
@@ -757,30 +809,54 @@ const StudentDashboard = () => {
     }
   }, [upcomingEvents]);
 
-  // Fonction pour obtenir le nom de la matière
-  const getSubjectName = (grade: GradeWithDetails): string => {
-    if (grade.subject?.name) return grade.subject.name;
-    if (grade.subject?.code) return grade.subject.code;
-    return "Matière inconnue";
-  };
+  // ==================== CALCULS DES STATISTIQUES ====================
 
-  // Fonction pour obtenir le coefficient
-  const getSubjectCoefficient = (grade: GradeWithDetails): number => {
-    return grade.subject?.coefficient || 1;
-  };
+  // Calculer la moyenne générale (sur 20)
+  const calculateAverage = useMemo(() => {
+    if (!studentGrades || studentGrades.length === 0) {
+      return {
+        average: "0.00",
+        averageOn20: "0.00",
+        hasData: false,
+        message: "Aucune note disponible",
+      };
+    }
 
-  // Fonction pour calculer les statistiques des notes
+    let totalWeighted = 0;
+    let totalCoefficient = 0;
+
+    studentGrades.forEach((grade: GradeWithDetails) => {
+      const coefficient = grade.subject?.coefficient || 1;
+      const gradeOn20 = getGradeOn20(grade); // Convertir en note sur 20
+
+      totalWeighted += gradeOn20 * coefficient;
+      totalCoefficient += coefficient;
+    });
+
+    const averageOn20 =
+      totalCoefficient > 0 ? totalWeighted / totalCoefficient : 0;
+
+    return {
+      average: averageOn20.toFixed(2),
+      averageOn20: averageOn20.toFixed(2),
+      hasData: true,
+      totalCoefficient,
+      totalGrades: studentGrades.length,
+    };
+  }, [studentGrades, getGradeOn20]);
+
+  // Calculer les statistiques des notes
   const calculateGradeStats = useMemo(() => {
     return (grades: GradeWithDetails[]) => {
       if (!grades || grades.length === 0) {
         return {
           total: 0,
           average: 0,
+          averageOn20: 0,
           validatedCount: 0,
           failedCount: 0,
           retakeCount: 0,
           successRate: 0,
-          gpa: 0,
           credits: {
             total: 0,
             obtained: 0,
@@ -789,28 +865,22 @@ const StudentDashboard = () => {
         };
       }
 
-      const validatedGrades = grades.filter(
-        (g) => g.status === "Valid_" || (g.grade || 0) >= 10
-      );
-      const failedGrades = grades.filter((g) => {
-        const status = String(g.status);
-        return (
-          status === "Non_valid_" || status === "Echec" || (g.grade || 0) < 10
-        );
+      const validatedGrades = grades.filter(isGradeValidated);
+      const failedGrades = grades.filter((g) => !isGradeValidated(g));
+
+      // Calcul de la moyenne sur 20
+      let totalWeighted = 0;
+      let totalCoefficient = 0;
+
+      grades.forEach((grade) => {
+        const coefficient = grade.subject?.coefficient || 1;
+        const gradeOn20 = getGradeOn20(grade);
+        totalWeighted += gradeOn20 * coefficient;
+        totalCoefficient += coefficient;
       });
-      const retakeGrades = grades.filter(
-        (g) => g.session === "Reprise" || g.status === "Reprise"
-      );
 
-      const totalGrade = grades.reduce(
-        (sum, grade) => sum + (grade.grade || 0),
-        0
-      );
-      const average = grades.length > 0 ? totalGrade / grades.length : 0;
-
-      // Calcul GPA (sur 4.0)
-      const gpa = grades.length > 0 ? average / 5 : 0; // Conversion 20/4
-
+      const averageOn20 =
+        totalCoefficient > 0 ? totalWeighted / totalCoefficient : 0;
       const successRate =
         grades.length > 0 ? (validatedGrades.length / grades.length) * 100 : 0;
 
@@ -825,11 +895,10 @@ const StudentDashboard = () => {
 
       return {
         total: grades.length,
-        average: Math.round(average * 100) / 100,
-        gpa: Math.round(gpa * 100) / 100,
+        average: Math.round(averageOn20 * 100) / 100,
+        averageOn20: Math.round(averageOn20 * 100) / 100,
         validatedCount: validatedGrades.length,
         failedCount: failedGrades.length,
-        retakeCount: retakeGrades.length,
         successRate: Math.round(successRate * 100) / 100,
         credits: {
           total: totalCredits,
@@ -839,83 +908,7 @@ const StudentDashboard = () => {
         },
       };
     };
-  }, []);
-
-  // Fonction pour la couleur de la note
-  const getGradeColor = (grade: number) => {
-    if (grade >= 16) return "text-emerald-600 font-bold";
-    if (grade >= 14) return "text-blue-600 font-semibold";
-    if (grade >= 12) return "text-indigo-600";
-    if (grade >= 10) return "text-amber-600";
-    return "text-red-600 font-semibold";
-  };
-
-  // Fonction pour le badge de statut
-  const getGradeStatusBadge = (grade: GradeWithDetails) => {
-    const isRetake = grade.session === "Reprise" || grade.status === "Reprise";
-    const isValid = grade.status === "Valid_" || (grade.grade || 0) >= 10;
-    const isFailed = grade.status === "Non_valid_" || (grade.grade || 0) < 10;
-
-    if (isValid) {
-      return (
-        <Badge
-          variant="default"
-          className="gap-1 bg-green-100 text-green-800 hover:bg-green-100 text-xs"
-        >
-          <CheckCircle className="h-3 w-3" />
-          Validé
-        </Badge>
-      );
-    }
-
-    if (isFailed) {
-      return (
-        <Badge variant="destructive" className="gap-1 text-xs">
-          <XCircle className="h-3 w-3" />
-          Échec
-        </Badge>
-      );
-    }
-
-    return (
-      <Badge variant="outline" className="text-xs">
-        {grade.status || "Inconnu"}
-      </Badge>
-    );
-  };
-
-  // Calculer la moyenne générale
-  const calculateAverage = useMemo(() => {
-    if (!studentGrades || studentGrades.length === 0) {
-      return {
-        average: "0.00",
-        hasData: false,
-        message: "Aucune note disponible",
-      };
-    }
-
-    const total = studentGrades.reduce(
-      (sum: number, grade: GradeWithDetails) => {
-        const subjectCoefficient = grade.subject?.coefficient || 1;
-        return sum + (grade.grade || 0) * subjectCoefficient;
-      },
-      0
-    );
-
-    const totalCoefficient = studentGrades.reduce(
-      (sum: number, grade: GradeWithDetails) => {
-        return sum + (grade.subject?.coefficient || 1);
-      },
-      0
-    );
-
-    return {
-      average:
-        totalCoefficient > 0 ? (total / totalCoefficient).toFixed(2) : "0.00",
-      hasData: true,
-      totalCoefficient,
-    };
-  }, [studentGrades]);
+  }, [isGradeValidated, getGradeOn20]);
 
   // Obtenir le prochain cours
   const getNextClass = useMemo(() => {
@@ -928,14 +921,12 @@ const StudentDashboard = () => {
 
     if (!currentDayApi) return null;
 
-    // Trouver tous les cours d'aujourd'hui
     const todaySchedule = studentSchedule.filter((schedule: Schedule) => {
       return schedule.dayOfWeek === currentDayApi;
     });
 
     if (todaySchedule.length === 0) return null;
 
-    // Trouver le prochain cours
     for (const schedule of todaySchedule) {
       const [hours, minutes] = schedule.startTime.split(":").map(Number);
       const scheduleTime = hours * 60 + minutes;
@@ -962,7 +953,7 @@ const StudentDashboard = () => {
           monthlyGrades[month] = { total: 0, count: 0 };
         }
 
-        monthlyGrades[month].total += grade.grade || 0;
+        monthlyGrades[month].total += getGradeOn20(grade); // Utiliser la note sur 20
         monthlyGrades[month].count += 1;
       });
 
@@ -980,7 +971,7 @@ const StudentDashboard = () => {
       { month: "Jan", average: 16 },
       { month: "Fév", average: 17 },
     ];
-  }, [studentGrades]);
+  }, [studentGrades, getGradeOn20]);
 
   // Fonction pour grouper les notes par type de contrôle
   const groupGradesByControlType = useMemo(() => {
@@ -1008,15 +999,19 @@ const StudentDashboard = () => {
 
     Object.entries(grouped).forEach(([controlType, grades]) => {
       const total = grades.length;
-      const average =
-        grades.reduce((sum, g) => sum + (g.grade || 0), 0) / total;
-      const validated = grades.filter(
-        (g) => g.status === "Valid_" || (g.grade || 0) >= 10
-      ).length;
+
+      // Calcul de la moyenne sur 20
+      let totalWeighted = 0;
+      grades.forEach((grade) => {
+        totalWeighted += getGradeOn20(grade);
+      });
+      const averageOn20 = total > 0 ? totalWeighted / total : 0;
+
+      const validated = grades.filter(isGradeValidated).length;
 
       stats[controlType] = {
         total,
-        average: Math.round(average * 100) / 100,
+        average: Math.round(averageOn20 * 100) / 100,
         validated,
         successRate: Math.round((validated / total) * 100),
         grades,
@@ -1024,7 +1019,7 @@ const StudentDashboard = () => {
     });
 
     return stats;
-  }, [groupGradesByControlType]);
+  }, [groupGradesByControlType, getGradeOn20, isGradeValidated]);
 
   // Fonction pour formater le nom du contrôle
   const formatControlType = (controlType: string) => {
@@ -1032,44 +1027,48 @@ const StudentDashboard = () => {
       CONTROLE_1: "Contrôle 1",
       CONTROLE_2: "Contrôle 2",
       CONTROLE_3: "Contrôle 3",
-      EXAMEN: "Examen",
-      PROJET: "Projet",
-      DEVOIR: "Devoir",
-      AUTRE: "Autre",
+      CONTROLE_4: "Contrôle 4",
     };
 
     return map[controlType] || controlType.replace("CONTROLE_", "Contrôle ");
   };
 
-  // Données pour le radar des compétences
+  // Données pour le radar des compétences (basé sur le pourcentage)
   const getSkillData = useMemo(() => {
     if (studentGrades.length > 0) {
-      // Grouper par matière avec calcul de moyenne
       const subjectMap = new Map<
         string,
-        { total: number; count: number; coefficient: number }
+        { totalPercentage: number; count: number; coefficient: number }
       >();
 
       studentGrades.forEach((grade: GradeWithDetails) => {
         const subjectName = getSubjectName(grade);
         const coefficient = getSubjectCoefficient(grade);
+        const percentage = getGradePercentage(grade);
 
         if (!subjectMap.has(subjectName)) {
-          subjectMap.set(subjectName, { total: 0, count: 0, coefficient });
+          subjectMap.set(subjectName, {
+            totalPercentage: 0,
+            count: 0,
+            coefficient,
+          });
         }
 
         const data = subjectMap.get(subjectName)!;
-        data.total += grade.grade || 0;
+        data.totalPercentage += percentage;
         data.count += 1;
         data.coefficient = Math.max(data.coefficient, coefficient);
       });
 
       return Array.from(subjectMap.entries()).map(([subject, data]) => ({
         subject: subject.length > 8 ? subject.substring(0, 8) + "..." : subject,
-        score: data.count > 0 ? (data.total / data.count / 20) * 100 : 0,
+        score: data.count > 0 ? data.totalPercentage / data.count : 0,
         fullMark: 100,
         coefficient: data.coefficient,
-        average: data.count > 0 ? (data.total / data.count).toFixed(2) : "0.00",
+        average:
+          data.count > 0
+            ? (data.totalPercentage / data.count).toFixed(1)
+            : "0.0",
       }));
     }
 
@@ -1079,55 +1078,52 @@ const StudentDashboard = () => {
         score: 75,
         fullMark: 100,
         coefficient: 4,
-        average: "15.00",
+        average: "75.0",
       },
       {
         subject: "Physique",
         score: 85,
         fullMark: 100,
         coefficient: 3,
-        average: "17.00",
+        average: "85.0",
       },
       {
         subject: "SVT",
         score: 65,
         fullMark: 100,
         coefficient: 2,
-        average: "13.00",
+        average: "65.0",
       },
       {
         subject: "Français",
         score: 90,
         fullMark: 100,
         coefficient: 2,
-        average: "18.00",
+        average: "90.0",
       },
       {
         subject: "Anglais",
         score: 80,
         fullMark: 100,
         coefficient: 2,
-        average: "16.00",
+        average: "80.0",
       },
       {
         subject: "Hist-Géo",
         score: 70,
         fullMark: 100,
         coefficient: 1,
-        average: "14.00",
+        average: "70.0",
       },
     ];
-  }, [studentGrades]);
+  }, [studentGrades, getGradePercentage]);
 
   // Obtenir l'emploi du temps d'aujourd'hui
   const getTodaySchedule = useMemo(() => {
-    // Si on a un emploi du temps réel
     if (studentSchedule.length > 0) {
       const now = new Date();
-      const today = now.toLocaleDateString("fr-FR", { weekday: "long" });
-      const currentDay = now.getDay(); // 0 = Dimanche, 1 = Lundi, etc.
+      const currentDay = now.getDay();
 
-      // Convertir le jour JS (0-6) en anglais majuscule
       const jsToApiDayMap = {
         0: "SUNDAY",
         1: "MONDAY",
@@ -1145,23 +1141,9 @@ const StudentDashboard = () => {
         return [];
       }
 
-      // Afficher tous les cours par jour pour debug
-      const schedulesByDay: Record<string, Schedule[]> = {};
-      studentSchedule.forEach((schedule) => {
-        if (!schedulesByDay[schedule.dayOfWeek]) {
-          schedulesByDay[schedule.dayOfWeek] = [];
-        }
-        schedulesByDay[schedule.dayOfWeek].push(schedule);
-      });
-
       const todaySchedules = studentSchedule
-        .filter((schedule) => {
-          const matches = schedule.dayOfWeek === currentDayApi;
-          return matches;
-        })
+        .filter((schedule) => schedule.dayOfWeek === currentDayApi)
         .sort((a, b) => a.startTime.localeCompare(b.startTime));
-
-      // Log des cours trouvés
 
       return todaySchedules;
     }
@@ -1175,24 +1157,23 @@ const StudentDashboard = () => {
     isLoadingRef.current = false;
     setLoading(true);
 
-    // Réinitialiser les données
     setStudentGrades([]);
     setStudentCourses([]);
     setStudentSchedule([]);
     setFilteredAnnouncements([]);
 
-    // Relancer le chargement après un court délai
     setTimeout(() => {
       loadAllData();
     }, 300);
   }, [loadAllData]);
 
-  // Composant de carte de matière amélioré
+  // Composant de carte de matière avec affichage correct
   const SubjectCard = ({ grade }: { grade: GradeWithDetails }) => {
-    const subjectName = getSubjectName(grade);
-    const coefficient = getSubjectCoefficient(grade);
     const gradeValue = grade.grade || 0;
-    const percentage = (gradeValue / 20) * 100;
+    const maxGrade = getMaxGrade(grade);
+    const percentage = getGradePercentage(grade);
+    const coefficient = getSubjectCoefficient(grade);
+    const isValidated = isGradeValidated(grade);
 
     return (
       <Card className="hover:shadow-md transition-shadow hover:border-primary/50">
@@ -1201,22 +1182,25 @@ const StudentDashboard = () => {
             <div className="flex items-center gap-3">
               <div
                 className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                  gradeValue >= 10 ? "bg-green-100" : "bg-red-100"
+                  isValidated ? "bg-green-100" : "bg-red-100"
                 }`}
               >
                 <BookOpen
                   className={`h-5 w-5 ${
-                    gradeValue >= 10 ? "text-green-600" : "text-red-600"
+                    isValidated ? "text-green-600" : "text-red-600"
                   }`}
                 />
               </div>
               <div>
                 <h4 className="font-semibold text-sm sm:text-base">
-                  {subjectName}
+                  {getSubjectName(grade)}
                 </h4>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <Badge variant="outline" className="text-xs">
                     Coeff {coefficient}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
+                    Max: {maxGrade}
                   </Badge>
                   {getGradeStatusBadge(grade)}
                   {grade.controlType && (
@@ -1230,14 +1214,19 @@ const StudentDashboard = () => {
             <div className="text-right">
               <div
                 className={`text-xl sm:text-2xl font-bold ${getGradeColor(
-                  gradeValue
+                  grade
                 )}`}
               >
-                {gradeValue.toFixed(2)}/20
+                {gradeValue.toFixed(0)}/{maxGrade}
               </div>
               <div className="text-xs text-muted-foreground mt-1">
                 {percentage.toFixed(0)}% • {coefficient} crédits
               </div>
+              {grade.passingGrade !== undefined && (
+                <div className="text-xs text-amber-600 mt-1">
+                  Passage: {grade.passingGrade}/{maxGrade}
+                </div>
+              )}
             </div>
           </div>
           <div className="mt-3">
@@ -1247,9 +1236,7 @@ const StudentDashboard = () => {
             </div>
             <Progress
               value={percentage}
-              className={`h-2 ${
-                gradeValue >= 10 ? "bg-green-500" : "bg-red-500"
-              }`}
+              className={`h-2 ${isValidated ? "bg-green-500" : "bg-red-500"}`}
             />
           </div>
         </CardContent>
@@ -1258,7 +1245,6 @@ const StudentDashboard = () => {
   };
 
   // Composant de carte d'annonce
-
   const AnnouncementCard = ({
     announcement,
   }: {
@@ -1268,15 +1254,6 @@ const StudentDashboard = () => {
       setSelectedAnnouncement(announcement);
       setIsAnnouncementModalOpen(true);
     }, [announcement]);
-
-    const handleReadClick = useCallback(
-      (e: React.MouseEvent) => {
-        e.stopPropagation(); // Important !
-        setSelectedAnnouncement(announcement);
-        setIsAnnouncementModalOpen(true);
-      },
-      [announcement]
-    );
 
     return (
       <Card
@@ -1328,7 +1305,6 @@ const StudentDashboard = () => {
                 {announcement.content}
               </p>
               <div className="mt-3 text-right">
-                {/* REMPLACEZ Button par ce span stylisé */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1336,10 +1312,9 @@ const StudentDashboard = () => {
                   onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.nativeEvent.stopImmediatePropagation();
-                    handleReadClick(e);
+                    handleCardClick();
                   }}
-                  onMouseDown={(e) => e.stopPropagation()} // Également important
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
                   <Eye className="h-4 w-4 mr-1" />
                   Lire
@@ -1375,6 +1350,9 @@ const StudentDashboard = () => {
             <Badge variant="outline">{course.classLevel}</Badge>
             <p className="text-sm text-muted-foreground mt-1">
               Coeff {course.subject?.coefficient || 1}
+              {course.subject?.maxGrade && (
+                <span className="ml-2">Max: {course.subject.maxGrade}</span>
+              )}
             </p>
           </div>
         </div>
@@ -1396,14 +1374,12 @@ const StudentDashboard = () => {
         </div>
       </div>
 
-      {/* Stats cards skeleton */}
       <div className="grid gap-4 md:grid-cols-4">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="h-32 bg-gray-200 rounded-xl animate-pulse" />
         ))}
       </div>
 
-      {/* Main content skeleton */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <div className="h-80 bg-gray-200 rounded-xl animate-pulse" />
@@ -1469,7 +1445,6 @@ const StudentDashboard = () => {
   if (!user?.studentRecord?.id) {
     return <NoStudentData />;
   }
-  // AJOUTEZ ce useEffect pour debugger le modal :
 
   const displayStudent = currentStudent || user.studentRecord;
   const average = calculateAverage.average;
@@ -1478,10 +1453,11 @@ const StudentDashboard = () => {
   const progressData = getProgressData;
   const skillData = getSkillData;
   const todaySchedule = getTodaySchedule;
+  const gradeStats = calculateGradeStats(studentGrades);
 
   return (
     <div className="space-y-6 p-6">
-      ;{/* Modals */}
+      {/* Modals */}
       <AnnouncementModal
         announcement={selectedAnnouncement}
         isOpen={isAnnouncementModalOpen}
@@ -1492,6 +1468,7 @@ const StudentDashboard = () => {
         isOpen={isEventModalOpen}
         onClose={() => setIsEventModalOpen(false)}
       />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1516,6 +1493,7 @@ const StudentDashboard = () => {
           </div>
         </div>
       </div>
+
       {/* Tabs de navigation */}
       <Tabs
         value={activeTab}
@@ -1528,6 +1506,7 @@ const StudentDashboard = () => {
           <TabsTrigger value="grades">Mes Notes</TabsTrigger>
           <TabsTrigger value="schedule">Emploi du temps</TabsTrigger>
         </TabsList>
+
         {/* Tab: Aperçu */}
         <TabsContent value="overview" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1543,13 +1522,10 @@ const StudentDashboard = () => {
                           Moyenne générale
                         </p>
                         <p className="text-2xl font-bold">{average}/20</p>
-                        <div
-                          className={`flex items-center text-sm mt-1 ${
-                            hasData ? "text-green-600" : "text-muted-foreground"
-                          }`}
-                        >
+                        <div className="flex items-center text-sm mt-1 text-green-600">
                           <TrendingUp className="h-3 w-3 mr-1" />
-                          {hasData ? "+0.5 ce trimestre" : "Aucune note"}
+                          {gradeStats.validatedCount}/{studentGrades.length}{" "}
+                          validés
                         </div>
                       </div>
                       <div className="p-3 rounded-full bg-primary/10">
@@ -1634,7 +1610,9 @@ const StudentDashboard = () => {
                 <Card>
                   <CardHeader>
                     <CardTitle>Progression des notes</CardTitle>
-                    <CardDescription>Évolution sur l'année</CardDescription>
+                    <CardDescription>
+                      Évolution sur l'année (sur 20)
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="h-64">
@@ -1665,7 +1643,7 @@ const StudentDashboard = () => {
                 <Card>
                   <CardHeader>
                     <CardTitle>Compétences par matière</CardTitle>
-                    <CardDescription>Profil académique</CardDescription>
+                    <CardDescription>Profil académique (en %)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="h-64">
@@ -1680,7 +1658,7 @@ const StudentDashboard = () => {
                           <PolarAngleAxis dataKey="subject" />
                           <PolarRadiusAxis angle={30} domain={[0, 100]} />
                           <Radar
-                            name="Compétences"
+                            name="Score (%)"
                             dataKey="score"
                             stroke="#8884d8"
                             fill="#8884d8"
@@ -1908,6 +1886,7 @@ const StudentDashboard = () => {
             </div>
           </div>
         </TabsContent>
+
         {/* Tab: Mes Cours */}
         <TabsContent value="courses" className="space-y-6">
           <Card>
@@ -1938,6 +1917,7 @@ const StudentDashboard = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
         {/* Tab: Mes Notes */}
         <TabsContent value="grades" className="space-y-6">
           <Card>
@@ -1979,7 +1959,7 @@ const StudentDashboard = () => {
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="text-center p-3 rounded-lg bg-primary/5">
                               <div className="text-2xl font-bold text-primary">
-                                {calculateGradeStats(studentGrades).average}/20
+                                {gradeStats.averageOn20}/20
                               </div>
                               <div className="text-sm text-muted-foreground">
                                 Moyenne générale
@@ -1987,10 +1967,7 @@ const StudentDashboard = () => {
                             </div>
                             <div className="text-center p-3 rounded-lg bg-green-50">
                               <div className="text-2xl font-bold text-green-600">
-                                {
-                                  calculateGradeStats(studentGrades)
-                                    .validatedCount
-                                }
+                                {gradeStats.validatedCount}
                               </div>
                               <div className="text-sm text-muted-foreground">
                                 Validés
@@ -1998,8 +1975,7 @@ const StudentDashboard = () => {
                             </div>
                             <div className="text-center p-3 rounded-lg bg-blue-50">
                               <div className="text-2xl font-bold text-blue-600">
-                                {calculateGradeStats(studentGrades).successRate}
-                                %
+                                {gradeStats.successRate}%
                               </div>
                               <div className="text-sm text-muted-foreground">
                                 Taux réussite
@@ -2022,7 +1998,7 @@ const StudentDashboard = () => {
                         <CardHeader>
                           <CardTitle>Résumé par contrôle</CardTitle>
                           <CardDescription>
-                            Performance par type d'évaluation
+                            Performance par type d'évaluation (sur 20)
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -2189,6 +2165,7 @@ const StudentDashboard = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
         {/* Tab: Emploi du temps */}
         <TabsContent value="schedule" className="space-y-6">
           <Card>

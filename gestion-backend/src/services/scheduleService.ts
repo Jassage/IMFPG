@@ -1,51 +1,61 @@
 /**
  * @file scheduleService.ts
- * @description Service pour la gestion des emplois du temps avec support ISO
- * @version 1.1.0
+ * @description Service pour la gestion des emplois du temps avec support multiple de formats de temps
+ * @version 2.0.0
  */
 
 import { PrismaClient } from "../../generated/prisma";
+import {
+  Schedule,
+  ApiResponse,
+  ScheduleConflict,
+  ConflictCheckResult,
+  CreateScheduleData,
+  UpdateScheduleData,
+  GenerateTimetableData,
+  ScheduleFilters,
+  PaginationData,
+} from "../types/timetableTypes";
 
 const prisma = new PrismaClient();
 
-interface ApiResponse {
-  metadata?: {};
-  success: boolean;
-  message: string;
-  data?: any;
-  code?: string;
-}
-
-interface Conflict {
-  type: string;
-  message: string;
-  details: any[];
-}
-
-interface ConflictCheck {
-  hasConflict: boolean;
-  conflicts: Conflict[];
-}
-
 /**
  * @class ScheduleService
- * @description Service pour la gestion des emplois du temps avec support ISO
+ * @description Service pour la gestion des emplois du temps avec support de formats multiples
  */
 export class ScheduleService {
   /**
-   * Valide et convertit un timestamp ISO en HH:MM:SS
+   * Parse et convertit un temps en format HH:MM:SS
+   * Supporte: HH:MM, HH:MM:SS, timestamp ISO
    */
-  private static convertISOTimeToHHMMSS(isoTime: string): {
-    time: string;
-    date: Date;
-  } {
+  static parseTime(timeInput: string): { time: string; date: Date } {
     try {
-      const date = new Date(isoTime);
+      let date: Date;
 
-      if (isNaN(date.getTime())) {
-        throw new Error("Timestamp ISO invalide");
+      // Format HH:MM ou HH:MM:SS
+      if (timeInput.match(/^\d{1,2}:\d{2}(:\d{2})?$/)) {
+        const [hours, minutes, seconds = "00"] = timeInput.split(":");
+        date = new Date();
+        date.setUTCHours(
+          parseInt(hours.padStart(2, "0")),
+          parseInt(minutes.padStart(2, "0")),
+          parseInt(seconds.padStart(2, "0")),
+          0
+        );
+      }
+      // Format ISO
+      else if (timeInput.includes("T")) {
+        date = new Date(timeInput);
+        if (isNaN(date.getTime())) {
+          throw new Error("Timestamp ISO invalide");
+        }
+      }
+      // Format inconnu
+      else {
+        throw new Error(`Format de temps non supporté: ${timeInput}`);
       }
 
+      // Formater en HH:MM:SS
       const hours = date.getUTCHours().toString().padStart(2, "0");
       const minutes = date.getUTCMinutes().toString().padStart(2, "0");
       const seconds = date.getUTCSeconds().toString().padStart(2, "0");
@@ -54,10 +64,10 @@ export class ScheduleService {
         time: `${hours}:${minutes}:${seconds}`,
         date,
       };
-    } catch (error) {
+    } catch (error: any) {
       throw {
         status: 400,
-        message: "Format de temps invalide",
+        message: error.message || "Format de temps invalide",
         code: "INVALID_TIME_FORMAT",
       };
     }
@@ -74,8 +84,8 @@ export class ScheduleService {
   ): boolean {
     // Convertir en minutes pour comparaison
     const toMinutes = (time: string): number => {
-      const [hours, minutes, seconds] = time.split(":").map(Number);
-      return hours * 60 + minutes + seconds / 60;
+      const [hours, minutes] = time.split(":").map(Number);
+      return hours * 60 + minutes;
     };
 
     const s1 = toMinutes(start1);
@@ -87,7 +97,20 @@ export class ScheduleService {
   }
 
   /**
-   * Vérifier les conflits d'horaire - VERSION ISO
+   * Formate un temps pour l'affichage (HH:MM)
+   */
+  static formatTimeForDisplay(time: string): string {
+    try {
+      const { time: formattedTime } = this.parseTime(time);
+      return formattedTime.substring(0, 5); // HH:MM
+    } catch {
+      // Fallback simple
+      return time.includes(":") ? time.substring(0, 5) : "00:00";
+    }
+  }
+
+  /**
+   * Vérifier les conflits d'horaire
    */
   static async checkScheduleConflicts(
     professeurId: string,
@@ -97,15 +120,13 @@ export class ScheduleService {
     endTime: string,
     classroom?: string | null,
     excludeScheduleId?: string
-  ): Promise<ConflictCheck> {
-    const conflicts: Conflict[] = [];
+  ): Promise<ConflictCheckResult> {
+    const conflicts: ScheduleConflict[] = [];
 
     try {
-      // Convertir les temps ISO en HH:MM:SS
-      const { time: startTimeStr, date: startDate } =
-        this.convertISOTimeToHHMMSS(startTime);
-      const { time: endTimeStr, date: endDate } =
-        this.convertISOTimeToHHMMSS(endTime);
+      // Convertir les temps
+      const { time: startTimeStr, date: startDate } = this.parseTime(startTime);
+      const { time: endTimeStr, date: endDate } = this.parseTime(endTime);
 
       // Vérifier l'ordre des temps
       if (endDate <= startDate) {
@@ -121,14 +142,12 @@ export class ScheduleService {
       const baseWhere: any = {
         dayOfWeek,
         OR: [
-          // Cas 1: Le nouveau créneau commence pendant un créneau existant
           {
             AND: [
               { startTime: { lt: endTimeStr } },
               { endTime: { gt: startTimeStr } },
             ],
           },
-          // Cas 2: Le nouveau créneau est contenu dans un créneau existant
           {
             AND: [
               { startTime: { lte: startTimeStr } },
@@ -162,14 +181,15 @@ export class ScheduleService {
       if (professeurConflicts.length > 0) {
         conflicts.push({
           type: "PROFESSEUR_CONFLICT",
-          message: `Le professeur a déjà un cours de ${professeurConflicts[0].startTime} à ${professeurConflicts[0].endTime}`,
+          message: `Le professeur a déjà un cours programmé`,
           details: professeurConflicts.map((c) => ({
             id: c.id,
             subject: c.classAssignment?.subject?.name || "Inconnu",
             class: c.schoolClass?.name || "Inconnu",
-            startTime: c.startTime,
-            endTime: c.endTime,
+            startTime: this.formatTimeForDisplay(c.startTime),
+            endTime: this.formatTimeForDisplay(c.endTime),
             classroom: c.classroom,
+            dayOfWeek: c.dayOfWeek,
           })),
         });
       }
@@ -194,26 +214,27 @@ export class ScheduleService {
       if (classConflicts.length > 0) {
         conflicts.push({
           type: "CLASS_CONFLICT",
-          message: `La classe a déjà un cours de ${classConflicts[0].startTime} à ${classConflicts[0].endTime}`,
+          message: `La classe a déjà un cours programmé`,
           details: classConflicts.map((c) => ({
             id: c.id,
             subject: c.classAssignment?.subject?.name || "Inconnu",
             professeur: c.professeur
               ? `${c.professeur.firstName} ${c.professeur.lastName}`
               : "Inconnu",
-            startTime: c.startTime,
-            endTime: c.endTime,
+            startTime: this.formatTimeForDisplay(c.startTime),
+            endTime: this.formatTimeForDisplay(c.endTime),
             classroom: c.classroom,
+            dayOfWeek: c.dayOfWeek,
           })),
         });
       }
 
       // 3. Vérifier conflits de salle (si spécifiée)
-      if (classroom) {
+      if (classroom && classroom.trim()) {
         const roomConflicts = await prisma.schedule.findMany({
           where: {
             ...baseWhere,
-            classroom,
+            classroom: classroom.trim(),
             status: "ACTIVE",
           },
           include: {
@@ -225,15 +246,16 @@ export class ScheduleService {
         if (roomConflicts.length > 0) {
           conflicts.push({
             type: "ROOM_CONFLICT",
-            message: `La salle ${classroom} est déjà occupée de ${roomConflicts[0].startTime} à ${roomConflicts[0].endTime}`,
+            message: `La salle ${classroom} est déjà occupée`,
             details: roomConflicts.map((c) => ({
               id: c.id,
               class: c.schoolClass?.name || "Inconnu",
               professeur: c.professeur
                 ? `${c.professeur.firstName} ${c.professeur.lastName}`
                 : "Inconnu",
-              startTime: c.startTime,
-              endTime: c.endTime,
+              startTime: this.formatTimeForDisplay(c.startTime),
+              endTime: this.formatTimeForDisplay(c.endTime),
+              dayOfWeek: c.dayOfWeek,
             })),
           });
         }
@@ -248,26 +270,16 @@ export class ScheduleService {
       conflicts.push({
         type: "VALIDATION_ERROR",
         message: error.message || "Erreur lors de la vérification des conflits",
-        details: [],
+        details: [error],
       });
       return { hasConflict: true, conflicts };
     }
   }
 
   /**
-   * Crée un nouvel horaire - VERSION ISO
+   * Crée un nouvel horaire
    */
-  static async createSchedule(data: {
-    assignmentId: string;
-    classId: string;
-    dayOfWeek: string;
-    startTime: string; // Format ISO
-    endTime: string; // Format ISO
-    classroom?: string;
-    recurrence?: string;
-    untilDate?: string;
-    notes?: string;
-  }): Promise<ApiResponse> {
+  static async createSchedule(data: CreateScheduleData): Promise<ApiResponse> {
     try {
       const {
         assignmentId,
@@ -287,14 +299,13 @@ export class ScheduleService {
           status: 400,
           message: "Données manquantes",
           code: "MISSING_DATA",
+          details: { assignmentId, classId, dayOfWeek, startTime, endTime },
         };
       }
 
-      // Convertir et valider les temps ISO
-      const { time: startTimeStr, date: startDate } =
-        this.convertISOTimeToHHMMSS(startTime);
-      const { time: endTimeStr, date: endDate } =
-        this.convertISOTimeToHHMMSS(endTime);
+      // Convertir et valider les temps
+      const { time: startTimeStr, date: startDate } = this.parseTime(startTime);
+      const { time: endTimeStr, date: endDate } = this.parseTime(endTime);
 
       // Vérifier que l'heure de fin est après l'heure de début
       if (endDate <= startDate) {
@@ -302,6 +313,12 @@ export class ScheduleService {
           status: 400,
           message: "L'heure de fin doit être après l'heure de début",
           code: "INVALID_TIME_RANGE",
+          details: {
+            startTime: startTimeStr,
+            endTime: endTimeStr,
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+          },
         };
       }
 
@@ -320,6 +337,7 @@ export class ScheduleService {
           status: 404,
           message: "Assignation non trouvée",
           code: "ASSIGNMENT_NOT_FOUND",
+          details: { assignmentId },
         };
       }
 
@@ -333,6 +351,7 @@ export class ScheduleService {
           status: 404,
           message: "Classe non trouvée",
           code: "CLASS_NOT_FOUND",
+          details: { classId },
         };
       }
 
@@ -345,6 +364,7 @@ export class ScheduleService {
           details: {
             classLevel: schoolClass.level,
             assignmentLevel: assignment.classLevel,
+            className: schoolClass.name,
           },
         };
       }
@@ -364,9 +384,7 @@ export class ScheduleService {
           status: 409,
           message: "Conflit d'horaire détecté",
           code: "SCHEDULE_CONFLICT",
-          data: {
-            conflicts: conflictCheck.conflicts,
-          },
+          data: conflictCheck,
         };
       }
 
@@ -379,10 +397,10 @@ export class ScheduleService {
           dayOfWeek,
           startTime: startTimeStr,
           endTime: endTimeStr,
-          classroom: classroom || null,
-          recurrence: recurrence || null,
+          classroom: classroom?.trim() || null,
+          recurrence: recurrence?.trim() || null,
           untilDate: untilDate ? new Date(untilDate) : null,
-          notes: notes || null,
+          notes: notes?.trim() || null,
           status: "ACTIVE",
         },
         include: {
@@ -398,6 +416,10 @@ export class ScheduleService {
         },
       });
 
+      // Calculer la durée
+      const durationMs = endDate.getTime() - startDate.getTime();
+      const durationMinutes = Math.round(durationMs / (1000 * 60));
+
       return {
         success: true,
         message: "Horaire créé avec succès",
@@ -406,11 +428,16 @@ export class ScheduleService {
           dayOfWeek,
           startTime: startTimeStr,
           endTime: endTimeStr,
-          classroom,
+          startTimeDisplay: this.formatTimeForDisplay(startTimeStr),
+          endTimeDisplay: this.formatTimeForDisplay(endTimeStr),
+          classroom: classroom || "Non spécifié",
           professeur: `${assignment.professeur.firstName} ${assignment.professeur.lastName}`,
           subject: assignment.subject.name,
           class: schoolClass.name,
-          duration: `${Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60))} minutes`,
+          level: schoolClass.level,
+          duration: `${durationMinutes} minutes`,
+          durationHours: (durationMinutes / 60).toFixed(1),
+          academicYear: assignment.academicYear?.year || "N/A",
         },
       };
     } catch (error: any) {
@@ -420,25 +447,17 @@ export class ScheduleService {
         message: error.message || "Erreur lors de la création de l'horaire",
         code: error.code || "CREATE_ERROR",
         data: error.data,
+        details: error.details,
       };
     }
   }
 
   /**
-   * Met à jour un horaire - VERSION ISO
+   * Met à jour un horaire
    */
   static async updateSchedule(
     id: string,
-    data: {
-      dayOfWeek?: string;
-      startTime?: string; // Format ISO
-      endTime?: string; // Format ISO
-      classroom?: string;
-      recurrence?: string;
-      untilDate?: string;
-      notes?: string;
-      status?: string;
-    }
+    data: UpdateScheduleData
   ): Promise<ApiResponse> {
     try {
       // Vérifier si l'horaire existe
@@ -460,43 +479,48 @@ export class ScheduleService {
           status: 404,
           message: "Horaire non trouvé",
           code: "SCHEDULE_NOT_FOUND",
+          details: { id },
         };
       }
 
       // Variables pour les temps convertis
       let startTimeStr = existingSchedule.startTime;
       let endTimeStr = existingSchedule.endTime;
+      let startDate = new Date(`2000-01-01T${startTimeStr}Z`);
+      let endDate = new Date(`2000-01-01T${endTimeStr}Z`);
 
       // Convertir startTime si fourni
       if (data.startTime) {
-        const { time: convertedStartTime } = this.convertISOTimeToHHMMSS(
-          data.startTime
-        );
+        const { time: convertedStartTime, date: convertedStartDate } =
+          this.parseTime(data.startTime);
         startTimeStr = convertedStartTime;
+        startDate = convertedStartDate;
       }
 
       // Convertir endTime si fourni
       if (data.endTime) {
-        const { time: convertedEndTime } = this.convertISOTimeToHHMMSS(
-          data.endTime
-        );
+        const { time: convertedEndTime, date: convertedEndDate } =
+          this.parseTime(data.endTime);
         endTimeStr = convertedEndTime;
+        endDate = convertedEndDate;
       }
 
       // Vérifier la validité des heures
-      const toMinutes = (time: string): number => {
-        const [hours, minutes, seconds] = time.split(":").map(Number);
-        return hours * 60 + minutes + seconds / 60;
-      };
-
-      const startMinutes = toMinutes(startTimeStr);
-      const endMinutes = toMinutes(endTimeStr);
+      const startMinutes =
+        startDate.getUTCHours() * 60 + startDate.getUTCMinutes();
+      const endMinutes = endDate.getUTCHours() * 60 + endDate.getUTCMinutes();
 
       if (endMinutes <= startMinutes) {
         throw {
           status: 400,
           message: "L'heure de fin doit être après l'heure de début",
           code: "INVALID_TIME_RANGE",
+          details: {
+            startTime: startTimeStr,
+            endTime: endTimeStr,
+            startMinutes,
+            endMinutes,
+          },
         };
       }
 
@@ -506,6 +530,7 @@ export class ScheduleService {
           status: 400,
           message: "Durée minimale: 30 minutes",
           code: "MIN_DURATION_NOT_MET",
+          details: { duration },
         };
       }
 
@@ -514,6 +539,7 @@ export class ScheduleService {
           status: 400,
           message: "Durée maximale: 4 heures",
           code: "MAX_DURATION_EXCEEDED",
+          details: { duration },
         };
       }
 
@@ -548,16 +574,19 @@ export class ScheduleService {
         endTime: endTimeStr,
         classroom:
           data.classroom !== undefined
-            ? data.classroom
+            ? data.classroom?.trim() || null
             : existingSchedule.classroom,
         recurrence:
           data.recurrence !== undefined
-            ? data.recurrence
+            ? data.recurrence?.trim() || null
             : existingSchedule.recurrence,
         untilDate: data.untilDate
           ? new Date(data.untilDate)
           : existingSchedule.untilDate,
-        notes: data.notes !== undefined ? data.notes : existingSchedule.notes,
+        notes:
+          data.notes !== undefined
+            ? data.notes?.trim() || null
+            : existingSchedule.notes,
         status: data.status || existingSchedule.status,
       };
 
@@ -577,9 +606,13 @@ export class ScheduleService {
         },
       });
 
-      const changes = Object.keys(data)
-        .filter((key) => data[key as keyof typeof data] !== undefined)
-        .map((key) => `${key}: ${data[key as keyof typeof data]}`);
+      // Identifier les champs modifiés
+      const changes: string[] = [];
+      Object.keys(data).forEach((key) => {
+        if (data[key as keyof UpdateScheduleData] !== undefined) {
+          changes.push(key);
+        }
+      });
 
       return {
         success: true,
@@ -587,7 +620,10 @@ export class ScheduleService {
         data: { schedule },
         metadata: {
           changes,
-          duration: `${Math.round(duration)} minutes`,
+          duration: `${duration} minutes`,
+          durationDisplay: `${Math.floor(duration / 60)}h${duration % 60}`,
+          previousStatus: existingSchedule.status,
+          newStatus: schedule.status,
         },
       };
     } catch (error: any) {
@@ -597,22 +633,15 @@ export class ScheduleService {
         message: error.message || "Erreur lors de la mise à jour de l'horaire",
         code: error.code || "UPDATE_ERROR",
         data: error.data,
+        details: error.details,
       };
     }
   }
 
   /**
-   * Récupère tous les horaires
+   * Récupère tous les horaires avec pagination
    */
-  static async getAllSchedules(filters: {
-    page?: number;
-    limit?: number;
-    classId?: string;
-    professeurId?: string;
-    dayOfWeek?: string;
-    status?: string;
-    academicYearId?: string;
-  }): Promise<ApiResponse> {
+  static async getAllSchedules(filters: ScheduleFilters): Promise<ApiResponse> {
     try {
       const {
         page = 1,
@@ -622,6 +651,7 @@ export class ScheduleService {
         dayOfWeek,
         status,
         academicYearId,
+        classroom,
       } = filters;
 
       const pageNum = Math.max(1, parseInt(page.toString()));
@@ -634,6 +664,8 @@ export class ScheduleService {
       if (classId) where.classId = classId;
       if (professeurId) where.professeurId = professeurId;
       if (dayOfWeek) where.dayOfWeek = dayOfWeek;
+      if (classroom)
+        where.classroom = { contains: classroom, mode: "insensitive" };
 
       // Filtrer par année académique via l'assignation
       if (academicYearId) {
@@ -669,20 +701,38 @@ export class ScheduleService {
       // Formater les heures pour l'affichage
       const formattedSchedules = schedules.map((schedule) => ({
         ...schedule,
-        displayStartTime: schedule.startTime,
-        displayEndTime: schedule.endTime,
+        displayStartTime: this.formatTimeForDisplay(schedule.startTime),
+        displayEndTime: this.formatTimeForDisplay(schedule.endTime),
+        duration: this.calculateDuration(schedule.startTime, schedule.endTime),
       }));
+
+      const pagination: PaginationData = {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      };
 
       return {
         success: true,
         message: "Horaires récupérés avec succès",
         data: {
           schedules: formattedSchedules,
-          pagination: {
-            page: pageNum,
-            limit: limitNum,
-            total,
-            totalPages: Math.ceil(total / limitNum),
+          pagination,
+        },
+        metadata: {
+          filters: {
+            classId,
+            professeurId,
+            dayOfWeek,
+            status,
+            academicYearId,
+            classroom,
+          },
+          counts: {
+            active: schedules.filter((s) => s.status === "ACTIVE").length,
+            inactive: schedules.filter((s) => s.status === "INACTIVE").length,
+            cancelled: schedules.filter((s) => s.status === "CANCELLED").length,
           },
         },
       };
@@ -692,6 +742,7 @@ export class ScheduleService {
         status: 500,
         message: "Erreur lors de la récupération des horaires",
         code: "FETCH_ERROR",
+        details: error.message,
       };
     }
   }
@@ -721,20 +772,28 @@ export class ScheduleService {
           status: 404,
           message: "Horaire non trouvé",
           code: "SCHEDULE_NOT_FOUND",
+          details: { id },
         };
       }
 
       // Formater les heures
       const formattedSchedule = {
         ...schedule,
-        displayStartTime: schedule.startTime,
-        displayEndTime: schedule.endTime,
+        displayStartTime: this.formatTimeForDisplay(schedule.startTime),
+        displayEndTime: this.formatTimeForDisplay(schedule.endTime),
+        duration: this.calculateDuration(schedule.startTime, schedule.endTime),
       };
 
       return {
         success: true,
         message: "Horaire récupéré avec succès",
         data: { schedule: formattedSchedule },
+        metadata: {
+          dayOfWeek: schedule.dayOfWeek,
+          duration: formattedSchedule.duration,
+          status: schedule.status,
+          classroom: schedule.classroom,
+        },
       };
     } catch (error: any) {
       console.error("Erreur récupération horaire:", error);
@@ -742,6 +801,7 @@ export class ScheduleService {
         status: error.status || 500,
         message: error.message || "Erreur lors de la récupération de l'horaire",
         code: error.code || "FETCH_ERROR",
+        details: error.details,
       };
     }
   }
@@ -754,6 +814,14 @@ export class ScheduleService {
     academicYearId?: string
   ): Promise<ApiResponse> {
     try {
+      if (!classId) {
+        throw {
+          status: 400,
+          message: "classId est requis",
+          code: "MISSING_CLASS_ID",
+        };
+      }
+
       const where: any = {
         classId,
         status: "ACTIVE",
@@ -785,30 +853,40 @@ export class ScheduleService {
       });
 
       // Organiser par jour de la semaine
-      const timetableByDay: any = {
-        MONDAY: [],
-        TUESDAY: [],
-        WEDNESDAY: [],
-        THURSDAY: [],
-        FRIDAY: [],
-        SATURDAY: [],
-        SUNDAY: [],
-      };
+      const timetableByDay: Record<string, any[]> = {};
+      const DAYS = [
+        "MONDAY",
+        "TUESDAY",
+        "WEDNESDAY",
+        "THURSDAY",
+        "FRIDAY",
+        "SATURDAY",
+        "SUNDAY",
+      ];
+
+      DAYS.forEach((day) => {
+        timetableByDay[day] = [];
+      });
 
       // Formater chaque horaire
       schedules.forEach((schedule) => {
         if (timetableByDay[schedule.dayOfWeek]) {
           timetableByDay[schedule.dayOfWeek].push({
             id: schedule.id,
-            subject: schedule.classAssignment.subject,
-            professeur: schedule.professeur,
+            subject: schedule.classAssignment?.subject || { name: "Inconnu" },
+            professeur:
+              schedule.professeur || schedule.classAssignment?.professeur,
             classroom: schedule.classroom,
             startTime: schedule.startTime,
             endTime: schedule.endTime,
-            displayStartTime: schedule.startTime,
-            displayEndTime: schedule.endTime,
+            displayStartTime: this.formatTimeForDisplay(schedule.startTime),
+            displayEndTime: this.formatTimeForDisplay(schedule.endTime),
             status: schedule.status,
             notes: schedule.notes,
+            duration: this.calculateDuration(
+              schedule.startTime,
+              schedule.endTime
+            ),
           });
         }
       });
@@ -821,29 +899,22 @@ export class ScheduleService {
       });
 
       // Calculer les statistiques
-      const weekSummary = Object.keys(timetableByDay).reduce(
-        (acc: any, day) => {
-          acc[day] = {
-            count: timetableByDay[day].length,
-            hours: timetableByDay[day].reduce(
-              (total: number, schedule: any) => {
-                const [startHour, startMinute] = schedule.startTime
-                  .split(":")
-                  .map(Number);
-                const [endHour, endMinute] = schedule.endTime
-                  .split(":")
-                  .map(Number);
-                return (
-                  total + (endHour - startHour) + (endMinute - startMinute) / 60
-                );
-              },
-              0
-            ),
-          };
-          return acc;
-        },
-        {}
-      );
+      const weekSummary: Record<string, { count: number; hours: number }> = {};
+      let totalHours = 0;
+
+      Object.keys(timetableByDay).forEach((day) => {
+        const daySchedules = timetableByDay[day];
+        const dayHours = daySchedules.reduce((total: number, schedule: any) => {
+          return total + (schedule.duration?.hours || 0);
+        }, 0);
+
+        weekSummary[day] = {
+          count: daySchedules.length,
+          hours: parseFloat(dayHours.toFixed(1)),
+        };
+
+        totalHours += dayHours;
+      });
 
       return {
         success: true,
@@ -854,6 +925,17 @@ export class ScheduleService {
           schedules,
           totalSchedules: schedules.length,
           weekSummary,
+          totalHours: parseFloat(totalHours.toFixed(1)),
+          averageDailyHours: parseFloat(
+            (totalHours / Object.keys(timetableByDay).length).toFixed(1)
+          ),
+        },
+        metadata: {
+          classId,
+          academicYearId,
+          totalDays: Object.keys(timetableByDay).filter(
+            (day) => timetableByDay[day].length > 0
+          ).length,
         },
       };
     } catch (error: any) {
@@ -862,6 +944,7 @@ export class ScheduleService {
         status: 500,
         message: "Erreur lors de la récupération de l'emploi du temps",
         code: "FETCH_TIMETABLE_ERROR",
+        details: error.message,
       };
     }
   }
@@ -869,14 +952,9 @@ export class ScheduleService {
   /**
    * Génère un emploi du temps automatiquement
    */
-  static async generateTimetable(data: {
-    classId: string;
-    academicYearId: string;
-    constraints?: {
-      maxHoursPerDay?: number;
-      breakTime?: { start: string; end: string };
-    };
-  }): Promise<ApiResponse> {
+  static async generateTimetable(
+    data: GenerateTimetableData
+  ): Promise<ApiResponse> {
     try {
       const { classId, academicYearId, constraints } = data;
 
@@ -890,6 +968,7 @@ export class ScheduleService {
           status: 404,
           message: "Classe non trouvée",
           code: "CLASS_NOT_FOUND",
+          details: { classId },
         };
       }
 
@@ -911,6 +990,7 @@ export class ScheduleService {
           status: 404,
           message: "Aucune assignation trouvée pour cette classe",
           code: "NO_ASSIGNMENTS",
+          details: { classId, academicYearId, level: schoolClass.level },
         };
       }
 
@@ -933,7 +1013,10 @@ export class ScheduleService {
       // Contraintes par défaut
       const defaultConstraints = {
         maxHoursPerDay: constraints?.maxHoursPerDay || 6,
-        breakTime: constraints?.breakTime || { start: "12:00", end: "14:00" },
+        breakTime: constraints?.breakTime || {
+          start: "12:00:00",
+          end: "14:00:00",
+        },
       };
 
       const generatedSchedules = [];
@@ -956,7 +1039,6 @@ export class ScheduleService {
               const breakStart = defaultConstraints.breakTime.start;
               const breakEnd = defaultConstraints.breakTime.end;
               const slotStartHour = parseInt(slot.start.split(":")[0]);
-              const slotStartMinute = parseInt(slot.start.split(":")[1]);
               const breakStartHour = parseInt(breakStart.split(":")[0]);
               const breakEndHour = parseInt(breakEnd.split(":")[0]);
 
@@ -968,11 +1050,10 @@ export class ScheduleService {
               }
             }
 
-            // Créer les timestamps ISO pour la vérification
+            // Vérifier les conflits
             const isoStartTime = `2000-01-01T${slot.start}Z`;
             const isoEndTime = `2000-01-01T${slot.end}Z`;
 
-            // Vérifier les conflits
             const conflictCheck = await this.checkScheduleConflicts(
               assignment.professeurId,
               classId,
@@ -990,7 +1071,13 @@ export class ScheduleService {
                   "A103",
                   "B201",
                   "B202",
+                  "C301",
+                  "C302",
+                  "D401",
+                  "D402",
+                  "E501",
                 ];
+
                 const assignedClassroom =
                   availableClassrooms.find(
                     (room) =>
@@ -1013,6 +1100,14 @@ export class ScheduleService {
                     recurrence: null,
                     untilDate: null,
                   },
+                  include: {
+                    classAssignment: {
+                      include: {
+                        subject: true,
+                        professeur: true,
+                      },
+                    },
+                  },
                 });
 
                 generatedSchedules.push(schedule);
@@ -1034,7 +1129,10 @@ export class ScheduleService {
                 errors.push({
                   assignmentId: assignment.id,
                   subject: assignment.subject.name,
+                  professeur: `${assignment.professeur.firstName} ${assignment.professeur.lastName}`,
                   error: error.message,
+                  day,
+                  slot: `${slot.start}-${slot.end}`,
                 });
               }
             }
@@ -1045,7 +1143,10 @@ export class ScheduleService {
           errors.push({
             assignmentId: assignment.id,
             subject: assignment.subject.name,
-            message: `Impossible de placer ${assignment.subject.name}`,
+            professeur: `${assignment.professeur.firstName} ${assignment.professeur.lastName}`,
+            message:
+              "Impossible de placer ce cours - tous les créneaux sont occupés",
+            level: schoolClass.level,
           });
         }
       }
@@ -1065,14 +1166,21 @@ export class ScheduleService {
             successfullyPlaced,
             failed: errors.length,
             successRate: Math.round(successRate * 100) / 100,
+            totalHours: this.calculateTotalHours(generatedSchedules),
+            averageHoursPerDay:
+              this.calculateAverageHoursPerDay(generatedSchedules),
           },
         },
         metadata: {
           classId,
+          className: schoolClass.name,
+          level: schoolClass.level,
           academicYearId,
           generated: successfullyPlaced,
           errors: errors.length,
           successRate: `${Math.round(successRate)}%`,
+          constraints: defaultConstraints,
+          generationDate: new Date().toISOString(),
         },
       };
     } catch (error: any) {
@@ -1082,6 +1190,8 @@ export class ScheduleService {
         message:
           error.message || "Erreur lors de la génération de l'emploi du temps",
         code: error.code || "GENERATION_ERROR",
+        data: error.data,
+        details: error.details,
       };
     }
   }
@@ -1094,14 +1204,23 @@ export class ScheduleService {
     filters?: {
       startDate?: string;
       endDate?: string;
+      status?: string;
     }
   ): Promise<ApiResponse> {
     try {
-      const { startDate, endDate } = filters || {};
+      const { startDate, endDate, status = "ACTIVE" } = filters || {};
+
+      if (!professeurId) {
+        throw {
+          status: 400,
+          message: "professeurId est requis",
+          code: "MISSING_PROFESSEUR_ID",
+        };
+      }
 
       const where: any = {
         professeurId,
-        status: "ACTIVE",
+        status,
       };
 
       if (startDate && endDate) {
@@ -1126,25 +1245,44 @@ export class ScheduleService {
       });
 
       // Organiser par jour
-      const scheduleByDay: any = {};
+      const scheduleByDay: Record<string, any[]> = {};
+      const DAYS = [
+        "MONDAY",
+        "TUESDAY",
+        "WEDNESDAY",
+        "THURSDAY",
+        "FRIDAY",
+        "SATURDAY",
+        "SUNDAY",
+      ];
+
+      DAYS.forEach((day) => {
+        scheduleByDay[day] = [];
+      });
+
       schedules.forEach((schedule) => {
-        if (!scheduleByDay[schedule.dayOfWeek]) {
-          scheduleByDay[schedule.dayOfWeek] = [];
+        if (scheduleByDay[schedule.dayOfWeek]) {
+          scheduleByDay[schedule.dayOfWeek].push({
+            ...schedule,
+            displayStartTime: this.formatTimeForDisplay(schedule.startTime),
+            displayEndTime: this.formatTimeForDisplay(schedule.endTime),
+            duration: this.calculateDuration(
+              schedule.startTime,
+              schedule.endTime
+            ),
+          });
         }
-        scheduleByDay[schedule.dayOfWeek].push({
-          ...schedule,
-          displayStartTime: schedule.startTime,
-          displayEndTime: schedule.endTime,
-        });
       });
 
       // Calculer les heures totales
       const weeklyHours = schedules.reduce((total, s) => {
-        const [startHour, startMinute] = s.startTime.split(":").map(Number);
-        const [endHour, endMinute] = s.endTime.split(":").map(Number);
-        const hours = endHour - startHour + (endMinute - startMinute) / 60;
-        return total + hours;
+        const duration = this.calculateDuration(s.startTime, s.endTime);
+        return total + (duration.hours || 0);
       }, 0);
+
+      const daysWithSchedules = Object.keys(scheduleByDay).filter(
+        (day) => scheduleByDay[day].length > 0
+      ).length;
 
       return {
         success: true,
@@ -1153,11 +1291,19 @@ export class ScheduleService {
           schedules,
           scheduleByDay,
           totalSchedules: schedules.length,
-          weeklyHours: Math.round(weeklyHours * 100) / 100,
+          weeklyHours: parseFloat(weeklyHours.toFixed(1)),
           dailyAverage:
-            Math.round(
-              (weeklyHours / Object.keys(scheduleByDay).length) * 100
-            ) / 100,
+            daysWithSchedules > 0
+              ? parseFloat((weeklyHours / daysWithSchedules).toFixed(1))
+              : 0,
+          daysWithSchedules,
+          professeurId,
+        },
+        metadata: {
+          startDate,
+          endDate,
+          status,
+          totalHours: weeklyHours,
         },
       };
     } catch (error: any) {
@@ -1167,12 +1313,13 @@ export class ScheduleService {
         message:
           "Erreur lors de la récupération de l'emploi du temps du professeur",
         code: "FETCH_PROFESSOR_SCHEDULE_ERROR",
+        details: error.message,
       };
     }
   }
 
   /**
-   * Vérifie les conflits d'horaire
+   * Vérifie les conflits d'horaire (wrapper pour API)
    */
   static async checkConflicts(filters: {
     professeurId: string;
@@ -1194,6 +1341,14 @@ export class ScheduleService {
         excludeScheduleId,
       } = filters;
 
+      if (!professeurId || !classId || !dayOfWeek || !startTime || !endTime) {
+        throw {
+          status: 400,
+          message: "Paramètres manquants",
+          code: "MISSING_PARAMETERS",
+        };
+      }
+
       const conflictCheck = await this.checkScheduleConflicts(
         professeurId,
         classId,
@@ -1210,6 +1365,11 @@ export class ScheduleService {
           ? "Conflits détectés"
           : "Aucun conflit",
         data: conflictCheck,
+        metadata: {
+          hasConflict: conflictCheck.hasConflict,
+          conflictCount: conflictCheck.conflicts.length,
+          checkedAt: new Date().toISOString(),
+        },
       };
     } catch (error: any) {
       console.error("Erreur vérification conflits:", error);
@@ -1217,6 +1377,7 @@ export class ScheduleService {
         status: 500,
         message: "Erreur lors de la vérification des conflits",
         code: "CHECK_CONFLICTS_ERROR",
+        details: error.message,
       };
     }
   }
@@ -1240,6 +1401,7 @@ export class ScheduleService {
         { start: "11:30:00", end: "13:00:00" },
         { start: "14:00:00", end: "15:30:00" },
         { start: "15:45:00", end: "17:15:00" },
+        { start: "17:30:00", end: "19:00:00" },
       ];
 
       // Récupérer les créneaux occupés
@@ -1255,12 +1417,22 @@ export class ScheduleService {
         select: {
           startTime: true,
           endTime: true,
+          dayOfWeek: true,
+          classroom: true,
+          professeurId: true,
+          classId: true,
         },
       });
 
       // Filtrer les créneaux disponibles
       const availableSlots = baseTimeSlots.filter((slot) => {
         return !occupiedSchedules.some((occupied) => {
+          // Vérifier si le jour correspond
+          if (dayOfWeek && occupied.dayOfWeek !== dayOfWeek) {
+            return false;
+          }
+
+          // Vérifier le chevauchement
           return this.checkTimeOverlap(
             occupied.startTime,
             occupied.endTime,
@@ -1271,18 +1443,17 @@ export class ScheduleService {
       });
 
       // Formater les créneaux pour l'affichage
-      const formattedSlots = availableSlots.map((slot) => ({
-        ...slot,
-        displayStartTime: slot.start.substring(0, 5), // HH:MM
-        displayEndTime: slot.end.substring(0, 5), // HH:MM
-        duration: `${
-          (parseInt(slot.end.split(":")[0]) -
-            parseInt(slot.start.split(":")[0])) *
-            60 +
-          (parseInt(slot.end.split(":")[1]) -
-            parseInt(slot.start.split(":")[1]))
-        } minutes`,
-      }));
+      const formattedSlots = availableSlots.map((slot) => {
+        const duration = this.calculateDuration(slot.start, slot.end);
+        return {
+          ...slot,
+          displayStartTime: this.formatTimeForDisplay(slot.start),
+          displayEndTime: this.formatTimeForDisplay(slot.end),
+          duration: duration.display,
+          durationMinutes: duration.minutes,
+          slotId: `${slot.start}-${slot.end}`,
+        };
+      });
 
       return {
         success: true,
@@ -1292,10 +1463,26 @@ export class ScheduleService {
           availableSlots: formattedSlots,
           totalAvailable: formattedSlots.length,
           totalBase: baseTimeSlots.length,
-          occupancyRate:
-            ((baseTimeSlots.length - formattedSlots.length) /
-              baseTimeSlots.length) *
-            100,
+          occupancyRate: parseFloat(
+            (
+              ((baseTimeSlots.length - formattedSlots.length) /
+                baseTimeSlots.length) *
+              100
+            ).toFixed(1)
+          ),
+          occupiedSlots: baseTimeSlots.length - formattedSlots.length,
+          filters: {
+            classId,
+            dayOfWeek,
+            professeurId,
+            classroom,
+          },
+        },
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          filtersApplied: Object.keys(filters).filter(
+            (key) => filters[key as keyof typeof filters]
+          ).length,
         },
       };
     } catch (error: any) {
@@ -1304,6 +1491,7 @@ export class ScheduleService {
         status: 500,
         message: "Erreur lors de la récupération des créneaux disponibles",
         code: "FETCH_AVAILABLE_SLOTS_ERROR",
+        details: error.message,
       };
     }
   }
@@ -1331,6 +1519,7 @@ export class ScheduleService {
           status: 404,
           message: "Horaire non trouvé",
           code: "SCHEDULE_NOT_FOUND",
+          details: { id },
         };
       }
 
@@ -1343,10 +1532,11 @@ export class ScheduleService {
         success: true,
         message: "Horaire supprimé avec succès",
         metadata: {
-          subject: schedule.classAssignment.subject.name,
-          class: schedule.schoolClass.name,
+          subject: schedule.classAssignment?.subject?.name || "Inconnu",
+          class: schedule.schoolClass?.name || "Inconnu",
           dayOfWeek: schedule.dayOfWeek,
-          time: `${schedule.startTime.substring(0, 5)} - ${schedule.endTime.substring(0, 5)}`,
+          time: `${this.formatTimeForDisplay(schedule.startTime)} - ${this.formatTimeForDisplay(schedule.endTime)}`,
+          deletedAt: new Date().toISOString(),
         },
       };
     } catch (error: any) {
@@ -1355,7 +1545,58 @@ export class ScheduleService {
         status: error.status || 500,
         message: error.message || "Erreur lors de la suppression de l'horaire",
         code: error.code || "DELETE_ERROR",
+        details: error.message,
       };
     }
+  }
+
+  /**
+   * Méthodes utilitaires privées
+   */
+  private static calculateDuration(
+    startTime: string,
+    endTime: string
+  ): {
+    minutes: number;
+    hours: number;
+    display: string;
+  } {
+    try {
+      const start = this.parseTime(startTime);
+      const end = this.parseTime(endTime);
+
+      const durationMs = end.date.getTime() - start.date.getTime();
+      const minutes = Math.round(durationMs / (1000 * 60));
+      const hours = minutes / 60;
+
+      const hoursPart = Math.floor(minutes / 60);
+      const minutesPart = minutes % 60;
+
+      return {
+        minutes,
+        hours: parseFloat(hours.toFixed(1)),
+        display:
+          `${hoursPart > 0 ? `${hoursPart}h` : ""}${minutesPart > 0 ? `${minutesPart}min` : ""}`.trim() ||
+          "0min",
+      };
+    } catch {
+      return { minutes: 0, hours: 0, display: "0min" };
+    }
+  }
+
+  private static calculateTotalHours(schedules: any[]): number {
+    return schedules.reduce((total, schedule) => {
+      const duration = this.calculateDuration(
+        schedule.startTime,
+        schedule.endTime
+      );
+      return total + duration.hours;
+    }, 0);
+  }
+
+  private static calculateAverageHoursPerDay(schedules: any[]): number {
+    const days = new Set(schedules.map((s) => s.dayOfWeek)).size;
+    const totalHours = this.calculateTotalHours(schedules);
+    return days > 0 ? parseFloat((totalHours / days).toFixed(1)) : 0;
   }
 }

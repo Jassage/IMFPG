@@ -247,13 +247,13 @@ const Index = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showMobileUserMenu, setShowMobileUserMenu] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuthStore();
-  const { hasPermission, getAccessibleModules, canAccessTab } =
-    usePermissions();
+  const { hasPermission, canAccessTab } = usePermissions();
   const { currentAcademicYear } = useAcademicYearStore();
 
   // Gestion du thème
@@ -282,11 +282,20 @@ const Index = () => {
   // Gestion des clics à l'extérieur
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // Fermer la recherche
       if (
         searchRef.current &&
         !searchRef.current.contains(event.target as Node)
       ) {
         setShowSearchResults(false);
+      }
+
+      // Fermer le menu utilisateur mobile
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowMobileUserMenu(false);
       }
     };
 
@@ -310,7 +319,6 @@ const Index = () => {
     }
 
     setActiveTab("students");
-    setIsMobileMenuOpen(false);
     toast({
       title: "Redirection",
       description: "Navigation vers la section Eleves",
@@ -319,7 +327,7 @@ const Index = () => {
 
   const handleSettingsClick = () => {
     setActiveTab("settings");
-    setIsMobileMenuOpen(false);
+    setShowMobileUserMenu(false);
   };
 
   const handleProfileClick = () => {
@@ -327,7 +335,7 @@ const Index = () => {
       title: "Profil",
       description: "Page de profil en développement",
     });
-    setIsMobileMenuOpen(false);
+    setShowMobileUserMenu(false);
   };
 
   const handleLogout = () => {
@@ -337,18 +345,16 @@ const Index = () => {
       description: "Vous avez été déconnecté avec succès",
     });
     navigate("/login");
+    setShowMobileUserMenu(false);
   };
 
   const isTabAccessible = (tab: ActiveTab): boolean => {
-    // L'admin a toujours accès à tout
     if (user?.role === "Admin") {
       return true;
     }
-
     return canAccessTab(tab);
   };
 
-  // Fonction pour changer d'onglet avec vérification de permission
   const handleTabChange = (tab: ActiveTab) => {
     if (!isTabAccessible(tab)) {
       toast({
@@ -361,21 +367,17 @@ const Index = () => {
     }
 
     setActiveTab(tab);
-    setIsMobileMenuOpen(false);
   };
 
   const renderContent = () => {
-    // Vérifier d'abord si l'utilisateur a accès à cet onglet
     if (!isTabAccessible(activeTab)) {
       return <UnauthorizedView />;
     }
 
-    // Si l'utilisateur n'est pas authentifié
     if (!user) {
       return <UnauthorizedView />;
     }
 
-    // Tableau de correspondance pour les composants
     const tabComponents: Partial<Record<ActiveTab, React.ReactNode>> = {
       dashboard: <RoleBasedDashboard role={user.role as UserRole} />,
       students: <StudentsManager />,
@@ -401,17 +403,13 @@ const Index = () => {
       schedule: <ScheduleManager />,
       transcripts: <BulletinPage />,
       class_assignment: <ClassAssignmentManager />,
-      // transcripts: <TranscriptsPage />,
     };
 
-    // Retourner le composant ou une vue par défaut
     const component = tabComponents[activeTab];
-
     if (component) {
       return component;
     }
 
-    // Fallback: retourner le dashboard
     return <RoleBasedDashboard role={user.role as UserRole} />;
   };
 
@@ -460,70 +458,79 @@ const Index = () => {
       .join("");
   };
 
+  // Menu utilisateur mobile SIMPLE - Version manuelle sans Sheet/Dropdown
   const MobileUserMenu = () => (
-    <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-      <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden">
-          <User className="h-5 w-5" />
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="right" className="w-[280px] sm:w-[350px]">
-        <div className="flex flex-col h-full">
-          <div className="flex items-center gap-3 p-4 border-b">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={user?.avatar} />
-              <AvatarFallback className="bg-primary text-primary-foreground">
-                {user ? (
-                  getInitials(user.firstName)
-                ) : (
-                  <User className="h-4 w-4" />
-                )}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col">
-              <span className="font-semibold text-sm">
-                {user?.firstName} {user?.lastName}
-              </span>
-              <span className="text-xs text-muted-foreground capitalize flex items-center gap-1">
-                {getRoleIcon(user?.role)}
-                {user?.role}
-              </span>
+    <div className="relative" ref={mobileMenuRef}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="md:hidden"
+        onClick={() => setShowMobileUserMenu(!showMobileUserMenu)}
+      >
+        <User className="h-5 w-5" />
+      </Button>
+
+      {showMobileUserMenu && (
+        <div className="absolute right-0 top-full mt-1 w-64 bg-background border rounded-lg shadow-lg z-50 animate-in fade-in slide-in-from-top-2">
+          <div className="p-4 border-b">
+            <div className="flex items-center gap-3">
+              <Avatar className="h-10 w-10">
+                <AvatarImage src={user?.avatar} />
+                <AvatarFallback className="bg-primary text-primary-foreground">
+                  {user ? (
+                    getInitials(user.firstName)
+                  ) : (
+                    <User className="h-4 w-4" />
+                  )}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col">
+                <span className="font-semibold text-sm">
+                  {user?.firstName} {user?.lastName}
+                </span>
+                <span className="text-xs text-muted-foreground capitalize flex items-center gap-1">
+                  {getRoleIcon(user?.role)}
+                  {user?.role}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="p-4 space-y-2">
-            <Button
-              variant="outline"
-              className="w-full justify-start"
+          <div className="p-2 space-y-1">
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
               onClick={handleProfileClick}
             >
-              <User className="mr-2 h-4 w-4" />
+              <User className="h-4 w-4" />
               Mon Profil
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start"
+            </button>
+
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
               onClick={handleSettingsClick}
             >
-              <Settings className="mr-2 h-4 w-4" />
+              <Settings className="h-4 w-4" />
               Paramètres
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => setIsDarkMode(!isDarkMode)}
+            </button>
+
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+              onClick={() => {
+                setIsDarkMode(!isDarkMode);
+                setShowMobileUserMenu(false);
+              }}
             >
               {isDarkMode ? (
-                <Sun className="mr-2 h-4 w-4" />
+                <Sun className="h-4 w-4" />
               ) : (
-                <Moon className="mr-2 h-4 w-4" />
+                <Moon className="h-4 w-4" />
               )}
               {isDarkMode ? "Mode clair" : "Mode sombre"}
-            </Button>
+            </button>
           </div>
 
-          <div className="px-4 py-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="p-3 border-t">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
               <div
                 className={`h-2 w-2 rounded-full ${
                   isAuthenticated ? "bg-green-500" : "bg-gray-500"
@@ -531,21 +538,18 @@ const Index = () => {
               />
               {isAuthenticated ? "Connecté" : "Non connecté"}
             </div>
-          </div>
 
-          <div className="p-4 mt-auto border-t">
-            <Button
-              variant="destructive"
-              className="w-full justify-start"
+            <button
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
               onClick={handleLogout}
             >
-              <LogOut className="mr-2 h-4 w-4" />
+              <LogOut className="h-4 w-4" />
               Déconnexion
-            </Button>
+            </button>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      )}
+    </div>
   );
 
   const getCurrentConfig = () => {
@@ -597,7 +601,7 @@ const Index = () => {
             </p>
           </div>
 
-          {/* {activeTab !== "settings" && hasPermission("use_search") && (
+          {activeTab !== "settings" && hasPermission("use_search") && (
             <div className="hidden sm:flex items-center gap-2 flex-1 max-w-md">
               <div className="relative flex-1" ref={searchRef}>
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -619,8 +623,9 @@ const Index = () => {
                 )}
               </div>
             </div>
-          )} */}
+          )}
 
+          {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-2">
             <Button
               variant="ghost"
@@ -690,6 +695,25 @@ const Index = () => {
                   </>
                 )}
 
+                <DropdownMenuItem onClick={handleProfileClick}>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Mon Profil</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={handleSettingsClick}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Paramètres</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => setIsDarkMode(!isDarkMode)}>
+                  {isDarkMode ? (
+                    <Sun className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Moon className="mr-2 h-4 w-4" />
+                  )}
+                  <span>{isDarkMode ? "Mode clair" : "Mode sombre"}</span>
+                </DropdownMenuItem>
+
                 <DropdownMenuSeparator />
 
                 <div className="px-2 py-1 text-xs text-muted-foreground">
@@ -703,6 +727,8 @@ const Index = () => {
                   </div>
                 </div>
 
+                <DropdownMenuSeparator />
+
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
                   onClick={handleLogout}
@@ -714,6 +740,7 @@ const Index = () => {
             </DropdownMenu>
           </div>
 
+          {/* Mobile Menu */}
           <div className="flex md:hidden items-center gap-1">
             <MobileSidebar
               activeTab={activeTab}
@@ -733,6 +760,8 @@ const Index = () => {
                 <Moon className="h-4 w-4" />
               )}
             </Button>
+
+            {/* Menu utilisateur mobile simplifié */}
             <MobileUserMenu />
           </div>
         </header>

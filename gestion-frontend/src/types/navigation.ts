@@ -411,12 +411,6 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "UserPlus",
         PERMISSIONS.PROCESS_ENROLLMENTS
       ),
-      createNavigationItem(
-        "guardians",
-        "Parents",
-        "UsersRound",
-        PERMISSIONS.VIEW_GUARDIANS
-      ),
     ],
     academicItems: [],
     documentItems: [],
@@ -549,12 +543,6 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Professeurs",
         "Award",
         PERMISSIONS.VIEW_PROFESSEURS
-      ),
-      createNavigationItem(
-        "guardians",
-        "Parents",
-        "UsersRound",
-        PERMISSIONS.VIEW_GUARDIANS
       ),
     ],
     academicItems: [

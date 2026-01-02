@@ -7,7 +7,7 @@ import axios, {
 
 // Configuration de base
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+  import.meta.env.VITE_API_URL || "https://imfpg.ddns.net/api";
 
 // Configuration Axios
 const apiConfig: AxiosRequestConfig = {

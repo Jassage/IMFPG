@@ -462,7 +462,7 @@ export const createAssignment = async (
 
     res.status(201).json(response);
   } catch (error: any) {
-    console.error("❌ TimetableController - createAssignment error:", error);
+    console.error("TimetableController - createAssignment error:", error);
 
     let statusCode = 500;
     let errorCode = "INTERNAL_ERROR";
@@ -845,7 +845,7 @@ export const getProfesseurTimetable = async (
 };
 
 /**
- * @desc Ajoute un horaire à une assignation existante
+ * @desc Ajoute un horaire à une assignation existante avec vérification des contraintes
  * @route POST /api/timetables/assignments/:assignmentId/schedules
  * @access Admin/Staff
  */
@@ -859,17 +859,75 @@ export const addScheduleToAssignment = async (
     const { assignmentId } = req.params;
     const scheduleData: CreateScheduleData = req.body;
 
+    console.log("📝 Add schedule request:", {
+      assignmentId,
+      scheduleData,
+    });
+
     // Validation des données
+    const requiredFields = ["dayOfWeek", "startTime", "endTime", "classId"];
+    const missingFields = requiredFields.filter(
+      (field) => !scheduleData[field as keyof CreateScheduleData]
+    );
+
+    if (missingFields.length > 0) {
+      const response: TimetableControllerResponse = {
+        success: false,
+        message: `Champs requis manquants: ${missingFields.join(", ")}`,
+        code: "MISSING_REQUIRED_FIELDS",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Vérifier le format des heures
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
     if (
-      !scheduleData.dayOfWeek ||
-      !scheduleData.startTime ||
-      !scheduleData.endTime ||
-      !scheduleData.classId
+      !timeRegex.test(scheduleData.startTime) ||
+      !timeRegex.test(scheduleData.endTime)
     ) {
       const response: TimetableControllerResponse = {
         success: false,
-        message: "Jour, horaires et classe sont requis",
-        code: "MISSING_REQUIRED_FIELDS",
+        message: "Format des heures invalide. Utilisez HH:MM",
+        code: "INVALID_TIME_FORMAT",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Vérifier l'ordre des heures
+    const startTime = new Date(`2000-01-01T${scheduleData.startTime}:00`);
+    const endTime = new Date(`2000-01-01T${scheduleData.endTime}:00`);
+
+    if (endTime <= startTime) {
+      const response: TimetableControllerResponse = {
+        success: false,
+        message: "L'heure de fin doit être après l'heure de début",
+        code: "INVALID_TIME_RANGE",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Vérifier la durée minimale (30 minutes)
+    const durationMinutes =
+      (endTime.getTime() - startTime.getTime()) / (1000 * 60);
+    if (durationMinutes < 30) {
+      const response: TimetableControllerResponse = {
+        success: false,
+        message: "Durée minimale: 30 minutes",
+        code: "MIN_DURATION_NOT_MET",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Vérifier la durée maximale (4 heures)
+    if (durationMinutes > 240) {
+      const response: TimetableControllerResponse = {
+        success: false,
+        message: "Durée maximale: 4 heures",
+        code: "MAX_DURATION_EXCEEDED",
       };
       res.status(400).json(response);
       return;
@@ -880,6 +938,7 @@ export const addScheduleToAssignment = async (
       where: { id: assignmentId },
       include: {
         professeur: true,
+        subject: true,
       },
     });
 
@@ -914,21 +973,160 @@ export const addScheduleToAssignment = async (
         success: false,
         message: "Le niveau de la classe ne correspond pas à l'assignation",
         code: "CLASS_LEVEL_MISMATCH",
+        data: {
+          assignmentLevel: assignment.classLevel,
+          classLevel: schoolClass.level,
+        },
       };
       res.status(400).json(response);
       return;
     }
 
-    // Vérifier les conflits d'horaire
-    await checkScheduleConflicts(prisma, {
-      assignmentId,
-      classId: scheduleData.classId,
-      professeurId: assignment.professeurId,
-      dayOfWeek: scheduleData.dayOfWeek,
-      startTime: scheduleData.startTime,
-      endTime: scheduleData.endTime,
-      excludeScheduleId: null,
+    // Vérifier si la matière est déjà enseignée à cette classe cette année
+    const existingClassAssignment = await prisma.classAssignment.findFirst({
+      where: {
+        subjectId: assignment.subjectId,
+        academicYearId: assignment.academicYearId,
+        classLevel: assignment.classLevel,
+        id: { not: assignmentId },
+      },
     });
+
+    if (existingClassAssignment) {
+      const response: TimetableControllerResponse = {
+        success: false,
+        message:
+          "Cette matière est déjà enseignée à ce niveau pour cette année académique",
+        code: "DUPLICATE_SUBJECT_LEVEL",
+        data: {
+          existingAssignmentId: existingClassAssignment.id,
+        },
+      };
+      res.status(409).json(response);
+      return;
+    }
+
+    // Vérifier les contraintes de disponibilité du professeur
+    const professeurScheduleCount = await prisma.schedule.count({
+      where: {
+        professeurId: assignment.professeurId,
+        dayOfWeek: scheduleData.dayOfWeek,
+        status: "ACTIVE",
+      },
+    });
+
+    // Contrainte: maximum 6 heures par jour
+    if (professeurScheduleCount >= 6) {
+      const response: TimetableControllerResponse = {
+        success: false,
+        message: "Le professeur a atteint le maximum d'heures pour ce jour",
+        code: "MAX_HOURS_PER_DAY_REACHED",
+        data: { maxHours: 6, currentHours: professeurScheduleCount },
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    // Vérifier les contraintes de disponibilité de la salle
+    if (scheduleData.classroom) {
+      const classroomScheduleCount = await prisma.schedule.count({
+        where: {
+          classroom: scheduleData.classroom,
+          dayOfWeek: scheduleData.dayOfWeek,
+          status: "ACTIVE",
+        },
+      });
+
+      // Contrainte: maximum 8 cours par jour par salle
+      if (classroomScheduleCount >= 8) {
+        const response: TimetableControllerResponse = {
+          success: false,
+          message: `La salle ${scheduleData.classroom} a atteint le maximum de cours pour ce jour`,
+          code: "MAX_CLASSES_PER_ROOM_REACHED",
+          data: { maxClasses: 8, currentClasses: classroomScheduleCount },
+        };
+        res.status(400).json(response);
+        return;
+      }
+    }
+
+    // Vérifier les conflits d'horaire
+    try {
+      await checkScheduleConflicts(prisma, {
+        assignmentId,
+        classId: scheduleData.classId,
+        professeurId: assignment.professeurId,
+        dayOfWeek: scheduleData.dayOfWeek as DayOfWeek,
+        startTime: scheduleData.startTime,
+        endTime: scheduleData.endTime,
+        excludeScheduleId: null,
+      });
+    } catch (error: any) {
+      if (error.message === "PROFESSEUR_CONFLICT") {
+        const conflictDetails = await getConflictDetails(prisma, {
+          professeurId: assignment.professeurId,
+          dayOfWeek: scheduleData.dayOfWeek as DayOfWeek,
+          startTime: scheduleData.startTime,
+          endTime: scheduleData.endTime,
+        });
+
+        const response: TimetableControllerResponse = {
+          success: false,
+          message: "Le professeur a déjà un cours à ce créneau",
+          code: "PROFESSEUR_CONFLICT",
+          data: { conflictDetails },
+        };
+        res.status(409).json(response);
+        return;
+      } else if (error.message === "CLASS_CONFLICT") {
+        const conflictDetails = await getConflictDetails(prisma, {
+          classId: scheduleData.classId,
+          dayOfWeek: scheduleData.dayOfWeek as DayOfWeek,
+          startTime: scheduleData.startTime,
+          endTime: scheduleData.endTime,
+        });
+
+        const response: TimetableControllerResponse = {
+          success: false,
+          message: "La classe a déjà un cours à ce créneau",
+          code: "CLASS_CONFLICT",
+          data: { conflictDetails },
+        };
+        res.status(409).json(response);
+        return;
+      }
+      throw error;
+    }
+
+    // Vérifier la contrainte de untilDate
+    if (scheduleData.untilDate) {
+      const untilDate = new Date(scheduleData.untilDate);
+      const today = new Date();
+
+      if (untilDate < today) {
+        const response: TimetableControllerResponse = {
+          success: false,
+          message: "La date de fin ne peut pas être dans le passé",
+          code: "INVALID_UNTIL_DATE",
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      // Vérifier que untilDate n'est pas trop éloigné (max 1 an)
+      const oneYearFromNow = new Date();
+      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+
+      if (untilDate > oneYearFromNow) {
+        const response: TimetableControllerResponse = {
+          success: false,
+          message: "La date de fin ne peut pas dépasser un an",
+          code: "UNTIL_DATE_TOO_FAR",
+        };
+        res.status(400).json(response);
+        return;
+      }
+    }
 
     // Créer l'horaire
     const schedule = await prisma.schedule.create({
@@ -955,6 +1153,24 @@ export const addScheduleToAssignment = async (
             level: true,
           },
         },
+        classAssignment: {
+          select: {
+            subject: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+            professeur: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -964,7 +1180,8 @@ export const addScheduleToAssignment = async (
       action: TimetableActionTypes.SCHEDULE_CREATED,
       entity: "Schedule",
       entityId: schedule.id,
-      description: "Horaire ajouté à l'assignation",
+      description:
+        "Horaire ajouté avec succès après vérification des contraintes",
       status: "SUCCESS",
       metadata: {
         assignmentId,
@@ -972,6 +1189,8 @@ export const addScheduleToAssignment = async (
         dayOfWeek: scheduleData.dayOfWeek,
         startTime: scheduleData.startTime,
         endTime: scheduleData.endTime,
+        classroom: scheduleData.classroom,
+        duration: `${durationMinutes} minutes`,
       },
     });
 
@@ -984,22 +1203,19 @@ export const addScheduleToAssignment = async (
     res.status(201).json(response);
   } catch (error: any) {
     console.error(
-      " TimetableController - addScheduleToAssignment error:",
+      "❌ TimetableController - addScheduleToAssignment error:",
       error
     );
 
+    // Gestion des erreurs spécifiques
     let statusCode = 500;
     let errorCode = "INTERNAL_ERROR";
     let errorMessage = "Erreur interne du serveur";
 
-    if (error.message === "PROFESSEUR_CONFLICT") {
-      statusCode = 409;
-      errorCode = "PROFESSEUR_CONFLICT";
-      errorMessage = "Le professeur a déjà un cours à ce créneau";
-    } else if (error.message === "CLASS_CONFLICT") {
-      statusCode = 409;
-      errorCode = "CLASS_CONFLICT";
-      errorMessage = "La classe a déjà un cours à ce créneau";
+    if (error.message === "INVALID_TIME_RANGE") {
+      statusCode = 400;
+      errorCode = "INVALID_TIME_RANGE";
+      errorMessage = "Les horaires spécifiés sont invalides";
     }
 
     await createAuditLog({
@@ -1019,6 +1235,60 @@ export const addScheduleToAssignment = async (
 
     res.status(statusCode).json(response);
   }
+};
+
+// Fonction utilitaire pour obtenir les détails des conflits
+const getConflictDetails = async (
+  prisma: any,
+  filters: {
+    professeurId?: string;
+    classId?: string;
+    dayOfWeek: DayOfWeek;
+    startTime: string;
+    endTime: string;
+  }
+) => {
+  const where: any = {
+    dayOfWeek: filters.dayOfWeek,
+    status: "ACTIVE",
+  };
+
+  if (filters.professeurId) {
+    where.professeurId = filters.professeurId;
+  }
+  if (filters.classId) {
+    where.classId = filters.classId;
+  }
+
+  const conflicts = await prisma.schedule.findMany({
+    where,
+    include: {
+      classAssignment: {
+        select: {
+          subject: {
+            select: {
+              name: true,
+              code: true,
+            },
+          },
+        },
+      },
+      schoolClass: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+
+  return conflicts.map((conflict: any) => ({
+    id: conflict.id,
+    startTime: conflict.startTime,
+    endTime: conflict.endTime,
+    subject: conflict.classAssignment?.subject?.name,
+    class: conflict.schoolClass?.name,
+    classroom: conflict.classroom,
+  }));
 };
 
 /**

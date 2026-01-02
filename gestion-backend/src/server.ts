@@ -77,7 +77,7 @@ app.use("/api/class-assignments", classeAssignmentRoutes);
 app.use("/api/guardians", guardianRoutes);
 app.use("/api/grades", gradeRoutes);
 app.use("/api/schedules", scheduleRoutes);
-app.use("/api/timetables", timetableRoutes);
+// app.use("/api/timetables", timetableRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/fee-structures", feeStructureRoutes);

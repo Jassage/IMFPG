@@ -192,6 +192,7 @@ export interface StudentApiResponse extends ApiResponse<Student> {}
 export interface StudentsApiResponse extends ApiResponse<Student[]> {}
 
 export interface Subject {
+  isActive: boolean;
   maxGrade: number;
   id: string;
   code: string;

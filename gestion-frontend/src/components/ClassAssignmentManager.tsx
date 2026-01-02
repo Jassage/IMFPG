@@ -191,7 +191,7 @@ const ClassAssignmentManager = () => {
     console.log(
       `✅ ${validAssignments.length} assignments valides sur ${assignments.length}`
     );
-    return validAssignments as ClassAssignment[];
+    return validAssignments as unknown as ClassAssignment[];
   }, [assignments]);
 
   // Debug: Afficher les statistiques par statut

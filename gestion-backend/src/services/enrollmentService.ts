@@ -1,7 +1,7 @@
 /**
  * @file enrollmentService.ts
- * @description Service pour la gestion des inscriptions
- * @version 1.0.0
+ * @description Service pour la gestion des inscriptions avec support complet du redoublement
+ * @version 2.0.0
  */
 
 import { PrismaClient, Prisma } from "../../generated/prisma";
@@ -41,6 +41,8 @@ export interface ReenrollmentData {
   studentId: string;
   classId: string;
   academicYearId: string;
+  previousAcademicYearId?: string;
+  previousEnrollmentId?: string;
   enrollmentDate?: string;
   notes?: string;
 }
@@ -60,9 +62,67 @@ export interface ApiResponse {
 }
 
 /**
+ * Types de niveaux de classe
+ */
+export enum ClassLevel {
+  Sixieme = "Sixieme",
+  Cinquieme = "Cinquieme",
+  Quatrieme = "Quatrieme",
+  Troisieme = "Troisieme",
+  Seconde = "Seconde",
+  Premiere = "Premiere",
+  Terminale = "Terminale",
+  NSI = "NSI",
+  NSII = "NSII",
+  NSIII = "NSIII",
+  NSIV = "NSIV",
+}
+
+/**
  * Service pour la gestion des inscriptions
  */
 export class EnrollmentService {
+  /**
+   * Définit l'ordre des niveaux pour chaque parcours
+   */
+  private getClassLevelOrder(): Map<string, number> {
+    const levelOrder = new Map<string, number>();
+
+    // Parcours classique
+    levelOrder.set(ClassLevel.Sixieme, 1);
+    levelOrder.set(ClassLevel.Cinquieme, 2);
+    levelOrder.set(ClassLevel.Quatrieme, 3);
+    levelOrder.set(ClassLevel.Troisieme, 4);
+    levelOrder.set(ClassLevel.Seconde, 5);
+    levelOrder.set(ClassLevel.Premiere, 6);
+    levelOrder.set(ClassLevel.Terminale, 7);
+
+    // Parcours Nouveau Secondaire (après Quatrième)
+    levelOrder.set(ClassLevel.NSI, 8);
+    levelOrder.set(ClassLevel.NSII, 9);
+    levelOrder.set(ClassLevel.NSIII, 10);
+    levelOrder.set(ClassLevel.NSIV, 11);
+
+    return levelOrder;
+  }
+
+  /**
+   * Récupère le parcours d'un niveau
+   */
+  private getLevelParcours(level: string): string {
+    if (
+      [
+        ClassLevel.NSI,
+        ClassLevel.NSII,
+        ClassLevel.NSIII,
+        ClassLevel.NSIV,
+      ].includes(level as ClassLevel)
+    ) {
+      return "Nouveau Secondaire";
+    }
+    return "Parcours Classique";
+  }
+
   /**
    * Récupère la liste des inscriptions
    */
@@ -162,7 +222,7 @@ export class EnrollmentService {
         },
       };
     } catch (error: any) {
-      console.error("❌ EnrollmentService - getEnrollments error:", error);
+      console.error("EnrollmentService - getEnrollments error:", error);
       throw error;
     }
   }
@@ -228,7 +288,7 @@ export class EnrollmentService {
         data: { enrollment },
       };
     } catch (error: any) {
-      console.error("❌ EnrollmentService - getEnrollmentById error:", error);
+      console.error("EnrollmentService - getEnrollmentById error:", error);
       throw error;
     }
   }
@@ -246,6 +306,12 @@ export class EnrollmentService {
         assignFees = false,
         selectedFeeStructures = [],
       } = data;
+
+      console.log("Debut creation inscription", {
+        studentId,
+        classId,
+        academicYearId,
+      });
 
       // Vérifier si l'étudiant existe
       const student = await prisma.student.findUnique({
@@ -283,6 +349,28 @@ export class EnrollmentService {
           success: false,
           message: "Année académique non trouvée",
           code: "ACADEMIC_YEAR_NOT_FOUND",
+        };
+      }
+
+      // Valider la date d'inscription
+      const enrollmentDateObj = enrollmentDate
+        ? new Date(enrollmentDate)
+        : new Date();
+      const dateValidation = await this.validateEnrollmentDate(
+        enrollmentDateObj,
+        academicYearId
+      );
+
+      if (!dateValidation.valid) {
+        return {
+          success: false,
+          message: dateValidation.reason,
+          code: "INVALID_ENROLLMENT_DATE",
+          data: {
+            enrollmentDate: enrollmentDateObj,
+            academicYearStart: academicYear.startDate,
+            academicYearEnd: academicYear.endDate,
+          },
         };
       }
 
@@ -331,9 +419,7 @@ export class EnrollmentService {
           studentId,
           classId,
           academicYearId,
-          enrollmentDate: enrollmentDate
-            ? new Date(enrollmentDate)
-            : new Date(),
+          enrollmentDate: enrollmentDateObj,
           status: "Active",
           isReenrollment: false,
         },
@@ -363,6 +449,8 @@ export class EnrollmentService {
         );
       }
 
+      console.log("Inscription creee avec succes", enrollment.id);
+
       return {
         success: true,
         message: "Inscription créée avec succès",
@@ -381,14 +469,11 @@ export class EnrollmentService {
         },
       };
     } catch (error: any) {
-      console.error("❌ EnrollmentService - createEnrollment error:", error);
+      console.error("EnrollmentService - createEnrollment error:", error);
       throw error;
     }
   }
 
-  /**
-   * Met à jour une inscription
-   */
   async updateEnrollment(
     id: string,
     data: UpdateEnrollmentData,
@@ -397,11 +482,53 @@ export class EnrollmentService {
     try {
       const { classId, status } = data;
 
+      console.log("Service - updateEnrollment:", { id, data });
+
+      // VALIDATION INITIALE DES PARAMÈTRES
+      // Vérifier que classId n'est pas une chaîne vide si fourni
+      if (classId !== undefined && classId.trim() === "") {
+        return {
+          success: false,
+          message: "L'ID de classe ne peut pas être vide",
+          code: "EMPTY_CLASS_ID",
+        };
+      }
+
+      // Vérifier que status n'est pas une chaîne vide si fourni
+      if (status !== undefined && status.trim() === "") {
+        return {
+          success: false,
+          message: "Le statut ne peut pas être vide",
+          code: "EMPTY_STATUS",
+        };
+      }
+
       // Vérifier si l'inscription existe
       const enrollment = await prisma.enrollment.findUnique({
         where: { id },
         include: {
-          student: true,
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              studentCode: true,
+              classId: true,
+            },
+          },
+          schoolClass: {
+            select: {
+              id: true,
+              name: true,
+              level: true,
+            },
+          },
+          academicYear: {
+            select: {
+              id: true,
+              year: true,
+            },
+          },
         },
       });
 
@@ -413,8 +540,40 @@ export class EnrollmentService {
         };
       }
 
-      // Vérifier si la nouvelle classe existe (si changement)
-      if (classId && classId !== enrollment.classId) {
+      console.log("Inscription trouvee:", enrollment.id);
+
+      // Vérifier si l'inscription est modifiable
+      const modifiableValidation =
+        await this.validateEnrollmentIsModifiable(enrollment);
+
+      if (!modifiableValidation.valid) {
+        return {
+          success: false,
+          message: modifiableValidation.reason,
+          code: "ENROLLMENT_NOT_MODIFIABLE",
+        };
+      }
+
+      // Préparer les données de mise à jour
+      const updateData: any = {
+        updatedAt: new Date(),
+      };
+
+      let willChangeClass = false;
+      let newClassId = enrollment.classId;
+
+      // GESTION DU CHANGEMENT DE CLASSE
+      if (classId !== undefined && classId !== enrollment.classId) {
+        // Valider que classId est valide (pas null/undefined/empty)
+        if (!classId) {
+          return {
+            success: false,
+            message: "ID de classe invalide",
+            code: "INVALID_CLASS_ID",
+          };
+        }
+
+        // Vérifier si la nouvelle classe existe
         const schoolClass = await prisma.schoolClass.findUnique({
           where: { id: classId },
         });
@@ -426,50 +585,214 @@ export class EnrollmentService {
             code: "CLASS_NOT_FOUND",
           };
         }
+
+        console.log("Nouvelle classe trouvee:", schoolClass.name);
+
+        // Vérifier la capacité de la nouvelle classe
+        const currentEnrollments = await prisma.enrollment.count({
+          where: {
+            classId,
+            academicYearId: enrollment.academicYearId,
+            status: "Active",
+          },
+        });
+
+        if (currentEnrollments >= (schoolClass.capacity || 30)) {
+          return {
+            success: false,
+            message: "La nouvelle classe a atteint sa capacité maximale",
+            code: "NEW_CLASS_FULL",
+            data: {
+              capacity: schoolClass.capacity,
+              current: currentEnrollments,
+            },
+          };
+        }
+
+        // Vérifier la transition de niveau (si changement de classe)
+        const levelValidation = await this.validateClassLevelTransition(
+          enrollment.studentId,
+          classId,
+          enrollment.classId,
+          await this.getAcademicStatus(
+            enrollment.studentId,
+            enrollment.academicYearId
+          )
+        );
+
+        if (!levelValidation.valid) {
+          return {
+            success: false,
+            message: levelValidation.reason,
+            code: "INVALID_CLASS_TRANSITION",
+            data: levelValidation.details,
+          };
+        }
+
+        updateData.classId = classId;
+        newClassId = classId;
+        willChangeClass = true;
       }
 
-      // Mettre à jour
-      const updateData: any = {};
-      if (typeof classId !== "undefined") {
-        updateData.classId = classId;
-      }
-      if (typeof status !== "undefined") {
+      // GESTION DU CHANGEMENT DE STATUT
+      if (status !== undefined && status !== enrollment.status) {
+        // Valider le statut
+        const validStatuses = ["Active", "Suspended", "Completed", "Archived"];
+        if (!validStatuses.includes(status)) {
+          return {
+            success: false,
+            message:
+              "Statut invalide. Valeurs acceptées: Active, Suspended, Completed, Archived",
+            code: "INVALID_STATUS",
+          };
+        }
+
+        // Valider la transition de statut
+        const statusValidation = await this.validateStatusTransition(
+          enrollment.status,
+          status,
+          enrollment.id
+        );
+
+        if (!statusValidation.valid) {
+          return {
+            success: false,
+            message: statusValidation.reason,
+            code: "INVALID_STATUS_TRANSITION",
+          };
+        }
+
+        // Vérifications supplémentaires pour certains statuts
+        if (status === "Completed") {
+          const canCompleteValidation =
+            await this.validateCanCompleteEnrollment(enrollment.id);
+
+          if (!canCompleteValidation.valid) {
+            return {
+              success: false,
+              message: canCompleteValidation.reason,
+              code: "CANNOT_COMPLETE_ENROLLMENT",
+              data: canCompleteValidation.details,
+            };
+          }
+        }
+
         updateData.status = status;
       }
 
+      console.log("Donnees a mettre a jour:", updateData);
+
+      // Vérifier s'il y a des changements réels
+      if (Object.keys(updateData).length <= 1) {
+        // Seulement updatedAt
+        return {
+          success: false,
+          message: "Aucune modification à appliquer",
+          code: "NO_CHANGES",
+        };
+      }
+
+      // Mettre à jour l'inscription
       const updatedEnrollment = await prisma.enrollment.update({
         where: { id },
         data: updateData,
         include: {
-          student: true,
-          schoolClass: true,
-          academicYear: true,
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              studentCode: true,
+              email: true,
+            },
+          },
+          schoolClass: {
+            select: {
+              id: true,
+              name: true,
+              level: true,
+              capacity: true,
+            },
+          },
+          academicYear: {
+            select: {
+              id: true,
+              year: true,
+              startDate: true,
+              endDate: true,
+            },
+          },
         },
       });
 
+      console.log("Inscription mise a jour:", updatedEnrollment.id);
+
       // Mettre à jour la classe de l'étudiant si nécessaire
-      if (classId && classId !== enrollment.classId) {
+      if (willChangeClass) {
         await prisma.student.update({
           where: { id: enrollment.studentId },
           data: {
-            classId,
+            classId: newClassId,
+            updatedAt: new Date(),
           },
         });
+
+        console.log("Classe de l'etudiant mise a jour");
       }
+
+      // Journaliser l'action
+      console.log(`Mise a jour inscription - 
+      ID: ${id}
+      Etudiant: ${enrollment.student.firstName} ${enrollment.student.lastName}
+      Ancienne classe: ${enrollment.schoolClass?.name || "N/A"}
+      Nouvelle classe: ${updatedEnrollment.schoolClass?.name || "N/A"}
+      Ancien statut: ${enrollment.status}
+      Nouveau statut: ${updatedEnrollment.status}
+    `);
 
       return {
         success: true,
         message: "Inscription mise à jour avec succès",
         data: { enrollment: updatedEnrollment },
         metadata: {
-          oldStatus: enrollment.status,
-          newStatus: status,
+          studentId: enrollment.studentId,
+          studentCode: enrollment.student.studentCode,
           oldClassId: enrollment.classId,
-          newClassId: classId,
+          newClassId: updatedEnrollment.classId,
+          oldStatus: enrollment.status,
+          newStatus: updatedEnrollment.status,
         },
       };
     } catch (error: any) {
-      console.error("❌ EnrollmentService - updateEnrollment error:", error);
+      console.error("EnrollmentService - updateEnrollment error:", error);
+
+      // Gérer les erreurs Prisma spécifiques
+      if (error.code === "P2025") {
+        return {
+          success: false,
+          message: "Inscription non trouvée pour la mise à jour",
+          code: "ENROLLMENT_NOT_FOUND_FOR_UPDATE",
+        };
+      }
+
+      if (error.code === "P2003") {
+        return {
+          success: false,
+          message: "Référence de clé étrangère invalide",
+          code: "FOREIGN_KEY_ERROR",
+          details: error.meta,
+        };
+      }
+
+      if (error.code === "P2002") {
+        return {
+          success: false,
+          message: "Violation de contrainte unique",
+          code: "UNIQUE_CONSTRAINT_VIOLATION",
+          details: error.meta,
+        };
+      }
+
       throw error;
     }
   }
@@ -480,6 +803,7 @@ export class EnrollmentService {
   async unenrollStudent(id: string, reason: string, auditData: AuditData) {
     try {
       const unenrollReason = reason || "Non spécifié par l'utilisateur";
+
       // Vérifier si l'inscription existe
       const enrollment = await prisma.enrollment.findUnique({
         where: { id },
@@ -496,11 +820,21 @@ export class EnrollmentService {
         };
       }
 
+      // Vérifier si l'inscription peut être désinscrite
+      if (enrollment.status === "Completed") {
+        return {
+          success: false,
+          message: `Une inscription avec le statut ${enrollment.status} ne peut pas être désinscrite`,
+          code: "CANNOT_UNENROLL",
+        };
+      }
+
       // Désinscrire
       const updatedEnrollment = await prisma.enrollment.update({
         where: { id },
         data: {
           status: "Suspended",
+          updatedAt: new Date(),
         },
       });
 
@@ -509,8 +843,11 @@ export class EnrollmentService {
         where: { id: enrollment.studentId },
         data: {
           status: "Inactive",
+          updatedAt: new Date(),
         },
       });
+
+      console.log("Etudiant desinscrit avec succes", enrollment.studentId);
 
       return {
         success: true,
@@ -518,251 +855,17 @@ export class EnrollmentService {
         data: { enrollment: updatedEnrollment },
         metadata: {
           studentCode: enrollment.student.studentCode,
-          reason,
+          reason: unenrollReason,
         },
       };
     } catch (error: any) {
-      console.error("❌ EnrollmentService - unenrollStudent error:", error);
+      console.error("EnrollmentService - unenrollStudent error:", error);
       throw error;
     }
   }
 
   /**
-   * Gère la réinscription d'un étudiant
-   */
-  // async reenrollStudent(data: ReenrollmentData, auditData: AuditData) {
-  //   try {
-  //     const { studentId, classId, academicYearId, enrollmentDate, notes } =
-  //       data;
-
-  //     // Vérifier si l'étudiant existe
-  //     const student = await prisma.student.findUnique({
-  //       where: { id: studentId },
-  //     });
-
-  //     if (!student) {
-  //       return {
-  //         success: false,
-  //         message: "Étudiant non trouvé",
-  //         code: "STUDENT_NOT_FOUND",
-  //       };
-  //     }
-
-  //     // Récupérer l'année précédente
-  //     const previousYear = await prisma.academicYear.findFirst({
-  //       where: {
-  //         isCurrent: false,
-  //       },
-  //       orderBy: {
-  //         endDate: "desc",
-  //       },
-  //       take: 1,
-  //     });
-
-  //     console.log("Previews Year:", previousYear);
-
-  //     if (!previousYear) {
-  //       return {
-  //         success: false,
-  //         message: "Aucune année académique précédente trouvée",
-  //         code: "NO_PREVIOUS_YEAR",
-  //       };
-  //     }
-
-  //     // Vérifier l'inscription précédente
-  //     const previousEnrollment = await prisma.enrollment.findUnique({
-  //       where: {
-  //         studentId_academicYearId: {
-  //           studentId,
-  //           academicYearId: previousYear.id,
-  //         },
-  //       },
-  //     });
-  //     console.log("previousEnrollment:", previousEnrollment);
-
-  //     if (!previousEnrollment) {
-  //       return {
-  //         success: false,
-  //         message: "L'étudiant n'était pas inscrit l'année précédente",
-  //         code: "NO_PREVIOUS_ENROLLMENT",
-  //       };
-  //     }
-
-  //     // Vérifier l'année académique cible
-  //     const targetYear = await prisma.academicYear.findUnique({
-  //       where: { id: academicYearId },
-  //     });
-
-  //     if (!targetYear) {
-  //       return {
-  //         success: false,
-  //         message: "Année académique cible non trouvée",
-  //         code: "TARGET_YEAR_NOT_FOUND",
-  //       };
-  //     }
-
-  //     // Vérifier si l'étudiant est déjà inscrit pour cette année
-  //     const existingEnrollment = await prisma.enrollment.findUnique({
-  //       where: {
-  //         studentId_academicYearId: {
-  //           studentId,
-  //           academicYearId: targetYear.id,
-  //         },
-  //       },
-  //     });
-
-  //     if (existingEnrollment) {
-  //       return {
-  //         success: false,
-  //         message: "L'étudiant est déjà inscrit pour cette année",
-  //         code: "ALREADY_ENROLLED",
-  //       };
-  //     }
-
-  //     // Vérifier si la classe existe
-  //     const schoolClass = await prisma.schoolClass.findUnique({
-  //       where: { id: classId },
-  //     });
-
-  //     if (!schoolClass) {
-  //       return {
-  //         success: false,
-  //         message: "Classe non trouvée",
-  //         code: "CLASS_NOT_FOUND",
-  //       };
-  //     }
-
-  //     // Vérifier la capacité de la classe
-  //     const currentEnrollments = await prisma.enrollment.count({
-  //       where: {
-  //         classId,
-  //         academicYearId: targetYear.id,
-  //         status: "Active",
-  //       },
-  //     });
-
-  //     if (currentEnrollments >= (schoolClass.capacity || 30)) {
-  //       return {
-  //         success: false,
-  //         message: "La classe a atteint sa capacité maximale",
-  //         code: "CLASS_FULL",
-  //       };
-  //     }
-
-  //     // Calculer les frais de réinscription
-  //     const reenrollmentFee = await this.calculateReenrollmentFee(
-  //       studentId,
-  //       previousYear.id,
-  //       targetYear.id
-  //     );
-
-  //     // Créer la réinscription
-  //     const enrollment = await prisma.enrollment.create({
-  //       data: {
-  //         studentId,
-  //         classId,
-  //         academicYearId: targetYear.id,
-  //         enrollmentDate: enrollmentDate
-  //           ? new Date(enrollmentDate)
-  //           : new Date(),
-  //         status: "Active",
-  //         isReenrollment: true,
-  //         previousEnrollmentId: previousEnrollment.id,
-  //         reenrollmentDate: new Date(),
-  //         reenrollmentNotes: notes,
-  //       },
-  //       include: {
-  //         student: true,
-  //         schoolClass: true,
-  //         academicYear: true,
-  //         previousEnrollment: true,
-  //       },
-  //     });
-
-  //     // Mettre à jour la classe de l'étudiant
-  //     await prisma.student.update({
-  //       where: { id: studentId },
-  //       data: {
-  //         classId,
-  //         status: "Active",
-  //       },
-  //     });
-
-  //     // Créer un paiement pour les frais de réinscription
-  //     await prisma.payment.create({
-  //       data: {
-  //         studentId,
-  //         amount: reenrollmentFee.amount,
-  //         paidDate: new Date(),
-  //         paymentMethod: "Bank",
-  //         status: "Pending",
-  //         description: `Frais de réinscription - ${targetYear.year}`,
-  //         type: "Tuition",
-  //         academicYearId: targetYear.id,
-  //       },
-  //     });
-
-  //     // Mettre à jour l'inscription précédente pour référencer la nouvelle
-  //     await prisma.enrollment.update({
-  //       where: { id: previousEnrollment.id },
-  //       data: {
-  //         nextEnrollments: {
-  //           connect: { id: enrollment.id },
-  //         },
-  //       },
-  //     });
-
-  //     // Créer les frais de scolarité pour la nouvelle année
-  //     await this.createStudentFees(studentId, targetYear.id);
-
-  //     return {
-  //       success: true,
-  //       message: "Étudiant réinscrit avec succès",
-  //       data: {
-  //         enrollment,
-  //         reenrollmentFee,
-  //       },
-  //       metadata: {
-  //         studentId,
-  //         classId,
-  //         academicYearId: targetYear.id,
-  //         reenrollmentFee: reenrollmentFee.amount,
-  //         notes,
-  //       },
-  //     };
-  //   } catch (error: any) {
-  //     console.error("❌ EnrollmentService - reenrollStudent error:", error);
-  //     throw error;
-  //   }
-  // }
-
-  /**
-   * Récupère toutes les années où l'étudiant a été inscrit
-   */
-  private async getStudentEnrollmentYears(studentId: string) {
-    const enrollments = await prisma.enrollment.findMany({
-      where: { studentId },
-      include: {
-        academicYear: true,
-      },
-      orderBy: {
-        academicYear: {
-          startDate: "desc",
-        },
-      },
-    });
-
-    return enrollments.map((e) => ({
-      id: e.academicYearId,
-      year: e.academicYear.year,
-      enrollmentId: e.id,
-      enrollmentDate: e.enrollmentDate,
-      status: e.status,
-    }));
-  }
-
-  /**
-   * Valide un étudiant pour la réinscription
+   * Valide un étudiant pour la réinscription (version avec redoublement autorisé)
    */
   async validateReenrollment(studentId: string, auditData: AuditData) {
     try {
@@ -792,26 +895,6 @@ export class EnrollmentService {
         };
       }
 
-      // Récupérer l'année précédente
-      const previousYear = await prisma.academicYear.findFirst({
-        where: {
-          id: { not: currentYear.id },
-          endDate: { lt: currentYear.startDate },
-        },
-        orderBy: {
-          endDate: "desc",
-        },
-        take: 1,
-      });
-
-      if (!previousYear) {
-        return {
-          success: false,
-          message: "Aucune année académique précédente trouvée",
-          code: "NO_PREVIOUS_YEAR",
-        };
-      }
-
       // Vérifier si l'étudiant n'est pas déjà inscrit pour l'année courante
       const currentEnrollment = await prisma.enrollment.findUnique({
         where: {
@@ -833,23 +916,25 @@ export class EnrollmentService {
         };
       }
 
-      // Vérifier l'inscription précédente
-      const previousEnrollment = await prisma.enrollment.findUnique({
+      // Récupérer la dernière inscription de l'étudiant
+      const previousEnrollment = await prisma.enrollment.findFirst({
         where: {
-          studentId_academicYearId: {
-            studentId,
-            academicYearId: previousYear.id,
-          },
+          studentId,
+          status: { in: ["Active", "Completed"] },
         },
         include: {
           schoolClass: true,
+          academicYear: true,
+        },
+        orderBy: {
+          enrollmentDate: "desc",
         },
       });
 
       if (!previousEnrollment) {
         return {
           success: false,
-          message: "L'étudiant n'était pas inscrit l'année précédente",
+          message: "L'étudiant n'a pas d'inscription précédente",
           code: "NO_PREVIOUS_ENROLLMENT",
         };
       }
@@ -858,78 +943,51 @@ export class EnrollmentService {
       const grades = await prisma.grade.findMany({
         where: {
           studentId,
-          academicYearId: previousYear.id,
+          academicYearId: previousEnrollment.academicYearId,
         },
         include: {
           subject: true,
         },
       });
 
-      // Vérifier si l'étudiant a validé son année (si des notes existent)
-      let passed = true; // Par défaut, on considère qu'il a réussi
+      let academicStatus: "Passed" | "Failed" | "NoGrades" = "NoGrades";
+      let academicDetails = null;
+      let averageGrade = 0;
+
       if (grades.length > 0) {
-        passed = this.validateAcademicResults(grades);
+        averageGrade =
+          grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length;
+        const passed = averageGrade >= 50;
+        academicStatus = passed ? "Passed" : "Failed";
+
+        academicDetails = {
+          hasGrades: true,
+          totalGrades: grades.length,
+          averageGrade,
+          passed,
+          grades: grades.map((g) => ({
+            subject: g.subject.name,
+            grade: g.grade,
+          })),
+        };
       }
 
       // Vérifier la situation financière
-      const studentFees = await prisma.studentFee.findMany({
-        where: {
-          studentId,
-          academicYearId: previousYear.id,
-        },
-        select: {
-          id: true,
-          totalAmount: true,
-          paidAmount: true,
-          status: true,
-          dueDate: true,
-        },
-      });
-
-      // Calculer le total dû et payé
-      const totalDue = studentFees.reduce(
-        (sum, fee) => sum + fee.totalAmount,
-        0
+      const financialValidation = await this.checkFinancialEligibility(
+        studentId,
+        previousEnrollment.academicYearId
       );
-      const totalPaid = studentFees.reduce(
-        (sum, fee) => sum + fee.paidAmount,
-        0
-      );
-      const balance = totalDue - totalPaid;
 
-      // Récupérer tous les paiements pour les détails
-      const allPayments = await prisma.feePayment.findMany({
-        where: {
-          studentFeeId: {
-            in: studentFees.map((sf) => sf.id),
-          },
-        },
-        orderBy: {
-          paymentDate: "desc",
-        },
-      });
+      // IMPORTANT: Permettre la réinscription même si échec (pour redoublement)
+      const academicEligible = true; // Toujours true maintenant - permet le redoublement
+      const financialEligible = financialValidation.eligible;
 
-      // Vérifier les frais impayés en retard
-      const today = new Date();
-      const overdueFees = studentFees.filter((fee) => {
-        const isUnpaid = fee.totalAmount > fee.paidAmount;
-        const isOverdue = fee.dueDate < today;
-        return isUnpaid && isOverdue;
-      });
-
-      // Déterminer l'éligibilité
-      const canReenroll = passed && balance <= 0;
-      const hasOverdueFees = overdueFees.length > 0;
+      const canReenroll = financialEligible && !currentEnrollment;
 
       const validation = {
-        canReenroll: canReenroll && !hasOverdueFees,
-        academicStatus: passed ? "Passed" : "Failed",
-        financialStatus:
-          balance <= 0
-            ? hasOverdueFees
-              ? "ClearButOverdue"
-              : "Clear"
-            : "BalanceDue",
+        canReenroll,
+        academicStatus,
+        financialStatus: financialValidation.eligible ? "Clear" : "BalanceDue",
         details: {
           studentInfo: {
             id: student.id,
@@ -937,54 +995,39 @@ export class EnrollmentService {
             lastName: student.lastName,
             studentCode: student.studentCode,
           },
-          previousClass: {
-            id: previousEnrollment.schoolClass.id,
-            name: previousEnrollment.schoolClass.name,
-            level: previousEnrollment.schoolClass.level,
+          previousEnrollment: {
+            id: previousEnrollment.id,
+            academicYear: previousEnrollment.academicYear.year,
+            className: previousEnrollment.schoolClass.name,
+            classLevel: previousEnrollment.schoolClass.level,
+            status: previousEnrollment.status,
+            classId: previousEnrollment.classId,
           },
-          academic: {
-            hasGrades: grades.length > 0,
-            grades: grades.length > 0 ? grades : [],
-            passed,
-            averageGrade:
-              grades.length > 0
-                ? grades.reduce((sum, grade) => sum + grade.grade, 0) /
-                  grades.length
-                : null,
+          academic: academicDetails || {
+            hasGrades: false,
+            passed: false,
+            averageGrade: 0,
           },
           financial: {
-            totalDue,
-            totalPaid,
-            balance,
-            hasOverdueFees,
-            overdueFeesCount: overdueFees.length,
-            overdueAmount: overdueFees.reduce(
-              (sum, fee) => sum + (fee.totalAmount - fee.paidAmount),
-              0
-            ),
-            outstandingFees: studentFees
-              .filter((fee) => fee.totalAmount > fee.paidAmount)
-              .map((fee) => ({
-                id: fee.id,
-                totalAmount: fee.totalAmount,
-                paidAmount: fee.paidAmount,
-                balance: fee.totalAmount - fee.paidAmount,
-                status: fee.status,
-                dueDate: fee.dueDate,
-                isOverdue: fee.dueDate < today,
-              })),
-            recentPayments: allPayments.slice(0, 5), // 5 derniers paiements
+            eligible: financialValidation.eligible,
+            balance: financialValidation.balance,
+            overdueAmount: financialValidation.overdueAmount,
+            hasOverdueFees: financialValidation.overdueAmount > 0,
           },
           eligibility: {
-            academicEligible: passed,
-            financialEligible: balance <= 0,
-            noOverdueFees: !hasOverdueFees,
+            academicEligible,
+            financialEligible,
             notCurrentlyEnrolled: !currentEnrollment,
+            canRepeatLevel: academicStatus === "Failed", // True si échec = peut redoubler
           },
+          recommendations: this.generateReenrollmentRecommendations(
+            academicStatus,
+            averageGrade,
+            previousEnrollment.schoolClass.level,
+            financialValidation
+          ),
         },
       };
-
-      // Ajouter un log d'audit
 
       return {
         success: true,
@@ -992,12 +1035,500 @@ export class EnrollmentService {
         data: { validation },
       };
     } catch (error: any) {
-      console.error(
-        "❌ EnrollmentService - validateReenrollment error:",
-        error
+      console.error("EnrollmentService - validateReenrollment error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gère la réinscription d'un étudiant avec support complet du redoublement
+   */
+  async reenrollStudent(data: ReenrollmentData, auditData: AuditData) {
+    try {
+      const {
+        studentId,
+        classId,
+        academicYearId,
+        previousAcademicYearId,
+        previousEnrollmentId,
+        enrollmentDate,
+        notes,
+      } = data;
+
+      console.log("Debut reinscription - Donnees recues:", {
+        studentId,
+        classId,
+        targetYearId: academicYearId,
+        previousYearId: previousAcademicYearId,
+        previousEnrollmentId,
+      });
+
+      // 1. Vérifier si l'étudiant existe
+      const student = await prisma.student.findUnique({
+        where: { id: studentId },
+      });
+
+      if (!student) {
+        console.error("Etudiant non trouve:", studentId);
+        return {
+          success: false,
+          message: "Étudiant non trouvé",
+          code: "STUDENT_NOT_FOUND",
+        };
+      }
+
+      console.log("Etudiant trouve:", student.studentCode);
+
+      // 2. Vérifier l'année académique cible
+      const targetYear = await prisma.academicYear.findUnique({
+        where: { id: academicYearId },
+      });
+
+      if (!targetYear) {
+        console.error("Annee cible non trouvee:", academicYearId);
+        return {
+          success: false,
+          message: "Année académique cible non trouvée",
+          code: "TARGET_YEAR_NOT_FOUND",
+        };
+      }
+
+      console.log("Annee cible trouvee:", targetYear.year);
+
+      // 3. Valider la date d'inscription
+      const enrollmentDateObj = enrollmentDate
+        ? new Date(enrollmentDate)
+        : new Date();
+      const dateValidation = await this.validateEnrollmentDate(
+        enrollmentDateObj,
+        academicYearId
       );
 
-      // Journaliser l'erreur pour l'audit
+      if (!dateValidation.valid) {
+        return {
+          success: false,
+          message: dateValidation.reason,
+          code: "INVALID_ENROLLMENT_DATE",
+        };
+      }
+
+      // 4. Déterminer l'inscription précédente
+      let previousEnrollment = null;
+      let previousYear = null;
+
+      if (previousEnrollmentId) {
+        // Cas 1: L'utilisateur a spécifié l'inscription précédente
+        console.log(
+          "Recherche de l'inscription precedente specifiee:",
+          previousEnrollmentId
+        );
+
+        previousEnrollment = await prisma.enrollment.findUnique({
+          where: { id: previousEnrollmentId },
+          include: {
+            academicYear: true,
+            schoolClass: true,
+          },
+        });
+
+        if (!previousEnrollment) {
+          console.error(
+            "Inscription precedente non trouvee:",
+            previousEnrollmentId
+          );
+          return {
+            success: false,
+            message: "L'inscription précédente spécifiée n'existe pas",
+            code: "PREVIOUS_ENROLLMENT_NOT_FOUND",
+          };
+        }
+
+        previousYear = previousEnrollment.academicYear;
+        console.log("Inscription precedente trouvee:", previousYear.year);
+      } else if (previousAcademicYearId) {
+        // Cas 2: Recherche par année académique précédente
+        previousYear = await prisma.academicYear.findUnique({
+          where: { id: previousAcademicYearId },
+        });
+
+        if (!previousYear) {
+          return {
+            success: false,
+            message: "L'année académique précédente spécifiée n'existe pas",
+            code: "PREVIOUS_YEAR_NOT_FOUND",
+          };
+        }
+
+        previousEnrollment = await prisma.enrollment.findUnique({
+          where: {
+            studentId_academicYearId: {
+              studentId,
+              academicYearId: previousAcademicYearId,
+            },
+          },
+          include: {
+            academicYear: true,
+            schoolClass: true,
+          },
+        });
+
+        if (!previousEnrollment) {
+          return {
+            success: false,
+            message: `L'étudiant n'était pas inscrit pour l'année ${previousYear.year}`,
+            code: "NO_ENROLLMENT_FOR_YEAR",
+          };
+        }
+      } else {
+        // Cas 3: Recherche automatique
+        previousEnrollment = await prisma.enrollment.findFirst({
+          where: {
+            studentId,
+            status: { in: ["Active", "Completed"] },
+          },
+          include: {
+            academicYear: true,
+            schoolClass: true,
+          },
+          orderBy: {
+            enrollmentDate: "desc",
+          },
+        });
+
+        if (previousEnrollment) {
+          previousYear = previousEnrollment.academicYear;
+        }
+      }
+
+      // 5. Vérifier si une inscription précédente a été trouvée
+      if (!previousEnrollment || !previousYear) {
+        return {
+          success: false,
+          message: "Aucune inscription précédente trouvée",
+          code: "NO_PREVIOUS_ENROLLMENT",
+        };
+      }
+
+      console.log("Inscription precedente confirmee:", {
+        previousYear: previousYear.year,
+        previousClass: previousEnrollment.schoolClass?.name,
+        previousLevel: previousEnrollment.schoolClass?.level,
+        previousStatus: previousEnrollment.status,
+      });
+
+      // 6. Vérifier que l'année précédente n'est pas la même que l'année cible
+      if (previousYear.id === targetYear.id) {
+        console.error("L'annee precedente est la meme que l'annee cible");
+        return {
+          success: false,
+          message: "L'étudiant est déjà inscrit pour cette année académique",
+          code: "ALREADY_ENROLLED_CURRENT_YEAR",
+        };
+      }
+
+      // 7. Vérifier la chronologie des années
+      if (previousYear.endDate >= targetYear.startDate) {
+        return {
+          success: false,
+          message:
+            "L'année précédente doit se terminer avant la nouvelle année",
+          code: "INVALID_YEAR_SEQUENCE",
+          data: {
+            previousYearEnd: previousYear.endDate,
+            targetYearStart: targetYear.startDate,
+          },
+        };
+      }
+
+      // 8. Vérifier si l'étudiant est déjà inscrit pour l'année cible
+      const existingEnrollmentForTargetYear =
+        await prisma.enrollment.findUnique({
+          where: {
+            studentId_academicYearId: {
+              studentId,
+              academicYearId: targetYear.id,
+            },
+          },
+        });
+
+      if (existingEnrollmentForTargetYear) {
+        console.error("Etudiant deja inscrit pour l'annee cible");
+        return {
+          success: false,
+          message: "L'étudiant est déjà inscrit pour cette année académique",
+          code: "ALREADY_ENROLLED",
+          data: {
+            existingEnrollmentId: existingEnrollmentForTargetYear.id,
+            status: existingEnrollmentForTargetYear.status,
+          },
+        };
+      }
+
+      // 9. Vérifier si la classe existe
+      const schoolClass = await prisma.schoolClass.findUnique({
+        where: { id: classId },
+      });
+
+      if (!schoolClass) {
+        console.error("Classe non trouvee:", classId);
+        return {
+          success: false,
+          message: "Classe non trouvée",
+          code: "CLASS_NOT_FOUND",
+        };
+      }
+
+      console.log(
+        "Classe trouvee:",
+        schoolClass.name,
+        "- Niveau:",
+        schoolClass.level
+      );
+
+      // 10. Déterminer le statut académique pour validation des niveaux
+      const academicStatus = await this.getAcademicStatus(
+        studentId,
+        previousYear.id
+      );
+
+      // 11. Valider la transition de niveau (avec support du redoublement)
+      const levelValidation = await this.validateClassLevelTransition(
+        studentId,
+        classId,
+        previousEnrollment.classId,
+        academicStatus
+      );
+
+      if (!levelValidation.valid) {
+        return {
+          success: false,
+          message: levelValidation.reason,
+          code: "INVALID_CLASS_LEVEL",
+          data: {
+            previousClass: previousEnrollment.schoolClass,
+            newClass: schoolClass,
+            academicStatus,
+          },
+        };
+      }
+
+      // 12. Vérifier la capacité de la classe
+      const currentEnrollments = await prisma.enrollment.count({
+        where: {
+          classId,
+          academicYearId: targetYear.id,
+          status: "Active",
+        },
+      });
+
+      if (currentEnrollments >= (schoolClass.capacity || 30)) {
+        console.error("Classe pleine:", {
+          capacity: schoolClass.capacity,
+          current: currentEnrollments,
+        });
+        return {
+          success: false,
+          message: "La classe a atteint sa capacité maximale",
+          code: "CLASS_FULL",
+          data: {
+            capacity: schoolClass.capacity,
+            current: currentEnrollments,
+          },
+        };
+      }
+
+      console.log("Capacite disponible:", {
+        capacity: schoolClass.capacity,
+        current: currentEnrollments,
+        available: (schoolClass.capacity || 30) - currentEnrollments,
+      });
+
+      // 13. Valider l'éligibilité financière
+      const financialValidation = await this.checkFinancialEligibility(
+        studentId,
+        previousYear.id
+      );
+
+      if (!financialValidation.eligible) {
+        return {
+          success: false,
+          message: "Solde impayé trop élevé pour l'année précédente",
+          code: "FINANCIAL_BLOCK",
+          data: {
+            balance: financialValidation.balance,
+            overdueAmount: financialValidation.overdueAmount,
+            maxAllowed: 5000,
+          },
+        };
+      }
+
+      // 14. Calculer les frais de réinscription
+      const reenrollmentFee = await this.calculateReenrollmentFee(
+        studentId,
+        previousYear.id,
+        targetYear.id
+      );
+
+      console.log("Frais de reinscription calcules:", reenrollmentFee.amount);
+
+      // 15. Valider l'intégrité de la chaîne historique
+      const chainValidation = await this.validateEnrollmentChain(
+        "new-enrollment",
+        previousEnrollment.id
+      );
+
+      if (!chainValidation.valid) {
+        return {
+          success: false,
+          message: chainValidation.errors.join(", "),
+          code: "INVALID_ENROLLMENT_CHAIN",
+        };
+      }
+
+      // 16. Démarrer une transaction pour garantir l'intégrité des données
+      const result = await prisma.$transaction(async (tx) => {
+        // Créer la nouvelle inscription
+        const enrollment = await tx.enrollment.create({
+          data: {
+            studentId,
+            classId,
+            academicYearId: targetYear.id,
+            enrollmentDate: enrollmentDateObj,
+            status: "Active",
+            isReenrollment: true,
+            previousEnrollmentId: previousEnrollment.id,
+            reenrollmentDate: new Date(),
+            reenrollmentNotes: notes,
+          },
+          include: {
+            student: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                studentCode: true,
+              },
+            },
+            schoolClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+            academicYear: true,
+            previousEnrollment: {
+              include: {
+                academicYear: true,
+                schoolClass: true,
+              },
+            },
+          },
+        });
+
+        console.log("Nouvelle inscription creee:", enrollment.id);
+
+        // Mettre à jour la classe de l'étudiant
+        await tx.student.update({
+          where: { id: studentId },
+          data: {
+            classId,
+            status: "Active",
+          },
+        });
+
+        console.log("Classe de l'etudiant mise a jour");
+
+        // Mettre à jour l'inscription précédente pour marquer comme terminée
+        await tx.enrollment.update({
+          where: { id: previousEnrollment.id },
+          data: {
+            status: "Completed",
+          },
+        });
+
+        console.log("Inscription precedente mise a jour comme terminee");
+
+        // Créer un paiement pour les frais de réinscription si nécessaire
+        // if (reenrollmentFee.amount > 0) {
+        //   // CORRECTION: Utiliser tx.payment directement, pas (tx as any).payment
+        //   await tx.payment.create({
+        //     data: {
+        //       studentId,
+        //       amount: reenrollmentFee.amount,
+        //       paidDate: new Date(),
+        //       paymentMethod: "Bank",
+        //       status: "Pending",
+        //       description: `Frais de réinscription - ${targetYear.year}`,
+        //       type: "Tuition",
+        //       academicYearId: targetYear.id,
+        //     },
+        //   });
+
+        //   console.log("Paiement de reinscription cree");
+        // }
+
+        // Créer les frais de scolarité pour la nouvelle année
+        await this.createStudentFees(studentId, targetYear.id, tx);
+
+        console.log("Frais de scolarite crees pour la nouvelle annee");
+
+        return enrollment;
+      });
+
+      console.log("Reinscription terminee avec succes!");
+
+      return {
+        success: true,
+        message: "Étudiant réinscrit avec succès",
+        data: {
+          enrollment: result,
+          reenrollmentFee,
+          previousYear: {
+            id: previousYear.id,
+            year: previousYear.year,
+          },
+          targetYear: {
+            id: targetYear.id,
+            year: targetYear.year,
+          },
+          isRepeat: previousEnrollment.classId === classId,
+        },
+        metadata: {
+          studentId,
+          studentCode: student.studentCode,
+          classId,
+          className: schoolClass.name,
+          classLevel: schoolClass.level,
+          previousClassId: previousEnrollment.classId,
+          previousClassName: previousEnrollment.schoolClass?.name,
+          previousClassLevel: previousEnrollment.schoolClass?.level,
+          previousYearId: previousYear.id,
+          targetYearId: targetYear.id,
+          reenrollmentFeeAmount: reenrollmentFee.amount,
+          isRedoublement: previousEnrollment.classId === classId,
+          notes,
+        },
+      };
+    } catch (error: any) {
+      console.error("EnrollmentService - reenrollStudent error:", error);
+
+      // Gérer les erreurs spécifiques
+      if (error.code === "P2002") {
+        return {
+          success: false,
+          message: "L'étudiant est déjà inscrit pour cette année académique",
+          code: "ALREADY_ENROLLED",
+        };
+      }
+
+      if (error.code === "P2003") {
+        return {
+          success: false,
+          message: "Une des références (classe, année académique) est invalide",
+          code: "FOREIGN_KEY_VIOLATION",
+        };
+      }
 
       throw error;
     }
@@ -1031,10 +1562,7 @@ export class EnrollmentService {
         data: { enrollments },
       };
     } catch (error: any) {
-      console.error(
-        "❌ EnrollmentService - getStudentEnrollments error:",
-        error
-      );
+      console.error("EnrollmentService - getStudentEnrollments error:", error);
       throw error;
     }
   }
@@ -1134,7 +1662,7 @@ export class EnrollmentService {
         data: { stats },
       };
     } catch (error: any) {
-      console.error("❌ EnrollmentService - getEnrollmentStats error:", error);
+      console.error("EnrollmentService - getEnrollmentStats error:", error);
       throw error;
     }
   }
@@ -1256,10 +1784,7 @@ export class EnrollmentService {
         },
       };
     } catch (error: any) {
-      console.error(
-        "❌ EnrollmentService - createBulkEnrollments error:",
-        error
-      );
+      console.error("EnrollmentService - createBulkEnrollments error:", error);
       throw error;
     }
   }
@@ -1350,10 +1875,7 @@ export class EnrollmentService {
         },
       };
     } catch (error: any) {
-      console.error(
-        "❌ EnrollmentService - getEnrollmentHistory error:",
-        error
-      );
+      console.error("EnrollmentService - getEnrollmentHistory error:", error);
       throw error;
     }
   }
@@ -1391,7 +1913,7 @@ export class EnrollmentService {
       };
     } catch (error: any) {
       console.error(
-        "❌ EnrollmentService - getAvailableFeeStructures error:",
+        "EnrollmentService - getAvailableFeeStructures error:",
         error
       );
       throw error;
@@ -1399,7 +1921,7 @@ export class EnrollmentService {
   }
 
   /**
-   * delete enrollment
+   * Supprime une inscription
    */
   async deleteEnrollment(id: string, auditData: AuditData) {
     try {
@@ -1414,1171 +1936,55 @@ export class EnrollmentService {
           code: "ENROLLMENT_NOT_FOUND",
         };
       }
+
+      // Vérifier si l'inscription peut être supprimée
+      if (enrollment.status === "Completed") {
+        return {
+          success: false,
+          message:
+            "Une inscription terminée ou archivée ne peut pas être supprimée",
+          code: "CANNOT_DELETE_COMPLETED_ENROLLMENT",
+        };
+      }
+
+      // Vérifier si l'inscription a des inscriptions suivantes
+      const nextEnrollments = await prisma.enrollment.findMany({
+        where: {
+          previousEnrollmentId: id,
+        },
+      });
+
+      if (nextEnrollments.length > 0) {
+        return {
+          success: false,
+          message:
+            "Cette inscription a des inscriptions suivantes et ne peut pas être supprimée",
+          code: "HAS_NEXT_ENROLLMENTS",
+          data: {
+            nextEnrollmentsCount: nextEnrollments.length,
+          },
+        };
+      }
+
       // Supprimer l'inscription
       await prisma.enrollment.delete({
         where: { id },
       });
+
+      console.log("Inscription supprimee avec succes", id);
 
       return {
         success: true,
         message: "Inscription supprimée avec succès",
       };
     } catch (error: any) {
-      console.error("❌ EnrollmentService - deleteEnrollment error:", error);
+      console.error("EnrollmentService - deleteEnrollment error:", error);
       throw error;
     }
   }
-
-  // ==================== FONCTIONS UTILITAIRES INTERNES ====================
-
-  /**
-   * Attribue des frais à un étudiant lors de l'inscription
-   * @private
-   */
-  private async assignFeesOnEnrollment(
-    studentId: string,
-    academicYearId: string,
-    feeStructureIds: string[] = []
-  ): Promise<{ success: boolean; message: string; assignedFees: any[] }> {
-    try {
-      const assignedFees = [];
-
-      // Si aucun frais spécifié, on attribue les frais actifs par défaut
-      if (feeStructureIds.length === 0) {
-        const feeStructures = await prisma.feeStructure.findMany({
-          where: {
-            isActive: true,
-          },
-        });
-
-        feeStructureIds = feeStructures.map((fee) => fee.id);
-      }
-
-      // Pour chaque structure de frais, créer une entrée StudentFee
-      for (const feeStructureId of feeStructureIds) {
-        const feeStructure = await prisma.feeStructure.findUnique({
-          where: { id: feeStructureId },
-        });
-
-        if (!feeStructure) {
-          console.warn(`Structure de frais ${feeStructureId} non trouvée`);
-          continue;
-        }
-
-        // Vérifier si l'étudiant a déjà ces frais pour cette année
-        const existingFee = await prisma.studentFee.findFirst({
-          where: {
-            studentId,
-            feeStructureId,
-            academicYearId,
-          },
-        });
-
-        if (existingFee) {
-          console.log(`L'étudiant a déjà ces frais: ${feeStructure.name}`);
-          continue;
-        }
-
-        // Créer les frais avec une date d'échéance à 3 mois
-        const dueDate = new Date();
-        dueDate.setMonth(dueDate.getMonth() + 3);
-
-        const studentFee = await prisma.studentFee.create({
-          data: {
-            studentId,
-            feeStructureId,
-            academicYearId,
-            totalAmount: feeStructure.amount,
-            paidAmount: 0,
-            status: "pending",
-            dueDate,
-          },
-          include: {
-            feeStructure: {
-              select: {
-                name: true,
-                amount: true,
-                description: true,
-              },
-            },
-          },
-        });
-
-        assignedFees.push({
-          id: studentFee.id,
-          name: studentFee.feeStructure.name,
-          amount: studentFee.totalAmount,
-          dueDate: studentFee.dueDate,
-          status: studentFee.status,
-        });
-
-        console.log(` Frais attribués: ${feeStructure.name}`);
-      }
-
-      return {
-        success: true,
-        message:
-          assignedFees.length > 0
-            ? `${assignedFees.length} frais attribués`
-            : "Aucun nouveau frais attribué",
-        assignedFees,
-      };
-    } catch (error) {
-      console.error(" Erreur attribution frais:", error);
-      return {
-        success: false,
-        message: "Erreur lors de l'attribution des frais",
-        assignedFees: [],
-      };
-    }
-  }
-
-  /**
-   * Calcule les frais de réinscription
-   * @private
-   */
-  private async calculateReenrollmentFee(
-    studentId: string,
-    previousYearId: string,
-    currentYearId: string
-  ): Promise<{ amount: number; details: any }> {
-    try {
-      console.log("🧮 Calcul des frais de réinscription:", {
-        studentId,
-        previousYearId,
-        currentYearId,
-      });
-
-      // 1. Récupérer les frais impayés de l'année précédente
-      const previousYearFees = await prisma.studentFee.findMany({
-        where: {
-          studentId,
-          academicYearId: previousYearId,
-          status: { in: ["pending", "partial"] },
-        },
-        include: {
-          feeStructure: true,
-          payments: {
-            select: {
-              amount: true,
-              paymentDate: true,
-              paymentMethod: true,
-            },
-          },
-        },
-      });
-
-      // 2. Calculer le solde impayé
-      let previousBalance = 0;
-      const unpaidFees = previousYearFees.filter((fee) => {
-        // Calculer le total payé pour ce fee
-        const totalPaid = (fee.payments || []).reduce(
-          (sum, payment) => sum + payment.amount,
-          0
-        );
-        const balance = fee.totalAmount - totalPaid;
-
-        if (balance > 0) {
-          previousBalance += balance;
-          return true;
-        }
-        return false;
-      });
-
-      console.log("📊 Solde précédent calculé:", {
-        totalFees: previousYearFees.length,
-        unpaidFees: unpaidFees.length,
-        previousBalance,
-      });
-
-      // 3. Récupérer les frais de réinscription standard
-      const reenrollmentFeeStructure = await prisma.feeStructure.findFirst({
-        where: {
-          OR: [
-            { name: { contains: "réinscription" } },
-            { name: { contains: "reenrollment" } },
-            { name: { contains: "frais" } },
-            { name: { contains: "inscription" } },
-          ],
-          isActive: true,
-        },
-      });
-
-      const baseFee = reenrollmentFeeStructure?.amount || 5000; // Frais par défaut
-      console.log("💰 Frais de base:", baseFee);
-
-      // 4. Récupérer le nom de l'année actuelle pour chercher les frais
-      const currentAcademicYear = await prisma.academicYear.findUnique({
-        where: { id: currentYearId },
-        select: { year: true },
-      });
-
-      let estimatedYearFees = 0;
-
-      if (currentAcademicYear) {
-        // 5. Rechercher les structures de frais par NOM d'année
-        const currentYearFeeStructures = await prisma.feeStructure.findMany({
-          where: {
-            academicYear: currentAcademicYear.year, // Champ String, pas academicYearId
-            isActive: true,
-          },
-        });
-
-        estimatedYearFees = currentYearFeeStructures.reduce(
-          (sum, fee) => sum + fee.amount,
-          0
-        );
-
-        console.log(
-          `📊 Frais estimés pour ${currentAcademicYear.year}:`,
-          estimatedYearFees
-        );
-      } else {
-        console.warn(
-          "⚠️ Année académique courante non trouvée:",
-          currentYearId
-        );
-      }
-
-      // 6. Calculer le total
-      const totalFee = baseFee + previousBalance;
-
-      console.log("🧾 Total calculé:", {
-        baseFee,
-        previousBalance,
-        totalFee,
-        estimatedYearFees,
-      });
-
-      return {
-        amount: totalFee,
-        details: {
-          baseFee,
-          previousBalance,
-          totalFee,
-          estimatedYearFees,
-          unpaidPreviousFees: unpaidFees.map((fee) => {
-            const totalPaid = (fee.payments || []).reduce(
-              (sum, p) => sum + p.amount,
-              0
-            );
-            return {
-              id: fee.id,
-              name: fee.feeStructure.name,
-              totalAmount: fee.totalAmount,
-              paidAmount: totalPaid,
-              balance: fee.totalAmount - totalPaid,
-              status: fee.status,
-              dueDate: fee.dueDate,
-              paymentCount: (fee.payments || []).length,
-            };
-          }),
-        },
-      };
-    } catch (error) {
-      console.error("❌ Erreur calcul frais réinscription:", error);
-      return {
-        amount: 5000, // Frais par défaut en cas d'erreur
-        details: {
-          baseFee: 5000,
-          previousBalance: 0,
-          totalFee: 5000,
-          estimatedYearFees: 0,
-          unpaidPreviousFees: [],
-        },
-      };
-    }
-  }
-
-  /**
-   * Crée les frais de scolarité pour un étudiant
-   * @private
-   */
-  /**
-   * Crée les frais de scolarité pour un étudiant (version transactionnelle)
-   * @private
-   */
-  private async createStudentFees(
-    studentId: string,
-    academicYearId: string,
-    tx?: any
-  ): Promise<void> {
-    const prismaClient = tx || prisma;
-
-    try {
-      console.log("📝 Création des frais de scolarité:", {
-        studentId,
-        academicYearId,
-      });
-
-      // 1. Récupérer le nom de l'année académique
-      const academicYear = await prismaClient.academicYear.findUnique({
-        where: { id: academicYearId },
-        select: { year: true },
-      });
-
-      if (!academicYear) {
-        console.error("❌ Année académique non trouvée:", academicYearId);
-        return;
-      }
-
-      const academicYearName = academicYear.year;
-      console.log("📅 Nom de l'année académique:", academicYearName);
-
-      // 2. Récupérer les structures de frais actives pour cette année
-      // IMPORTANT: FeeStructure.academicYear est un String, pas une relation
-      const feeStructures = await prismaClient.feeStructure.findMany({
-        where: {
-          academicYear: academicYearName, // Recherche par nom d'année (String)
-          isActive: true,
-        },
-      });
-
-      if (feeStructures.length === 0) {
-        console.log(
-          `⚠️ Aucune structure de frais active trouvée pour ${academicYearName}`
-        );
-
-        // Créer des frais par défaut si aucun n'existe
-        const defaultFees = [
-          {
-            name: `Frais de scolarité ${academicYearName}`,
-            amount: 15000,
-            description: "Frais de scolarité annuels",
-          },
-          {
-            name: `Frais d'inscription ${academicYearName}`,
-            amount: 5000,
-            description: "Frais d'inscription",
-          },
-          {
-            name: `Frais administratifs ${academicYearName}`,
-            amount: 3000,
-            description: "Frais administratifs divers",
-          },
-        ];
-
-        for (const feeData of defaultFees) {
-          // Créer la structure de frais
-          const feeStructure = await prismaClient.feeStructure.create({
-            data: {
-              ...feeData,
-              academicYear: academicYearName, // Champ String
-              isActive: true,
-            },
-          });
-
-          // Créer les frais étudiants
-          const dueDate = new Date();
-          dueDate.setMonth(dueDate.getMonth() + 3);
-
-          await prismaClient.studentFee.create({
-            data: {
-              studentId,
-              feeStructureId: feeStructure.id,
-              academicYearId: academicYearId, // Champ académicYearId (relation)
-              totalAmount: feeStructure.amount,
-              paidAmount: 0,
-              status: "pending",
-              dueDate,
-            },
-          });
-
-          console.log(`✅ Frais par défaut créé: ${feeStructure.name}`);
-        }
-
-        console.log("✅ Frais par défaut créés pour l'étudiant");
-        return;
-      }
-
-      console.log(`✅ ${feeStructures.length} structures de frais trouvées`);
-
-      // 3. Pour chaque structure de frais, créer une entrée StudentFee
-      const createPromises = feeStructures.map(
-        async (feeStructure: { id: any; name: any; amount: any }) => {
-          // Vérifier si l'étudiant a déjà ces frais pour cette année
-          const existingFee = await prismaClient.studentFee.findFirst({
-            where: {
-              studentId,
-              feeStructureId: feeStructure.id,
-              academicYearId: academicYearId, // Champ académicYearId (relation)
-            },
-          });
-
-          if (existingFee) {
-            console.log(`⚠️ Frais déjà existants: ${feeStructure.name}`);
-            return null;
-          }
-
-          // Calculer la date d'échéance (3 mois après la date courante)
-          const dueDate = new Date();
-          dueDate.setMonth(dueDate.getMonth() + 3);
-
-          const studentFee = await prismaClient.studentFee.create({
-            data: {
-              studentId,
-              feeStructureId: feeStructure.id,
-              academicYearId: academicYearId, // Champ académicYearId (relation)
-              totalAmount: feeStructure.amount,
-              paidAmount: 0,
-              status: "pending",
-              dueDate,
-            },
-          });
-
-          console.log(
-            `✅ Frais créés: ${feeStructure.name} - ${feeStructure.amount} HTG`
-          );
-          return studentFee;
-        }
-      );
-
-      const results = await Promise.all(createPromises);
-      const createdFees = results.filter((r) => r !== null);
-
-      console.log(`🎯 ${createdFees.length} frais créés avec succès`);
-    } catch (error) {
-      console.error("❌ Erreur création frais scolarité:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Valide les résultats académiques
-   * @private
-   */
-  private validateAcademicResults(grades: any[]): boolean {
-    if (grades.length === 0) return false;
-
-    const average =
-      grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length;
-    return average >= 50; // Note moyenne minimale de 50
-  }
-
-  /**
-   * Calcule le taux d'assiduité
-   * @private
-   */
-  private calculateAttendanceRate(attendance: any[]): number {
-    if (attendance.length === 0) return 0;
-
-    const present = attendance.filter((a) => a.status === "Present").length;
-    return present / attendance.length;
-  }
-
-  //------------------------------------------------------
-  /**
-   * Gère la réinscription d'un étudiant avec support pour les données historiques
-   */
-  /**
-   * Gère la réinscription d'un étudiant avec support pour les données historiques
-   */
-  async reenrollStudent(
-    data: ReenrollmentData & { previousAcademicYearId?: string },
-    auditData: AuditData
-  ) {
-    try {
-      const {
-        studentId,
-        classId,
-        academicYearId, // C'est l'année TARGET (nouvelle année)
-        previousAcademicYearId, // Année précédente (optionnelle)
-        enrollmentDate,
-        notes,
-      } = data;
-
-      console.log("🎯 Début réinscription - Données reçues:", {
-        studentId,
-        classId,
-        targetYearId: academicYearId,
-        previousYearId: previousAcademicYearId,
-        notes,
-      });
-
-      // 1. Vérifier si l'étudiant existe
-      const student = await prisma.student.findUnique({
-        where: { id: studentId },
-      });
-
-      if (!student) {
-        console.error("❌ Étudiant non trouvé:", studentId);
-        return {
-          success: false,
-          message: "Étudiant non trouvé",
-          code: "STUDENT_NOT_FOUND",
-        };
-      }
-
-      console.log("✅ Étudiant trouvé:", student.studentCode);
-
-      // 2. Vérifier l'année académique cible
-      const targetYear = await prisma.academicYear.findUnique({
-        where: { id: academicYearId },
-      });
-
-      if (!targetYear) {
-        console.error("❌ Année cible non trouvée:", academicYearId);
-        return {
-          success: false,
-          message: "Année académique cible non trouvée",
-          code: "TARGET_YEAR_NOT_FOUND",
-        };
-      }
-
-      console.log("✅ Année cible trouvée:", targetYear.year);
-
-      // 3. Déterminer l'année précédente
-      let previousYear = null;
-      let previousEnrollment = null;
-
-      if (previousAcademicYearId) {
-        // Cas 1: L'utilisateur a spécifié l'année précédente
-        console.log(
-          "📌 Recherche de l'année précédente spécifiée:",
-          previousAcademicYearId
-        );
-
-        previousYear = await prisma.academicYear.findUnique({
-          where: { id: previousAcademicYearId },
-        });
-
-        if (!previousYear) {
-          console.error(
-            "❌ Année précédente spécifiée non trouvée:",
-            previousAcademicYearId
-          );
-          return {
-            success: false,
-            message: "L'année académique précédente spécifiée n'existe pas",
-            code: "SPECIFIED_PREVIOUS_YEAR_NOT_FOUND",
-          };
-        }
-
-        // Chercher l'inscription pour cette année spécifique
-        previousEnrollment = await prisma.enrollment.findUnique({
-          where: {
-            studentId_academicYearId: {
-              studentId,
-              academicYearId: previousAcademicYearId,
-            },
-          },
-          include: {
-            academicYear: true,
-            schoolClass: true,
-          },
-        });
-
-        if (!previousEnrollment) {
-          console.error("❌ Aucune inscription trouvée pour l'année spécifiée");
-          return {
-            success: false,
-            message: `L'étudiant n'était pas inscrit pour l'année ${previousYear.year}`,
-            code: "NO_ENROLLMENT_FOR_SPECIFIED_YEAR",
-            data: {
-              specifiedYear: previousYear.year,
-            },
-          };
-        }
-
-        console.log(
-          "✅ Inscription précédente trouvée (spécifiée):",
-          previousEnrollment.id
-        );
-      } else {
-        // Cas 2: Recherche automatique de l'année précédente
-        console.log("🔍 Recherche automatique de l'année précédente...");
-
-        // Stratégie 1: Chercher l'année qui se termine juste avant l'année cible
-        previousYear = await prisma.academicYear.findFirst({
-          where: {
-            endDate: { lt: targetYear.startDate },
-          },
-          orderBy: {
-            endDate: "desc", // La plus récente qui se termine avant la cible
-          },
-        });
-
-        if (previousYear) {
-          console.log(
-            "📅 Année précédente trouvée par date:",
-            previousYear.year
-          );
-
-          previousEnrollment = await prisma.enrollment.findUnique({
-            where: {
-              studentId_academicYearId: {
-                studentId,
-                academicYearId: previousYear.id,
-              },
-            },
-            include: {
-              academicYear: true,
-              schoolClass: true,
-            },
-          });
-
-          if (!previousEnrollment) {
-            console.log(
-              "⚠️ Pas d'inscription pour l'année trouvée par date, tentative alternative..."
-            );
-          }
-        }
-
-        // Stratégie 2: Si pas trouvé, chercher la dernière inscription de l'étudiant
-        if (!previousEnrollment) {
-          console.log(
-            "🔍 Recherche de la dernière inscription de l'étudiant..."
-          );
-
-          previousEnrollment = await prisma.enrollment.findFirst({
-            where: {
-              studentId,
-              status: { in: ["Active", "Completed"] },
-            },
-            include: {
-              academicYear: true,
-              schoolClass: true,
-            },
-            orderBy: {
-              enrollmentDate: "desc",
-            },
-          });
-
-          if (previousEnrollment) {
-            previousYear = previousEnrollment.academicYear;
-            console.log("✅ Dernière inscription trouvée:", previousYear.year);
-          }
-        }
-
-        // Stratégie 3: Si toujours pas trouvé, chercher n'importe quelle inscription précédente
-        if (!previousEnrollment) {
-          console.log(
-            "🔍 Recherche de n'importe quelle inscription précédente..."
-          );
-
-          const allPreviousEnrollments = await prisma.enrollment.findMany({
-            where: {
-              studentId,
-            },
-            include: {
-              academicYear: true,
-              schoolClass: true,
-            },
-            orderBy: {
-              academicYear: {
-                startDate: "desc",
-              },
-            },
-          });
-
-          if (allPreviousEnrollments.length > 0) {
-            // Prendre la plus récente
-            previousEnrollment = allPreviousEnrollments[0];
-            previousYear = previousEnrollment.academicYear;
-            console.log(
-              "✅ Inscription historique trouvée:",
-              previousYear.year
-            );
-          }
-        }
-      }
-
-      // 4. Vérifier si une inscription précédente a été trouvée
-      if (!previousEnrollment || !previousYear) {
-        console.error("❌ Impossible de trouver une inscription précédente");
-
-        // Récupérer toutes les années disponibles pour l'étudiant
-        const studentEnrollments = await prisma.enrollment.findMany({
-          where: { studentId },
-          include: {
-            academicYear: true,
-          },
-          orderBy: {
-            academicYear: {
-              startDate: "desc",
-            },
-          },
-        });
-
-        return {
-          success: false,
-          message:
-            "Aucune inscription précédente trouvée. Veuillez spécifier l'année précédente.",
-          code: "NO_PREVIOUS_ENROLLMENT",
-          data: {
-            availableYears: studentEnrollments.map((e) => ({
-              id: e.academicYearId,
-              year: e.academicYear.year,
-              enrollmentId: e.id,
-              status: e.status,
-            })),
-          },
-        };
-      }
-
-      console.log("✅ Inscription précédente confirmée:", {
-        previousYear: previousYear.year,
-        previousClass: previousEnrollment.schoolClass?.name,
-        previousStatus: previousEnrollment.status,
-      });
-
-      // 5. Vérifier que l'année précédente n'est pas la même que l'année cible
-      if (previousYear.id === targetYear.id) {
-        console.error("❌ L'année précédente est la même que l'année cible");
-        return {
-          success: false,
-          message: "L'étudiant est déjà inscrit pour cette année académique",
-          code: "ALREADY_ENROLLED_CURRENT_YEAR",
-        };
-      }
-
-      // 6. Vérifier si l'étudiant est déjà inscrit pour l'année cible
-      const existingEnrollmentForTargetYear =
-        await prisma.enrollment.findUnique({
-          where: {
-            studentId_academicYearId: {
-              studentId,
-              academicYearId: targetYear.id,
-            },
-          },
-        });
-
-      if (existingEnrollmentForTargetYear) {
-        console.error("❌ Étudiant déjà inscrit pour l'année cible");
-        return {
-          success: false,
-          message: "L'étudiant est déjà inscrit pour cette année académique",
-          code: "ALREADY_ENROLLED",
-          data: {
-            existingEnrollmentId: existingEnrollmentForTargetYear.id,
-            status: existingEnrollmentForTargetYear.status,
-          },
-        };
-      }
-
-      // 7. Vérifier si la classe existe
-      const schoolClass = await prisma.schoolClass.findUnique({
-        where: { id: classId },
-      });
-
-      if (!schoolClass) {
-        console.error("❌ Classe non trouvée:", classId);
-        return {
-          success: false,
-          message: "Classe non trouvée",
-          code: "CLASS_NOT_FOUND",
-        };
-      }
-
-      console.log("✅ Classe trouvée:", schoolClass.name);
-
-      // 8. Vérifier la capacité de la classe
-      const currentEnrollments = await prisma.enrollment.count({
-        where: {
-          classId,
-          academicYearId: targetYear.id,
-          status: "Active",
-        },
-      });
-
-      if (currentEnrollments >= (schoolClass.capacity || 30)) {
-        console.error("❌ Classe pleine:", {
-          capacity: schoolClass.capacity,
-          current: currentEnrollments,
-        });
-        return {
-          success: false,
-          message: "La classe a atteint sa capacité maximale",
-          code: "CLASS_FULL",
-          data: {
-            capacity: schoolClass.capacity,
-            current: currentEnrollments,
-          },
-        };
-      }
-
-      console.log("✅ Capacité disponible:", {
-        capacity: schoolClass.capacity,
-        current: currentEnrollments,
-        available: (schoolClass.capacity || 30) - currentEnrollments,
-      });
-
-      // 9. Calculer les frais de réinscription
-      const reenrollmentFee = await this.calculateReenrollmentFee(
-        studentId,
-        previousYear.id,
-        targetYear.id
-      );
-
-      console.log("💰 Frais de réinscription calculés:", reenrollmentFee);
-
-      // 10. Démarrer une transaction pour garantir l'intégrité des données
-      const result = await prisma.$transaction(async (tx) => {
-        // Créer la nouvelle inscription
-        const enrollment = await tx.enrollment.create({
-          data: {
-            studentId,
-            classId,
-            academicYearId: targetYear.id,
-            enrollmentDate: enrollmentDate
-              ? new Date(enrollmentDate)
-              : new Date(),
-            status: "Active",
-            isReenrollment: true,
-            previousEnrollmentId: previousEnrollment.id,
-            reenrollmentDate: new Date(),
-            reenrollmentNotes: notes,
-          },
-          include: {
-            student: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                studentCode: true,
-              },
-            },
-            schoolClass: {
-              select: {
-                id: true,
-                name: true,
-                level: true,
-              },
-            },
-            academicYear: true,
-            previousEnrollment: {
-              include: {
-                academicYear: true,
-                schoolClass: true,
-              },
-            },
-          },
-        });
-
-        console.log("✅ Nouvelle inscription créée:", enrollment.id);
-
-        // Mettre à jour la classe de l'étudiant
-        await tx.student.update({
-          where: { id: studentId },
-          data: {
-            classId,
-            status: "Active",
-          },
-        });
-
-        console.log("✅ Classe de l'étudiant mise à jour");
-
-        // Mettre à jour l'inscription précédente pour marquer comme terminée
-        // CORRECTION: On ne met pas nextEnrollmentId car il n'existe pas
-        // On met simplement le statut à "Completed"
-        await tx.enrollment.update({
-          where: { id: previousEnrollment.id },
-          data: {
-            status: "Completed", // Juste changer le statut
-            // Pas de nextEnrollmentId car pas dans le modèle
-          },
-        });
-
-        console.log("✅ Inscription précédente mise à jour comme terminée");
-
-        // Créer un paiement pour les frais de réinscription si nécessaire
-        if (reenrollmentFee.amount > 0) {
-          await (tx as any).payment.create({
-            data: {
-              studentId,
-              amount: reenrollmentFee.amount,
-              paidDate: new Date(),
-              paymentMethod: "Bank",
-              status: "Pending",
-              description: `Frais de réinscription - ${targetYear.year}`,
-              type: "Tuition",
-              academicYearId: targetYear.id,
-            },
-          });
-
-          console.log("✅ Paiement de réinscription créé");
-        }
-
-        // Créer les frais de scolarité pour la nouvelle année
-        await this.createStudentFees(studentId, targetYear.id, tx);
-
-        console.log("✅ Frais de scolarité créés pour la nouvelle année");
-
-        return enrollment;
-      });
-
-      // 11. Retourner le résultat
-      console.log("🎉 Réinscription terminée avec succès!");
-
-      return {
-        success: true,
-        message: "Étudiant réinscrit avec succès",
-        data: {
-          enrollment: result,
-          reenrollmentFee,
-          previousYear: {
-            id: previousYear.id,
-            year: previousYear.year,
-          },
-          targetYear: {
-            id: targetYear.id,
-            year: targetYear.year,
-          },
-        },
-        metadata: {
-          studentId,
-          studentCode: student.studentCode,
-          classId,
-          className: schoolClass.name,
-          previousYearId: previousYear.id,
-          targetYearId: targetYear.id,
-          reenrollmentFeeAmount: reenrollmentFee.amount,
-          notes,
-        },
-      };
-    } catch (error: any) {
-      console.error("❌ EnrollmentService - reenrollStudent error:", error);
-
-      // Gérer les erreurs spécifiques
-      if (error.code === "P2002") {
-        // Violation de contrainte unique (déjà inscrit)
-        return {
-          success: false,
-          message: "L'étudiant est déjà inscrit pour cette année académique",
-          code: "ALREADY_ENROLLED",
-        };
-      }
-
-      if (error.code === "P2003") {
-        // Violation de clé étrangère
-        return {
-          success: false,
-          message: "Une des références (classe, année académique) est invalide",
-          code: "FOREIGN_KEY_VIOLATION",
-        };
-      }
-
-      throw error;
-    }
-  }
-
-  /**
-   * Calcule les frais de réinscription
-   * @private
-   */
-  // private async calculateReenrollmentFee(
-  //   studentId: string,
-  //   previousYearId: string,
-  //   currentYearId: string
-  // ): Promise<{ amount: number; details: any }> {
-  //   try {
-  //     console.log("🧮 Calcul des frais de réinscription:", {
-  //       studentId,
-  //       previousYearId,
-  //       currentYearId,
-  //     });
-
-  //     // 1. Récupérer les frais impayés de l'année précédente
-  //     const previousYearFees = await prisma.studentFee.findMany({
-  //       where: {
-  //         studentId,
-  //         academicYearId: previousYearId,
-  //         status: { in: ["pending", "overdue"] },
-  //       },
-  //       include: {
-  //         feeStructure: true,
-  //       },
-  //     });
-
-  //     // 2. Calculer le solde impayé
-  //     let previousBalance = 0;
-  //     const unpaidFees = previousYearFees.filter(fee => {
-  //       const balance = fee.totalAmount - fee.paidAmount;
-  //       if (balance > 0) {
-  //         previousBalance += balance;
-  //         return true;
-  //       }
-  //       return false;
-  //     });
-
-  //     console.log("📊 Solde précédent calculé:", {
-  //       totalFees: previousYearFees.length,
-  //       unpaidFees: unpaidFees.length,
-  //       previousBalance,
-  //     });
-
-  //     // 3. Récupérer les frais de réinscription standard
-  //     const reenrollmentFeeStructure = await prisma.feeStructure.findFirst({
-  //       where: {
-  //         OR: [
-  //           { name: { contains: "réinscription", mode: "insensitive" } },
-  //           { name: { contains: "reenrollment", mode: "insensitive" } },
-  //           { name: { contains: "frais", mode: "insensitive" } },
-  //         ],
-  //         isActive: true,
-  //       },
-  //     });
-
-  //     const baseFee = reenrollmentFeeStructure?.amount || 5000; // Frais par défaut
-  //     console.log("💰 Frais de base:", baseFee);
-
-  //     // 4. Récupérer les frais de la nouvelle année pour estimation
-  //     const currentYearFeeStructures = await prisma.feeStructure.findMany({
-  //       where: {
-  //         academicYearId: currentYearId,
-  //         isActive: true,
-  //       },
-  //     });
-
-  //     const estimatedYearFees = currentYearFeeStructures.reduce(
-  //       (sum, fee) => sum + fee.amount,
-  //       0
-  //     );
-
-  //     // 5. Calculer le total
-  //     const totalFee = baseFee + previousBalance;
-
-  //     console.log("🧾 Total calculé:", {
-  //       baseFee,
-  //       previousBalance,
-  //       totalFee,
-  //       estimatedYearFees,
-  //     });
-
-  //     return {
-  //       amount: totalFee,
-  //       details: {
-  //         baseFee,
-  //         previousBalance,
-  //         totalFee,
-  //         estimatedYearFees,
-  //         unpaidPreviousFees: unpaidFees.map(fee => ({
-  //           id: fee.id,
-  //           name: fee.feeStructure.name,
-  //           amount: fee.totalAmount,
-  //           paid: fee.paidAmount,
-  //           balance: fee.totalAmount - fee.paidAmount,
-  //         })),
-  //       },
-  //     };
-  //   } catch (error) {
-  //     console.error("❌ Erreur calcul frais réinscription:", error);
-  //     return {
-  //       amount: 5000, // Frais par défaut en cas d'erreur
-  //       details: {
-  //         baseFee: 5000,
-  //         previousBalance: 0,
-  //         totalFee: 5000,
-  //         estimatedYearFees: 0,
-  //         unpaidPreviousFees: [],
-  //       },
-  //     };
-  //   }
-  // }
-
-  /**
-   * Crée les frais de scolarité pour un étudiant (version transactionnelle)
-   * @private
-   */
-  // private async createStudentFees(
-  //   studentId: string,
-  //   academicYearId: string,
-  //   tx?: any
-  // ): Promise<void> {
-  //   const prismaClient = tx || prisma;
-
-  //   try {
-  //     console.log("📝 Création des frais de scolarité:", { studentId, academicYearId });
-
-  //     // Récupérer les structures de frais actives pour cette année
-  //     const feeStructures = await prismaClient.feeStructure.findMany({
-  //       where: {
-  //         academicYearId,
-  //         isActive: true,
-  //       },
-  //     });
-
-  //     if (feeStructures.length === 0) {
-  //       console.log("⚠️ Aucune structure de frais active trouvée");
-  //       return;
-  //     }
-
-  //     console.log(`✅ ${feeStructures.length} structures de frais trouvées`);
-
-  //     // Pour chaque structure de frais, créer une entrée StudentFee
-  //     const createPromises = feeStructures.map(async (feeStructure) => {
-  //       // Vérifier si l'étudiant a déjà ces frais pour cette année
-  //       const existingFee = await prismaClient.studentFee.findFirst({
-  //         where: {
-  //           studentId,
-  //           feeStructureId: feeStructure.id,
-  //           academicYearId,
-  //         },
-  //       });
-
-  //       if (existingFee) {
-  //         console.log(`⚠️ Frais déjà existants: ${feeStructure.name}`);
-  //         return null;
-  //       }
-
-  //       // Calculer la date d'échéance (3 mois après la date courante)
-  //       const dueDate = new Date();
-  //       dueDate.setMonth(dueDate.getMonth() + 3);
-
-  //       const studentFee = await prismaClient.studentFee.create({
-  //         data: {
-  //           studentId,
-  //           feeStructureId: feeStructure.id,
-  //           academicYearId,
-  //           totalAmount: feeStructure.amount,
-  //           paidAmount: 0,
-  //           status: "pending",
-  //           dueDate,
-  //           createdAt: new Date(),
-  //           updatedAt: new Date(),
-  //         },
-  //       });
-
-  //       console.log(`✅ Frais créés: ${feeStructure.name} - ${feeStructure.amount} HTG`);
-  //       return studentFee;
-  //     });
-
-  //     const results = await Promise.all(createPromises);
-  //     const createdFees = results.filter(r => r !== null);
-
-  //     console.log(`🎯 ${createdFees.length} frais créés avec succès`);
-  //   } catch (error) {
-  //     console.error("❌ Erreur création frais scolarité:", error);
-  //     throw error;
-  //   }
-  // }
-
-  /**
-   * Log d'audit
-   * @private
-   */
-  // private async logAudit(action: string, details: string, auditData: AuditData) {
-  //   try {
-  //     await prisma.auditLog.create({
-  //       data: {
-  //         userId: auditData.userId,
-  //         action,
-  //         entityType: 'Enrollment',
-  //         entityId: '',
-  //         details,
-  //         ipAddress: auditData.ipAddress,
-  //         userAgent: auditData.userAgent,
-  //         timestamp: new Date(),
-  //       },
-  //     });
-  //   } catch (error) {
-  //     console.error("❌ Erreur journalisation audit:", error);
-  //   }
-  // }
 
   /**
    * Récupère les inscriptions d'un étudiant avec les détails complets
-   * Utile pour l'interface de sélection manuelle
    */
   async getStudentEnrollmentHistory(studentId: string, auditData: AuditData) {
     try {
@@ -2631,16 +2037,1501 @@ export class EnrollmentService {
       };
     } catch (error: any) {
       console.error(
-        "❌ EnrollmentService - getStudentEnrollmentHistory error:",
+        "EnrollmentService - getStudentEnrollmentHistory error:",
         error
       );
       throw error;
     }
   }
 
+  // ==================== FONCTIONS UTILITAIRES INTERNES ====================
+
+  /**
+   * Attribue des frais à un étudiant lors de l'inscription
+   * @private
+   */
+  private async assignFeesOnEnrollment(
+    studentId: string,
+    academicYearId: string,
+    feeStructureIds: string[] = []
+  ): Promise<{ success: boolean; message: string; assignedFees: any[] }> {
+    try {
+      const assignedFees = [];
+
+      // Si aucun frais spécifié, on attribue les frais actifs par défaut
+      if (feeStructureIds.length === 0) {
+        const feeStructures = await prisma.feeStructure.findMany({
+          where: {
+            isActive: true,
+          },
+        });
+
+        feeStructureIds = feeStructures.map((fee) => fee.id);
+      }
+
+      // Pour chaque structure de frais, créer une entrée StudentFee
+      for (const feeStructureId of feeStructureIds) {
+        const feeStructure = await prisma.feeStructure.findUnique({
+          where: { id: feeStructureId },
+        });
+
+        if (!feeStructure) {
+          console.warn(`Structure de frais ${feeStructureId} non trouvee`);
+          continue;
+        }
+
+        // Vérifier si l'étudiant a déjà ces frais pour cette année
+        const existingFee = await prisma.studentFee.findFirst({
+          where: {
+            studentId,
+            feeStructureId,
+            academicYearId,
+          },
+        });
+
+        if (existingFee) {
+          console.log(`L'etudiant a deja ces frais: ${feeStructure.name}`);
+          continue;
+        }
+
+        // Créer les frais avec une date d'échéance à 3 mois
+        const dueDate = new Date();
+        dueDate.setMonth(dueDate.getMonth() + 3);
+
+        const studentFee = await prisma.studentFee.create({
+          data: {
+            studentId,
+            feeStructureId,
+            academicYearId,
+            totalAmount: feeStructure.amount,
+            paidAmount: 0,
+            status: "pending",
+            dueDate,
+          },
+          include: {
+            feeStructure: {
+              select: {
+                name: true,
+                amount: true,
+                description: true,
+              },
+            },
+          },
+        });
+
+        assignedFees.push({
+          id: studentFee.id,
+          name: studentFee.feeStructure.name,
+          amount: studentFee.totalAmount,
+          dueDate: studentFee.dueDate,
+          status: studentFee.status,
+        });
+
+        console.log(`Frais attribues: ${feeStructure.name}`);
+      }
+
+      return {
+        success: true,
+        message:
+          assignedFees.length > 0
+            ? `${assignedFees.length} frais attribues`
+            : "Aucun nouveau frais attribue",
+        assignedFees,
+      };
+    } catch (error) {
+      console.error("Erreur attribution frais:", error);
+      return {
+        success: false,
+        message: "Erreur lors de l'attribution des frais",
+        assignedFees: [],
+      };
+    }
+  }
+
+  /**
+   * Calcule les frais de réinscription
+   * @private
+   */
+  private async calculateReenrollmentFee(
+    studentId: string,
+    previousYearId: string,
+    currentYearId: string
+  ): Promise<{ amount: number; details: any }> {
+    try {
+      console.log("Calcul des frais de reinscription:", {
+        studentId,
+        previousYearId,
+        currentYearId,
+      });
+
+      // 1. Récupérer les frais impayés de l'année précédente
+      const previousYearFees = await prisma.studentFee.findMany({
+        where: {
+          studentId,
+          academicYearId: previousYearId,
+          status: { in: ["pending", "partial"] },
+        },
+        include: {
+          feeStructure: true,
+          payments: {
+            select: {
+              amount: true,
+              paymentDate: true,
+              paymentMethod: true,
+            },
+          },
+        },
+      });
+
+      // 2. Calculer le solde impayé
+      let previousBalance = 0;
+      const unpaidFees = previousYearFees.filter((fee) => {
+        // Calculer le total payé pour ce fee
+        const totalPaid = (fee.payments || []).reduce(
+          (sum, payment) => sum + payment.amount,
+          0
+        );
+        const balance = fee.totalAmount - totalPaid;
+
+        if (balance > 0) {
+          previousBalance += balance;
+          return true;
+        }
+        return false;
+      });
+
+      console.log("Solde precedent calcule:", {
+        totalFees: previousYearFees.length,
+        unpaidFees: unpaidFees.length,
+        previousBalance,
+      });
+
+      // 3. Récupérer les frais de réinscription standard
+      const reenrollmentFeeStructure = await prisma.feeStructure.findFirst({
+        where: {
+          OR: [
+            { name: { contains: "réinscription" } },
+            { name: { contains: "reenrollment" } },
+            { name: { contains: "frais" } },
+            { name: { contains: "inscription" } },
+          ],
+          isActive: true,
+        },
+      });
+
+      const baseFee = reenrollmentFeeStructure?.amount || 5000; // Frais par défaut
+      console.log("Frais de base:", baseFee);
+
+      // 4. Récupérer le nom de l'année actuelle pour chercher les frais
+      const currentAcademicYear = await prisma.academicYear.findUnique({
+        where: { id: currentYearId },
+        select: { year: true },
+      });
+
+      let estimatedYearFees = 0;
+
+      if (currentAcademicYear) {
+        // 5. Rechercher les structures de frais par NOM d'année
+        const currentYearFeeStructures = await prisma.feeStructure.findMany({
+          where: {
+            academicYear: currentAcademicYear.year, // Champ String, pas academicYearId
+            isActive: true,
+          },
+        });
+
+        estimatedYearFees = currentYearFeeStructures.reduce(
+          (sum, fee) => sum + fee.amount,
+          0
+        );
+
+        console.log(
+          `Frais estimes pour ${currentAcademicYear.year}:`,
+          estimatedYearFees
+        );
+      } else {
+        console.warn("Annee academique courante non trouvee:", currentYearId);
+      }
+
+      // 6. Calculer le total
+      const totalFee = baseFee + previousBalance;
+
+      console.log("Total calcule:", {
+        baseFee,
+        previousBalance,
+        totalFee,
+        estimatedYearFees,
+      });
+
+      return {
+        amount: totalFee,
+        details: {
+          baseFee,
+          previousBalance,
+          totalFee,
+          estimatedYearFees,
+          unpaidPreviousFees: unpaidFees.map((fee) => {
+            const totalPaid = (fee.payments || []).reduce(
+              (sum, p) => sum + p.amount,
+              0
+            );
+            return {
+              id: fee.id,
+              name: fee.feeStructure.name,
+              totalAmount: fee.totalAmount,
+              paidAmount: totalPaid,
+              balance: fee.totalAmount - totalPaid,
+              status: fee.status,
+              dueDate: fee.dueDate,
+              paymentCount: (fee.payments || []).length,
+            };
+          }),
+        },
+      };
+    } catch (error) {
+      console.error("Erreur calcul frais reinscription:", error);
+      return {
+        amount: 5000, // Frais par défaut en cas d'erreur
+        details: {
+          baseFee: 5000,
+          previousBalance: 0,
+          totalFee: 5000,
+          estimatedYearFees: 0,
+          unpaidPreviousFees: [],
+        },
+      };
+    }
+  }
+
+  /**
+   * Crée les frais de scolarité pour un étudiant (version transactionnelle)
+   * @private
+   */
+  private async createStudentFees(
+    studentId: string,
+    academicYearId: string,
+    tx?: any
+  ): Promise<void> {
+    const prismaClient = tx || prisma;
+
+    try {
+      console.log("Creation des frais de scolarite:", {
+        studentId,
+        academicYearId,
+      });
+
+      // 1. Récupérer le nom de l'année académique
+      const academicYear = await prismaClient.academicYear.findUnique({
+        where: { id: academicYearId },
+        select: { year: true },
+      });
+
+      if (!academicYear) {
+        console.error("Annee academique non trouvee:", academicYearId);
+        return;
+      }
+
+      const academicYearName = academicYear.year;
+      console.log("Nom de l'annee academique:", academicYearName);
+
+      // 2. Récupérer les structures de frais actives pour cette année
+      const feeStructures = await prismaClient.feeStructure.findMany({
+        where: {
+          academicYear: academicYearName, // Recherche par nom d'année (String)
+          isActive: true,
+        },
+      });
+
+      if (feeStructures.length === 0) {
+        console.log(
+          `Aucune structure de frais active trouvee pour ${academicYearName}`
+        );
+
+        // Créer des frais par défaut si aucun n'existe
+        const defaultFees = [
+          {
+            name: `Frais de scolarité ${academicYearName}`,
+            amount: 15000,
+            description: "Frais de scolarité annuels",
+          },
+          {
+            name: `Frais d'inscription ${academicYearName}`,
+            amount: 5000,
+            description: "Frais d'inscription",
+          },
+          {
+            name: `Frais administratifs ${academicYearName}`,
+            amount: 3000,
+            description: "Frais administratifs divers",
+          },
+        ];
+
+        for (const feeData of defaultFees) {
+          // Créer la structure de frais
+          const feeStructure = await prismaClient.feeStructure.create({
+            data: {
+              ...feeData,
+              academicYear: academicYearName, // Champ String
+              isActive: true,
+            },
+          });
+
+          // Créer les frais étudiants
+          const dueDate = new Date();
+          dueDate.setMonth(dueDate.getMonth() + 3);
+
+          await prismaClient.studentFee.create({
+            data: {
+              studentId,
+              feeStructureId: feeStructure.id,
+              academicYearId: academicYearId, // Champ académicYearId (relation)
+              totalAmount: feeStructure.amount,
+              paidAmount: 0,
+              status: "pending",
+              dueDate,
+            },
+          });
+
+          console.log(`Frais par defaut cree: ${feeStructure.name}`);
+        }
+
+        console.log("Frais par defaut crees pour l'etudiant");
+        return;
+      }
+
+      console.log(`${feeStructures.length} structures de frais trouvees`);
+
+      // 3. Pour chaque structure de frais, créer une entrée StudentFee
+      const createPromises = feeStructures.map(
+        async (feeStructure: { id: any; name: any; amount: any }) => {
+          // Vérifier si l'étudiant a déjà ces frais pour cette année
+          const existingFee = await prismaClient.studentFee.findFirst({
+            where: {
+              studentId,
+              feeStructureId: feeStructure.id,
+              academicYearId: academicYearId, // Champ académicYearId (relation)
+            },
+          });
+
+          if (existingFee) {
+            console.log(`Frais deja existants: ${feeStructure.name}`);
+            return null;
+          }
+
+          // Calculer la date d'échéance (3 mois après la date courante)
+          const dueDate = new Date();
+          dueDate.setMonth(dueDate.getMonth() + 3);
+
+          const studentFee = await prismaClient.studentFee.create({
+            data: {
+              studentId,
+              feeStructureId: feeStructure.id,
+              academicYearId: academicYearId, // Champ académicYearId (relation)
+              totalAmount: feeStructure.amount,
+              paidAmount: 0,
+              status: "pending",
+              dueDate,
+            },
+          });
+
+          console.log(
+            `Frais crees: ${feeStructure.name} - ${feeStructure.amount} HTG`
+          );
+          return studentFee;
+        }
+      );
+
+      const results = await Promise.all(createPromises);
+      const createdFees = results.filter((r) => r !== null);
+
+      console.log(`${createdFees.length} frais crees avec succes`);
+    } catch (error) {
+      console.error("Erreur creation frais scolarite:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Valide les résultats académiques
+   * @private
+   */
+  private validateAcademicResults(grades: any[]): boolean {
+    if (grades.length === 0) return false;
+
+    const average =
+      grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length;
+    return average >= 50; // Note moyenne minimale de 50
+  }
+
+  /**
+   * Détermine le statut académique d'un étudiant
+   * @private
+   */
+  private async getAcademicStatus(
+    studentId: string,
+    academicYearId: string
+  ): Promise<"Passed" | "Failed" | "NoGrades"> {
+    try {
+      const grades = await prisma.grade.findMany({
+        where: {
+          studentId,
+          academicYearId,
+        },
+      });
+
+      if (grades.length === 0) return "NoGrades";
+
+      const average =
+        grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length;
+      return average >= 50 ? "Passed" : "Failed";
+    } catch (error) {
+      console.error("Erreur récupération statut académique:", error);
+      return "NoGrades";
+    }
+  }
+
+  /**
+   * Valide la date d'inscription par rapport à l'année académique
+   * @private
+   */
+  private async validateEnrollmentDate(
+    enrollmentDate: Date,
+    academicYearId: string
+  ): Promise<{ valid: boolean; reason?: string }> {
+    try {
+      const academicYear = await prisma.academicYear.findUnique({
+        where: { id: academicYearId },
+      });
+
+      if (!academicYear) {
+        return {
+          valid: false,
+          reason: "Année académique non trouvée",
+        };
+      }
+
+      // Vérifier que la date d'inscription est dans l'année académique
+      if (enrollmentDate < academicYear.startDate) {
+        return {
+          valid: false,
+          reason:
+            "La date d'inscription ne peut pas être antérieure au début de l'année académique",
+        };
+      }
+
+      if (enrollmentDate > academicYear.endDate) {
+        return {
+          valid: false,
+          reason:
+            "La date d'inscription ne peut pas être postérieure à la fin de l'année académique",
+        };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      console.error("Erreur validation date inscription:", error);
+      return {
+        valid: false,
+        reason: "Erreur lors de la validation de la date",
+      };
+    }
+  }
+
+  /**
+   * Valide la transition de statut
+   * @private
+   */
+  private async validateStatusTransition(
+    oldStatus: string,
+    newStatus: string,
+    enrollmentId: string
+  ): Promise<{ valid: boolean; reason?: string }> {
+    // Définir les transitions autorisées
+    const allowedTransitions: Record<string, string[]> = {
+      Active: ["Suspended", "Completed", "Archived"],
+      Suspended: ["Active", "Completed", "Archived"],
+      Completed: ["Archived"], // Une fois terminé, seulement archivage possible
+      Archived: [], // Archivé, plus aucun changement possible
+    };
+
+    // Vérifier si la transition est autorisée
+    if (!allowedTransitions[oldStatus]?.includes(newStatus)) {
+      return {
+        valid: false,
+        reason: `Transition de ${oldStatus} vers ${newStatus} non autorisée`,
+      };
+    }
+
+    // Règles spécifiques
+    if (newStatus === "Completed") {
+      // Vérifier que l'année académique est terminée ou proche de la fin
+      const enrollment = await prisma.enrollment.findUnique({
+        where: { id: enrollmentId },
+        include: { academicYear: true },
+      });
+
+      if (enrollment && enrollment.academicYear) {
+        const today = new Date();
+        const daysUntilEnd = Math.ceil(
+          (enrollment.academicYear.endDate.getTime() - today.getTime()) /
+            (1000 * 3600 * 24)
+        );
+
+        if (daysUntilEnd > 30) {
+          return {
+            valid: false,
+            reason: "L'année académique n'est pas encore terminée",
+          };
+        }
+      }
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Valide si une inscription peut être complétée
+   * @private
+   */
+  private async validateCanCompleteEnrollment(
+    enrollmentId: string
+  ): Promise<{ valid: boolean; reason?: string; details?: any }> {
+    try {
+      const enrollment = await prisma.enrollment.findUnique({
+        where: { id: enrollmentId },
+        include: {
+          student: true,
+          academicYear: true,
+        },
+      });
+
+      if (!enrollment) {
+        return {
+          valid: false,
+          reason: "Inscription non trouvée",
+        };
+      }
+
+      // 1. Vérifier la situation financière
+      const financialValidation = await this.checkFinancialEligibility(
+        enrollment.studentId,
+        enrollment.academicYearId
+      );
+
+      if (!financialValidation.eligible) {
+        return {
+          valid: false,
+          reason: "L'étudiant a des frais impayés",
+          details: {
+            balance: financialValidation.balance,
+            overdueAmount: financialValidation.overdueAmount,
+          },
+        };
+      }
+
+      // 2. Vérifier les résultats académiques (si disponibles)
+      const grades = await prisma.grade.findMany({
+        where: {
+          studentId: enrollment.studentId,
+          academicYearId: enrollment.academicYearId,
+        },
+      });
+
+      if (grades.length > 0) {
+        const passed = this.validateAcademicResults(grades);
+        if (!passed) {
+          return {
+            valid: false,
+            reason: "L'étudiant n'a pas validé son année académique",
+            details: {
+              gradesCount: grades.length,
+              averageGrade:
+                grades.reduce((sum, grade) => sum + grade.grade, 0) /
+                grades.length,
+            },
+          };
+        }
+      }
+
+      return { valid: true };
+    } catch (error) {
+      console.error("Erreur validation completion inscription:", error);
+      return {
+        valid: false,
+        reason: "Erreur lors de la validation",
+      };
+    }
+  }
+
+  /**
+   * Vérifie l'éligibilité financière
+   * @private
+   */
+  private async checkFinancialEligibility(
+    studentId: string,
+    academicYearId: string
+  ): Promise<{ eligible: boolean; balance: number; overdueAmount: number }> {
+    try {
+      const studentFees = await prisma.studentFee.findMany({
+        where: {
+          studentId,
+          academicYearId,
+          OR: [
+            { status: "pending" },
+            { status: "overdue" },
+            {
+              AND: [{ status: "partial" }, { dueDate: { lt: new Date() } }],
+            },
+          ],
+        },
+        include: {
+          payments: true,
+        },
+      });
+
+      let totalBalance = 0;
+      let overdueAmount = 0;
+      const today = new Date();
+
+      studentFees.forEach((fee) => {
+        const totalPaid = fee.payments.reduce(
+          (sum, payment) => sum + payment.amount,
+          0
+        );
+        const balance = fee.totalAmount - totalPaid;
+
+        if (balance > 0) {
+          totalBalance += balance;
+
+          if (fee.dueDate < today) {
+            overdueAmount += balance;
+          }
+        }
+      });
+
+      // Politique: maximum 5000 HTG d'impayés tolérés
+      const eligible = totalBalance <= 5000;
+
+      return {
+        eligible,
+        balance: totalBalance,
+        overdueAmount,
+      };
+    } catch (error) {
+      console.error("Erreur vérification éligibilité financière:", error);
+      return {
+        eligible: false,
+        balance: 0,
+        overdueAmount: 0,
+      };
+    }
+  }
+
+  /**
+   * Retourne les niveaux autorisés après un niveau donné
+   * @private
+   */
+  private getAllowedNextLevels(
+    currentLevel: string,
+    academicStatus: "Passed" | "Failed" | "NoGrades" = "Passed"
+  ): string[] {
+    const nextLevels: string[] = [];
+
+    // Toujours permettre le même niveau (redoublement)
+    nextLevels.push(currentLevel);
+
+    // Ajouter les niveaux supérieurs si l'élève a réussi ou n'a pas de notes
+    if (academicStatus === "Passed" || academicStatus === "NoGrades") {
+      const normalTransitions: Record<string, string[]> = {
+        [ClassLevel.Sixieme]: [ClassLevel.Cinquieme],
+        [ClassLevel.Cinquieme]: [ClassLevel.Quatrieme],
+        [ClassLevel.Quatrieme]: [ClassLevel.Troisieme, ClassLevel.NSI],
+        [ClassLevel.Troisieme]: [ClassLevel.Seconde],
+        [ClassLevel.Seconde]: [ClassLevel.Premiere],
+        [ClassLevel.Premiere]: [ClassLevel.Terminale],
+        [ClassLevel.Terminale]: [],
+        [ClassLevel.NSI]: [ClassLevel.NSII],
+        [ClassLevel.NSII]: [ClassLevel.NSIII],
+        [ClassLevel.NSIII]: [ClassLevel.NSIV],
+        [ClassLevel.NSIV]: [],
+      };
+
+      nextLevels.push(...(normalTransitions[currentLevel] || []));
+    }
+
+    return Array.from(new Set(nextLevels)); // Éliminer les doublons
+  }
+
+  /**
+   * Valide la transition entre niveaux avec support complet du redoublement
+   * @private
+   */
+  private async validateClassLevelTransition(
+    studentId: string,
+    newClassId: string,
+    previousClassId?: string,
+    academicStatus: "Passed" | "Failed" | "NoGrades" = "Passed"
+  ): Promise<{ valid: boolean; reason?: string; details?: any }> {
+    if (!previousClassId) {
+      return { valid: true }; // Première inscription
+    }
+
+    try {
+      const [previousClass, newClass] = await Promise.all([
+        prisma.schoolClass.findUnique({
+          where: { id: previousClassId },
+          select: { id: true, name: true, level: true },
+        }),
+        prisma.schoolClass.findUnique({
+          where: { id: newClassId },
+          select: { id: true, name: true, level: true },
+        }),
+      ]);
+
+      if (!previousClass || !newClass) {
+        return { valid: false, reason: "Classe non trouvée" };
+      }
+
+      const levelOrder = this.getClassLevelOrder();
+      const previousLevel = previousClass.level;
+      const newLevel = newClass.level;
+
+      // Vérifier que les niveaux existent dans l'ordre défini
+      if (!levelOrder.has(previousLevel) || !levelOrder.has(newLevel)) {
+        return {
+          valid: false,
+          reason: `Niveau de classe non reconnu: ${!levelOrder.has(previousLevel) ? previousLevel : newLevel}`,
+        };
+      }
+
+      // PERMETTRE LE MÊME NIVEAU (REDOUBLEMENT)
+      if (newLevel === previousLevel) {
+        const canRepeat = await this.validateLevelRepetition(
+          studentId,
+          previousClassId
+        );
+        if (!canRepeat.valid) {
+          return {
+            valid: false,
+            reason: canRepeat.reason || "Le redoublement n'est pas autorisé",
+            details: canRepeat.details,
+          };
+        }
+        return { valid: true };
+      }
+
+      const previousOrder = levelOrder.get(previousLevel)!;
+      const newOrder = levelOrder.get(newLevel)!;
+
+      // Règles de transition
+      const rules = {
+        // Transition normale: doit suivre l'ordre
+        normalTransition: newOrder === previousOrder + 1,
+
+        // Transition spéciale Quatrième -> Troisieme ou NSI
+        fromQuatrieme:
+          previousLevel === ClassLevel.Quatrieme &&
+          (newLevel === ClassLevel.Troisieme || newLevel === ClassLevel.NSI),
+
+        // Descendre de niveau (non autorisé)
+        goDownLevel: newOrder < previousOrder,
+
+        // Sauter un niveau (non autorisé sauf si l'élève a très bien réussi)
+        skipLevel: newOrder > previousOrder + 1,
+      };
+
+      // Si l'élève a échoué, ne permet que le redoublement
+      if (academicStatus === "Failed") {
+        return {
+          valid: false,
+          reason: "L'élève ayant échoué, seul le redoublement est autorisé",
+          details: {
+            requiredLevel: previousLevel,
+            currentLevel: newLevel,
+            academicStatus,
+          },
+        };
+      }
+
+      // Vérifications normales pour les élèves qui ont réussi ou n'ont pas de notes
+      if (rules.goDownLevel) {
+        return {
+          valid: false,
+          reason: "La descente de niveau n'est pas autorisée",
+          details: {
+            from: previousLevel,
+            to: newLevel,
+            allowedNext: this.getAllowedNextLevels(
+              previousLevel,
+              academicStatus
+            ),
+          },
+        };
+      }
+
+      if (rules.skipLevel) {
+        // Pour les très bons élèves (moyenne > 80), on peut autoriser le saut
+        if (academicStatus === "Passed") {
+          const grades = await prisma.grade.findMany({
+            where: {
+              studentId,
+              academicYear: {
+                id: (
+                  await prisma.enrollment.findFirst({
+                    where: {
+                      studentId,
+                      classId: previousClassId,
+                      status: { in: ["Active", "Completed"] },
+                    },
+                    select: { academicYearId: true },
+                  })
+                )?.academicYearId,
+              },
+            },
+          });
+
+          const average =
+            grades.length > 0
+              ? grades.reduce((sum, g) => sum + g.grade, 0) / grades.length
+              : 0;
+
+          if (average < 80) {
+            return {
+              valid: false,
+              reason:
+                "Le saut de niveau n'est autorisé que pour les élèves avec une moyenne supérieure à 80",
+              details: {
+                average,
+                requiredAverage: 80,
+              },
+            };
+          }
+        } else {
+          return {
+            valid: false,
+            reason: "Il n'est pas permis de sauter un niveau",
+            details: {
+              from: previousLevel,
+              to: newLevel,
+              allowedNext: this.getAllowedNextLevels(
+                previousLevel,
+                academicStatus
+              ),
+            },
+          };
+        }
+      }
+
+      // Transition depuis Quatrième
+      if (previousLevel === ClassLevel.Quatrieme) {
+        if (!rules.fromQuatrieme) {
+          return {
+            valid: false,
+            reason:
+              "Après la Quatrième, l'étudiant doit aller en Troisième (parcours classique) ou en NSI (Nouveau Secondaire)",
+            details: {
+              allowed: [ClassLevel.Troisieme, ClassLevel.NSI],
+              received: newLevel,
+            },
+          };
+        }
+
+        // Si transition vers NSI, vérifier l'orientation
+        if (newLevel === ClassLevel.NSI) {
+          const orientationValid =
+            await this.validateNouveauSecondaireOrientation(studentId);
+          if (!orientationValid.valid) {
+            return {
+              valid: false,
+              reason:
+                orientationValid.reason ||
+                "L'orientation vers le Nouveau Secondaire n'est pas valide",
+              details: orientationValid.details,
+            };
+          }
+        }
+      }
+
+      // Vérifier les transitions spécifiques
+      const validTransition = rules.normalTransition || rules.fromQuatrieme;
+
+      if (!validTransition) {
+        return {
+          valid: false,
+          reason: "Transition de niveau non autorisée",
+          details: {
+            from: previousLevel,
+            to: newLevel,
+            allowedTransitions: this.getAllowedTransitions(
+              previousLevel,
+              academicStatus
+            ),
+          },
+        };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      console.error("Erreur validation transition niveau:", error);
+      return {
+        valid: false,
+        reason: "Erreur lors de la validation de la transition de niveau",
+      };
+    }
+  }
+
+  /**
+   * Valide l'orientation vers le Nouveau Secondaire
+   * @private
+   */
+  private async validateNouveauSecondaireOrientation(
+    studentId: string
+  ): Promise<{ valid: boolean; reason?: string; details?: any }> {
+    try {
+      // Vérifier si l'étudiant a des notes en Quatrième
+      // (Prisma GradeWhereInput n'a pas de relation 'schoolClass', on récupère donc
+      // d'abord les academicYearId des inscriptions en Quatrième, puis on cherche les grades)
+      const quatriemeEnrollments = await prisma.enrollment.findMany({
+        where: {
+          studentId,
+          schoolClass: {
+            level: ClassLevel.Quatrieme,
+          },
+        },
+        select: {
+          academicYearId: true,
+        },
+      });
+
+      const academicYearIds = quatriemeEnrollments.map((e) => e.academicYearId);
+
+      const grades = await prisma.grade.findMany({
+        where: {
+          studentId,
+          academicYearId:
+            academicYearIds.length > 0 ? { in: academicYearIds } : undefined,
+        },
+        include: {
+          subject: true,
+        },
+      });
+
+      if (grades.length === 0) {
+        return {
+          valid: true, // Pas de notes, orientation par défaut autorisée
+          details: { hasGrades: false },
+        };
+      }
+
+      // Critères pour le Nouveau Secondaire
+      const average =
+        grades.reduce((sum, g) => sum + g.grade, 0) / grades.length;
+      const mathGrade =
+        (grades as any).find((g: any) =>
+          (g.subject?.name ?? "").toLowerCase().includes("math")
+        )?.grade || 0;
+      const scienceGrade =
+        (grades as any).find(
+          (g: any) =>
+            (g.subject?.name ?? "").toLowerCase().includes("science") ||
+            (g.subject?.name ?? "").toLowerCase().includes("physique") ||
+            (g.subject?.name ?? "").toLowerCase().includes("chimie")
+        )?.grade || 0;
+
+      // Règles d'orientation
+      const meetsCriteria =
+        average >= 60 && mathGrade >= 50 && scienceGrade >= 50;
+
+      if (!meetsCriteria) {
+        return {
+          valid: false,
+          reason:
+            "L'étudiant ne remplit pas les critères pour le Nouveau Secondaire",
+          details: {
+            average,
+            mathGrade,
+            scienceGrade,
+            required: { average: 60, math: 50, science: 50 },
+          },
+        };
+      }
+
+      return {
+        valid: true,
+        details: {
+          average,
+          mathGrade,
+          scienceGrade,
+          meetsCriteria: true,
+        },
+      };
+    } catch (error) {
+      console.error("Erreur validation orientation:", error);
+      return {
+        valid: false,
+        reason: "Erreur lors de la validation de l'orientation",
+      };
+    }
+  }
+
+  /**
+   * Valide si un redoublement est autorisé
+   * @private
+   */
+  private async validateLevelRepetition(
+    studentId: string,
+    classId: string
+  ): Promise<{ valid: boolean; reason?: string; details?: any }> {
+    try {
+      // Vérifier si l'étudiant a déjà redoublé ce niveau
+      const classData = await prisma.schoolClass.findUnique({
+        where: { id: classId },
+        select: { level: true },
+      });
+
+      if (!classData) {
+        return { valid: false, reason: "Classe non trouvée" };
+      }
+
+      const enrollments = await prisma.enrollment.findMany({
+        where: {
+          studentId,
+          schoolClass: {
+            level: classData.level,
+          },
+          status: { in: ["Completed", "Active"] },
+        },
+        orderBy: {
+          enrollmentDate: "desc",
+        },
+      });
+
+      // Si déjà 2 inscriptions à ce niveau (déjà redoublé une fois)
+      if (enrollments.length >= 2) {
+        return {
+          valid: false,
+          reason: `L'étudiant a déjà redoublé le niveau ${classData.level}`,
+          details: {
+            level: classData.level,
+            enrollmentCount: enrollments.length,
+            maxAllowed: 1,
+          },
+        };
+      }
+
+      // Vérifier les résultats si disponible
+      if (enrollments.length > 0) {
+        const lastEnrollment = enrollments[0];
+        const grades = await prisma.grade.findMany({
+          where: {
+            studentId,
+            academicYearId: lastEnrollment.academicYearId,
+          },
+        });
+
+        if (grades.length > 0) {
+          const average =
+            grades.reduce((sum, g) => sum + g.grade, 0) / grades.length;
+          const passed = average >= 50;
+
+          if (passed) {
+            return {
+              valid: false,
+              reason:
+                "L'étudiant a déjà réussi ce niveau, le redoublement n'est pas nécessaire",
+              details: {
+                average,
+                passed: true,
+              },
+            };
+          }
+        }
+      }
+
+      return { valid: true };
+    } catch (error) {
+      console.error("Erreur validation redoublement:", error);
+      return {
+        valid: false,
+        reason: "Erreur lors de la validation du redoublement",
+      };
+    }
+  }
+
+  /**
+   * Retourne les transitions autorisées depuis un niveau
+   * @private
+   */
+  private getAllowedTransitions(
+    currentLevel: string,
+    academicStatus: "Passed" | "Failed" | "NoGrades" = "Passed"
+  ): Array<{
+    to: string;
+    description: string;
+    parcours: string;
+    allowed: boolean;
+  }> {
+    const transitions: Array<{
+      to: string;
+      description: string;
+      parcours: string;
+      allowed: boolean;
+    }> = [];
+
+    // Toujours permettre le même niveau (redoublement)
+    transitions.push({
+      to: currentLevel,
+      description:
+        academicStatus === "Failed"
+          ? "Redoublement (recommandé)"
+          : "Redoublement",
+      parcours: this.getLevelParcours(currentLevel),
+      allowed: true,
+    });
+
+    // Ajouter les transitions normales si l'élève a réussi ou n'a pas de notes
+    if (academicStatus === "Passed" || academicStatus === "NoGrades") {
+      const normalTransitions: Record<
+        string,
+        Array<{
+          to: string;
+          description: string;
+          parcours: string;
+        }>
+      > = {
+        [ClassLevel.Sixieme]: [
+          {
+            to: ClassLevel.Cinquieme,
+            description: "Passage normal",
+            parcours: "Classique",
+          },
+        ],
+        [ClassLevel.Cinquieme]: [
+          {
+            to: ClassLevel.Quatrieme,
+            description: "Passage normal",
+            parcours: "Classique",
+          },
+        ],
+        [ClassLevel.Quatrieme]: [
+          {
+            to: ClassLevel.Troisieme,
+            description: "Poursuite parcours classique",
+            parcours: "Classique",
+          },
+          {
+            to: ClassLevel.NSI,
+            description: "Orientation Nouveau Secondaire",
+            parcours: "Nouveau Secondaire",
+          },
+        ],
+        [ClassLevel.Troisieme]: [
+          {
+            to: ClassLevel.Seconde,
+            description: "Passage normal",
+            parcours: "Classique",
+          },
+        ],
+        [ClassLevel.Seconde]: [
+          {
+            to: ClassLevel.Premiere,
+            description: "Passage normal",
+            parcours: "Classique",
+          },
+        ],
+        [ClassLevel.Premiere]: [
+          {
+            to: ClassLevel.Terminale,
+            description: "Passage normal",
+            parcours: "Classique",
+          },
+        ],
+        [ClassLevel.Terminale]: [],
+        [ClassLevel.NSI]: [
+          {
+            to: ClassLevel.NSII,
+            description: "Passage normal",
+            parcours: "Nouveau Secondaire",
+          },
+        ],
+        [ClassLevel.NSII]: [
+          {
+            to: ClassLevel.NSIII,
+            description: "Passage normal",
+            parcours: "Nouveau Secondaire",
+          },
+        ],
+        [ClassLevel.NSIII]: [
+          {
+            to: ClassLevel.NSIV,
+            description: "Passage normal",
+            parcours: "Nouveau Secondaire",
+          },
+        ],
+        [ClassLevel.NSIV]: [],
+      };
+
+      const normalTrans = normalTransitions[currentLevel] || [];
+      normalTrans.forEach((trans) => {
+        transitions.push({
+          ...trans,
+          allowed: true,
+        });
+      });
+    }
+
+    return transitions;
+  }
+
+  /**
+   * Génère des recommandations pour la réinscription
+   * @private
+   */
+  private generateReenrollmentRecommendations(
+    academicStatus: "Passed" | "Failed" | "NoGrades",
+    averageGrade: number,
+    previousLevel: string,
+    financialValidation: any
+  ): Array<{
+    type: "warning" | "info" | "success" | "error";
+    message: string;
+    action?: string;
+  }> {
+    const recommendations: Array<{
+      type: "warning" | "info" | "success" | "error";
+      message: string;
+      action?: string;
+    }> = [];
+
+    // Recommandations académiques
+    if (academicStatus === "Failed") {
+      recommendations.push({
+        type: "warning",
+        message: `L'étudiant a échoué avec une moyenne de ${averageGrade.toFixed(2)}/100`,
+        action: "Redoublement recommandé",
+      });
+
+      if (averageGrade < 30) {
+        recommendations.push({
+          type: "error",
+          message:
+            "Résultats très faibles - Recommander une évaluation pédagogique",
+          action: "Consulter le conseiller pédagogique",
+        });
+      }
+    } else if (academicStatus === "Passed") {
+      recommendations.push({
+        type: "success",
+        message: `L'étudiant a réussi avec une moyenne de ${averageGrade.toFixed(2)}/100`,
+      });
+
+      if (averageGrade >= 80) {
+        recommendations.push({
+          type: "info",
+          message: "Excellents résultats - Possibilité de saut de niveau",
+          action: "Considérer le passage anticipé",
+        });
+      }
+    } else {
+      recommendations.push({
+        type: "info",
+        message: "Aucune note disponible pour l'année précédente",
+      });
+    }
+
+    // Recommandations financières
+    if (!financialValidation.eligible) {
+      recommendations.push({
+        type: "error",
+        message: `Solde impayé de ${financialValidation.balance} HTG`,
+        action: "Régulariser la situation financière avant réinscription",
+      });
+    } else if (financialValidation.balance > 0) {
+      recommendations.push({
+        type: "warning",
+        message: `Solde restant: ${financialValidation.balance} HTG`,
+        action: "Encaisser les frais restants",
+      });
+    }
+
+    // Recommandations de niveau
+    const levelRecommendations = this.getLevelRecommendations(
+      previousLevel,
+      academicStatus
+    );
+    recommendations.push(...levelRecommendations);
+
+    return recommendations;
+  }
+
+  /**
+   * Génère des recommandations spécifiques au niveau
+   * @private
+   */
+  private getLevelRecommendations(
+    previousLevel: string,
+    academicStatus: "Passed" | "Failed" | "NoGrades"
+  ): Array<{
+    type: "warning" | "info" | "success" | "error";
+    message: string;
+    action?: string;
+  }> {
+    const recommendations: Array<{
+      type: "warning" | "info" | "success" | "error";
+      message: string;
+      action?: string;
+    }> = [];
+
+    if (academicStatus === "Failed") {
+      if (
+        [ClassLevel.Terminale, ClassLevel.NSIV].includes(
+          previousLevel as ClassLevel
+        )
+      ) {
+        recommendations.push({
+          type: "error",
+          message: "Échec en année de fin de cycle",
+          action: "Considérer une année supplémentaire ou une réorientation",
+        });
+      } else if (previousLevel === ClassLevel.Quatrieme) {
+        recommendations.push({
+          type: "warning",
+          message: "Échec en Quatrième - Choix du parcours à reconsidérer",
+          action: "Évaluer l'orientation vers le parcours classique",
+        });
+      } else {
+        recommendations.push({
+          type: "info",
+          message: "Redoublement recommandé pour consolider les acquis",
+        });
+      }
+    }
+
+    if (previousLevel === ClassLevel.Quatrieme && academicStatus === "Passed") {
+      recommendations.push({
+        type: "info",
+        message: "Choix du parcours à faire après la Quatrième",
+        action:
+          "Évaluer les options: Troisième (classique) ou NSI (Nouveau Secondaire)",
+      });
+    }
+
+    return recommendations;
+  }
+
+  /**
+   * Valide l'intégrité de la chaîne historique
+   * @private
+   */
+  private async validateEnrollmentChain(
+    enrollmentId: string,
+    previousEnrollmentId?: string
+  ): Promise<{ valid: boolean; errors: string[] }> {
+    const errors: string[] = [];
+
+    if (previousEnrollmentId) {
+      // Vérifier que previousEnrollment existe
+      const previous = await prisma.enrollment.findUnique({
+        where: { id: previousEnrollmentId },
+        include: { academicYear: true },
+      });
+
+      if (!previous) {
+        errors.push(
+          `L'inscription précédente ${previousEnrollmentId} n'existe pas`
+        );
+      } else {
+        // Vérifier que la nouvelle inscription est pour une année ultérieure
+        const currentEnrollment = await prisma.enrollment.findUnique({
+          where: { id: enrollmentId },
+          include: { academicYear: true },
+        });
+
+        if (currentEnrollment && currentEnrollment.academicYear) {
+          if (
+            previous.academicYear.endDate >=
+            currentEnrollment.academicYear.startDate
+          ) {
+            errors.push(
+              "L'année précédente doit se terminer avant la nouvelle année"
+            );
+          }
+        }
+
+        // Empêcher les cycles en vérifiant les ancêtres
+        if (await this.hasCycle(previousEnrollmentId, enrollmentId)) {
+          errors.push("Détection d'un cycle dans la chaîne d'inscriptions");
+        }
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
+  }
+
+  /**
+   * Vérifie s'il y a un cycle dans la chaîne d'inscriptions
+   * @private
+   */
+  private async hasCycle(startId: string, targetId: string): Promise<boolean> {
+    let currentId: string | null = startId;
+    const visited = new Set<string>();
+
+    while (currentId) {
+      if (visited.has(currentId)) {
+        return true; // Cycle détecté
+      }
+
+      if (currentId === targetId) {
+        return true; // Le target est un ancêtre du start
+      }
+
+      visited.add(currentId);
+
+      const enrollment: any = await prisma.enrollment.findUnique({
+        where: { id: currentId },
+        select: { previousEnrollmentId: true },
+      });
+
+      currentId = enrollment?.previousEnrollmentId || null;
+    }
+
+    return false;
+  }
+
+  /**
+   * Vérifie si une inscription est modifiable
+   * @private
+   */
+  private async validateEnrollmentIsModifiable(
+    enrollment: any
+  ): Promise<{ valid: boolean; reason?: string }> {
+    // Les inscriptions archivées ne sont pas modifiables
+    if (enrollment.status === "Archived") {
+      return {
+        valid: false,
+        reason: "Une inscription archivée n'est pas modifiable",
+      };
+    }
+
+    // Vérifier si l'année académique est terminée
+    if (enrollment.academicYear) {
+      const today = new Date();
+      if (today > enrollment.academicYear.endDate) {
+        return {
+          valid: false,
+          reason:
+            "L'année académique est terminée, l'inscription n'est plus modifiable",
+        };
+      }
+    }
+
+    return { valid: true };
+  }
+
   /**
    * Réinscription manuelle avec spécification exacte des années
-   * Pour les cas complexes avec données historiques
    */
   async manualHistoricalReenrollment(
     data: {
@@ -2656,7 +3547,7 @@ export class EnrollmentService {
     auditData: AuditData
   ) {
     try {
-      console.log("📚 Début réinscription manuelle historique");
+      console.log("Debut reinscription manuelle historique");
 
       // Vérifier que les deux années sont différentes
       if (data.targetAcademicYearId === data.previousAcademicYearId) {
@@ -2665,6 +3556,33 @@ export class EnrollmentService {
           message:
             "L'année cible et l'année précédente doivent être différentes",
           code: "SAME_YEARS",
+        };
+      }
+
+      // Valider la séquence chronologique des années
+      const [targetYear, previousYear] = await Promise.all([
+        prisma.academicYear.findUnique({
+          where: { id: data.targetAcademicYearId },
+        }),
+        prisma.academicYear.findUnique({
+          where: { id: data.previousAcademicYearId },
+        }),
+      ]);
+
+      if (!targetYear || !previousYear) {
+        return {
+          success: false,
+          message: "Une des années académiques spécifiées n'existe pas",
+          code: "YEAR_NOT_FOUND",
+        };
+      }
+
+      if (previousYear.endDate >= targetYear.startDate) {
+        return {
+          success: false,
+          message:
+            "L'année précédente doit se terminer avant la nouvelle année",
+          code: "INVALID_YEAR_SEQUENCE",
         };
       }
 
@@ -2710,7 +3628,7 @@ export class EnrollmentService {
       return result;
     } catch (error: any) {
       console.error(
-        "❌ EnrollmentService - manualHistoricalReenrollment error:",
+        "EnrollmentService - manualHistoricalReenrollment error:",
         error
       );
       throw error;

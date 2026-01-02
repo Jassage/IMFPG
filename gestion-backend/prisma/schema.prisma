@@ -569,22 +569,24 @@ model Enrollment {
   id                     String           @id @default(cuid())
   studentId              String
   classId                String
-  enrollmentDate         DateTime
-  status                 EnrollmentStatus
   academicYearId         String
+  enrollmentDate         DateTime         @default(now())
+  status                 EnrollmentStatus @default(Active)
   
   // Pour les réinscriptions
   isReenrollment         Boolean          @default(false)
-  previousEnrollmentId   String?          // Pas unique pour permettre plusieurs réinscriptions
+  previousEnrollmentId   String?          
   reenrollmentDate       DateTime?
   reenrollmentNotes      String?
   
   // Relations pour chaînage des inscriptions
   previousEnrollment     Enrollment?      @relation("EnrollmentChain", fields: [previousEnrollmentId], references: [id])
-  nextEnrollments        Enrollment[]     @relation("EnrollmentChain") // Plusieurs inscriptions suivantes possibles
+  nextEnrollments        Enrollment[]     @relation("EnrollmentChain")
   
   createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt  // UN SEUL updatedAt
+  
+  // Relations externes
   academicYear           AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
   student                Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
   schoolClass            SchoolClass      @relation(fields: [classId], references: [id], onDelete: Cascade)

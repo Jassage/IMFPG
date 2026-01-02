@@ -369,13 +369,6 @@ export const roleConfigurations: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.VIEW_PROFESSEURS,
         "Gestion du corps professoral"
       ),
-      createNavItem(
-        "guardians",
-        "Parents/Tuteurs",
-        "UsersRound",
-        PERMISSIONS.VIEW_GUARDIANS,
-        "Gestion des parents et tuteurs"
-      ),
     ],
     academicItems: [
       createNavItem(

@@ -156,3 +156,28 @@ export interface ClassControllerResponse {
     pagination?: Pagination;
   };
 }
+
+export interface ApiResponse {
+  success: boolean;
+  message: string;
+  code?: string;
+  data?: any;
+  errors?: Array<{
+    path: string;
+    message: string;
+  }>;
+}
+
+export interface PaginationData {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface ApiResponseWithPagination extends ApiResponse {
+  data: {
+    [key: string]: any;
+    pagination: PaginationData;
+  };
+}
