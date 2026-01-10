@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captures d'écran - IMFP</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 1.1rem;
+            margin-top: 10px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 10px;
+        }
+        .stat-number.success { color: #10b981; }
+        .stat-number.failed { color: #ef4444; }
+        .stat-number.info { color: #3b82f6; }
+        .stat-label {
+            color: #6b7280;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .pages-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 25px;
+        }
+        .page-card {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border: 1px solid #e5e7eb;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .page-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+        }
+        .page-card.success { border-top: 4px solid #10b981; }
+        .page-card.failed { border-top: 4px solid #ef4444; }
+        .page-header {
+            padding: 20px;
+            background: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .page-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #111827;
+        }
+        .page-status {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        .status-success { background: #d1fae5; color: #065f46; }
+        .status-failed { background: #fee2e2; color: #991b1b; }
+        .page-content {
+            padding: 20px;
+        }
+        .page-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #e5e7eb;
+        }
+        .page-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        .btn-icon {
+            margin-right: 5px;
+        }
+        .form-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            background: #e0f2fe;
+            color: #0369a1;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-top: 10px;
+        }
+        footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 5px;
+        }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+        .no-image {
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f9fafb;
+            border-radius: 8px;
+            color: #9ca3af;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📸 Captures d'écran IMFP</h1>
+            <p class="subtitle">Système de Gestion Scolaire - Captures automatiques</p>
+        </header>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span class="stat-number">15</span>
+                <span class="stat-label">Total Pages</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number success">15</span>
+                <span class="stat-label">Réussies</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number info">12</span>
+                <span class="stat-label">Avec Formulaires</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number failed">0</span>
+                <span class="stat-label">Échecs</span>
+            </div>
+        </div>
+        
+        <div class="pages-grid">
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Tableau de bord
+                        
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="dashboard/page.png" 
+                         alt="Tableau de bord" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="dashboard/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                    </div>
+                    
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Élèves
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="students/page.png" 
+                         alt="Élèves" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="students/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="students/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Professeurs
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="professeurs/page.png" 
+                         alt="Professeurs" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="professeurs/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="professeurs/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Notes
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="grades/page.png" 
+                         alt="Notes" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="grades/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="grades/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Matières
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="subject/page.png" 
+                         alt="Matières" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="subject/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="subject/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Classes
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="classes/page.png" 
+                         alt="Classes" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="classes/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="classes/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Inscriptions
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="enrollments/page.png" 
+                         alt="Inscriptions" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="enrollments/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="enrollments/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Frais
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="fees/page.png" 
+                         alt="Frais" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="fees/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="fees/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Paiements
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="payments/page.png" 
+                         alt="Paiements" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="payments/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="payments/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Utilisateurs
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="users/page.png" 
+                         alt="Utilisateurs" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="users/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="users/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Annonces
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="announcements/page.png" 
+                         alt="Annonces" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="announcements/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="announcements/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Événements
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="events/page.png" 
+                         alt="Événements" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="events/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="events/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Emploi du temps
+                        <span class="badge badge-info">+ formulaire</span>
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="schedule/page.png" 
+                         alt="Emploi du temps" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="schedule/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                        <a href="schedule/forms/add-form.png" 
+                           class="btn btn-success" 
+                           target="_blank">
+                            <span class="btn-icon">📝</span>
+                            Voir formulaire
+                        </a>
+                        
+                    </div>
+                    
+                    
+                    
+                    <div class="form-indicator">
+                        <span>📝</span>
+                        Formulaire d'ajout capturé
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Bulletins
+                        
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="transcripts/page.png" 
+                         alt="Bulletins" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="transcripts/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                    </div>
+                    
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="page-card success">
+                <div class="page-header">
+                    <div class="page-title">
+                        Journal d'audit
+                        
+                    </div>
+                    <div class="page-status status-success">
+                        ✅ Réussie
+                    </div>
+                </div>
+                <div class="page-content">
+                    
+                    <img src="audit-logs/page.png" 
+                         alt="Journal d'audit" 
+                         class="page-image"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">Image non disponible</div>'">
+                    
+                    
+                    
+                    <div class="page-actions">
+                        <a href="audit-logs/page.png" 
+                           class="btn btn-primary" 
+                           target="_blank">
+                            <span class="btn-icon">👁️</span>
+                            Voir la page
+                        </a>
+                        
+                        
+                    </div>
+                    
+                    
+                    
+                </div>
+            </div>
+            
+        </div>
+        
+        <footer>
+            <p>Généré automatiquement le 03/01/2026 20:43:10</p>
+            <p style="margin-top: 10px; font-size: 0.8rem; color: #9ca3af;">
+                Institution Mixte Faustin 1er • Système de capture SPA
+            </p>
+        </footer>
+    </div>
+    
+    <script>
+        // Ajouter un effet de chargement pour les images
+        document.addEventListener('DOMContentLoaded', function() {
+            const images = document.querySelectorAll('.page-image');
+            images.forEach(img => {
+                img.addEventListener('load', function() {
+                    this.style.opacity = '1';
+                });
+                img.style.opacity = '0';
+                img.style.transition = 'opacity 0.3s';
+            });
+            
+            // Mettre à jour l'heure
+            function updateTime() {
+                const timeElement = document.querySelector('footer p:first-child');
+                if (timeElement) {
+                    timeElement.textContent = 'Généré le ' + new Date().toLocaleString('fr-FR');
+                }
+            }
+            
+            // Mettre à jour toutes les heures
+            setInterval(updateTime, 3600000);
+        });
+    </script>
+</body>
+</html>

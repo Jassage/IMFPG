@@ -66,6 +66,7 @@ export interface CreateStudentData {
 }
 
 export interface GuardianData {
+  address: null;
   firstName: string;
   lastName: string;
   email?: string;
@@ -165,6 +166,7 @@ export interface StudentData {
 }
 
 export interface StudentCreateData {
+  studentCode: any;
   firstName: string;
   lastName: string;
   email: string;
@@ -244,6 +246,7 @@ export interface StudentStatistics {
 }
 
 export interface StudentImportResult {
+  warnings: any;
   success: number;
   failed: number;
   errors: any[];

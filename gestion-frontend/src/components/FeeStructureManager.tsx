@@ -73,6 +73,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface FeeFormData {
   academicYear: string;
@@ -86,6 +92,86 @@ interface ValidationError {
   field: string;
   message: string;
 }
+
+// Composant pour afficher les montants de manière optimisée
+const AmountDisplay: React.FC<{
+  amount: number;
+  className?: string;
+  showFullOnHover?: boolean;
+  compact?: boolean;
+}> = ({ amount, className = "", showFullOnHover = true, compact = false }) => {
+  const formatCompact = useCallback((value: number): string => {
+    if (value === 0) return "0 HTG";
+
+    const absValue = Math.abs(value);
+
+    if (absValue >= 1_000_000_000) {
+      // Milliard
+      const formatted = (value / 1_000_000_000).toFixed(2);
+      return `${formatted.replace(/\.?0+$/, "")}Md HTG`;
+    }
+    if (absValue >= 1_000_000) {
+      // Million
+      const formatted = (value / 1_000_000).toFixed(2);
+      return `${formatted.replace(/\.?0+$/, "")}M HTG`;
+    }
+    if (absValue >= 100_000) {
+      // Cent mille et plus
+      const formatted = (value / 1_000).toFixed(1);
+      return `${formatted.replace(/\.?0+$/, "")}K HTG`;
+    }
+    if (absValue >= 10_000) {
+      // Dix mille et plus
+      const formatted = (value / 1_000).toFixed(1);
+      return `${formatted.replace(/\.?0+$/, "")}K HTG`;
+    }
+    // Pour les petits montants, garder 2 décimales
+    return (
+      value.toLocaleString("fr-FR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }) + " HTG"
+    );
+  }, []);
+
+  const formatFull = useCallback((value: number): string => {
+    return (
+      value.toLocaleString("fr-FR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }) + " HTG"
+    );
+  }, []);
+
+  const displayAmount = compact ? formatCompact(amount) : formatFull(amount);
+  const fullAmount = formatFull(amount);
+
+  if (!showFullOnHover || displayAmount === fullAmount) {
+    return <span className={className}>{displayAmount}</span>;
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`${className} cursor-help hover:underline hover:underline-offset-2`}
+          >
+            {displayAmount}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[300px]">
+          <p className="font-mono text-sm">{fullAmount}</p>
+          {amount >= 1000000 && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {amount.toLocaleString("fr-FR")} gourdes
+            </p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
 
 export const FeeStructureManager: React.FC = () => {
   const {
@@ -474,6 +560,17 @@ export const FeeStructureManager: React.FC = () => {
       return acc;
     }, {} as Record<string, number>);
 
+    // Trouver le montant médian
+    const sortedAmounts = [...feeStructures]
+      .map((f) => f.amount)
+      .sort((a, b) => a - b);
+    const median =
+      total > 0
+        ? total % 2 === 0
+          ? (sortedAmounts[total / 2 - 1] + sortedAmounts[total / 2]) / 2
+          : sortedAmounts[Math.floor(total / 2)]
+        : 0;
+
     return {
       total,
       active,
@@ -481,6 +578,7 @@ export const FeeStructureManager: React.FC = () => {
       years,
       totalAmount,
       average,
+      median,
       highest,
       lowest,
       distributionByYear,
@@ -503,14 +601,6 @@ export const FeeStructureManager: React.FC = () => {
     setSelectedYear("all");
     setSelectedStatus("all");
     setActiveTab("all");
-  }, []);
-
-  // Formatage des montants
-  const formatAmount = useCallback((amount: number): string => {
-    return amount.toLocaleString("fr-FR", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
   }, []);
 
   // Téléchargement des données
@@ -647,8 +737,9 @@ export const FeeStructureManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Cartes de statistiques */}
+      {/* Cartes de statistiques OPTIMISÉES */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Carte 1: Total Structures */}
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -656,7 +747,9 @@ export const FeeStructureManager: React.FC = () => {
                 <p className="text-sm font-medium text-muted-foreground">
                   Total Structures
                 </p>
-                <p className="text-3xl font-bold mt-1">{statistics.total}</p>
+                <p className="text-2xl sm:text-3xl font-bold mt-1">
+                  {statistics.total}
+                </p>
               </div>
               <div className="p-3 rounded-lg bg-primary/10">
                 <FileText className="h-6 w-6 text-primary" />
@@ -685,6 +778,7 @@ export const FeeStructureManager: React.FC = () => {
           </CardContent>
         </Card>
 
+        {/* Carte 2: Montant Total (OPTIMISÉ) */}
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -692,25 +786,46 @@ export const FeeStructureManager: React.FC = () => {
                 <p className="text-sm font-medium text-muted-foreground">
                   Montant Total
                 </p>
-                <p className="text-3xl font-bold mt-1">
-                  {formatAmount(statistics.totalAmount)} HTG
-                </p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <p className="text-2xl sm:text-3xl font-bold">
+                    <AmountDisplay
+                      amount={statistics.totalAmount}
+                      compact
+                      showFullOnHover={statistics.totalAmount >= 10000}
+                    />
+                  </p>
+                </div>
               </div>
               <div className="p-3 rounded-lg bg-green-500/10">
                 <DollarSign className="h-6 w-6 text-green-600" />
               </div>
             </div>
-            <div className="mt-4 text-sm">
+            <div className="mt-4 text-sm space-y-1">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Moyenne</span>
                 <span className="font-medium">
-                  {formatAmount(statistics.average)} HTG
+                  <AmountDisplay
+                    amount={statistics.average}
+                    compact
+                    showFullOnHover={statistics.average >= 10000}
+                  />
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Médiane</span>
+                <span className="font-medium">
+                  <AmountDisplay
+                    amount={statistics.median}
+                    compact
+                    showFullOnHover={statistics.median >= 10000}
+                  />
                 </span>
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Carte 3: Années Académiques */}
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -718,42 +833,93 @@ export const FeeStructureManager: React.FC = () => {
                 <p className="text-sm font-medium text-muted-foreground">
                   Années Académiques
                 </p>
-                <p className="text-3xl font-bold mt-1">{statistics.years}</p>
+                <p className="text-2xl sm:text-3xl font-bold mt-1">
+                  {statistics.years}
+                </p>
               </div>
               <div className="p-3 rounded-lg bg-blue-500/10">
                 <Calendar className="h-6 w-6 text-blue-600" />
               </div>
             </div>
             <div className="mt-4 text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Distribution</span>
-                <span className="font-medium">Voir détails</span>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                      >
+                        Détails
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[300px]">
+                      <div className="space-y-1">
+                        {Object.entries(statistics.distributionByYear).map(
+                          ([year, count]) => (
+                            <div key={year} className="flex justify-between">
+                              <span>{year}:</span>
+                              <span className="font-medium">{count}</span>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Carte 4: Plage de Montants (OPTIMISÉ) */}
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground">
                   Plage de Montants
                 </p>
-                <p className="text-lg font-bold mt-1">
-                  {formatAmount(statistics.lowest)} -{" "}
-                  {formatAmount(statistics.highest)} HTG
-                </p>
+                <div className="space-y-2 mt-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Min:</span>
+                    <span className="text-sm font-medium">
+                      <AmountDisplay
+                        amount={statistics.lowest}
+                        compact
+                        showFullOnHover={statistics.lowest >= 10000}
+                      />
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Max:</span>
+                    <span className="text-sm font-medium">
+                      <AmountDisplay
+                        amount={statistics.highest}
+                        compact
+                        showFullOnHover={statistics.highest >= 10000}
+                      />
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div className="p-3 rounded-lg bg-purple-500/10">
+              <div className="p-3 rounded-lg bg-purple-500/10 ml-4">
                 <Filter className="h-6 w-6 text-purple-600" />
               </div>
             </div>
             <div className="mt-4 text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Écart</span>
                 <span className="font-medium">
-                  {formatAmount(statistics.highest - statistics.lowest)} HTG
+                  <AmountDisplay
+                    amount={statistics.highest - statistics.lowest}
+                    compact
+                    showFullOnHover={
+                      statistics.highest - statistics.lowest >= 10000
+                    }
+                  />
                 </span>
               </div>
             </div>
@@ -914,8 +1080,38 @@ export const FeeStructureManager: React.FC = () => {
                           {getAcademicYearDisplay(fee.academicYear)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatAmount(fee.amount)} HTG
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end">
+                          <div className="font-semibold">
+                            <AmountDisplay
+                              amount={fee.amount}
+                              compact={fee.amount >= 10000}
+                              showFullOnHover={fee.amount >= 10000}
+                            />
+                          </div>
+                          {fee.amount >= 10000 && (
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="cursor-help hover:underline">
+                                      Voir montant complet
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="font-mono">
+                                      {fee.amount.toLocaleString("fr-FR", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}{" "}
+                                      HTG
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -1010,12 +1206,37 @@ export const FeeStructureManager: React.FC = () => {
                 <div className="space-y-4">
                   <div className="bg-gradient-to-r from-primary/5 to-primary/10 p-4 rounded-lg">
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-primary">
-                        {formatAmount(fee.amount)} HTG
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Montant total
-                      </p>
+                      <div className="flex flex-col items-center">
+                        <p className="text-2xl font-bold text-primary">
+                          <AmountDisplay
+                            amount={fee.amount}
+                            compact={fee.amount >= 10000}
+                            showFullOnHover={fee.amount >= 10000}
+                          />
+                        </p>
+                        {fee.amount >= 10000 && (
+                          <p className="text-xs text-muted-foreground mt-1 truncate w-full">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="cursor-help hover:underline">
+                                    Montant complet
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="font-mono">
+                                    {fee.amount.toLocaleString("fr-FR", {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    })}{" "}
+                                    HTG
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1266,10 +1487,24 @@ export const FeeStructureManager: React.FC = () => {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl sm:text-3xl font-bold text-primary">
-                    {formatAmount(formData.amount)} HTG
-                  </p>
-                  <p className="text-sm text-muted-foreground">Montant total</p>
+                  <div className="flex flex-col items-end">
+                    <p className="text-2xl sm:text-3xl font-bold text-primary">
+                      <AmountDisplay
+                        amount={formData.amount}
+                        compact={formData.amount >= 10000}
+                        showFullOnHover={formData.amount >= 10000}
+                      />
+                    </p>
+                    {formData.amount >= 10000 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {formData.amount.toLocaleString("fr-FR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        HTG
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

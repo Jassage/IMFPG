@@ -33,13 +33,6 @@ export const useAcademicYearStore = create<AcademicYearState>((set, get) => ({
     try {
       const response = await api.get("/academic-years");
 
-      console.log("📅 API Response academic years:", {
-        status: response.status,
-        data: response.data,
-        isArray: Array.isArray(response.data),
-        hasData: !!response.data?.data,
-      });
-
       let yearsData = [];
 
       // Gérer différents formats de réponse
@@ -84,8 +77,6 @@ export const useAcademicYearStore = create<AcademicYearState>((set, get) => ({
       } else if (response.data?.years && Array.isArray(response.data.years)) {
         yearsData = response.data.years;
       }
-
-      console.log("Extracted academic years:", yearsData);
 
       const currentYear =
         yearsData.find((y: AcademicYear) => y.isCurrent) ||

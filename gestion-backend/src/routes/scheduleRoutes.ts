@@ -32,11 +32,12 @@ import {
   validateUpdateSchedule,
   validateGenerateTimetable,
 } from "../utils/scheduleValidators";
+import { debugRequests } from "../middleware/debugMiddleware";
 
 const router = Router();
 
 /**
- * @route GET /api/academic/schedules
+ * @route GET /api/schedules
  * @description Récupère tous les horaires avec pagination et filtres
  * @access Staff/Admin
  * @query {number} [page=1] - Numéro de page
@@ -50,7 +51,7 @@ const router = Router();
 router.get("/", requireAuth, requireStaff, getAllSchedules);
 
 /**
- * @route GET /api/academic/schedules/:id
+ * @route GET /api/schedules/:id
  * @description Récupère un horaire par ID avec ses relations
  * @access Staff/Admin
  * @param {string} id - ID de l'horaire
@@ -58,7 +59,7 @@ router.get("/", requireAuth, requireStaff, getAllSchedules);
 router.get("/:id", requireAuth, requireStaff, sanitizeInput, getScheduleById);
 
 /**
- * @route GET /api/academic/schedules/class/:classId
+ * @route GET /api/schedules/class/:classId
  * @description Récupère l'emploi du temps d'une classe
  * @access Staff/Admin
  * @param {string} classId - ID de la classe
@@ -69,7 +70,7 @@ router.get("/:id", requireAuth, requireStaff, sanitizeInput, getScheduleById);
 router.get("/class/:classId", requireAuth, sanitizeInput, getClassTimetable);
 
 /**
- * @route GET /api/academic/schedules/professor/:professeurId
+ * @route GET /api/schedules/professor/:professeurId
  * @description Récupère l'emploi du temps d'un professeur
  * @access Staff/Admin/Professeur
  * @param {string} professeurId - ID du professeur
@@ -84,7 +85,7 @@ router.get(
 );
 
 /**
- * @route GET /api/academic/schedules/available-slots
+ * @route GET /api/schedules/available-slots
  * @description Récupère les créneaux disponibles
  * @access Staff/Admin
  * @query {string} classId - ID de la classe
@@ -101,7 +102,7 @@ router.get(
 );
 
 /**
- * @route GET /api/academic/schedules/check-conflicts
+ * @route GET /api/schedules/check-conflicts
  * @description Vérifie les conflits d'horaire
  * @access Staff/Admin
  * @query {string} professeurId - ID du professeur
@@ -114,6 +115,7 @@ router.get(
  */
 router.get(
   "/check-conflicts",
+  debugRequests,
   requireAuth,
   requireStaff,
   sanitizeInput,
@@ -121,7 +123,7 @@ router.get(
 );
 
 /**
- * @route POST /api/academic/schedules
+ * @route POST /api/schedules
  * @description Crée un nouvel horaire
  * @access Admin/Staff
  * @body {string} assignmentId - ID de l'assignation
@@ -136,6 +138,7 @@ router.get(
  */
 router.post(
   "/",
+  debugRequests,
   requireAuth,
   requireStaff,
   validateContentType(),
@@ -147,7 +150,7 @@ router.post(
 );
 
 /**
- * @route POST /api/academic/schedules/generate
+ * @route POST /api/schedules/generate
  * @description Génère un emploi du temps automatiquement
  * @access Admin
  * @body {string} classId - ID de la classe
@@ -171,7 +174,7 @@ router.post(
 );
 
 /**
- * @route PUT /api/academic/schedules/:id
+ * @route PUT /api/schedules/:id
  * @description Met à jour un horaire
  * @access Admin/Staff
  * @param {string} id - ID de l'horaire
@@ -197,7 +200,7 @@ router.put(
 );
 
 /**
- * @route DELETE /api/academic/schedules/:id
+ * @route DELETE /api/schedules/:id
  * @description Supprime un horaire
  * @access Admin
  * @param {string} id - ID de l'horaire

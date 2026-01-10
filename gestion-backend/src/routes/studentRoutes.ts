@@ -15,6 +15,7 @@ import {
   handleValidationErrors,
   requireTeacher,
   requireTeacherOrStaff,
+  requireDirector,
 } from "../middleware";
 
 import {
@@ -29,7 +30,6 @@ import {
   importStudents,
   searchStudents,
   checkEmailAvailability,
-  checkCINAvailability,
   getStudentsByClass,
   exportStudents,
 } from "../controllers/studentController";
@@ -47,13 +47,6 @@ const router = Router();
  * @access Public (pour les formulaires d'inscription)
  */
 router.get("/check-email", checkEmailAvailability);
-
-/**
- * @route GET /api/students/check-cin
- * @description Vérifie la disponibilité d'un CIN
- * @access Public (pour les formulaires d'inscription)
- */
-router.get("/check-cin", checkCINAvailability);
 
 // ============================================
 // ROUTES PROTÉGÉES (authentification requise)
@@ -81,7 +74,7 @@ router.get("/search", requireAuth, requireStaff, sanitizeInput, searchStudents);
 router.get(
   "/statistics",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   sanitizeInput,
   getStudentStatistics
 );
@@ -141,7 +134,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -158,7 +151,7 @@ router.put(
 router.put(
   "/:id/status",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -174,7 +167,7 @@ router.put(
 router.put(
   "/:id/assign-class",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -189,7 +182,13 @@ router.put(
  * @access Admin
  */
 
-router.delete("/:id", requireAuth, requireAdmin, sanitizeInput, deleteStudent);
+router.delete(
+  "/:id",
+  requireAuth,
+  requireDirector,
+  sanitizeInput,
+  deleteStudent
+);
 
 /**
  * @route GET /api/classes/:classId/students

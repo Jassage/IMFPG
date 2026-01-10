@@ -14,6 +14,7 @@ import {
   sanitizeInput,
   handleValidationErrors,
   requireTeacherOrStaff,
+  requireDirector,
 } from "../middleware";
 
 import {
@@ -66,7 +67,7 @@ router.get(
 router.post(
   "/",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -83,7 +84,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -97,6 +98,6 @@ router.put(
  * @description Supprime une classe
  * @access Admin
  */
-router.delete("/:id", requireAuth, requireAdmin, sanitizeInput, deleteClass);
+router.delete("/:id", requireAuth, requireDirector, sanitizeInput, deleteClass);
 
 export default router;

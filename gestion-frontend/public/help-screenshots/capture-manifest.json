@@ -1,0 +1,100 @@
+{
+  "generated": "2026-01-04T02:44:00.304Z",
+  "frontendUrl": "http://localhost:3000",
+  "totalPages": 15,
+  "successfulPages": 15,
+  "failedPages": 0,
+  "pagesWithForms": 12,
+  "pages": [
+    {
+      "name": "Tableau de bord",
+      "success": true,
+      "hasForm": false,
+      "mainScreenshot": "dashboard\\page.png"
+    },
+    {
+      "name": "Élèves",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "students\\page.png"
+    },
+    {
+      "name": "Professeurs",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "professeurs\\page.png"
+    },
+    {
+      "name": "Notes",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "grades\\page.png"
+    },
+    {
+      "name": "Matières",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "subject\\page.png"
+    },
+    {
+      "name": "Classes",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "classes\\page.png"
+    },
+    {
+      "name": "Inscriptions",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "enrollments\\page.png"
+    },
+    {
+      "name": "Frais",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "fees\\page.png"
+    },
+    {
+      "name": "Paiements",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "payments\\page.png"
+    },
+    {
+      "name": "Utilisateurs",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "users\\page.png"
+    },
+    {
+      "name": "Annonces",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "announcements\\page.png"
+    },
+    {
+      "name": "Événements",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "events\\page.png"
+    },
+    {
+      "name": "Emploi du temps",
+      "success": true,
+      "hasForm": true,
+      "mainScreenshot": "schedule\\page.png"
+    },
+    {
+      "name": "Bulletins",
+      "success": true,
+      "hasForm": false,
+      "mainScreenshot": "transcripts\\page.png"
+    },
+    {
+      "name": "Journal d'audit",
+      "success": true,
+      "hasForm": false,
+      "mainScreenshot": "audit-logs\\page.png"
+    }
+  ]
+}

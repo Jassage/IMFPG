@@ -44,7 +44,7 @@ const VALID_ROLES: UserRole[] = [
   "Secretaire",
   "Directeur",
   "Student",
-  "Parent",
+  "Comptable",
 ];
 
 const validateUserRole = (role: string): UserRole => {
@@ -685,16 +685,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     });
 
     console.log("✅ Utilisateur créé:", user.id);
-
-    // Si c'est un parent, créer également l'entrée Parent
-    if (validatedRole === "Parent") {
-      await prisma.parent.create({
-        data: {
-          userId: user.id,
-        },
-      });
-      console.log("✅ Compte parent créé pour:", user.id);
-    }
 
     await createAuditLog({
       ...auditData,

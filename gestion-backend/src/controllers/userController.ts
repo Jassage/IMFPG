@@ -439,7 +439,7 @@ export const deactivateUser = async (
       data: {
         status: "Inactif",
         // deactivatedAt: new Date(),
-        // deactivatedBy: auditData.userId,
+        // deactivatedBy: auditData.userId
       },
       select: {
         id: true,
@@ -448,7 +448,7 @@ export const deactivateUser = async (
         email: true,
         role: true,
         status: true,
-        // deactivatedAt: true,
+        // deactivatedAt: true
       },
     });
 
@@ -599,8 +599,7 @@ export const updateUserStatus = async (
         email: true,
         role: true,
         status: true,
-        // suspendedAt: true,
-        // deactivatedAt: true,
+        updatedAt: true,
       },
     });
 
@@ -1214,10 +1213,10 @@ export const searchUsers = async (
 
     if (search) {
       where.OR = [
-        { email: { contains: search, mode: "insensitive" } },
-        { firstName: { contains: search, mode: "insensitive" } },
-        { lastName: { contains: search, mode: "insensitive" } },
-        { phone: { contains: search, mode: "insensitive" } },
+        { email: { contains: search } },
+        { firstName: { contains: search } },
+        { lastName: { contains: search } },
+        { phone: { contains: search } },
       ];
     }
 

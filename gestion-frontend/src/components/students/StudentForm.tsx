@@ -1640,33 +1640,6 @@ export const StudentForm = ({
                           </FormItem>
                         )}
                       />
-
-                      <FormField
-                        control={form.control}
-                        name="sendWelcomeEmail"
-                        render={({ field }) => (
-                          <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                            <div className="space-y-0.5">
-                              <FormLabel className="text-sm">
-                                Envoyer un email de bienvenue
-                              </FormLabel>
-                              <FormDescription className="text-xs">
-                                Un email avec les informations sera envoyé
-                              </FormDescription>
-                            </div>
-                            <FormControl>
-                              <Switch
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                                disabled={
-                                  isSubmitting ||
-                                  !form.watch("createUserAccount")
-                                }
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
                     </div>
                   )}
                 </CardContent>

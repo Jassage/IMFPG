@@ -129,6 +129,7 @@ export class StudentService {
           enrollments: {
             select: {
               id: true,
+              academicYearId: true,
               schoolClass: {
                 select: {
                   id: true,
@@ -136,11 +137,18 @@ export class StudentService {
                   level: true,
                 },
               },
+              academicYear: {
+                select: {
+                  id: true,
+                  year: true,
+                },
+              },
             },
             orderBy: { enrollmentDate: "desc" },
 
             take: 1,
           },
+
           schoolClass: {
             select: {
               id: true,
@@ -163,6 +171,18 @@ export class StudentService {
               status: true,
             },
             orderBy: { dueDate: "desc" },
+            take: 1,
+          },
+          guardians: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              phone: true,
+              relationship: true,
+              isPrimary: true,
+            },
+            orderBy: { isPrimary: "desc" },
             take: 1,
           },
           _count: {
@@ -353,55 +373,157 @@ export class StudentService {
 
     // Validation des données requises
     if (!firstName || !lastName || !email) {
-      throw new Error("MISSING_REQUIRED_FIELDS");
+      throw new Error(
+        "MISSING_REQUIRED_FIELDS: firstName, lastName et email sont requis"
+      );
     }
 
     // Utiliser une transaction pour garantir l'intégrité des données
     return await prisma.$transaction(
       async (tx) => {
-        // Vérifier l'unicité de l'email dans Student
+        // ==================== VALIDATIONS PRÉLIMINAIRES ====================
+
+        // 1. Vérifier l'unicité de l'email dans Student
         const existingStudent = await tx.student.findUnique({
           where: { email },
         });
 
         if (existingStudent) {
-          throw new Error("EMAIL_ALREADY_EXISTS");
+          throw new Error(
+            `EMAIL_ALREADY_EXISTS: L'email ${email} est déjà utilisé par l'étudiant ${existingStudent.studentCode}`
+          );
         }
 
-        // Vérifier l'unicité de l'email dans User si création de compte
+        // 2. Vérifier l'unicité de l'email dans User si création de compte
         if (createUserAccount) {
           const existingUser = await tx.user.findUnique({
             where: { email },
           });
 
           if (existingUser) {
-            throw new Error("USER_EMAIL_ALREADY_EXISTS");
+            throw new Error(
+              `USER_EMAIL_ALREADY_EXISTS: L'email ${email} est déjà utilisé par un utilisateur`
+            );
           }
         }
 
-        // Vérifier l'unicité du CIN si fourni
+        // 3. Vérifier l'unicité du CIN si fourni
+        if (cin) {
+          const studentWithCIN = await tx.student.findUnique({
+            where: { cin },
+          });
 
-        // Vérifier que la classe existe si classId est fourni
-        let schoolClassConnection = undefined;
+          if (studentWithCIN) {
+            throw new Error(
+              `CIN_ALREADY_EXISTS: Le CIN ${cin} est déjà utilisé par l'étudiant ${studentWithCIN.studentCode}`
+            );
+          }
+        }
+
+        // 4. Vérifier que la classe existe si classId est fourni
+        let schoolClass = null;
         if (classId) {
-          const schoolClass = await tx.schoolClass.findUnique({
+          schoolClass = await tx.schoolClass.findUnique({
             where: { id: classId },
           });
 
           if (!schoolClass) {
-            throw new Error("CLASS_NOT_FOUND");
+            throw new Error(
+              `CLASS_NOT_FOUND: La classe avec l'ID ${classId} n'existe pas`
+            );
           }
-          // Préparer la connexion à la classe
-          schoolClassConnection = { connect: { id: classId } };
+
+          // Vérifier si la classe est active
+          if (schoolClass.status !== "Active") {
+            throw new Error(
+              `CLASS_NOT_ACTIVE: La classe ${schoolClass.name} n'est pas active`
+            );
+          }
         }
 
-        // Générer un code étudiant unique
+        // 5. Vérifier l'année académique si fournie
+        let academicYear = null;
+        if (academicYearId) {
+          academicYear = await tx.academicYear.findUnique({
+            where: { id: academicYearId },
+          });
+
+          if (!academicYear) {
+            throw new Error(
+              `ACADEMIC_YEAR_NOT_FOUND: L'année académique avec l'ID ${academicYearId} n'existe pas`
+            );
+          }
+
+          // ==================== CONTRAINTE : EMPÊCHER L'ANNÉE FUTURE ====================
+
+          // Vérifier si l'année est future par rapport à l'année courante
+          const currentAcademicYear = await tx.academicYear.findFirst({
+            where: { isCurrent: true },
+          });
+
+          if (currentAcademicYear) {
+            // Comparer par date de début
+            if (academicYear.startDate > currentAcademicYear.startDate) {
+              throw new Error(
+                `FUTURE_ACADEMIC_YEAR: L'année ${academicYear.year} (débute ${academicYear.startDate.toISOString().split("T")[0]}) est future par rapport à l'année courante ${currentAcademicYear.year} (débute ${currentAcademicYear.startDate.toISOString().split("T")[0]})`
+              );
+            }
+          }
+
+          // Vérifier aussi que l'année n'a pas commencé dans le futur
+          const today = new Date();
+          if (academicYear.startDate > today) {
+            const daysUntilStart = Math.ceil(
+              (academicYear.startDate.getTime() - today.getTime()) /
+                (1000 * 3600 * 24)
+            );
+            throw new Error(
+              `ACADEMIC_YEAR_NOT_STARTED: L'année ${academicYear.year} commence dans ${daysUntilStart} jours (${academicYear.startDate.toISOString().split("T")[0]})`
+            );
+          }
+        }
+
+        // 7. Vérifier la capacité de la classe si année et classe fournies
+        if (classId && academicYearId && schoolClass) {
+          const currentEnrollments = await tx.enrollment.count({
+            where: {
+              classId,
+              academicYearId,
+              status: "Active",
+            },
+          });
+
+          const capacity = schoolClass.capacity || 30;
+          if (currentEnrollments >= capacity) {
+            throw new Error(
+              `CLASS_FULL: La classe ${schoolClass.name} a atteint sa capacité maximale (${currentEnrollments}/${capacity} étudiants)`
+            );
+          }
+        }
+
+        // 9. Vérifier le statut de l'étudiant
+        // Si l'étudiant a un statut inactif, on peut empêcher l'inscription
+        const inactiveStatuses = [
+          "Inactive",
+          "Suspended",
+          "Graduated",
+          "Transferred",
+        ];
+        if (inactiveStatuses.includes(status)) {
+          throw new Error(
+            `CANNOT_CREATE_INACTIVE_STUDENT: Impossible de créer un étudiant avec le statut ${status}`
+          );
+        }
+
+        // ==================== CRÉATION DE L'ÉTUDIANT ====================
+
+        // 10. Générer un code étudiant unique
         const studentCode = await this.generateStudentCode(tx);
 
+        // 11. Créer l'utilisateur si demandé
         let userId = null;
         let createdUser = null;
 
-        // Créer l'utilisateur si demandé
         if (createUserAccount) {
           const hashedPassword = await bcrypt.hash("Etudiant@123", 12);
 
@@ -419,7 +541,13 @@ export class StudentService {
           userId = createdUser.id;
         }
 
-        // Créer l'étudiant avec les types corrects
+        // 12. Préparer la connexion à la classe
+        let schoolClassConnection = undefined;
+        if (classId) {
+          schoolClassConnection = { connect: { id: classId } };
+        }
+
+        // 13. Créer l'étudiant avec les types corrects
         const studentData: Prisma.StudentCreateInput = {
           firstName,
           lastName,
@@ -439,7 +567,7 @@ export class StudentService {
           ...(schoolClassConnection && { schoolClass: schoolClassConnection }),
         };
 
-        // Ajouter l'utilisateur si créé
+        // 14. Ajouter l'utilisateur si créé
         if (userId) {
           studentData.user = { connect: { id: userId } };
         }
@@ -456,7 +584,9 @@ export class StudentService {
           },
         });
 
-        // Créer les gardiens si fournis
+        // ==================== CRÉATION DES ASSOCIATIONS ====================
+
+        // 15. Créer les gardiens si fournis
         if (guardians && guardians.length > 0) {
           for (const guardian of guardians) {
             await tx.guardian.create({
@@ -465,7 +595,7 @@ export class StudentService {
                 lastName: guardian.lastName,
                 email: guardian.email || null,
                 phone: guardian.phone,
-                relationship: guardian.relationship || "Parent",
+                relationship: guardian.relationship || "Pere",
                 isPrimary: guardian.isPrimary || false,
                 studentId: createdStudent.id,
               },
@@ -473,8 +603,26 @@ export class StudentService {
           }
         }
 
-        // Créer l'inscription si academicYearId est fourni
+        // 16. Créer l'inscription si academicYearId et classId sont fournis
         if (academicYearId && classId) {
+          // Vérifier une dernière fois que l'étudiant n'est pas déjà inscrit
+          // (même si improbable car nouvel étudiant)
+          const existingEnrollment = await tx.enrollment.findUnique({
+            where: {
+              studentId_academicYearId: {
+                studentId: createdStudent.id,
+                academicYearId,
+              },
+            },
+          });
+
+          if (existingEnrollment) {
+            throw new Error(
+              `STUDENT_ALREADY_ENROLLED_FOR_YEAR: L'étudiant est déjà inscrit pour l'année ${academicYear?.year}`
+            );
+          }
+
+          // Créer l'inscription
           await tx.enrollment.create({
             data: {
               studentId: createdStudent.id,
@@ -482,14 +630,35 @@ export class StudentService {
               academicYearId,
               enrollmentDate: new Date(),
               status: "Active",
+              isReenrollment: false,
             },
           });
         }
 
+        // ==================== LOGS ET RETOUR ====================
+
+        console.log(`[SUCCESS] Création étudiant - 
+        ID: ${createdStudent.id}
+        Code: ${studentCode}
+        Nom: ${firstName} ${lastName}
+        Email: ${email}
+        Classe: ${schoolClass?.name || "Non assigné"}
+        Année: ${academicYear?.year || "Non spécifiée"}
+        Compte utilisateur: ${createUserAccount ? "Oui" : "Non"}
+        Gardiens: ${guardians.length}
+      `);
+
         return {
+          success: true,
           student: createdStudent,
           user: createdUser,
           guardiansCount: guardians?.length || 0,
+          enrollmentCreated: !!(academicYearId && classId),
+          metadata: {
+            studentCode,
+            className: schoolClass?.name,
+            academicYear: academicYear?.year,
+          },
         };
       },
       {
@@ -1060,6 +1229,7 @@ export class StudentService {
       failed: 0,
       errors: [],
       created: [],
+      warnings: undefined,
     };
 
     // Utiliser une transaction pour l'import en masse

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captures annotées - IMFP</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #eaeaea;
+        }
+        h1 {
+            color: #333;
+            margin: 0;
+        }
+        .subtitle {
+            color: #666;
+            margin-top: 10px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .card img {
+            width: 100%;
+            height: 200px;
+            object-fit: contain;
+            background: #f8f9fa;
+            border-bottom: 1px solid #eaeaea;
+        }
+        .card-content {
+            padding: 15px;
+        }
+        .card-title {
+            font-weight: bold;
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .card-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        .legend {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .legend h3 {
+            margin-top: 0;
+        }
+        .color-box {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 3px;
+            vertical-align: middle;
+        }
+        footer {
+            margin-top: 40px;
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📝 Captures annotées</h1>
+            <p class="subtitle">IMFP - Guide visuel du système</p>
+        </header>
+        
+        <div class="grid">
+            
+            <div class="card">
+                <img src="announcements-annotated.png" alt="Announcements" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Announcements</h3>
+                    <div class="card-actions">
+                        <a href="announcements-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="announcements-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="announcements-form-add-form-annotated.png" alt="Announcements   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Announcements   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="announcements-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="announcements-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="audit-logs-annotated.png" alt="Audit Logs" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Audit Logs</h3>
+                    <div class="card-actions">
+                        <a href="audit-logs-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="audit-logs-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="classes-annotated.png" alt="Classes" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Classes</h3>
+                    <div class="card-actions">
+                        <a href="classes-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="classes-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="classes-form-add-form-annotated.png" alt="Classes   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Classes   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="classes-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="classes-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="dashboard-annotated.png" alt="Dashboard" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Dashboard</h3>
+                    <div class="card-actions">
+                        <a href="dashboard-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="dashboard-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="enrollments-annotated.png" alt="Enrollments" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Enrollments</h3>
+                    <div class="card-actions">
+                        <a href="enrollments-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="enrollments-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="enrollments-form-add-form-annotated.png" alt="Enrollments   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Enrollments   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="enrollments-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="enrollments-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="events-annotated.png" alt="Events" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Events</h3>
+                    <div class="card-actions">
+                        <a href="events-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="events-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="events-form-add-form-annotated.png" alt="Events   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Events   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="events-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="events-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="fees-annotated.png" alt="Fees" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Fees</h3>
+                    <div class="card-actions">
+                        <a href="fees-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="fees-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="fees-form-add-form-annotated.png" alt="Fees   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Fees   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="fees-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="fees-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="grades-annotated.png" alt="Grades" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Grades</h3>
+                    <div class="card-actions">
+                        <a href="grades-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="grades-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="grades-form-add-form-annotated.png" alt="Grades   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Grades   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="grades-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="grades-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="payments-annotated.png" alt="Payments" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Payments</h3>
+                    <div class="card-actions">
+                        <a href="payments-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="payments-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="payments-form-add-form-annotated.png" alt="Payments   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Payments   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="payments-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="payments-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="professeurs-annotated.png" alt="Professeurs" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Professeurs</h3>
+                    <div class="card-actions">
+                        <a href="professeurs-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="professeurs-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="professeurs-form-add-form-annotated.png" alt="Professeurs   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Professeurs   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="professeurs-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="professeurs-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="schedule-annotated.png" alt="Schedule" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Schedule</h3>
+                    <div class="card-actions">
+                        <a href="schedule-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="schedule-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="schedule-form-add-form-annotated.png" alt="Schedule   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Schedule   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="schedule-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="schedule-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="students-annotated.png" alt="Students" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Students</h3>
+                    <div class="card-actions">
+                        <a href="students-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="students-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="students-form-add-form-annotated.png" alt="Students   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Students   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="students-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="students-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="subject-annotated.png" alt="Subject" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Subject</h3>
+                    <div class="card-actions">
+                        <a href="subject-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="subject-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="subject-form-add-form-annotated.png" alt="Subject   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Subject   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="subject-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="subject-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="transcripts-annotated.png" alt="Transcripts" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Transcripts</h3>
+                    <div class="card-actions">
+                        <a href="transcripts-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="transcripts-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="users-annotated.png" alt="Users" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Users</h3>
+                    <div class="card-actions">
+                        <a href="users-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="users-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="users-form-add-form-annotated.png" alt="Users   Formulaire add Form" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Image+non+disponible'">
+                <div class="card-content">
+                    <h3 class="card-title">Users   Formulaire add Form</h3>
+                    <div class="card-actions">
+                        <a href="users-form-add-form-annotated.png" class="btn btn-primary" target="_blank">Voir</a>
+                        <a href="users-form-add-form-annotated.png" class="btn btn-secondary" download>Télécharger</a>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+        <div class="legend">
+            <h3>Légende des couleurs :</h3>
+            <div>
+                <span class="color-box" style="background: #3B82F6;"></span>
+                <span>Éléments principaux</span>
+            </div>
+            <div>
+                <span class="color-box" style="background: #10B981;"></span>
+                <span>Actions/Formulaires</span>
+            </div>
+            <div>
+                <span class="color-box" style="background: #F59E0B;"></span>
+                <span>Éléments importants</span>
+            </div>
+            <div>
+                <span class="color-box" style="background: #EF4444;"></span>
+                <span>Attention/Erreurs</span>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Généré automatiquement le 03/01/2026 21:12:34</p>
+        </footer>
+    </div>
+    
+    <script>
+        // Ajouter un effet de chargement pour les images
+        document.addEventListener('DOMContentLoaded', function() {
+            const images = document.querySelectorAll('img');
+            images.forEach(img => {
+                img.style.opacity = '0';
+                img.style.transition = 'opacity 0.5s';
+                
+                img.onload = function() {
+                    this.style.opacity = '1';
+                };
+                
+                // Si l'image est déjà chargée
+                if (img.complete) {
+                    img.style.opacity = '1';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

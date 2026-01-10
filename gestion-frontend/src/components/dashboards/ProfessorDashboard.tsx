@@ -1,5 +1,5 @@
 // components/dashboards/ProfessorDashboard.tsx
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
@@ -18,6 +17,8 @@ import {
   ProfesseurAssignment,
   ProfesseurSchedule,
 } from "@/store/professorStore";
+import { useEventStore, Event } from "@/store/eventStore";
+import { useAnnouncementStore, Announcement } from "@/store/announcementStore";
 import {
   Calendar,
   Clock,
@@ -31,6 +32,15 @@ import {
   User,
   Download,
   Plus,
+  Printer,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  X,
+  ExternalLink,
+  MapPin,
+  User as UserIcon,
 } from "lucide-react";
 import {
   Table,
@@ -40,6 +50,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -51,8 +79,389 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { format } from "date-fns";
+import {
+  format,
+  getDay,
+  isSameDay,
+  parseISO,
+  isAfter,
+  isBefore,
+} from "date-fns";
 import { fr } from "date-fns/locale";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+
+// Composant mémoïsé pour les cartes de statistiques
+const StatsCard = React.memo(
+  ({
+    title,
+    value,
+    icon,
+    description,
+    color = "primary",
+    progressValue = 0,
+  }: {
+    title: string;
+    value: string | number;
+    icon: React.ReactNode;
+    description: string;
+    color?: string;
+    progressValue?: number;
+  }) => (
+    <Card className="group hover:shadow-lg transition-shadow">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <div
+          className={`h-8 w-8 rounded-lg bg-${color}/10 flex items-center justify-center group-hover:bg-${color}/20 transition-colors`}
+        >
+          {icon}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+        <p className="text-xs text-muted-foreground">{description}</p>
+        <Progress
+          value={Math.min(progressValue, 100)}
+          className={`h-2 mt-3 bg-${color}/10`}
+        />
+      </CardContent>
+    </Card>
+  )
+);
+
+StatsCard.displayName = "StatsCard";
+
+// Composant Modal pour les annonces
+const AnnouncementModal = ({
+  announcement,
+  open,
+  onOpenChange,
+}: {
+  announcement: Announcement | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) => {
+  if (!announcement) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[90vh]">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-2xl">
+                {announcement.title}
+              </DialogTitle>
+              <DialogDescription>
+                Publié le{" "}
+                {format(parseISO(announcement.publishDate), "dd/MM/yyyy", {
+                  locale: fr,
+                })}
+                {announcement.expiryDate && (
+                  <>
+                    {" "}
+                    • Expire le{" "}
+                    {format(parseISO(announcement.expiryDate), "dd/MM/yyyy", {
+                      locale: fr,
+                    })}
+                  </>
+                )}
+              </DialogDescription>
+            </div>
+            <Badge
+              className={`
+                ${
+                  announcement.priority === "Critical"
+                    ? "bg-red-100 text-red-800"
+                    : ""
+                }
+                ${
+                  announcement.priority === "High"
+                    ? "bg-orange-100 text-orange-800"
+                    : ""
+                }
+                ${
+                  announcement.priority === "Medium"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : ""
+                }
+                ${
+                  announcement.priority === "Low"
+                    ? "bg-blue-100 text-blue-800"
+                    : ""
+                }
+              `}
+            >
+              {announcement.priority}
+            </Badge>
+          </div>
+        </DialogHeader>
+
+        <ScrollArea className="h-[60vh] pr-4">
+          <div className="space-y-6">
+            {/* Informations sur l'auteur */}
+            <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+              <UserIcon className="h-5 w-5 text-gray-500" />
+              <div>
+                <p className="text-sm font-medium">
+                  Par {announcement.author?.firstName}{" "}
+                  {announcement.author?.lastName}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {announcement.author?.role || "Auteur"} •{" "}
+                  {announcement.author?.email}
+                </p>
+              </div>
+            </div>
+
+            {/* Audience cible */}
+            <div>
+              <h4 className="text-sm font-medium mb-2">Public cible</h4>
+              <Badge variant="outline" className="bg-primary/10">
+                {announcement.targetAudience}
+              </Badge>
+            </div>
+
+            {/* Contenu */}
+            <div>
+              <h4 className="text-sm font-medium mb-2">Contenu</h4>
+              <div className="prose max-w-none whitespace-pre-line text-gray-700">
+                {announcement.content}
+              </div>
+            </div>
+
+            {/* Pièces jointes */}
+            {announcement.attachments &&
+              announcement.attachments.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium mb-2">
+                    Pièces jointes ({announcement.attachments.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {announcement.attachments.map((attachment, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <FileText className="h-5 w-5 text-gray-500" />
+                          <div>
+                            <p className="text-sm font-medium">
+                              {attachment.name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {(attachment.size / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="sm">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+          </div>
+        </ScrollArea>
+
+        <div className="flex justify-between items-center pt-4 border-t">
+          <div className="text-sm text-gray-500">
+            Statut :{" "}
+            <span
+              className={
+                announcement.isActive
+                  ? "text-green-600 font-medium"
+                  : "text-red-600 font-medium"
+              }
+            >
+              {announcement.isActive ? "Actif" : "Inactif"}
+            </span>
+          </div>
+          <div className="flex space-x-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Fermer
+            </Button>
+            <Button>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Ouvrir dans une nouvelle fenêtre
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Composant Modal pour les événements
+const EventModal = ({
+  event,
+  open,
+  onOpenChange,
+}: {
+  event: Event | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) => {
+  if (!event) return null;
+  // Fonction de formatage sécurisée
+  const formatDateSafe = (
+    dateString?: string,
+    formatStr: string = "dd/MM/yyyy HH:mm"
+  ) => {
+    if (!dateString) return "Date non définie";
+    try {
+      return format(parseISO(dateString), formatStr, { locale: fr });
+    } catch (error) {
+      console.error("Erreur de formatage de date:", error);
+      return "Date invalide";
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[90vh]">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-2xl">{event.title}</DialogTitle>
+              <DialogDescription>
+                {formatDateSafe(event.startDate)} -{" "}
+                {formatDateSafe(event.endDate)}
+              </DialogDescription>
+            </div>
+            <Badge
+              className={`
+                ${
+                  event.category === "Academic"
+                    ? "bg-blue-100 text-blue-800"
+                    : ""
+                }
+                ${
+                  event.category === "Cultural"
+                    ? "bg-purple-100 text-purple-800"
+                    : ""
+                }
+                ${
+                  event.category === "Sports"
+                    ? "bg-green-100 text-green-800"
+                    : ""
+                }
+                ${
+                  event.category === "Meeting"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : ""
+                }
+                ${
+                  event.category === "General"
+                    ? "bg-gray-100 text-gray-800"
+                    : ""
+                }
+              `}
+            >
+              {event.category}
+            </Badge>
+          </div>
+        </DialogHeader>
+
+        <ScrollArea className="h-[60vh] pr-4">
+          <div className="space-y-6">
+            {/* Localisation */}
+            {event.location && (
+              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                <MapPin className="h-5 w-5 text-gray-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium">Lieu</p>
+                  <p className="text-sm text-gray-700">{event.location}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Organisateur */}
+            {event.organizer && (
+              <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                <UserIcon className="h-5 w-5 text-gray-500" />
+                <div>
+                  <p className="text-sm font-medium">Organisateur</p>
+                  <p className="text-sm text-gray-700">{event.organizer}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Description */}
+            {event.description && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Description</h4>
+                <div className="prose max-w-none whitespace-pre-line text-gray-700">
+                  {event.description}
+                </div>
+              </div>
+            )}
+
+            {/* Informations supplémentaires */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium">Statut</h4>
+                <Badge
+                  className={`
+                    ${
+                      event.status === "Scheduled"
+                        ? "bg-green-100 text-green-800"
+                        : ""
+                    }
+                    ${
+                      event.status === "Cancelled"
+                        ? "bg-red-100 text-red-800"
+                        : ""
+                    }
+                    ${
+                      event.status === "Completed"
+                        ? "bg-blue-100 text-blue-800"
+                        : ""
+                    }
+                    ${
+                      event.status === "Postponed"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : ""
+                    }
+                  `}
+                >
+                  {event.status}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium">Visibilité</h4>
+                <Badge
+                  variant="outline"
+                  className={event.isPublic ? "bg-green-50" : "bg-yellow-50"}
+                >
+                  {event.isPublic ? "Public" : "Privé"}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+
+        <div className="flex justify-between items-center pt-4 border-t">
+          <div className="text-sm text-gray-500">
+            Créé le {formatDateSafe(event.createdAt, "dd/MM/yyyy")}
+          </div>
+          <div className="flex space-x-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Fermer
+            </Button>
+            {event.isPublic && (
+              <Button>
+                <Calendar className="h-4 w-4 mr-2" />
+                Ajouter à mon calendrier
+              </Button>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 export const ProfessorDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -61,6 +470,19 @@ export const ProfessorDashboard = () => {
     ProfesseurAssignment[]
   >([]);
   const [selectedYear, setSelectedYear] = useState<string>("current");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedClass, setSelectedClass] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isMounted, setIsMounted] = useState(true);
+
+  // États pour les modales
+  const [selectedAnnouncement, setSelectedAnnouncement] =
+    useState<Announcement | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+  const [eventModalOpen, setEventModalOpen] = useState(false);
+
+  const itemsPerPage = 5;
 
   const { user } = useAuthStore();
   const { toast } = useToast();
@@ -74,253 +496,311 @@ export const ProfessorDashboard = () => {
     fetchProfesseurAssignments,
   } = useProfesseurStore();
 
+  // Ajoutez ces constantes au début de votre composant
+  const dayApiToFrench: Record<string, string> = {
+    MONDAY: "Lundi",
+    TUESDAY: "Mardi",
+    WEDNESDAY: "Mercredi",
+    THURSDAY: "Jeudi",
+    FRIDAY: "Vendredi",
+    SATURDAY: "Samedi",
+    SUNDAY: "Dimanche",
+  };
+
+  const jsToApiDayMap: Record<number, string> = {
+    0: "SUNDAY",
+    1: "MONDAY",
+    2: "TUESDAY",
+    3: "WEDNESDAY",
+    4: "THURSDAY",
+    5: "FRIDAY",
+    6: "SATURDAY",
+  };
+
+  const apiDayToJs: Record<string, number> = {
+    SUNDAY: 0,
+    MONDAY: 1,
+    TUESDAY: 2,
+    WEDNESDAY: 3,
+    THURSDAY: 4,
+    FRIDAY: 5,
+    SATURDAY: 6,
+  };
+  // Récupérer les stores d'événements et d'annonces
+  const {
+    events,
+    upcomingEvents,
+    loading: eventsLoading,
+    fetchUpcomingEvents,
+  } = useEventStore();
+
+  const {
+    announcements,
+    activeAnnouncements,
+    loading: announcementsLoading,
+    fetchActiveAnnouncements,
+  } = useAnnouncementStore();
+
+  const formatTime = useCallback((timeString: string) => {
+    const [hours, minutes] = timeString.split(":");
+    return `${hours}h${minutes}`;
+  }, []);
+
+  // Chargement des données
   useEffect(() => {
+    setIsMounted(true);
+
     const loadDashboardData = async () => {
       try {
         setLoading(true);
 
         if (user?.id) {
-          let professeurId = null;
-
-          // Essayer de trouver le professeur par email
-          professeurId = user.professeur.id;
+          const professeurId = user.professeur?.id;
 
           if (professeurId) {
-            // Charger toutes les données dynamiques
             await Promise.all([
               fetchProfesseurFullDetails(professeurId),
               fetchProfesseurSchedule(professeurId),
               fetchProfesseurAssignments(professeurId),
+              fetchUpcomingEvents(3), // Récupérer 3 événements à venir
+              fetchActiveAnnouncements(5), // Récupérer 5 annonces actives
             ]);
-          } else {
-            console.warn(
-              "Professeur non trouvé, utiliser les données disponibles"
-            );
           }
         }
       } catch (error) {
+        console.error("Erreur lors du chargement du dashboard:", error);
         toast({
           title: "Erreur",
           description: "Impossible de charger les données du dashboard",
           variant: "destructive",
         });
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     loadDashboardData();
-  }, [user?.email, user?.firstName, user?.lastName]);
+
+    return () => {
+      setIsMounted(false);
+    };
+  }, [user?.id]);
 
   // Filtrer les assignments par année académique
   useEffect(() => {
     if (professeurAssignments.length > 0) {
+      let filtered = professeurAssignments;
+
       if (selectedYear === "current") {
-        const currentAssignments = professeurAssignments.filter(
+        filtered = filtered.filter(
           (assignment) => assignment.academicYear?.isCurrent
         );
-        setFilteredAssignments(currentAssignments);
-      } else {
-        setFilteredAssignments(professeurAssignments);
       }
+
+      setFilteredAssignments(filtered);
+    } else {
+      setFilteredAssignments([]);
     }
   }, [professeurAssignments, selectedYear]);
 
-  // Calculer les statistiques dynamiques
+  // Filtrage avancé avec recherche
+  const filteredAssignmentsBySearch = useMemo(() => {
+    if (!searchTerm && selectedClass === "all") return filteredAssignments;
+
+    return filteredAssignments.filter((assignment) => {
+      const matchesSearch = searchTerm
+        ? assignment.subject?.name
+            ?.toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          assignment.classLevel
+            ?.toLowerCase()
+            .includes(searchTerm.toLowerCase())
+        : true;
+
+      const matchesClass =
+        selectedClass !== "all"
+          ? assignment.classLevel === selectedClass
+          : true;
+
+      return matchesSearch && matchesClass;
+    });
+  }, [filteredAssignments, searchTerm, selectedClass]);
+
+  const formatDayOfWeek = useCallback((dayNumberOrString: number | string) => {
+    // Si c'est un string (format API comme "MONDAY")
+    if (typeof dayNumberOrString === "string") {
+      return dayApiToFrench[dayNumberOrString] || dayNumberOrString;
+    }
+
+    // Si c'est un number (format JavaScript 0-6)
+    const jsDay = dayNumberOrString;
+    const apiDay = jsToApiDayMap[jsDay];
+    if (apiDay) {
+      return dayApiToFrench[apiDay] || `Jour ${jsDay}`;
+    }
+
+    return "Jour inconnu";
+  }, []);
+  // Calculer les statistiques dynamiques BASÉES SUR LES DONNÉES RÉELLES
   const stats = useMemo(() => {
-    const totalClasses = filteredAssignments.length;
+    const totalClasses = filteredAssignmentsBySearch.length;
 
-    // Calculer le nombre total d'élèves (estimation)
-    const totalStudents = filteredAssignments.reduce((acc, assignment) => {
-      // Estimation basée sur le niveau de classe
-      const classLevel = assignment.classLevel || "";
-      let studentCount = 30; // Valeur par défaut
+    const totalStudents = filteredAssignmentsBySearch.reduce(
+      (acc, assignment) => {
+        if (assignment.schoolClass?.students?.length) {
+          return acc + assignment.schoolClass.students.length;
+        }
+        return acc;
+      },
+      0
+    );
 
-      if (classLevel.includes("Terminale")) studentCount = 35;
-      else if (classLevel.includes("1ère") || classLevel.includes("Première"))
-        studentCount = 32;
-      else if (classLevel.includes("2nde") || classLevel.includes("Seconde"))
-        studentCount = 30;
-      else if (classLevel.includes("3ème") || classLevel.includes("Troisième"))
-        studentCount = 28;
-
-      return acc + studentCount;
-    }, 0);
-
-    // Compter les évaluations en attente (à remplacer par API réelle)
-    const totalPendingGrades = filteredAssignments.reduce((acc, assignment) => {
-      return acc + (assignment._count?.grades || 0);
-    }, 0);
-
-    // Trouver le prochain cours
     const now = new Date();
-    const today = now.getDay() === 0 ? 7 : now.getDay(); // Lundi = 1, Dimanche = 7
+    const today = getDay(now);
     const currentTime = now.getHours() * 60 + now.getMinutes();
 
-    let nextClass = null;
+    let nextClass: ProfesseurSchedule | null = null;
+
     if (professeurSchedule.length > 0) {
       const sortedSchedule = [...professeurSchedule].sort((a, b) => {
-        if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
-        return a.startTime.localeCompare(b.startTime);
+        const dayA = a.dayOfWeek === 7 ? 0 : a.dayOfWeek;
+        const dayB = b.dayOfWeek === 7 ? 0 : b.dayOfWeek;
+
+        const dayDiff = (dayA - today + 7) % 7;
+        const dayDiffB = (dayB - today + 7) % 7;
+
+        if (dayDiff !== dayDiffB) return dayDiff - dayDiffB;
+
+        const [hoursA, minutesA] = a.startTime.split(":").map(Number);
+        const [hoursB, minutesB] = b.startTime.split(":").map(Number);
+        const timeA = hoursA * 60 + minutesA;
+        const timeB = hoursB * 60 + minutesB;
+        return timeA - timeB;
       });
 
-      nextClass = sortedSchedule.find((schedule) => {
-        if (schedule.dayOfWeek > today) return true;
-        if (schedule.dayOfWeek === today) {
+      nextClass =
+        sortedSchedule.find((schedule) => {
+          const scheduleDay = schedule.dayOfWeek === 7 ? 0 : schedule.dayOfWeek;
           const [hours, minutes] = schedule.startTime.split(":").map(Number);
           const scheduleTime = hours * 60 + minutes;
-          return scheduleTime > currentTime;
-        }
-        return false;
-      });
+
+          if (scheduleDay > today) return true;
+          if (scheduleDay === today) {
+            return scheduleTime > currentTime;
+          }
+          return false;
+        }) || null;
     }
 
     return {
       totalClasses,
       totalStudents,
-      totalPendingGrades,
       nextClass,
     };
-  }, [filteredAssignments, professeurSchedule]);
+  }, [filteredAssignmentsBySearch, professeurSchedule]);
 
-  // Calculer les annonces dynamiques
-  const announcements = useMemo(() => {
-    const announcementsList = [];
+  // Obtenir les annonces pour les professeurs
+  const professorAnnouncements = useMemo(() => {
+    return activeAnnouncements
+      .filter((announcement) => {
+        // Filtrer les annonces qui concernent les professeurs
+        return (
+          announcement.targetAudience === "Teachers" ||
+          announcement.targetAudience === "All" ||
+          announcement.targetAudience === "Staff"
+        );
+      })
+      .slice(0, 5); // Limiter à 5 annonces
+  }, [activeAnnouncements]);
+
+  // Obtenir les événements à venir pour le dashboard
+  const dashboardEvents = useMemo(() => {
+    const now = new Date();
+    return upcomingEvents
+      .filter((event) => {
+        // Filtrer les événements publics ou académiques
+        return (
+          event.isPublic ||
+          event.category === "Academic" ||
+          event.category === "Meeting"
+        );
+      })
+      .filter((event) => isAfter(parseISO(event.startDate), now))
+      .sort(
+        (a, b) =>
+          parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime()
+      )
+      .slice(0, 3); // Limiter à 3 événements
+  }, [upcomingEvents]);
+
+  // Obtenir les cours d'aujourd'hui
+  const todaySchedule = useMemo(() => {
     const today = new Date();
+    const currentDayJs = today.getDay(); // JavaScript: 0-6
+    const currentDayApi = jsToApiDayMap[currentDayJs]; // Convertir en "MONDAY", etc.
 
-    // Annonce pour les prochaines réunions
-    if (
-      currentProfesseur?.schedules &&
-      currentProfesseur.schedules.length > 0
-    ) {
-      const nextSchedule = currentProfesseur.schedules[0];
-      announcementsList.push({
-        id: "1",
-        title: "Prochain cours",
-        content: `${nextSchedule.subject?.name || "Cours"} avec ${
-          nextSchedule.schoolClass?.name || "la classe"
-        }`,
-        date: format(new Date(), "dd/MM/yyyy", { locale: fr }),
-        priority: "high" as const,
-      });
+    if (!currentDayApi) {
+      return [];
     }
 
-    // Annonce pour les notes en attente
-    if (stats.totalPendingGrades > 0) {
-      announcementsList.push({
-        id: "2",
-        title: "Notes en attente",
-        content: `${stats.totalPendingGrades} évaluation(s) à corriger`,
-        date: format(new Date(), "dd/MM/yyyy", { locale: fr }),
-        priority: "medium" as const,
-      });
-    }
+    // Votre schedule doit avoir dayOfWeek en format string ("MONDAY")
+    return professeurSchedule
+      .filter((schedule) => {
+        // Assurez-vous que schedule.dayOfWeek est un string
+        return schedule.dayOfWeek.toString() === currentDayApi;
+      })
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  }, [professeurSchedule]);
 
-    // Annonce d'information générale
-
-    return announcementsList;
-  }, [currentProfesseur, stats.totalPendingGrades]);
-
-  // Calculer les performances des élèves (données dynamiques)
-  const studentPerformances = useMemo(() => {
-    // Cette fonction devrait être remplacée par un appel API
-    // Pour l'instant, nous utilisons des données simulées basées sur les assignments
-    return filteredAssignments.flatMap((assignment, index) => {
-      // Simuler quelques élèves par classe
-      return [
-        {
-          id: `${assignment.id}-1`,
-          studentName: `Élève ${index + 1}A`,
-          course: assignment.subject?.name || "Cours",
-          average: 14 + Math.random() * 6, // Entre 14 et 20
-          lastEvaluation: format(
-            new Date(Date.now() - Math.random() * 86400000 * 7),
-            "dd/MM/yyyy",
-            { locale: fr }
-          ),
-        },
-        {
-          id: `${assignment.id}-2`,
-          studentName: `Élève ${index + 1}B`,
-          course: assignment.subject?.name || "Cours",
-          average: 10 + Math.random() * 10, // Entre 10 et 20
-          lastEvaluation: format(
-            new Date(Date.now() - Math.random() * 86400000 * 7),
-            "dd/MM/yyyy",
-            { locale: fr }
-          ),
-        },
-      ];
-    });
+  // Obtenir les classes uniques pour le filtre
+  const uniqueClasses = useMemo(() => {
+    const classes = filteredAssignments
+      .map((assignment) => assignment.classLevel)
+      .filter(Boolean) as string[];
+    return Array.from(new Set(classes));
   }, [filteredAssignments]);
 
-  // Obtenir le badge de statut basé sur la moyenne
-  const getStatusBadge = (average: number) => {
-    if (average >= 16) {
-      return (
-        <Badge className="bg-green-500/10 text-green-600 border-green-200">
-          Excellent
-        </Badge>
-      );
-    } else if (average >= 12) {
-      return (
-        <Badge className="bg-blue-500/10 text-blue-600 border-blue-200">
-          Bon
-        </Badge>
-      );
-    } else if (average >= 8) {
-      return (
-        <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-200">
-          Moyen
-        </Badge>
-      );
-    } else {
-      return (
-        <Badge className="bg-red-500/10 text-red-600 border-red-200">
-          À améliorer
-        </Badge>
-      );
+  const formatDateSafe = (
+    dateString?: string,
+    formatStr: string = "dd/MM/yyyy HH:mm"
+  ) => {
+    if (!dateString) return "Date non définie";
+    try {
+      return format(parseISO(dateString), formatStr, { locale: fr });
+    } catch (error) {
+      console.error("Erreur de formatage de date:", error);
+      return "Date invalide";
     }
   };
 
-  // Obtenir l'icône de priorité
-  const getPriorityIcon = (priority: "high" | "medium" | "low") => {
-    switch (priority) {
-      case "high":
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
-      case "medium":
-        return <BellRing className="h-4 w-4 text-yellow-500" />;
-      case "low":
-        return <MessageSquare className="h-4 w-4 text-blue-500" />;
-      default:
-        return <BellRing className="h-4 w-4" />;
-    }
-  };
-
-  // Formater l'heure
-  const formatTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(":");
-    return `${hours}h${minutes}`;
-  };
-
-  // Formater le jour de la semaine
-  const formatDayOfWeek = (dayNumber: number) => {
-    const days = [
-      "Dimanche",
-      "Lundi",
-      "Mardi",
-      "Mercredi",
-      "Jeudi",
-      "Vendredi",
-      "Samedi",
+  // Fonction pour obtenir la couleur du cours
+  const getCourseColor = useCallback((id: string) => {
+    const colors = [
+      "bg-blue-100 border-blue-200 text-blue-800",
+      "bg-green-100 border-green-200 text-green-800",
+      "bg-purple-100 border-purple-200 text-purple-800",
+      "bg-amber-100 border-amber-200 text-amber-800",
+      "bg-pink-100 border-pink-200 text-pink-800",
     ];
-    return days[dayNumber] || "Jour inconnu";
-  };
+    const index = parseInt(id, 36) % colors.length;
+    return colors[index];
+  }, []);
 
-  // Rafraîchir les données
+  // Fonctions pour gérer les modales
+  const handleAnnouncementClick = useCallback((announcement: Announcement) => {
+    setSelectedAnnouncement(announcement);
+    setAnnouncementModalOpen(true);
+  }, []);
+
+  const handleEventClick = useCallback((event: Event) => {
+    setSelectedEvent(event);
+    setEventModalOpen(true);
+  }, []);
 
   // Squelette de chargement
-  if (loading || storeLoading) {
+  if (loading || storeLoading || eventsLoading || announcementsLoading) {
     return <LoadingSkeleton />;
   }
 
@@ -337,19 +817,20 @@ export const ProfessorDashboard = () => {
             {Math.floor(new Date().getDate() / 7) + 1}
           </p>
         </div>
-
-        <div className="flex items-center gap-3">
-          <Select value={selectedYear} onValueChange={setSelectedYear}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Année académique" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="current">Année en cours</SelectItem>
-              <SelectItem value="all">Toutes les années</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
+
+      {/* Notification si données manquantes */}
+      {!currentProfesseur && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
+            <p className="text-yellow-800 text-sm">
+              Certaines données de profil ne sont pas disponibles. Veuillez
+              contacter l'administration.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Tabs de navigation */}
       <Tabs
@@ -367,106 +848,35 @@ export const ProfessorDashboard = () => {
         <TabsContent value="overview" className="space-y-6">
           {/* Cartes de statistiques */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card className="group hover:shadow-lg transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Mes Cours</CardTitle>
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <BookOpen className="h-4 w-4 text-primary" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.totalClasses}</div>
-                <p className="text-xs text-muted-foreground">
-                  {filteredAssignments.length > 0
-                    ? `${filteredAssignments.length} cours assignés cette année`
-                    : "Aucun cours assigné"}
-                </p>
-                <Progress
-                  value={Math.min((stats.totalClasses / 10) * 100, 100)}
-                  className="h-2 mt-3"
-                />
-              </CardContent>
-            </Card>
+            <StatsCard
+              title="Mes Cours"
+              value={stats.totalClasses}
+              icon={<BookOpen className="h-4 w-4 text-primary" />}
+              description={`${filteredAssignments.length} cours assignés`}
+              color="primary"
+              progressValue={Math.min((stats.totalClasses / 10) * 100, 100)}
+            />
 
-            <Card className="group hover:shadow-lg transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Élèves</CardTitle>
-                <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
-                  <Users className="h-4 w-4 text-blue-500" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.totalStudents}</div>
-                <p className="text-xs text-muted-foreground">
-                  Répartis dans {filteredAssignments.length} classes
-                </p>
-                <Progress
-                  value={Math.min((stats.totalStudents / 150) * 100, 100)}
-                  className="h-2 mt-3"
-                />
-              </CardContent>
-            </Card>
-
-            <Card className="group hover:shadow-lg transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Notes en attente
-                </CardTitle>
-                <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center group-hover:bg-amber-500/20 transition-colors">
-                  <FileText className="h-4 w-4 text-amber-500" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {stats.totalPendingGrades}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {stats.totalPendingGrades > 0
-                    ? "Évaluations à corriger"
-                    : "Toutes les notes sont à jour"}
-                </p>
-                <Progress
-                  value={Math.min((stats.totalPendingGrades / 20) * 100, 100)}
-                  className="h-2 mt-3"
-                />
-              </CardContent>
-            </Card>
-
-            <Card className="group hover:shadow-lg transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Prochain cours
-                </CardTitle>
-                <div className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
-                  <Clock className="h-4 w-4 text-green-500" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                {stats.nextClass ? (
-                  <>
-                    <div className="text-lg font-bold">
-                      {formatDayOfWeek(stats.nextClass.dayOfWeek)},{" "}
-                      {formatTime(stats.nextClass.startTime)}
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {stats.nextClass.subject?.name || "Cours"} •{" "}
-                      {stats.nextClass.classroom || "Salle non définie"}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-lg font-bold">--:--</div>
-                    <p className="text-xs text-muted-foreground">
-                      Aucun cours programmé
-                    </p>
-                  </>
-                )}
-                <Progress
-                  value={stats.nextClass ? 60 : 0}
-                  className="h-2 mt-3"
-                />
-              </CardContent>
-            </Card>
+            <StatsCard
+              title="Prochain cours"
+              value={
+                stats.nextClass
+                  ? `${formatDayOfWeek(
+                      stats.nextClass.dayOfWeek
+                    )}, ${formatTime(stats.nextClass.startTime)}`
+                  : "Aucun"
+              }
+              icon={<Clock className="h-4 w-4 text-green-500" />}
+              description={
+                stats.nextClass
+                  ? `${stats.nextClass.subject?.name || "Cours"} • ${
+                      stats.nextClass.classroom || "Salle non définie"
+                    }`
+                  : "Aucun cours programmé"
+              }
+              color="green"
+              progressValue={stats.nextClass ? 60 : 0}
+            />
           </div>
 
           {/* Grille principale */}
@@ -482,19 +892,17 @@ export const ProfessorDashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {professeurSchedule
-                    .filter(
-                      (schedule) => schedule.dayOfWeek === new Date().getDay()
-                    )
-                    .sort((a, b) => a.startTime.localeCompare(b.startTime))
-                    .map((schedule) => (
+                  {todaySchedule.length > 0 ? (
+                    todaySchedule.map((schedule) => (
                       <div
                         key={schedule.id}
-                        className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent/50 transition-colors"
+                        className={`flex items-center justify-between p-3 rounded-lg border hover:shadow-sm transition-all ${getCourseColor(
+                          schedule.id
+                        )}`}
                       >
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                            <Clock className="h-4 w-4 text-primary" />
+                          <div className="h-10 w-10 rounded-lg bg-white/50 flex items-center justify-center">
+                            <Clock className="h-4 w-4" />
                           </div>
                           <div>
                             <p className="font-medium">
@@ -512,16 +920,13 @@ export const ProfessorDashboard = () => {
                             {formatTime(schedule.startTime)} -{" "}
                             {formatTime(schedule.endTime)}
                           </p>
-                          <Badge variant="outline" className="mt-1">
+                          <Badge variant="outline" className="mt-1 bg-white">
                             {schedule.classroom || "Salle non définie"}
                           </Badge>
                         </div>
                       </div>
-                    ))}
-
-                  {professeurSchedule.filter(
-                    (s) => s.dayOfWeek === new Date().getDay()
-                  ).length === 0 && (
+                    ))
+                  ) : (
                     <div className="text-center py-8 text-muted-foreground">
                       <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
                       <p>Aucun cours programmé aujourd'hui</p>
@@ -535,120 +940,217 @@ export const ProfessorDashboard = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Annonces importantes</CardTitle>
-                <CardDescription>Informations à ne pas manquer</CardDescription>
+                <CardDescription>Dernières annonces</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {announcements.map((announcement) => (
-                    <div
-                      key={announcement.id}
-                      className="rounded-lg border p-3 hover:shadow-sm transition-shadow"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 mt-1">
-                          {getPriorityIcon(announcement.priority)}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <p className="font-medium text-sm">
-                              {announcement.title}
-                            </p>
-                            <span className="text-xs text-muted-foreground">
-                              {announcement.date}
-                            </span>
+                  {professorAnnouncements.length > 0 ? (
+                    professorAnnouncements.map((announcement) => (
+                      <div
+                        key={announcement.id}
+                        className="rounded-lg border p-3 hover:shadow-sm transition-shadow cursor-pointer"
+                        onClick={() => handleAnnouncementClick(announcement)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 mt-1">
+                            <BellRing className="h-4 w-4 text-blue-500" />
                           </div>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {announcement.content}
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <p className="font-medium text-sm truncate">
+                                {announcement.title}
+                              </p>
+                              <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                                {format(
+                                  parseISO(announcement.publishDate),
+                                  "dd/MM",
+                                  { locale: fr }
+                                )}
+                              </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                              {announcement.content}
+                            </p>
+                            <div className="flex items-center justify-between mt-2">
+                              <Badge variant="outline" className="text-xs">
+                                {announcement.targetAudience}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAnnouncementClick(announcement);
+                                }}
+                              >
+                                <Eye className="h-3 w-3 mr-1" />
+                                Lire
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <BellRing className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Aucune annonce pour le moment</p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Résumé des performances */}
+          {/* Événements à venir */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <CardTitle>Performance des élèves</CardTitle>
-                  <CardDescription>Dernières évaluations</CardDescription>
+                  <CardTitle>Événements à venir</CardTitle>
+                  <CardDescription>
+                    Prochains événements et réunions
+                  </CardDescription>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {
                     toast({
-                      title: "Export",
-                      description: "Export des données en cours...",
+                      title: "Calendrier complet",
+                      description: "Ouverture du calendrier complet",
                     });
                   }}
                 >
-                  <Download className="h-4 w-4 mr-2" />
-                  Exporter
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Voir tout
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Élève</TableHead>
-                      <TableHead>Cours</TableHead>
-                      <TableHead>Moyenne</TableHead>
-                      <TableHead>Statut</TableHead>
-                      <TableHead>Dernière évaluation</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {studentPerformances.slice(0, 5).map((student) => (
-                      <TableRow key={student.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            {student.studentName}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {dashboardEvents.length > 0 ? (
+                  dashboardEvents.map((event) => (
+                    <Card
+                      key={event.id}
+                      className="hover:shadow-lg transition-shadow cursor-pointer"
+                      onClick={() => handleEventClick(event)}
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <CardTitle className="text-lg">
+                              {event.title}
+                            </CardTitle>
+                            <CardDescription>
+                              <span>
+                                {formatDateSafe(event.startDate, "HH:mm")} -{" "}
+                                {formatDateSafe(event.endDate, "HH:mm")}
+                              </span>
+                            </CardDescription>
                           </div>
-                        </TableCell>
-                        <TableCell>{student.course}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">
-                              {student.average.toFixed(1)}/20
-                            </span>
-                            {student.average >= 16 ? (
-                              <TrendingUp className="h-4 w-4 text-green-500" />
-                            ) : student.average >= 10 ? (
-                              <TrendingUp className="h-4 w-4 text-yellow-500" />
-                            ) : (
-                              <TrendingUp className="h-4 w-4 text-red-500" />
-                            )}
+                          <Badge
+                            variant="secondary"
+                            className={`
+                              ${
+                                event.category === "Academic"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : ""
+                              }
+                              ${
+                                event.category === "Cultural"
+                                  ? "bg-purple-100 text-purple-800"
+                                  : ""
+                              }
+                              ${
+                                event.category === "Sports"
+                                  ? "bg-green-100 text-green-800"
+                                  : ""
+                              }
+                              ${
+                                event.category === "Meeting"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : ""
+                              }
+                            `}
+                          >
+                            {event.category}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Clock className="h-4 w-4" />
+                          <span>
+                            {format(parseISO(event.startDate), "HH:mm", {
+                              locale: fr,
+                            })}{" "}
+                            -{" "}
+                            {format(parseISO(event.endDate), "HH:mm", {
+                              locale: fr,
+                            })}
+                          </span>
+                        </div>
+
+                        {event.location && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <MapPin className="h-4 w-4" />
+                            <span className="truncate">{event.location}</span>
                           </div>
-                        </TableCell>
-                        <TableCell>{getStatusBadge(student.average)}</TableCell>
-                        <TableCell>{student.lastEvaluation}</TableCell>
-                        <TableCell className="text-right">
+                        )}
+
+                        {event.description && (
+                          <p className="text-sm line-clamp-2">
+                            {event.description}
+                          </p>
+                        )}
+
+                        <div className="flex justify-between items-center pt-2">
+                          <Badge
+                            variant="outline"
+                            className={`
+                              ${
+                                event.status === "Scheduled"
+                                  ? "border-green-200 text-green-700"
+                                  : ""
+                              }
+                              ${
+                                event.status === "Cancelled"
+                                  ? "border-red-200 text-red-700"
+                                  : ""
+                              }
+                            `}
+                          >
+                            {event.status}
+                          </Badge>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              toast({
-                                title: "Ajouter une note",
-                                description: `Pour ${student.studentName}`,
-                              });
+                            className="h-8"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEventClick(event);
                             }}
                           >
-                            Ajouter note
+                            <Eye className="h-4 w-4 mr-1" />
+                            Détails
                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : (
+                  <div className="col-span-3 text-center py-8">
+                    <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                    <h3 className="text-lg font-medium mb-2">
+                      Aucun événement à venir
+                    </h3>
+                    <p className="text-muted-foreground">
+                      Aucun événement n'est programmé pour les prochains jours.
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -658,28 +1160,52 @@ export const ProfessorDashboard = () => {
         <TabsContent value="courses" className="space-y-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <CardTitle>Mes Cours Assignés</CardTitle>
                   <CardDescription>Liste complète de vos cours</CardDescription>
                 </div>
-                <Button
-                  onClick={() => {
-                    toast({
-                      title: "Nouveau cours",
-                      description: "Fonctionnalité en développement",
-                    });
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nouveau cours
-                </Button>
               </div>
             </CardHeader>
             <CardContent>
-              {filteredAssignments.length > 0 ? (
+              {/* Barre de recherche et filtres */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Rechercher un cours..."
+                      className="pl-9"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {uniqueClasses.length > 0 && (
+                    <Select
+                      value={selectedClass}
+                      onValueChange={setSelectedClass}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filtrer par classe" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Toutes les classes</SelectItem>
+                        {uniqueClasses.map((classLevel) => (
+                          <SelectItem key={classLevel} value={classLevel}>
+                            {classLevel}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              </div>
+
+              {filteredAssignmentsBySearch.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredAssignments.map((assignment) => (
+                  {filteredAssignmentsBySearch.map((assignment) => (
                     <Card
                       key={assignment.id}
                       className="hover:shadow-lg transition-shadow"
@@ -695,10 +1221,7 @@ export const ProfessorDashboard = () => {
                             </CardDescription>
                           </div>
                           <Badge variant="secondary">
-                            {assignment._count?.schedules ||
-                              assignment.schedules?.length ||
-                              0}
-                            h/sem
+                            {assignment.schedules?.length || 0}h/sem
                           </Badge>
                         </div>
                       </CardHeader>
@@ -706,7 +1229,11 @@ export const ProfessorDashboard = () => {
                         <div className="flex items-center justify-between text-sm">
                           <div className="flex items-center gap-1 text-muted-foreground">
                             <Users className="h-4 w-4" />
-                            <span>~30 élèves</span>
+                            <span>
+                              {assignment.schoolClass?.students?.length ||
+                                "N/A"}{" "}
+                              élèves
+                            </span>
                           </div>
                           <div className="flex items-center gap-1 text-muted-foreground">
                             <Calendar className="h-4 w-4" />
@@ -749,28 +1276,6 @@ export const ProfessorDashboard = () => {
                               </div>
                             </div>
                           )}
-
-                        <div className="flex gap-2 pt-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1"
-                          >
-                            Voir détails
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => {
-                              toast({
-                                title: "Saisie des notes",
-                                description: `Ouverture pour ${assignment.subject?.name}`,
-                              });
-                            }}
-                          >
-                            Saisir notes
-                          </Button>
-                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -779,12 +1284,26 @@ export const ProfessorDashboard = () => {
                 <div className="text-center py-12">
                   <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                   <h3 className="text-lg font-medium mb-2">
-                    Aucun cours assigné
+                    {searchTerm || selectedClass !== "all"
+                      ? "Aucun cours ne correspond aux critères"
+                      : "Aucun cours assigné"}
                   </h3>
                   <p className="text-muted-foreground mb-6">
-                    Vous n'avez pas encore de cours assigné pour cette année
-                    académique.
+                    {searchTerm || selectedClass !== "all"
+                      ? "Essayez de modifier vos critères de recherche."
+                      : "Vous n'avez pas encore de cours assigné pour cette année académique."}
                   </p>
+                  {(searchTerm || selectedClass !== "all") && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSearchTerm("");
+                        setSelectedClass("all");
+                      }}
+                    >
+                      Réinitialiser les filtres
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -795,81 +1314,196 @@ export const ProfessorDashboard = () => {
         <TabsContent value="schedule" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Emploi du temps hebdomadaire</CardTitle>
-              <CardDescription>
-                Semaine du {format(new Date(), "dd/MM/yyyy", { locale: fr })}
-              </CardDescription>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <CardTitle>Emploi du temps hebdomadaire</CardTitle>
+                  <CardDescription>
+                    Semaine du{" "}
+                    {format(new Date(), "dd/MM/yyyy", { locale: fr })}
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const printWindow = window.open("", "_blank");
+                    if (printWindow) {
+                      printWindow.document.write(`
+                        <html>
+                          <head>
+                            <title>Emploi du temps - ${user?.firstName} ${
+                        user?.lastName
+                      }</title>
+                            <style>
+                              body { font-family: Arial, sans-serif; margin: 20px; }
+                              h2 { color: #333; }
+                              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                              th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+                              th { background-color: #f5f5f5; }
+                            </style>
+                          </head>
+                          <body>
+                            <h2>Emploi du temps - ${user?.firstName} ${
+                        user?.lastName
+                      }</h2>
+                            <p>${format(new Date(), "dd/MM/yyyy", {
+                              locale: fr,
+                            })}</p>
+                            <table border="1">
+                              <thead>
+                                <tr>
+                                  <th>Jour</th>
+                                  <th>Heure</th>
+                                  <th>Cours</th>
+                                  <th>Classe</th>
+                                  <th>Salle</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                ${professeurSchedule
+                                  .sort(
+                                    (a, b) =>
+                                      a.dayOfWeek - b.dayOfWeek ||
+                                      a.startTime.localeCompare(b.startTime)
+                                  )
+                                  .map(
+                                    (schedule) => `
+                                    <tr>
+                                      <td>${formatDayOfWeek(
+                                        schedule.dayOfWeek
+                                      )}</td>
+                                      <td>${formatTime(
+                                        schedule.startTime
+                                      )} - ${formatTime(schedule.endTime)}</td>
+                                      <td>${
+                                        schedule.subject?.name || "Non spécifié"
+                                      }</td>
+                                      <td>${
+                                        schedule.schoolClass?.name ||
+                                        schedule.classAssignment?.classLevel ||
+                                        "Non spécifié"
+                                      }</td>
+                                      <td>${
+                                        schedule.classroom || "Non spécifié"
+                                      }</td>
+                                    </tr>
+                                  `
+                                  )
+                                  .join("")}
+                              </tbody>
+                            </table>
+                          </body>
+                        </html>
+                      `);
+                      printWindow.document.close();
+                      printWindow.focus();
+                      setTimeout(() => {
+                        printWindow.print();
+                      }, 250);
+                    }
+                  }}
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Imprimer
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {professeurSchedule.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <div className="min-w-[800px]">
-                    <div className="grid grid-cols-8 border-b">
-                      <div className="p-3 font-medium"></div>
-                      {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                        <div key={day} className="p-3 font-medium text-center">
-                          {formatDayOfWeek(day)}
-                        </div>
-                      ))}
-                    </div>
+              <div>
+                {professeurSchedule.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="p-3 text-left font-medium">Jour</th>
+                          <th className="p-3 text-left font-medium">Heure</th>
+                          <th className="p-3 text-left font-medium">Cours</th>
+                          <th className="p-3 text-left font-medium">Classe</th>
+                          <th className="p-3 text-left font-medium">Salle</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {professeurSchedule
+                          .sort((a, b) => {
+                            // Trier par jour (selon l'ordre de la semaine)
+                            const dayOrder = {
+                              MONDAY: 1,
+                              TUESDAY: 2,
+                              WEDNESDAY: 3,
+                              THURSDAY: 4,
+                              FRIDAY: 5,
+                              SATURDAY: 6,
+                              SUNDAY: 7,
+                            };
 
-                    {["08:00", "10:00", "14:00", "16:00"].map((timeSlot) => (
-                      <div
-                        key={timeSlot}
-                        className="grid grid-cols-8 border-b last:border-b-0"
-                      >
-                        <div className="p-3 text-sm text-muted-foreground text-center border-r">
-                          {timeSlot}
-                        </div>
-                        {[1, 2, 3, 4, 5, 6, 7].map((day) => {
-                          const schedule = professeurSchedule.find(
-                            (s) =>
-                              s.dayOfWeek === day &&
-                              s.startTime.startsWith(timeSlot.split(":")[0])
-                          );
+                            const dayA = a.dayOfWeek?.toString();
+                            const dayB = b.dayOfWeek?.toString();
 
-                          return (
-                            <div
-                              key={day}
-                              className="p-2 min-h-[80px] border-r last:border-r-0"
+                            if (dayA && dayB && dayA !== dayB) {
+                              return (
+                                (dayOrder[dayA] || 99) - (dayOrder[dayB] || 99)
+                              );
+                            }
+
+                            // Si même jour, trier par heure
+                            return a.startTime.localeCompare(b.startTime);
+                          })
+                          .map((schedule) => (
+                            <tr
+                              key={schedule.id}
+                              className="border-b hover:bg-gray-50"
                             >
-                              {schedule && (
-                                <div className="h-full rounded-lg bg-primary/5 p-2 border border-primary/20 hover:bg-primary/10 transition-colors">
-                                  <p className="font-medium text-sm truncate">
-                                    {schedule.subject?.name || "Cours"}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground truncate">
-                                    {schedule.schoolClass?.name ||
-                                      schedule.classAssignment?.classLevel ||
-                                      "Classe"}
-                                  </p>
-                                  <p className="text-xs mt-1">
-                                    {schedule.classroom || "Salle"}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
+                              <td className="p-3">
+                                {formatDayOfWeek(schedule.dayOfWeek)}
+                              </td>
+                              <td className="p-3">
+                                {formatTime(schedule.startTime)} -{" "}
+                                {formatTime(schedule.endTime)}
+                              </td>
+                              <td className="p-3 font-medium">
+                                {schedule.subject?.name || "Non spécifié"}
+                              </td>
+                              <td className="p-3">
+                                {schedule.schoolClass?.name ||
+                                  schedule.classAssignment?.classLevel ||
+                                  "Non spécifié"}
+                              </td>
+                              <td className="p-3">
+                                {schedule.classroom || "Non spécifié"}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-lg font-medium mb-2">
-                    Emploi du temps vide
-                  </h3>
-                  <p className="text-muted-foreground">
-                    Aucun horaire n'a été programmé pour le moment.
-                  </p>
-                </div>
-              )}
+                ) : (
+                  <div className="text-center py-12">
+                    <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <h3 className="text-lg font-medium mb-2">
+                      Emploi du temps vide
+                    </h3>
+                    <p className="text-muted-foreground">
+                      Aucun horaire n'a été programmé pour le moment.
+                    </p>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Modales */}
+      <AnnouncementModal
+        announcement={selectedAnnouncement}
+        open={announcementModalOpen}
+        onOpenChange={setAnnouncementModalOpen}
+      />
+
+      <EventModal
+        event={selectedEvent}
+        open={eventModalOpen}
+        onOpenChange={setEventModalOpen}
+      />
     </div>
   );
 };

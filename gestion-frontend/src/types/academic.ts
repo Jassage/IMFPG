@@ -1,7 +1,9 @@
+import { GradeStatus } from "./bulletin";
+
 // Utiliser des unions de string literals au lieu d'enum
 export type StudentStatus = "Active" | "Inactive" | "Graduated" | "Suspended";
 export type StudentSexe = "Masculin" | "Feminin" | "Autre";
-export type GradeStatus = "Valid_" | "Non_valid_" | "Reprendre";
+// export type GradeStatus = "Valid_" | "Non_valid_" | "Reprendre";
 export type GradeSession = "Normale" | "Reprise";
 export type ControlType =
   | "CONTROLE_1"
@@ -55,6 +57,7 @@ export interface Student {
   createdAt: Date;
   updatedAt: Date;
   userId?: string;
+  academicYear?: string;
 
   schoolClass?: SchoolClass;
   user?: User;
@@ -251,7 +254,13 @@ export interface User {
   lastName: string;
   email: string;
   phone: string;
-  role: "Admin" | "Professeur" | "Secretaire" | "Directeur" | "Student";
+  role:
+    | "Admin"
+    | "Professeur"
+    | "Secretaire"
+    | "Directeur"
+    | "Student"
+    | "Comptable";
   status: "Actif" | "Inactif";
   lastLogin?: string;
   avatar?: string;
@@ -415,6 +424,7 @@ export interface FeePayment {
 }
 
 export interface Professeur {
+  subjects: boolean;
   hireDate: any;
   address: any;
   user: any;
@@ -587,6 +597,17 @@ export interface Grade {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  submittedBy: string;
+  reviewedBy?: string;
+  rejectedBy?: string;
+  rejectionReason?: string;
+  rejectedAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  reviewedAt?: string;
+  reviewedNotes?: string;
+  submittedAt?: string;
+  validatedAt?: string;
 
   // Relations optionnelles
   student?: Student;
@@ -623,6 +644,7 @@ export interface ClassAssignment {
   subject?: Subject;
   schedules?: Schedule[];
   grades?: Grade[];
+  SchoolClass?: SchoolClass;
 }
 
 export interface Schedule {
@@ -743,3 +765,4 @@ export interface AuditLogsResponse {
     today: number;
   };
 }
+export { GradeStatus };

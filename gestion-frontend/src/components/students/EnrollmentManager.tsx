@@ -103,55 +103,54 @@ interface PreviousYear {
 
 interface ValidationResult {
   canReenroll: boolean;
-  academicStatus: string;
-  financialStatus: string;
-  disciplinaryStatus: string;
-  details: {
-    studentInfo: {
-      id: string;
-      firstName: string;
-      lastName: string;
-      studentCode: string;
-    };
-    previousEnrollment: {
-      id: string;
-      academicYear: string;
-      className: string;
-      classLevel: number;
-      status: string;
-      academicYearId: string; // Ajouté: ID de l'année académique précédente
-    };
-    academic?: {
-      hasGrades: boolean;
-      passed: boolean;
-      averageGrade?: number;
-      normalizedAverage?: number;
-      gradingScale?: "20" | "10" | "100";
-      weightedAverage?: number;
-      grades?: Array<{
-        subject: string;
-        grade: number;
-        coefficient: number;
-        maxGrade: number;
-        normalizedGrade?: number;
-      }>;
-      requiredAverage: number;
-    };
-    financial?: {
-      eligible: boolean;
-      balance: number;
-      overdueAmount: number;
-      hasOverdueFees: boolean;
-    };
-    eligibility?: {
-      academicEligible: boolean;
-      financialEligible: boolean;
-      disciplinaryEligible: boolean;
-      notCurrentlyEnrolled: boolean;
-    };
-    // Ajouter les années précédentes disponibles
-    availablePreviousYears?: PreviousYear[];
-    reason?: string;
+  student: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    studentCode: string;
+  };
+  previousEnrollment: {
+    id: string;
+    academicYear: string;
+    className: string;
+    classLevel: number;
+    status: string;
+    academicYearId: string;
+  };
+  nextAcademicYear?: {
+    id: string;
+    year: string;
+    startDate: string;
+    endDate: string;
+  };
+  academicEvaluation?: {
+    // Changé de details.academic à academicEvaluation
+    status: string;
+    averageGrade: number;
+    hasGrades: boolean;
+    passed: boolean;
+    grades?: any[];
+  };
+  financialStatus?: {
+    // Changé de details.financial à financialStatus
+    eligible: boolean;
+    balance: number;
+    overdueAmount: number;
+    hasOverdueFees: boolean;
+  };
+  recommendations?: any[]; // Changé de details.recommendations à recommendations
+  levelRecommendation?: {
+    recommendedLevel: string;
+    reason: string;
+    isRedoublement: boolean;
+    allowedTransitions: string[];
+  };
+  details?: {
+    // Garder l'ancienne structure pour compatibilité
+    academic?: any;
+    financial?: any;
+    recommendations?: any[];
+    eligibility?: any;
   };
 }
 
@@ -161,7 +160,29 @@ const IneligibilityDetails = ({
 }: {
   validation: ValidationResult;
 }) => {
-  if (validation.canReenroll) {
+  // Fonction helper pour gérer la compatibilité avec l'ancienne et nouvelle structure
+  const getValidationData = () => {
+    // Si l'API retourne la nouvelle structure (sans details)
+    if (validation.academicEvaluation || validation.financialStatus) {
+      return {
+        academic: validation.academicEvaluation,
+        financial: validation.financialStatus,
+        recommendations: validation.recommendations || [],
+        eligibility: validation.details?.eligibility,
+      };
+    }
+    // Si l'API retourne l'ancienne structure (avec details)
+    return {
+      academic: validation.details?.academic,
+      financial: validation.details?.financial,
+      recommendations: validation.details?.recommendations || [],
+      eligibility: validation.details?.eligibility,
+    };
+  };
+
+  const data = getValidationData();
+
+  if (validation.canReenroll || !data.academic) {
     return null;
   }
 
@@ -177,94 +198,73 @@ const IneligibilityDetails = ({
           </div>
 
           {/* Détails académiques */}
-          {validation.details.academic &&
-            !validation.details.academic.passed && (
-              <div className="bg-red-50 p-3 rounded">
-                <div className="flex items-center gap-2 mb-2">
-                  <TrendingDown className="h-4 w-4 text-red-600" />
-                  <span className="font-medium text-red-800">
-                    Problème académique
-                  </span>
-                </div>
-                {validation.details.academic.hasGrades && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-red-700">
-                      <span className="font-medium">Moyenne:</span>{" "}
-                      {validation.details.academic.averageGrade?.toFixed(2) ||
-                        "N/A"}{" "}
-                      / 100
-                    </p>
-                    <p className="text-sm text-red-700">
-                      <span className="font-medium">Seuil minimum:</span> 50/100
-                    </p>
-                    {validation.details.academic.grades &&
-                      validation.details.academic.grades.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-sm font-medium text-red-800 mb-1">
-                            Notes détaillées:
-                          </p>
-                          <div className="grid grid-cols-2 gap-1">
-                            {validation.details.academic.grades.map(
-                              (grade, index) => (
-                                <div
-                                  key={index}
-                                  className="text-xs bg-red-100 p-1 rounded"
-                                >
-                                  {grade.subject}: {grade.grade}/100
-                                </div>
-                              )
-                            )}
-                          </div>
-                        </div>
-                      )}
-                  </div>
-                )}
+          {data.academic && !data.academic.passed && (
+            <div className="bg-red-50 p-3 rounded">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingDown className="h-4 w-4 text-red-600" />
+                <span className="font-medium text-red-800">
+                  Problème académique
+                </span>
               </div>
-            )}
+              {data.academic.hasGrades && (
+                <div className="space-y-2">
+                  <p className="text-sm text-red-700">
+                    <span className="font-medium">Moyenne:</span>{" "}
+                    {data.academic.averageGrade?.toFixed(2) || "N/A"} / 100
+                  </p>
+                  <p className="text-sm text-red-700">
+                    <span className="font-medium">Seuil minimum:</span> 50/100
+                  </p>
+                  {data.academic.grades && data.academic.grades.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-sm font-medium text-red-800 mb-1">
+                        Notes détaillées:
+                      </p>
+                      <div className="grid grid-cols-2 gap-1">
+                        {data.academic.grades.map((grade, index) => (
+                          <div
+                            key={index}
+                            className="text-xs bg-red-100 p-1 rounded"
+                          >
+                            {grade.subject}: {grade.grade}/100
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Détails financiers */}
-          {validation.details.financial &&
-            !validation.details.financial.eligible && (
-              <div className="bg-amber-50 p-3 rounded">
-                <div className="flex items-center gap-2 mb-2">
-                  <CreditCard className="h-4 w-4 text-amber-600" />
-                  <span className="font-medium text-amber-800">
-                    Problème financier
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm text-amber-700">
-                    <span className="font-medium">Solde impayé:</span>{" "}
-                    {validation.details.financial.balance.toLocaleString()} HTG
-                  </p>
-                  <p className="text-sm text-amber-700">
-                    <span className="font-medium">Montant en retard:</span>{" "}
-                    {validation.details.financial.overdueAmount.toLocaleString()}{" "}
-                    HTG
-                  </p>
-                  <p className="text-sm text-amber-700">
-                    <span className="font-medium">Seuil maximum toléré:</span>{" "}
-                    5,000 HTG
-                  </p>
-                </div>
-              </div>
-            )}
-
-          {/* Autres raisons */}
-          {validation.details.reason && (
-            <div className="bg-gray-50 p-3 rounded">
+          {data.financial && !data.financial.eligible && (
+            <div className="bg-amber-50 p-3 rounded">
               <div className="flex items-center gap-2 mb-2">
-                <AlertCircle className="h-4 w-4 text-gray-600" />
-                <span className="font-medium text-gray-800">Autre raison</span>
+                <CreditCard className="h-4 w-4 text-amber-600" />
+                <span className="font-medium text-amber-800">
+                  Problème financier
+                </span>
               </div>
-              <p className="text-sm text-gray-700">
-                {validation.details.reason}
-              </p>
+              <div className="space-y-2">
+                <p className="text-sm text-amber-700">
+                  <span className="font-medium">Solde impayé:</span>{" "}
+                  {data.financial.balance.toLocaleString()} HTG
+                </p>
+                <p className="text-sm text-amber-700">
+                  <span className="font-medium">Montant en retard:</span>{" "}
+                  {data.financial.overdueAmount.toLocaleString()} HTG
+                </p>
+                <p className="text-sm text-amber-700">
+                  <span className="font-medium">Seuil maximum toléré:</span>{" "}
+                  5,000 HTG
+                </p>
+              </div>
             </div>
           )}
 
           {/* Résumé d'éligibilité */}
-          {validation.details.eligibility && (
+          {data.eligibility && (
             <div className="bg-blue-50 p-3 rounded">
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle className="h-4 w-4 text-blue-600" />
@@ -275,12 +275,12 @@ const IneligibilityDetails = ({
               <div className="grid grid-cols-2 gap-2">
                 <div
                   className={`flex items-center gap-2 ${
-                    validation.details.eligibility.academicEligible
+                    data.eligibility.academicEligible
                       ? "text-green-600"
                       : "text-red-600"
                   }`}
                 >
-                  {validation.details.eligibility.academicEligible ? (
+                  {data.eligibility.academicEligible ? (
                     <CheckCircle className="h-4 w-4" />
                   ) : (
                     <XCircle className="h-4 w-4" />
@@ -289,12 +289,12 @@ const IneligibilityDetails = ({
                 </div>
                 <div
                   className={`flex items-center gap-2 ${
-                    validation.details.eligibility.financialEligible
+                    data.eligibility.financialEligible
                       ? "text-green-600"
                       : "text-red-600"
                   }`}
                 >
-                  {validation.details.eligibility.financialEligible ? (
+                  {data.eligibility.financialEligible ? (
                     <CheckCircle className="h-4 w-4" />
                   ) : (
                     <XCircle className="h-4 w-4" />
@@ -303,12 +303,12 @@ const IneligibilityDetails = ({
                 </div>
                 <div
                   className={`flex items-center gap-2 ${
-                    validation.details.eligibility.disciplinaryEligible
+                    data.eligibility.disciplinaryEligible
                       ? "text-green-600"
                       : "text-red-600"
                   }`}
                 >
-                  {validation.details.eligibility.disciplinaryEligible ? (
+                  {data.eligibility.disciplinaryEligible ? (
                     <CheckCircle className="h-4 w-4" />
                   ) : (
                     <XCircle className="h-4 w-4" />
@@ -317,12 +317,12 @@ const IneligibilityDetails = ({
                 </div>
                 <div
                   className={`flex items-center gap-2 ${
-                    validation.details.eligibility.notCurrentlyEnrolled
+                    data.eligibility.notCurrentlyEnrolled
                       ? "text-green-600"
                       : "text-red-600"
                   }`}
                 >
-                  {validation.details.eligibility.notCurrentlyEnrolled ? (
+                  {data.eligibility.notCurrentlyEnrolled ? (
                     <CheckCircle className="h-4 w-4" />
                   ) : (
                     <XCircle className="h-4 w-4" />

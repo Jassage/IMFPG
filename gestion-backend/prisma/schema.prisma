@@ -68,9 +68,12 @@ enum EnrollmentStatus {
 }
 
 enum GradeStatus {
-  Valid_
-  Non_valid_
-  Reprendre
+  Draft
+  Submitted
+  Approved
+  Rejected
+  Published
+  Archived
 }
 
 enum GradeSession {
@@ -83,7 +86,7 @@ enum UserRole {
   Professeur
   Secretaire
   Directeur
-  Parent
+  Comptable
   Student
 }
 
@@ -143,6 +146,7 @@ model Subject {
   createdById  String
   assignments  ClassAssignment[]
   grades       Grade[]
+  professeurs  ProfesseurSubject[]
   createdBy    User              @relation("CreatedSubject", fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([createdById])
@@ -424,6 +428,23 @@ model Grade {
   subject          Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   classAssignment  ClassAssignment   @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   transcriptGrades TranscriptGrade[]
+  createdBy       String?
+  submittedAt     DateTime?
+  submittedBy     String?
+  approvedAt      DateTime?
+  approvedBy      String?
+  rejectedAt      DateTime?
+  rejectedBy      String?
+  rejectionReason String?
+  publishedAt     DateTime?
+  publishedBy     String?
+  
+  // Relations
+  createdByUser   User?       @relation("CreatedGrades", fields: [createdBy], references: [id])
+  submittedByUser User?       @relation("SubmittedGrades", fields: [submittedBy], references: [id])
+  approvedByUser  User?       @relation("ApprovedGrades", fields: [approvedBy], references: [id])
+  rejectedByUser  User?       @relation("RejectedGrades", fields: [rejectedBy], references: [id])
+  publishedByUser User?       @relation("PublishedGrades", fields: [publishedBy], references: [id])
 
   @@unique([studentId, subjectId, academicYearId, controlType, assignmentId])
   @@index([academicYearId, controlType])
@@ -443,15 +464,44 @@ model Professeur {
   speciality String?
   matricule  String           @unique
   status     ProfesseurStatus @default(Actif)
+  
+  address    String?
+  qualifications String?
+  hireDate   DateTime?
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
   userId     String?          @unique
 
-  assignments ClassAssignment[]
-  user        User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  schedules   Schedule[]
+  // Relations
+  assignments      ClassAssignment[]
+  user             User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules        Schedule[]
+  subjectsTaught   ProfesseurSubject[] // Nouvelle relation
+
   @@map("professeurs")
 }
+
+model ProfesseurSubject {
+  id           String     @id @default(cuid())
+  professeurId String
+  subjectId    String
+  isPrimary    Boolean    @default(false)
+  yearsOfExperience Int?  @default(0)
+  notes        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  professeur Professeur @relation(fields: [professeurId], references: [id], onDelete: Cascade)
+  subject    Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([professeurId, subjectId])
+  @@index([professeurId])
+  @@index([subjectId])
+  @@index([isPrimary])
+  @@map("professeur_subjects")
+}
+
+
 
 model User {
   id               String     @id @default(cuid())
@@ -481,7 +531,11 @@ model User {
   studentRecord    Student? // Relation avec Student
   createdSubjects  Subject[]      @relation("CreatedSubject")
   announcements    Announcement[]
-  parentAccount    Parent?
+  createdGrades   Grade[] @relation("CreatedGrades")
+  submittedGrades Grade[] @relation("SubmittedGrades")
+  approvedGrades  Grade[] @relation("ApprovedGrades")
+  rejectedGrades  Grade[] @relation("RejectedGrades")
+  publishedGrades Grade[] @relation("PublishedGrades")
 
   @@index([email, status])
   @@index([role, status])
@@ -559,7 +613,7 @@ model Parent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+ 
   guardians Guardian[]
 
   @@map("parents")

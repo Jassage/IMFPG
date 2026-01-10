@@ -1,5 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +45,8 @@ import {
   AlertTriangleIcon,
   X,
   ChevronRight,
+  Star,
+  AlertTriangle,
 } from "lucide-react";
 import {
   Dialog,
@@ -108,6 +116,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useSubjectStore } from "@/store/subjectStore";
 
 // Fonction pour générer un identifiant unique
 const generateProfesseurId = (
@@ -179,14 +188,14 @@ const professeurSchema = z.object({
       (phone) => {
         if (!phone || phone.trim() === "") return true; // Optionnel
         const cleaned = phone.replace(/[\s\-()]/g, "");
-        const phoneRegex = /^(\+509)\d{8}$/;
-        const isValidLength = cleaned.length === 12;
+        const phoneRegex = /^(\+?509)?\d{8}$/;
+        const isValidLength = cleaned.replace("+509", "").length === 8;
         const isValidFormat = phoneRegex.test(cleaned);
         return isValidLength && isValidFormat;
       },
       {
         message:
-          "Numéro de téléphone invalide. Format: +509XXXXXXXX (ex: +50944556677)",
+          "Numéro de téléphone invalide. Format: 8 chiffres (ex: 44556677) ou +50944556677",
       }
     )
     .optional()
@@ -246,6 +255,21 @@ const professeurSchema = z.object({
     .optional()
     .default(""),
 
+  subjects: z
+    .array(
+      z.object({
+        subjectId: z.string(),
+        isPrimary: z.boolean().optional().default(false),
+        yearsOfExperience: z.number().optional().default(0),
+        notes: z.string().optional().default(""),
+      })
+    )
+    .optional()
+    .default([])
+    .refine((subjects) => subjects.length <= 10, {
+      message: "Un professeur ne peut enseigner plus de 10 matières",
+    }),
+
   createUserAccount: z.boolean().optional().default(false),
 });
 
@@ -266,6 +290,11 @@ export const ProfesseursManager = () => {
     filters,
     setFilters,
   } = useProfesseurStore();
+  const {
+    subjects: availableSubjects,
+    loading: loadingSubjects,
+    fetchSubjects,
+  } = useSubjectStore();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -336,6 +365,7 @@ export const ProfesseursManager = () => {
       matricule: "",
       address: "",
       qualifications: "",
+      subjects: [],
       createUserAccount: false,
     },
     mode: "onChange",
@@ -346,6 +376,14 @@ export const ProfesseursManager = () => {
   const matriculeValue = watch("matricule");
   const phoneValue = watch("phone");
   const createUserAccountValue = watch("createUserAccount");
+  const subjectsValue = watch("subjects");
+
+  // Charger les matières disponibles
+  useEffect(() => {
+    if (isFormOpen && availableSubjects.length === 0 && !loadingSubjects) {
+      fetchSubjects();
+    }
+  }, [isFormOpen, fetchSubjects, availableSubjects.length, loadingSubjects]);
 
   useEffect(() => {
     fetchProfesseurs();
@@ -399,11 +437,19 @@ export const ProfesseursManager = () => {
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return "";
     const cleaned = phone.replace(/[\s\-()]/g, "");
-    if (cleaned.startsWith("+509") && cleaned.length === 12) {
+
+    // Format haïtien
+    if (cleaned.startsWith("+509") && cleaned.length === 13) {
       return `+509 ${cleaned.slice(4, 6)} ${cleaned.slice(
         6,
         8
       )} ${cleaned.slice(8, 10)} ${cleaned.slice(10)}`;
+    } else if (cleaned.length === 8) {
+      // Format local à 8 chiffres
+      return `+509 ${cleaned.slice(0, 2)} ${cleaned.slice(
+        2,
+        4
+      )} ${cleaned.slice(4, 6)} ${cleaned.slice(6)}`;
     }
     return phone;
   };
@@ -452,6 +498,7 @@ export const ProfesseursManager = () => {
       setValue("matricule", professeurDetails.matricule || "");
       setValue("address", professeurDetails.address || "");
       setValue("qualifications", professeurDetails.qualifications || "");
+      setValue("subjects", professeurDetails.subjects || []);
       setValue("createUserAccount", !!professeurDetails.userId);
 
       setIsFormOpen(true);
@@ -479,6 +526,7 @@ export const ProfesseursManager = () => {
       matricule: "",
       address: "",
       qualifications: "",
+      subjects: [],
       createUserAccount: false,
     });
   };
@@ -545,7 +593,10 @@ export const ProfesseursManager = () => {
         matricule: data.matricule?.trim() || undefined,
         address: data.address?.trim() || undefined,
         qualifications: data.qualifications?.trim() || undefined,
+        subjects: data.subjects || [], // Ajout des matières enseignées
       };
+
+      console.log("Professeur data: ", professeurData);
 
       // Ajouter l'option de création de compte utilisateur si demandée
       if (data.createUserAccount && !editingProfesseur?.userId) {
@@ -567,12 +618,12 @@ export const ProfesseursManager = () => {
             await updateProfesseur(editingProfesseur.id, professeurData);
 
             toast({
-              title: " Professeur mis à jour",
+              title: "Professeur mis à jour",
               description: `Le professeur ${data.firstName} ${data.lastName} a été modifié et un compte utilisateur a été créé`,
             });
           } catch (error: any) {
             toast({
-              title: " Erreur",
+              title: "Erreur",
               description: error.message || "Erreur lors de la mise à jour",
               variant: "destructive",
             });
@@ -581,14 +632,14 @@ export const ProfesseursManager = () => {
         } else {
           await updateProfesseur(editingProfesseur.id, professeurData);
           toast({
-            title: " Professeur mis à jour",
+            title: "Professeur mis à jour",
             description: `Le professeur ${data.firstName} ${data.lastName} a été modifié avec succès`,
           });
         }
       } else {
         await createProfesseur(professeurData);
         toast({
-          title: " Professeur créé",
+          title: "Professeur créé",
           description: data.createUserAccount
             ? `Le professeur ${data.firstName} ${data.lastName} a été créé avec un compte utilisateur`
             : `Le professeur ${data.firstName} ${data.lastName} a été créé sans compte utilisateur`,
@@ -602,7 +653,7 @@ export const ProfesseursManager = () => {
         error.message || "Une erreur est survenue lors de l'enregistrement";
       setFormErrors([errorMessage]);
       toast({
-        title: " Erreur",
+        title: "Erreur",
         description: errorMessage,
         variant: "destructive",
       });
@@ -627,12 +678,12 @@ export const ProfesseursManager = () => {
 
       await deleteProfesseur(selectedProfesseur.id);
       toast({
-        title: " Suppression réussie",
+        title: "Suppression réussie",
         description: "Le professeur a été supprimé avec succès",
       });
     } catch (error: any) {
       toast({
-        title: " Erreur",
+        title: "Erreur",
         description: error.message || "Erreur lors de la suppression",
         variant: "destructive",
       });
@@ -649,7 +700,7 @@ export const ProfesseursManager = () => {
       if (actionType === "activate") {
         await activateProfesseur(selectedProfesseur.id);
         toast({
-          title: " Activation réussie",
+          title: "Activation réussie",
           description: "Le professeur a été activé avec succès",
         });
       } else {
@@ -661,7 +712,7 @@ export const ProfesseursManager = () => {
       }
     } catch (error: any) {
       toast({
-        title: " Erreur",
+        title: "Erreur",
         description: error.message || "Erreur lors du changement de statut",
         variant: "destructive",
       });
@@ -730,7 +781,7 @@ export const ProfesseursManager = () => {
       const { professeur, userAccountCreated } = response.data.data;
 
       toast({
-        title: " Succès",
+        title: "Succès",
         description: userAccountCreated
           ? "Compte utilisateur créé et associé avec succès"
           : "Compte utilisateur associé avec succès",
@@ -740,7 +791,7 @@ export const ProfesseursManager = () => {
       fetchProfesseurs(); // Rafraîchir la liste
     } catch (error: any) {
       toast({
-        title: " Erreur",
+        title: "Erreur",
         description:
           error.response?.data?.message || "Erreur lors de l'association",
         variant: "destructive",
@@ -762,14 +813,14 @@ export const ProfesseursManager = () => {
       await api.delete(`/professeurs/${professeur.id}/detach-user`);
 
       toast({
-        title: " Compte détaché",
+        title: "Compte détaché",
         description: "Le compte utilisateur a été détaché avec succès",
       });
 
       fetchProfesseurs();
     } catch (error: any) {
       toast({
-        title: " Erreur",
+        title: "Erreur",
         description:
           error.response?.data?.message || "Erreur lors du détachement",
         variant: "destructive",
@@ -802,7 +853,11 @@ export const ProfesseursManager = () => {
         (professeur.matricule &&
           professeur.matricule
             .toLowerCase()
-            .includes(searchTerm.toLowerCase()));
+            .includes(searchTerm.toLowerCase())) ||
+        (professeur.subjects &&
+          professeur.subjects.some((subject) =>
+            subject.toLowerCase().includes(searchTerm.toLowerCase())
+          ));
 
       const matchesStatus = filters.status
         ? professeur.status === filters.status
@@ -1244,7 +1299,6 @@ export const ProfesseursManager = () => {
                     <SelectItem value="Informatique">Informatique</SelectItem>
                     <SelectItem value="Français">Français</SelectItem>
                     <SelectItem value="Anglais">Anglais</SelectItem>
-                    <SelectItem value="Arabe">Arabe</SelectItem>
                     <SelectItem value="Histoire-Géographie">
                       Histoire-Géo
                     </SelectItem>
@@ -1438,6 +1492,33 @@ export const ProfesseursManager = () => {
                         </div>
                       )}
                     </div>
+
+                    {/* Matières enseignées */}
+                    {(selectedProfesseurForMobile as Professeur).subjects &&
+                      (selectedProfesseurForMobile as StoreProfesseur).subjects
+                        .length > 0 && (
+                        <div className="space-y-2 mt-4">
+                          <div className="flex items-center gap-2">
+                            <BookOpen className="h-4 w-4 text-indigo-500" />
+                            <p className="text-sm text-muted-foreground">
+                              Matières enseignées
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {(
+                              selectedProfesseurForMobile as StoreProfesseur
+                            ).subjects.map((subject, index) => (
+                              <Badge
+                                key={index}
+                                variant="secondary"
+                                className="text-xs"
+                              >
+                                {subject}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                   </div>
 
                   {/* Actions */}
@@ -1817,12 +1898,24 @@ export const ProfesseursManager = () => {
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        Format: +509XXXXXXXX (ex: +50944556677) - 8 chiffres
-                        après +509
+                        Format: +509XXXXXXXX ou 8 chiffres (ex: 44556677)
                       </p>
                     </div>
 
                     <div className="space-y-2">
+                      <Label
+                        htmlFor="address"
+                        className="flex items-center gap-2"
+                      >
+                        Adresse
+                      </Label>
+                      <Input
+                        id="address"
+                        {...register("address")}
+                        placeholder="Adresse complète"
+                        className={`${errors.address ? "border-red-500" : ""}`}
+                        maxLength={200}
+                      />
                       {errors.address && (
                         <p className="text-sm text-red-500 flex items-center gap-1">
                           <AlertCircle className="h-3 w-3" />
@@ -1905,6 +1998,388 @@ export const ProfesseursManager = () => {
                         </p>
                       )}
                     </div>
+
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="hireDate"
+                        className="flex items-center gap-2"
+                      >
+                        <Calendar className="h-4 w-4" />
+                        Date d'embauche
+                      </Label>
+                      <Input
+                        id="hireDate"
+                        type="date"
+                        {...register("hireDate")}
+                        max={new Date().toISOString().split("T")[0]}
+                        className={`${errors.hireDate ? "border-red-500" : ""}`}
+                      />
+                      {errors.hireDate && (
+                        <p className="text-sm text-red-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.hireDate.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="qualifications"
+                      className="flex items-center gap-2"
+                    >
+                      Qualifications
+                    </Label>
+                    <textarea
+                      id="qualifications"
+                      {...register("qualifications")}
+                      placeholder="Diplômes, certifications, expériences..."
+                      className={`flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        errors.qualifications ? "border-red-500" : ""
+                      }`}
+                      rows={3}
+                      maxLength={500}
+                    />
+                    {errors.qualifications && (
+                      <p className="text-sm text-red-500 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.qualifications.message}
+                      </p>
+                    )}
+                    <div className="text-right text-xs text-muted-foreground">
+                      {watch("qualifications")?.length || 0}/500 caractères
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section Matières enseignées */}
+                <Separator />
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    Matières enseignées
+                  </h3>
+
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="subjects"
+                      className="flex items-center gap-2"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      Matières que le professeur peut enseigner *
+                    </Label>
+
+                    <Controller
+                      name="subjects"
+                      control={control}
+                      render={({ field }) => (
+                        <div className="space-y-3">
+                          {/* Afficher les matières déjà sélectionnées */}
+                          <div className="flex flex-wrap gap-2">
+                            {field.value?.map((subjectItem, index) => {
+                              const subject = availableSubjects.find(
+                                (s) => s.id === subjectItem.subjectId
+                              );
+                              return subject ? (
+                                <Badge
+                                  key={subjectItem.subjectId}
+                                  variant="secondary"
+                                  className="px-3 py-1"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span>{subject.name}</span>
+                                    {subjectItem.isPrimary && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs bg-primary/10"
+                                      >
+                                        Principal
+                                      </Badge>
+                                    )}
+                                    {subjectItem.yearsOfExperience > 0 && (
+                                      <span className="text-xs opacity-70">
+                                        ({subjectItem.yearsOfExperience} an
+                                        {subjectItem.yearsOfExperience > 1
+                                          ? "s"
+                                          : ""}
+                                        )
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newSubjects = [...field.value];
+                                        newSubjects.splice(index, 1);
+                                        field.onChange(newSubjects);
+                                      }}
+                                      className="ml-2 text-xs hover:text-red-600"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                </Badge>
+                              ) : null;
+                            })}
+                          </div>
+
+                          {/* Sélecteur de matières */}
+                          <div className="space-y-2">
+                            <Select
+                              value=""
+                              onValueChange={(subjectId) => {
+                                const selectedSubject = availableSubjects.find(
+                                  (s) => s.id === subjectId
+                                );
+                                if (selectedSubject) {
+                                  const newSubject = {
+                                    subjectId,
+                                    isPrimary: field.value?.length === 0, // Première matière = principale par défaut
+                                    yearsOfExperience: 0,
+                                    notes: "",
+                                  };
+                                  field.onChange([
+                                    ...(field.value || []),
+                                    newSubject,
+                                  ]);
+                                }
+                              }}
+                              disabled={
+                                loadingSubjects ||
+                                availableSubjects.length === 0
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue
+                                  placeholder={
+                                    loadingSubjects
+                                      ? "Chargement des matières..."
+                                      : availableSubjects.length === 0
+                                      ? "Aucune matière disponible"
+                                      : "Sélectionner une matière..."
+                                  }
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableSubjects
+                                  .filter(
+                                    (subject) =>
+                                      !field.value?.some(
+                                        (s) => s.subjectId === subject.id
+                                      )
+                                  )
+                                  .map((subject) => (
+                                    <SelectItem
+                                      key={subject.id}
+                                      value={subject.id}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <span>{subject.name}</span>
+                                        <span className="text-xs text-muted-foreground ml-2">
+                                          {subject.code}
+                                        </span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* Option pour définir la matière principale */}
+                            {field.value && field.value.length > 0 && (
+                              <Select
+                                value=""
+                                onValueChange={(subjectId) => {
+                                  const newSubjects = field.value.map(
+                                    (subject) => ({
+                                      ...subject,
+                                      isPrimary:
+                                        subject.subjectId === subjectId,
+                                    })
+                                  );
+                                  field.onChange(newSubjects);
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Définir matière principale..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {field.value.map((subjectItem) => {
+                                    const subject = availableSubjects.find(
+                                      (s) => s.id === subjectItem.subjectId
+                                    );
+                                    return subject ? (
+                                      <SelectItem
+                                        key={subjectItem.subjectId}
+                                        value={subjectItem.subjectId}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <span>{subject.name}</span>
+                                          {subjectItem.isPrimary && (
+                                            <Check className="h-4 w-4 text-green-500" />
+                                          )}
+                                        </div>
+                                      </SelectItem>
+                                    ) : null;
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+
+                          {/* Gestion détaillée des matières sélectionnées */}
+                          {field.value && field.value.length > 0 && (
+                            <div className="space-y-3 pt-4 border-t">
+                              <h4 className="text-sm font-medium">
+                                Détails des matières
+                              </h4>
+                              {field.value.map((subjectItem, index) => {
+                                const subject = availableSubjects.find(
+                                  (s) => s.id === subjectItem.subjectId
+                                );
+                                if (!subject) return null;
+
+                                return (
+                                  <Card
+                                    key={subjectItem.subjectId}
+                                    className="overflow-hidden"
+                                  >
+                                    <CardHeader
+                                      className={`pb-3 ${
+                                        subjectItem.isPrimary
+                                          ? "bg-primary/5"
+                                          : "bg-muted/30"
+                                      }`}
+                                    >
+                                      <div className="flex justify-between items-start">
+                                        <div>
+                                          <CardTitle className="text-base flex items-center gap-2">
+                                            {subject.name}
+                                            {subjectItem.isPrimary && (
+                                              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                                            )}
+                                          </CardTitle>
+                                          <CardDescription>
+                                            Code: {subject.code} • Coefficient:{" "}
+                                            {subject.coefficient}
+                                          </CardDescription>
+                                        </div>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => {
+                                            const newSubjects = [
+                                              ...field.value,
+                                            ];
+                                            newSubjects.splice(index, 1);
+                                            field.onChange(newSubjects);
+                                          }}
+                                        >
+                                          <Trash2 className="h-4 w-4 text-red-500" />
+                                        </Button>
+                                      </div>
+                                    </CardHeader>
+                                    <CardContent className="space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          id={`primary-${subjectItem.subjectId}`}
+                                          checked={
+                                            subjectItem.isPrimary || false
+                                          }
+                                          onChange={(e) => {
+                                            const newSubjects = field.value.map(
+                                              (subj) => ({
+                                                ...subj,
+                                                isPrimary:
+                                                  subj.subjectId ===
+                                                  subjectItem.subjectId
+                                                    ? e.target.checked
+                                                    : false,
+                                              })
+                                            );
+                                            field.onChange(newSubjects);
+                                          }}
+                                          className="h-4 w-4"
+                                        />
+                                        <Label
+                                          htmlFor={`primary-${subjectItem.subjectId}`}
+                                          className="text-sm cursor-pointer"
+                                        >
+                                          Définir comme matière principale
+                                        </Label>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Informations et états */}
+                          <div className="flex justify-between text-xs text-muted-foreground pt-2">
+                            <div>
+                              {field.value?.length || 0}/10 matières •
+                              {field.value?.filter((s) => s.isPrimary).length ||
+                                0}{" "}
+                              principale
+                              {field.value?.filter((s) => s.isPrimary)
+                                .length !== 1
+                                ? "s"
+                                : ""}
+                            </div>
+                            <div>
+                              {loadingSubjects ? (
+                                <span className="flex items-center gap-1">
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
+                                  Chargement...
+                                </span>
+                              ) : (
+                                <span>
+                                  {availableSubjects.length} disponible
+                                  {availableSubjects.length !== 1 ? "s" : ""}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Messages d'état */}
+                          {loadingSubjects && (
+                            <div className="text-center py-4">
+                              <div className="inline-flex items-center gap-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                                <span className="text-sm">
+                                  Chargement des matières...
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {!loadingSubjects &&
+                            availableSubjects.length === 0 && (
+                              <div className="text-center py-4 border rounded-md bg-amber-50">
+                                <div className="inline-flex items-center gap-2 text-amber-700 mb-2">
+                                  <AlertTriangle className="h-5 w-5" />
+                                  <span className="text-sm font-medium">
+                                    Aucune matière disponible
+                                  </span>
+                                </div>
+                                <p className="text-xs text-amber-600">
+                                  Créez d'abord des matières dans la section
+                                  "Matières" avant d'ajouter un professeur.
+                                </p>
+                              </div>
+                            )}
+                        </div>
+                      )}
+                    />
+
+                    {errors.subjects && (
+                      <p className="text-sm text-red-500 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.subjects.message}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -2041,7 +2516,7 @@ export const ProfesseursManager = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Rechercher par nom, matricule, email ou spécialité..."
+                placeholder="Rechercher par nom, matricule, email, spécialité ou matière..."
                 value={searchTerm}
                 onChange={(e) => handleSearch(e.target.value)}
                 className="pl-10 bg-background"
@@ -2217,6 +2692,12 @@ export const ProfesseursManager = () => {
                           <span>Spécialité</span>
                         </div>
                       </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4" />
+                          <span>Matières enseignées</span>
+                        </div>
+                      </TableHead>
                       <TableHead className="min-w-[120px]">
                         <div className="flex items-center gap-2">
                           <Hash className="h-4 w-4" />
@@ -2304,6 +2785,32 @@ export const ProfesseursManager = () => {
                             >
                               {professeur.speciality}
                             </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">
+                              Non spécifié
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {professeur.subjectsTaught?.length ? (
+                            <div className="flex flex-wrap gap-1 max-w-[150px]">
+                              {professeur.subjectsTaught
+                                .slice(0, 3)
+                                .map((subject, index) => (
+                                  <Badge
+                                    key={index}
+                                    variant="outline"
+                                    className="text-xs"
+                                  >
+                                    {subject.subject?.name}
+                                  </Badge>
+                                ))}
+                              {professeur.subjectsTaught.length > 3 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{professeur.subjectsTaught.length - 3}
+                                </Badge>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-muted-foreground text-sm">
                               Non spécifié
@@ -2593,6 +3100,17 @@ export const ProfesseursManager = () => {
                               "Spécialité non spécifiée"}
                           </span>
                         </div>
+
+                        {professeur.subjects &&
+                          professeur.subjects.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <BookOpen className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-sm">
+                                {professeur.subjects.length} matière
+                                {professeur.subjects.length > 1 ? "s" : ""}
+                              </span>
+                            </div>
+                          )}
 
                         <div className="flex items-center gap-2">
                           <Hash className="h-3 w-3 text-muted-foreground" />

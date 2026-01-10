@@ -121,6 +121,8 @@ export function AppSidebar({
                 <SidebarMenuItem key={item.id}>
                   <SidebarMenuButton
                     onClick={() => handleMenuClick(item.id)}
+                    data-testid={item.id}
+                    data-tab={item.id}
                     isActive={isActive}
                     tooltip={
                       isCollapsed && !isMobile

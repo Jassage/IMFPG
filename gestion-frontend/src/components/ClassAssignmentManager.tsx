@@ -222,27 +222,26 @@ const ClassAssignmentManager = () => {
     try {
       const result = safeAssignments.filter((assignment: ClassAssignment) => {
         // Filtre par statut - CORRECTION ICI
-        if (
-          activeFilter === FILTER_OPTIONS.ACTIVE &&
-          assignment.status !== "Active"
-        ) {
+        if (activeFilter === FILTER_OPTIONS.ACTIVE) {
+          const isActive = assignment.status === "Active";
           console.log(
-            "❌ Filtre ACTIVE: exclusion",
+            " Filtre ACTIVE:",
             assignment.id,
-            assignment.status
+            assignment.status,
+            isActive ? "✅ inclus" : "❌ exclus"
           );
-          return false;
+          return isActive;
         }
-        if (
-          activeFilter === FILTER_OPTIONS.INACTIVE &&
-          assignment.status !== "Inactive"
-        ) {
+
+        if (activeFilter === FILTER_OPTIONS.INACTIVE) {
+          const isInactive = assignment.status === "Inactive";
           console.log(
-            "❌ Filtre INACTIVE: exclusion",
+            " Filtre INACTIVE:",
             assignment.id,
-            assignment.status
+            assignment.status,
+            isInactive ? "✅ inclus" : "❌ exclus"
           );
-          return false;
+          return isInactive;
         }
 
         // Filtre par recherche
@@ -262,7 +261,7 @@ const ClassAssignmentManager = () => {
             subjectCode.includes(searchLower);
 
           if (!matches) {
-            console.log("❌ Recherche: exclusion", assignment.id);
+            console.log(" Recherche: exclusion", assignment.id);
           }
           return matches;
         }
@@ -272,7 +271,7 @@ const ClassAssignmentManager = () => {
           const matches = assignment.classLevel === filters.classLevel;
           if (!matches) {
             console.log(
-              "❌ Classe: exclusion",
+              " Classe: exclusion",
               assignment.id,
               assignment.classLevel,
               filters.classLevel
@@ -294,7 +293,7 @@ const ClassAssignmentManager = () => {
 
       return result;
     } catch (err) {
-      console.error("❌ Erreur critique lors du filtrage:", err);
+      console.error(" Erreur critique lors du filtrage:", err);
       return [];
     }
   }, [safeAssignments, activeFilter, debouncedSearchTerm, filters.classLevel]);
@@ -355,7 +354,7 @@ const ClassAssignmentManager = () => {
     async (id: string) => {
       if (!id) {
         toast({
-          title: "❌ Erreur",
+          title: " Erreur",
           description: "ID d'assignation manquant",
           variant: "destructive",
         });
@@ -376,7 +375,7 @@ const ClassAssignmentManager = () => {
           });
         } catch (err: any) {
           toast({
-            title: "❌ Erreur",
+            title: " Erreur",
             description: err.message || "Impossible de supprimer l'assignation",
             variant: "destructive",
           });
@@ -411,7 +410,7 @@ const ClassAssignmentManager = () => {
       });
     } catch (err) {
       toast({
-        title: "❌ Erreur",
+        title: " Erreur",
         description: "Impossible de rafraîchir les données",
         variant: "destructive",
       });
@@ -484,53 +483,6 @@ const ClassAssignmentManager = () => {
           <p className="text-muted-foreground">
             Chargement des assignations...
           </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Afficher un état vide
-  if (!loading && safeAssignments.length === 0) {
-    return (
-      <Card className="w-full">
-        <CardContent className="flex flex-col items-center justify-center min-h-[400px] p-6">
-          <div className="text-center">
-            <div className="mx-auto w-24 h-24 text-muted-foreground/50 mb-4">
-              <Plus className="h-full w-full" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Aucune assignation</h3>
-            <p className="text-muted-foreground mb-6">
-              Commencez par créer votre première assignation
-            </p>
-            <Button
-              onClick={handleOpenCreateForm}
-              className="flex items-center gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Créer une assignation
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Afficher une erreur
-  if (error) {
-    return (
-      <Card className="w-full">
-        <CardContent className="p-6">
-          <div className="text-center py-12">
-            <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Erreur de chargement</h3>
-            <p className="text-muted-foreground mb-4">
-              {error || "Impossible de charger les assignations"}
-            </p>
-            <Button onClick={handleRefresh} variant="outline">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Réessayer
-            </Button>
-          </div>
         </CardContent>
       </Card>
     );

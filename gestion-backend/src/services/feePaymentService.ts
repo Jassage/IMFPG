@@ -28,6 +28,7 @@ const FeePaymentCreateSchema = z.object({
   paymentMethod: z.string().min(1, "La méthode de paiement est requise"),
   reference: z.string().optional().nullable(),
   paymentDate: z.string().datetime("Date de paiement invalide").optional(),
+  description: z.string().optional().nullable(),
 });
 
 /**
@@ -153,6 +154,7 @@ export class FeePaymentService {
     paymentMethod: string;
     reference?: string;
     paymentDate?: string;
+    description?: string;
     userId?: string;
   }) {
     const {
@@ -161,6 +163,7 @@ export class FeePaymentService {
       paymentMethod,
       reference,
       paymentDate,
+      description,
       userId,
     } = data;
 
@@ -241,6 +244,7 @@ export class FeePaymentService {
           paymentMethod,
           reference: reference || null,
           paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+          description: description || null,
           recordedBy: userId || "admin",
         },
       });
@@ -287,6 +291,7 @@ export class FeePaymentService {
         amount,
         paymentMethod,
         reference,
+        description,
         studentName: `${result.studentFee.student.firstName} ${result.studentFee.student.lastName}`,
         studentId: result.studentFee.student.studentCode,
         newStatus: result.studentFee.status,

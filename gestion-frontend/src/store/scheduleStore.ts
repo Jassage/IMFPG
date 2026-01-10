@@ -1,6 +1,6 @@
 /**
  * @file timetableStore.ts
- * @description Store Zustand pour la gestion des emplois du temps
+ * @description Store Zustand pour la gestion des emplois du temps - Version corrigée
  */
 
 import { create } from "zustand";
@@ -16,6 +16,81 @@ import {
   ScheduleFilters,
   UpdateScheduleData,
 } from "@/types/timesTableTypes";
+
+// Fonction utilitaire pour formater les temps pour l'API
+// Dans scheduleStore.ts
+// Dans scheduleStore.ts - fonction formatTimeForAPI
+// Dans scheduleStore.ts - modifier formatTimeForAPI
+// Dans scheduleStore.ts - formatTimeForAPI
+const formatTimeForAPI = (time: string): string => {
+  if (!time) return "00:00";
+
+  // Nettoyer
+  const trimmedTime = time.trim();
+
+  // Format HH:MM
+  if (trimmedTime.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+    return trimmedTime;
+  }
+
+  // Format HH:MM:SS - extraire seulement HH:MM
+  if (trimmedTime.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/)) {
+    return trimmedTime.substring(0, 5);
+  }
+
+  console.warn("Format de temps non reconnu:", time);
+  return "00:00";
+};
+
+// Dans scheduleStore.ts - ajouter cette fonction
+const parseTimeToISO = (time: string): string => {
+  if (!time) {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return now.toISOString();
+  }
+
+  const trimmedTime = time.trim();
+
+  // Format ISO déjà
+  if (trimmedTime.includes("T")) {
+    const date = new Date(trimmedTime);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+  }
+
+  // Format HH:MM ou HH:MM:SS
+  if (trimmedTime.match(/^\d{1,2}:\d{2}(:\d{2})?$/)) {
+    const [hours, minutes, seconds = "00"] = trimmedTime.split(":");
+    const today = new Date();
+    today.setHours(
+      parseInt(hours.padStart(2, "0")),
+      parseInt(minutes.padStart(2, "0")),
+      parseInt(seconds.padStart(2, "0")),
+      0
+    );
+    return today.toISOString();
+  }
+
+  // Si c'est un nombre simple
+  if (trimmedTime.match(/^\d{1,2}$/)) {
+    const hours = parseInt(trimmedTime);
+    const today = new Date();
+    today.setHours(hours, 0, 0, 0);
+    return today.toISOString();
+  }
+
+  // Par défaut
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return now.toISOString();
+};
+// Fonction pour créer l'URL avec les bonnes routes
+const getApiUrl = (endpoint: string): string => {
+  const baseUrl = "/schedules";
+  return `${baseUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+};
 
 interface TimetableState {
   // État
@@ -111,7 +186,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
         }
       });
 
-      const response = await api.get(`/academic/schedules?${params}`);
+      const response = await api.get(`/schedules?${params}`);
 
       if (response.data.success) {
         set({
@@ -166,9 +241,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
         params.append("academicYearId", academicYearId);
       }
 
-      const response = await api.get(
-        `/academic/schedules/class/${classId}?${params}`
-      );
+      const response = await api.get(`/schedules/class/${classId}?${params}`);
 
       if (response.data.success) {
         const timetableByDay: Record<string, Schedule[]> = {};
@@ -227,7 +300,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
       });
 
       const response = await api.get(
-        `/academic/schedules/professor/${professeurId}?${params}`
+        `/schedules/professor/${professeurId}?${params}`
       );
 
       if (response.data.success) {
@@ -268,11 +341,27 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
     }
   },
 
+  // Dans scheduleStore.ts - modifier createSchedule
   createSchedule: async (data: CreateScheduleData) => {
     set({ loading: true, error: null });
 
     try {
-      const response = await api.post("/academic/schedules", data);
+      // FORMAT SIMPLE POUR TEST - HH:MM seulement
+      const formattedData = {
+        assignmentId: data.assignmentId,
+        classId: data.classId,
+        dayOfWeek: data.dayOfWeek?.toUpperCase(),
+        startTime: formatTimeForAPI(data.startTime), // HH:MM
+        endTime: formatTimeForAPI(data.endTime), // HH:MM
+        classroom: data.classroom?.trim() || "",
+        recurrence: data.recurrence?.trim() || "NONE",
+        untilDate: data.untilDate?.trim() || null,
+        notes: data.notes?.trim() || "",
+      };
+
+      console.log("📤 Création horaire - Données simplifiées:", formattedData);
+
+      const response = await api.post("/schedules", formattedData);
 
       if (response.data.success) {
         const newSchedule = response.data.data?.schedule;
@@ -282,29 +371,26 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
           loading: false,
         }));
 
-        // Mettre à jour le timetable si la classe correspond
-        if (newSchedule && get().timetable[newSchedule.dayOfWeek]) {
-          set((state) => ({
-            timetable: {
-              ...state.timetable,
-              [newSchedule.dayOfWeek]: [
-                newSchedule,
-                ...state.timetable[newSchedule.dayOfWeek],
-              ].sort((a, b) => a.startTime.localeCompare(b.startTime)),
-            },
-          }));
-        }
-
         toast({
-          title: "✅ Cours planifié",
+          title: "✅ Cours ajouté",
           description: "Le cours a été ajouté à l'emploi du temps",
         });
       }
 
       return response.data;
     } catch (error: any) {
-      const errorMsg =
+      let errorMsg =
         error.response?.data?.message || "Erreur lors de la création du cours";
+
+      if (error.response?.data?.errors) {
+        console.error(
+          "❌ Erreurs de validation détaillées:",
+          error.response.data.errors
+        );
+        errorMsg = `Erreurs de validation:\n${error.response.data.errors
+          .map((e: any) => `• ${e.field}: ${e.message}`)
+          .join("\n")}`;
+      }
 
       set({ error: errorMsg, loading: false });
 
@@ -312,17 +398,59 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
         title: "❌ Erreur",
         description: errorMsg,
         variant: "destructive",
+        duration: 10000,
       });
 
       throw error;
     }
   },
-
+  // Dans scheduleStore.ts - fonction updateSchedule
   updateSchedule: async (id: string, data: UpdateScheduleData) => {
     set({ loading: true, error: null });
 
     try {
-      const response = await api.put(`/academic/schedules/${id}`, data);
+      // Formater les données pour l'API
+      const formattedData: any = {};
+
+      // Copier seulement les champs qui existent
+      if (data.dayOfWeek !== undefined) {
+        formattedData.dayOfWeek = data.dayOfWeek.toUpperCase();
+      }
+
+      if (data.startTime !== undefined) {
+        formattedData.startTime = formatTimeForAPI(data.startTime);
+      }
+
+      if (data.endTime !== undefined) {
+        formattedData.endTime = formatTimeForAPI(data.endTime);
+      }
+
+      // CORRECTION : Vérifier si la valeur existe avant d'utiliser .trim()
+      if (data.classroom !== undefined) {
+        formattedData.classroom = data.classroom ? data.classroom.trim() : "";
+      }
+
+      if (data.recurrence !== undefined) {
+        formattedData.recurrence = data.recurrence
+          ? data.recurrence.trim()
+          : "NONE";
+      }
+
+      if (data.untilDate !== undefined) {
+        formattedData.untilDate = data.untilDate ? data.untilDate.trim() : "";
+      }
+
+      if (data.notes !== undefined) {
+        formattedData.notes = data.notes ? data.notes.trim() : "";
+      }
+
+      if (data.status !== undefined) {
+        formattedData.status = data.status;
+      }
+
+      console.log("📤 Données de mise à jour formatées:", formattedData);
+
+      const response = await api.put(`/schedules/${id}`, formattedData);
 
       if (response.data.success) {
         const updatedSchedule = response.data.data?.schedule;
@@ -398,7 +526,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await api.delete(`/academic/schedules/${id}`);
+      const response = await api.delete(`/schedules/${id}`);
 
       if (response.data.success) {
         const deletedSchedule = get().schedules.find((s) => s.id === id);
@@ -449,11 +577,9 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await api.post("/academic/schedules/generate", data);
+      const response = await api.post("/schedules/generate", data);
 
       if (response.data.success) {
-        const generatedSchedules = response.data.data?.schedules || [];
-
         // Recharger l'emploi du temps de la classe
         await get().fetchClassTimetable(data.classId, data.academicYearId);
 
@@ -483,26 +609,46 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
     }
   },
 
+  // Dans scheduleStore.ts
+  // Dans scheduleStore.ts - modifier checkScheduleConflicts
   checkScheduleConflicts: async (data) => {
+    console.log("🔍 Vérification des conflits avec données:", data);
+
     try {
       const params = new URLSearchParams();
-      Object.entries(data).forEach(([key, value]) => {
-        if (value !== undefined && value !== "") {
+
+      // Formater les temps pour l'API (format ISO)
+      const formattedData = {
+        ...data,
+        startTime: parseTimeToISO(data.startTime),
+        endTime: parseTimeToISO(data.endTime),
+      };
+
+      Object.entries(formattedData).forEach(([key, value]) => {
+        if (value !== undefined && value !== "" && value !== null) {
           params.append(key, String(value));
         }
       });
 
-      const response = await api.get(
-        `/academic/schedules/check-conflicts?${params}`
-      );
+      const url = `/schedules/check-conflicts?${params}`;
+      console.log("🔗 URL de vérification:", url);
+
+      const response = await api.get(url);
+
+      console.log("✅ Réponse vérification conflits:", response.data);
 
       if (response.data.success) {
         return response.data.data;
       }
 
       return { hasConflict: false, conflicts: [] };
-    } catch (error) {
-      console.error("Erreur vérification conflits:", error);
+    } catch (error: any) {
+      console.error("❌ Erreur vérification conflits:", {
+        message: error.message,
+        response: error.response?.data,
+        url: error.config?.url,
+      });
+
       return { hasConflict: false, conflicts: [] };
     }
   },
@@ -516,9 +662,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
         }
       });
 
-      const response = await api.get(
-        `/academic/schedules/available-slots?${params}`
-      );
+      const response = await api.get(`/schedules/available-slots?${params}`);
       return response.data;
     } catch (error: any) {
       console.error("Erreur récupération créneaux:", error);

@@ -49,7 +49,6 @@ import {
   Percent,
   RefreshCw,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import {
   LineChart,
   Line,
@@ -81,6 +80,7 @@ import { useEnrollmentStore } from "@/store/enrollmentStore";
 import { useFeeStructureStore } from "@/store/feeStructureStore";
 import { useSubjectStore } from "@/store/subjectStore";
 import { useGradeStore } from "@/store/gradeStore";
+import { toast } from "react-toastify";
 
 interface DashboardMetrics {
   academic: {
@@ -152,8 +152,6 @@ interface CalendarEvent {
 }
 
 const DirectorDashboard = () => {
-  const { toast } = useToast();
-
   // États des stores
   const {
     students,
@@ -165,10 +163,8 @@ const DirectorDashboard = () => {
   const {
     enrollments,
     fetchEnrollments,
-    fetchEnrollmentStats,
+
     loading: enrollmentLoading,
-    getEnrollmentsByStatus,
-    getEnrollmentsByAcademicYear,
   } = useEnrollmentStore();
 
   const {
@@ -517,19 +513,12 @@ const DirectorDashboard = () => {
 
       setLastUpdated(new Date().toLocaleTimeString("fr-FR"));
 
-      toast({
-        title: "Données actualisées",
-        description: `Dernière mise à jour: ${new Date().toLocaleTimeString(
-          "fr-FR"
-        )}`,
-      });
+      toast.success(
+        `Dernière mise à jour: ${new Date().toLocaleTimeString("fr-FR")}`
+      );
     } catch (error: any) {
       console.error("Erreur chargement dashboard:", error);
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger toutes les données",
-        variant: "destructive",
-      });
+      toast.error("Impossible de charger toutes les données");
     } finally {
       setLoading(false);
     }
@@ -1223,11 +1212,6 @@ const DirectorDashboard = () => {
               </p>
             </div>
           </div>
-          {alert.actionRequired && (
-            <Button size="sm" variant="destructive">
-              Agir
-            </Button>
-          )}
         </div>
       </div>
     );
@@ -2037,7 +2021,7 @@ const DirectorDashboard = () => {
       )}
 
       {/* Alertes et indicateurs (commun à toutes les vues) */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="space-y-4">
         {/* Alertes */}
         <Card>
           <CardHeader>
@@ -2071,96 +2055,10 @@ const DirectorDashboard = () => {
             </div>
           </CardContent>
         </Card>
-
-        {/* Vue d'ensemble institutionnelle */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <ChartBar className="h-5 w-5 mr-2" />
-              Vue d'ensemble institutionnelle
-            </CardTitle>
-            <CardDescription>Score de performance global</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div className="text-center">
-                <div className="text-3xl font-bold">
-                  {Math.round(
-                    metrics.academic.passRate * 0.3 +
-                      metrics.financial.collectionRate * 0.3 +
-                      metrics.operations.studentSatisfaction * 0.2 +
-                      metrics.strategic.enrollmentGrowth * 0.2
-                  )}
-                  /100
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Score de performance
-                </p>
-                <Progress
-                  value={Math.round(
-                    metrics.academic.passRate * 0.3 +
-                      metrics.financial.collectionRate * 0.3 +
-                      metrics.operations.studentSatisfaction * 0.2 +
-                      metrics.strategic.enrollmentGrowth * 0.2
-                  )}
-                  className="h-2 mt-2"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 border rounded-lg">
-                  <div className="text-sm font-medium text-muted-foreground">
-                    Santé académique
-                  </div>
-                  <div className="text-xl font-bold mt-1">
-                    {Math.round(
-                      (metrics.academic.passRate +
-                        metrics.academic.retentionRate) /
-                        2
-                    )}
-                    %
-                  </div>
-                </div>
-                <div className="p-3 border rounded-lg">
-                  <div className="text-sm font-medium text-muted-foreground">
-                    Santé financière
-                  </div>
-                  <div className="text-xl font-bold mt-1">
-                    {metrics.financial.collectionRate}%
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-medium mb-2">Objectifs mensuels</h4>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Nouvelles inscriptions</span>
-                    <Badge variant="outline">
-                      {Math.round(metrics.strategic.enrollmentGrowth * 10)}/150
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Recouvrement frais</span>
-                    <Badge variant="outline">
-                      {metrics.financial.collectionRate}%
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Événements organisés</span>
-                    <Badge variant="outline">
-                      {Math.min(10, metrics.operations.eventCount)}/10
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Résumé rapide et actions */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center text-sm">
@@ -2192,99 +2090,6 @@ const DirectorDashboard = () => {
             <Button className="w-full mt-4" variant="outline" size="sm">
               Voir toutes les annonces
             </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center text-sm">
-              <Trophy className="h-4 w-4 mr-2" />
-              Meilleures performances
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="p-3 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Meilleure classe</span>
-                  <Badge variant="secondary">
-                    {Math.round(metrics.academic.passRate * 0.9)}%
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Taux de réussite moyen
-                </p>
-              </div>
-              <div className="p-3 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
-                    Meilleur taux d'assiduité
-                  </span>
-                  <Badge variant="secondary">95%</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Présence moyenne
-                </p>
-              </div>
-              <div className="p-3 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
-                    Meilleur recouvrement
-                  </span>
-                  <Badge variant="secondary">
-                    {metrics.financial.collectionRate}%
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Taux de recouvrement
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center text-sm">
-              <Target className="h-4 w-4 mr-2" />
-              Actions rapides
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                className="h-auto py-3 flex flex-col text-xs"
-                onClick={() => window.open("/reports/monthly", "_blank")}
-              >
-                <FileText className="h-4 w-4 mb-1" />
-                <span>Rapport mensuel</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-auto py-3 flex flex-col text-xs"
-                onClick={() => window.open("/calendar/schedule", "_blank")}
-              >
-                <Calendar className="h-4 w-4 mb-1" />
-                <span>Planifier réunion</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-auto py-3 flex flex-col text-xs"
-                onClick={() => window.open("/finance/budget", "_blank")}
-              >
-                <DollarSign className="h-4 w-4 mb-1" />
-                <span>Approuver budget</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-auto py-3 flex flex-col text-xs"
-                onClick={() => window.open("/announcements/new", "_blank")}
-              >
-                <Megaphone className="h-4 w-4 mb-1" />
-                <span>Publier annonce</span>
-              </Button>
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -2349,39 +2154,6 @@ const DirectorDashboard = () => {
           </CardContent>
         </Card>
       </div>
-
-      {/* Section debug (développement seulement) */}
-      {process.env.NODE_ENV === "development" && (
-        <Card className="border-dashed border-2">
-          <CardHeader>
-            <CardTitle className="text-sm">Debug Information</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-4 gap-4 text-xs">
-              <div>
-                <p className="font-medium">Étudiants</p>
-                <p>Total: {students?.length || 0}</p>
-                <p>Distribution: {calculateStudentLevelDistribution.length}</p>
-              </div>
-              <div>
-                <p className="font-medium">Inscriptions</p>
-                <p>Total: {enrollments?.length || 0}</p>
-                <p>Actives: {metrics.academic.activeEnrollments}</p>
-              </div>
-              <div>
-                <p className="font-medium">Frais</p>
-                <p>Total: {allFeesArray?.length || 0}</p>
-                <p>Revenue: {metrics.financial.totalRevenue}</p>
-              </div>
-              <div>
-                <p className="font-medium">Notes</p>
-                <p>Total: {grades?.length || 0}</p>
-                <p>Taux réussite: {metrics.academic.passRate}%</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };

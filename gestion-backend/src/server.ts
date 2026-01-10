@@ -23,7 +23,6 @@ import feeStructureRoutes from "./routes/feeStructureRoutes";
 import studentFeeRoutes from "./routes/studentFeeRoutes";
 import auditRoutes from "./routes/auditRoutes";
 import backupRoutes from "./routes/backupRoutes";
-// import timetableRoutes from "./routes/timetableRoutes";
 import transcriptRoutes from "./routes/transcriptRoutes";
 
 import {
@@ -45,7 +44,43 @@ dotenv.config();
 const app = express();
 // Middleware pour gérer les CORS et le JSON
 
-app.use(cors());
+const corsOptions = {
+  origin: (origin: string | undefined, callback: Function) => {
+    // Autoriser les origines spécifiques
+    const allowedOrigins = [
+      "http://localhost:3000",
+      "http://localhost:5000",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:5000",
+    ];
+
+    // En développement, autoriser toutes les origines
+    if (process.env.NODE_ENV === "development") {
+      callback(null, true);
+    }
+    // En production, vérifier l'origine
+    else if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, origin);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true, // Important pour les cookies et auth
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+  ],
+  exposedHeaders: ["Set-Cookie", "Date", "ETag"],
+  maxAge: 86400, // 24 heures
+};
+
+// Appliquer CORS
+app.use(cors(corsOptions));
+
 cleanupExpiredSessions();
 app.use(trackUserActivity);
 app.use(express.json());
@@ -77,7 +112,6 @@ app.use("/api/class-assignments", classeAssignmentRoutes);
 app.use("/api/guardians", guardianRoutes);
 app.use("/api/grades", gradeRoutes);
 app.use("/api/schedules", scheduleRoutes);
-// app.use("/api/timetables", timetableRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/fee-structures", feeStructureRoutes);
@@ -95,7 +129,7 @@ app.use((req, res, next) => {
     });
   } else {
     next();
-  } //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
+  }
 });
 
 // Fonction d'initialisation asynchrone

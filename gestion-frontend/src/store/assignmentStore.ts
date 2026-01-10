@@ -3,6 +3,7 @@ import { create } from "zustand";
 import api from "@/services/api";
 
 interface ClassAssignment {
+  academicYearId: string;
   _count: any;
   id: string;
   subject: {
@@ -87,7 +88,6 @@ export const useAssignmentStore = create<AssignmentStore>((set, get) => ({
   },
 
   filters: {
-    status: "Active",
     classLevel: "",
   },
 

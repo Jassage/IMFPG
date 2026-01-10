@@ -13,6 +13,7 @@ import {
   validateContentType,
   sanitizeInput,
   handleValidationErrors,
+  requireComptable,
 } from "../middleware";
 import {
   createFeePayment,
@@ -87,7 +88,8 @@ router.get("/:id", requireAuth, requireStaff, sanitizeInput, getFeePaymentById);
 router.post(
   "/",
   requireAuth,
-  requireAdmin,
+  // requireAdmin,
+  requireComptable,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -111,7 +113,8 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireAdmin,
+  // requireAdmin,
+  requireComptable,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -130,7 +133,8 @@ router.put(
 router.delete(
   "/:id",
   requireAuth,
-  requireAdmin,
+  // requireAdmin,
+  requireComptable,
   sanitizeInput,
   deleteFeePayment
 );

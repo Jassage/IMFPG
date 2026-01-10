@@ -185,25 +185,42 @@ export const requireAdmin = requireRole(["Admin"]);
  * @middleware requireStaff
  * @description Middleware qui requiert un rôle de staff (administration)
  */
-export const requireStaff = requireRole(["Admin", "Directeur", "Secretaire"]);
+export const requireStaff = requireRole([
+  "Admin",
+  "Directeur",
+  "Secretaire",
+  "Comptable",
+]);
+
+/**
+ * @middleware requireDirector
+ * @description Middleware qui requiert le rôle Directeur
+ */
+export const requireDirector = requireRole(["Directeur", "Admin"]);
+
+/**
+ * @middleware requireComptable
+ * @description Middleware qui requiert le rôle Comptable
+ */
+export const requireComptable = requireRole(["Comptable", "Admin"]);
 
 /**
  * @middleware requireTeacher
  * @description Middleware qui requiert le rôle Professeur
  */
-export const requireTeacher = requireRole(["Professeur", "Admin", "Directeur"]);
-
-/**
- * @middleware requireParent
- * @description Middleware qui requiert le rôle Parent
- */
-export const requireParent = requireRole(["Parent"]);
+export const requireTeacher = requireRole(["Professeur", "Admin"]);
 
 /**
  * @middleware requireStudent
  * @description Middleware qui requiert le rôle Student
  */
 export const requireStudent = requireRole(["Student"]);
+
+/**
+ * @middleware requireSecretary
+ * @description Middleware qui requiert le role Student
+ */
+export const requireSecretary = requireRole(["Secretaire", "Admin"]);
 
 /**
  * @middleware requireTeacherOrStaff
@@ -214,6 +231,7 @@ export const requireTeacherOrStaff = requireRole([
   "Directeur",
   "Secretaire",
   "Professeur",
+  "Comptable",
 ]);
 
 /**
@@ -231,7 +249,7 @@ export const requireAnyAuth = requireRole([
   "Directeur",
   "Secretaire",
   "Professeur",
-  "Parent",
+  "Comptable",
   "Student",
 ]);
 

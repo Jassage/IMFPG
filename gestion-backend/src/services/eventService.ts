@@ -49,15 +49,13 @@ export class EventService {
       isPublic = true,
       userId,
       userRole,
-      userEmail,
-    } = data;
+      userEmail} = data;
 
     // Vérification que l'utilisateur est authentifié
     if (!userId || !userRole) {
       throw {
         status: 401,
-        message: "Authentification requise",
-      };
+        message: "Authentification requise"};
     }
 
     // Vérification des permissions
@@ -66,8 +64,7 @@ export class EventService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Seuls les administrateurs, directeurs et secrétaires peuvent créer des événements.",
-      };
+          "Permission refusée. Seuls les administrateurs, directeurs et secrétaires peuvent créer des événements."};
     }
 
     // Création de l'événement
@@ -81,9 +78,7 @@ export class EventService {
         organizer: organizer || userId,
         category,
         isPublic,
-        status: "Scheduled",
-      },
-    });
+        status: "Scheduled"}});
 
     // Journalisation dans l'audit log
     await prisma.auditLog.create({
@@ -97,10 +92,7 @@ export class EventService {
         metadata: {
           eventId: event.id,
           title: event.title,
-          category: event.category,
-        },
-      },
-    });
+          category: event.category}}});
 
     return {
       success: true,
@@ -109,9 +101,7 @@ export class EventService {
       metadata: {
         eventId: event.id,
         action: "CREATE",
-        userEmail,
-      },
-    };
+        userEmail}};
   }
 
   /**
@@ -141,8 +131,7 @@ export class EventService {
       sortBy = "startDate",
       sortOrder = "asc",
       search,
-      userRole,
-    } = filters;
+      userRole} = filters;
 
     // Construction des conditions de filtrage
     const where: any = {};
@@ -179,8 +168,8 @@ export class EventService {
     // Filtre de recherche
     if (search) {
       where.OR = [
-        { title: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
+        { title: { contains: search} },
+        { description: { contains: search} },
       ];
     }
 
@@ -220,9 +209,7 @@ export class EventService {
           isPublic: true,
           status: true,
           createdAt: true,
-          updatedAt: true,
-        },
-      }),
+          updatedAt: true}}),
       prisma.event.count({ where }),
     ]);
 
@@ -240,18 +227,14 @@ export class EventService {
           total,
           totalPages,
           hasNextPage: pageNum < totalPages,
-          hasPrevPage: pageNum > 1,
-        },
+          hasPrevPage: pageNum > 1},
         filters: {
           status: status || "all",
           category: category || "all",
           isPublic: isPublic || "all",
           startDate,
           endDate,
-          search,
-        },
-      },
-    };
+          search}}};
   }
 
   /**
@@ -266,8 +249,7 @@ export class EventService {
     // Conditions de filtrage pour les événements à venir
     const where: any = {
       startDate: { gte: new Date() },
-      status: "Scheduled",
-    };
+      status: "Scheduled"};
 
     // Pour les non-admins, seulement les événements publics
     if (userRole && !["Admin", "Directeur"].includes(userRole)) {
@@ -289,9 +271,7 @@ export class EventService {
         organizer: true,
         category: true,
         isPublic: true,
-        status: true,
-      },
-    });
+        status: true}});
 
     return {
       success: true,
@@ -299,9 +279,7 @@ export class EventService {
       data: events,
       meta: {
         count: events.length,
-        limit: parseInt(limit),
-      },
-    };
+        limit: parseInt(limit)}};
   }
 
   /**
@@ -310,15 +288,13 @@ export class EventService {
   static async getEventById(id: string, userRole?: string) {
     // Récupération de l'événement
     const event = await prisma.event.findUnique({
-      where: { id },
-    });
+      where: { id }});
 
     // Vérification si l'événement existe
     if (!event) {
       throw {
         status: 404,
-        message: "Événement non trouvé",
-      };
+        message: "Événement non trouvé"};
     }
 
     // Vérification des permissions pour les événements privés
@@ -329,15 +305,13 @@ export class EventService {
     ) {
       throw {
         status: 403,
-        message: "Accès refusé. Cet événement est privé.",
-      };
+        message: "Accès refusé. Cet événement est privé."};
     }
 
     return {
       success: true,
       message: "Événement récupéré avec succès",
-      data: event,
-    };
+      data: event};
   }
 
   /**
@@ -358,8 +332,7 @@ export class EventService {
     if (!userId || !userRole) {
       throw {
         status: 401,
-        message: "Authentification requise",
-      };
+        message: "Authentification requise"};
     }
 
     // Vérification des permissions
@@ -368,20 +341,17 @@ export class EventService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Seuls les administrateurs, directeurs et secrétaires peuvent modifier des événements.",
-      };
+          "Permission refusée. Seuls les administrateurs, directeurs et secrétaires peuvent modifier des événements."};
     }
 
     // Vérification de l'existence de l'événement
     const existingEvent = await prisma.event.findUnique({
-      where: { id },
-    });
+      where: { id }});
 
     if (!existingEvent) {
       throw {
         status: 404,
-        message: "Événement non trouvé",
-      };
+        message: "Événement non trouvé"};
     }
 
     // Préparation des données de mise à jour
@@ -399,8 +369,7 @@ export class EventService {
     // Mise à jour de l'événement
     const updatedEvent = await prisma.event.update({
       where: { id },
-      data: updateData,
-    });
+      data: updateData});
 
     // Journalisation dans l'audit log
     await prisma.auditLog.create({
@@ -414,10 +383,7 @@ export class EventService {
         oldData: existingEvent,
         newData: updatedEvent,
         metadata: {
-          changes: Object.keys(updates),
-        },
-      },
-    });
+          changes: Object.keys(updates)}}});
 
     return {
       success: true,
@@ -427,9 +393,7 @@ export class EventService {
         eventId: id,
         action: "UPDATE",
         userEmail,
-        changes: Object.keys(updates),
-      },
-    };
+        changes: Object.keys(updates)}};
   }
 
   /**
@@ -449,8 +413,7 @@ export class EventService {
     if (!userId || !userRole) {
       throw {
         status: 401,
-        message: "Authentification requise",
-      };
+        message: "Authentification requise"};
     }
 
     // Vérification des permissions
@@ -459,26 +422,22 @@ export class EventService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Seuls les administrateurs et directeurs peuvent supprimer des événements.",
-      };
+          "Permission refusée. Seuls les administrateurs et directeurs peuvent supprimer des événements."};
     }
 
     // Vérification de l'existence de l'événement
     const existingEvent = await prisma.event.findUnique({
-      where: { id },
-    });
+      where: { id }});
 
     if (!existingEvent) {
       throw {
         status: 404,
-        message: "Événement non trouvé",
-      };
+        message: "Événement non trouvé"};
     }
 
     // Suppression de l'événement
     await prisma.event.delete({
-      where: { id },
-    });
+      where: { id }});
 
     // Journalisation dans l'audit log
     await prisma.auditLog.create({
@@ -492,10 +451,7 @@ export class EventService {
         oldData: existingEvent,
         metadata: {
           title: existingEvent.title,
-          category: existingEvent.category,
-        },
-      },
-    });
+          category: existingEvent.category}}});
 
     return {
       success: true,
@@ -504,9 +460,7 @@ export class EventService {
         eventId: id,
         title: existingEvent.title,
         action: "DELETE",
-        userEmail,
-      },
-    };
+        userEmail}};
   }
 
   /**
@@ -518,8 +472,7 @@ export class EventService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Seuls les administrateurs et directeurs peuvent voir les statistiques.",
-      };
+          "Permission refusée. Seuls les administrateurs et directeurs peuvent voir les statistiques."};
     }
 
     // Récupération des statistiques en parallèle
@@ -537,29 +490,24 @@ export class EventService {
 
       // Événements à venir
       prisma.event.count({
-        where: { startDate: { gte: new Date() } },
-      }),
+        where: { startDate: { gte: new Date() } }}),
 
       // Événements passés
       prisma.event.count({
-        where: { endDate: { lt: new Date() } },
-      }),
+        where: { endDate: { lt: new Date() } }}),
 
       // Événements publics
       prisma.event.count({
-        where: { isPublic: true },
-      }),
+        where: { isPublic: true }}),
 
       // Événements privés
       prisma.event.count({
-        where: { isPublic: false },
-      }),
+        where: { isPublic: false }}),
 
       // Événements par statut
       prisma.event.groupBy({
         by: ["status"],
-        _count: true,
-      }),
+        _count: true}),
 
       // Événements par catégorie
       prisma.event.groupBy({
@@ -567,11 +515,8 @@ export class EventService {
         _count: true,
         orderBy: {
           _count: {
-            category: "desc",
-          },
-        },
-        take: 10,
-      }),
+            category: "desc"}},
+        take: 10}),
     ]);
 
     // Transformation des données
@@ -600,13 +545,10 @@ export class EventService {
           upcoming: upcomingEvents,
           past: pastEvents,
           public: publicEvents,
-          private: privateEvents,
-        },
+          private: privateEvents},
         byStatus: statsByStatus,
         byCategory: statsByCategory,
-        generatedAt: new Date().toISOString(),
-      },
-    };
+        generatedAt: new Date().toISOString()}};
   }
 
   /**
@@ -640,8 +582,7 @@ export class EventService {
         where,
         orderBy: { startDate: "asc" },
         skip,
-        take: limitNum,
-      }),
+        take: limitNum}),
       prisma.event.count({ where }),
     ]);
 
@@ -656,10 +597,7 @@ export class EventService {
           page: pageNum,
           limit: limitNum,
           total,
-          totalPages,
-        },
-        category,
-      },
-    };
+          totalPages},
+        category}};
   }
 }

@@ -98,7 +98,7 @@ export const ResetPasswordPage = () => {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen w-full flex items-center justify-center">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>Lien invalide</CardTitle>
@@ -129,7 +129,7 @@ export const ResetPasswordPage = () => {
 
   if (!isValidToken) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen w-full  flex items-center justify-center">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>Lien expiré ou invalide</CardTitle>
@@ -157,7 +157,7 @@ export const ResetPasswordPage = () => {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen  flex items-center justify-center">
         <Card className="w-full max-w-md">
           <CardContent className="text-center py-8">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />

@@ -60,6 +60,10 @@ export interface ScheduleConflict {
 }
 
 export interface ConflictCheckResult {
+  success: any;
+  data: any;
+  message: string;
+  code: string;
   hasConflict: boolean;
   conflicts: ScheduleConflict[];
 }
@@ -106,6 +110,56 @@ export interface WeekSummary {
   };
 }
 
+export type ScheduleStatus = "ACTIVE" | "INACTIVE" | "CANCELLED";
+
+export interface ScheduleConfig {
+  maxSchedulesPerProfessorPerDay: number;
+  maxSchedulesPerClassPerDay: number;
+  minScheduleDurationMinutes: number;
+  maxScheduleDurationMinutes: number;
+  maxClassroomLength: number;
+  maxNotesLength: number;
+  maxRecurrenceLength: number;
+  maxPaginationLimit: number;
+}
+
+export interface ScheduleError {
+  status: number;
+  code: string;
+  message: string;
+  details?: any;
+}
+
+export class ValidationError extends Error {
+  constructor(
+    public code: string,
+    message: string,
+    public details?: any
+  ) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+export class ConflictError extends Error {
+  constructor(
+    public conflicts: ScheduleConflict[],
+    message: string = "Schedule conflict detected"
+  ) {
+    super(message);
+    this.name = "ConflictError";
+  }
+}
+
+export class NotFoundError extends Error {
+  constructor(
+    public resource: string,
+    public id: string
+  ) {
+    super(`${resource} with ID ${id} not found`);
+    this.name = "NotFoundError";
+  }
+}
 export const DAYS_OF_WEEK = [
   { value: "MONDAY", label: "Lundi", short: "LUN" },
   { value: "TUESDAY", label: "Mardi", short: "MAR" },

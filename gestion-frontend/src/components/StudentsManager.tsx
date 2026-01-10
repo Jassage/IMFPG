@@ -465,33 +465,11 @@ const BulkActionsBar = ({
               variant="outline"
               size="sm"
               className="h-8"
-              onClick={onBulkAssignClass}
-              disabled={isLoading}
-            >
-              <Building className="h-3 w-3 mr-1" />
-              Affecter classe
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8"
               onClick={onBulkExport}
               disabled={isLoading}
             >
               <Download className="h-3 w-3 mr-1" />
               Exporter
-            </Button>
-
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-8"
-              onClick={onBulkDelete}
-              disabled={isLoading}
-            >
-              <Trash2 className="h-3 w-3 mr-1" />
-              Supprimer
             </Button>
 
             <Button

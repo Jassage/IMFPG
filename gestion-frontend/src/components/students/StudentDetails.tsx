@@ -46,8 +46,27 @@ import {
   Building,
   ScrollText,
   User2,
+  ShieldAlert,
+  ShieldCheck,
+  Heart,
+  Briefcase,
+  School,
+  Clock,
+  FileText,
+  Tag,
+  Percent,
+  Bookmark,
+  ChartBar,
+  Trophy,
+  Medal,
+  Crown,
+  BookmarkCheck,
+  BookmarkX,
+  Check,
+  X,
+  UserPlus,
 } from "lucide-react";
-import { Student, Enrollment } from "../../types/academic";
+import { Student, Enrollment, Guardian } from "../../types/academic";
 import { useEnrollmentStore } from "../../store/enrollmentStore";
 import { Checkbox } from "../ui/checkbox";
 import { useFeeStructureStore } from "@/store/feeStructureStore";
@@ -79,6 +98,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "../ui/label";
+import { Separator } from "../ui/separator";
+import { Progress } from "../ui/progress";
+import { cn } from "@/lib/utils";
 
 interface GradeWithDetails {
   id: string;
@@ -116,7 +138,19 @@ interface AcademicYearGrades {
 }
 
 interface StudentDetailsProps {
-  student: Student;
+  student: Student & {
+    guardians?: Guardian[];
+    schoolClass?: {
+      id: string;
+      name: string;
+      level: string;
+    };
+    _count?: {
+      guardians: number;
+      enrollments: number;
+      grades: number;
+    };
+  };
   onClose: () => void;
   onEdit?: (student: Student) => void;
   onDelete?: (studentId: string) => void;
@@ -385,11 +419,18 @@ export const StudentDetails = ({
     );
   };
 
-  // Fonction pour gérer l'ouverture de la modal des notes
+  //  Fonction pour gérer l'ouverture de la modal des notes
   const handleViewGrades = (enrollment: Enrollment) => {
     setSelectedEnrollmentForGrades(enrollment);
     setSelectedControlType("all");
     setShowGradesModal(true);
+  };
+
+  // Fonction pour fermer la modal
+  const handleCloseGradesModal = () => {
+    setShowGradesModal(false);
+    // On ne reset pas selectedEnrollmentForGrades pour garder le contexte
+    // quand la modal se ferme avec animation
   };
 
   // Fonction pour obtenir les notes d'une inscription spécifique
@@ -458,7 +499,641 @@ export const StudentDetails = ({
     };
   };
 
-  // ============ EFFETS ET LOGIQUE CORRIGÉS ============
+  // ============ AFFICHAGE DES TUTEURS ============
+
+  // Rendu des tuteurs
+  const renderGuardians = () => {
+    const guardians = student.guardians || [];
+    const guardianCount = student._count?.guardians || 0;
+
+    if (guardianCount === 0 && guardians.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-100 rounded-full mb-4">
+            <Users className="h-8 w-8 text-slate-400" />
+          </div>
+          <h3 className="text-lg font-medium text-slate-700 mb-2">
+            Aucun tuteur
+          </h3>
+          <p className="text-slate-500">
+            Aucun tuteur n'a été enregistré pour cet étudiant.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {student.guardians.map((guardian, index) => (
+          <Card
+            key={guardian.id || index}
+            className="overflow-hidden border border-slate-200 hover:border-primary/30 transition-colors"
+          >
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <Avatar className="h-12 w-12 border-2 border-slate-100">
+                  <AvatarFallback className="bg-primary/10 text-primary">
+                    <User2 className="h-6 w-6" />
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">
+                        {guardian.firstName} {guardian.lastName}
+                      </h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge
+                          variant={
+                            guardian.relationship === "Père" ||
+                            guardian.relationship === "Mère"
+                              ? "default"
+                              : "secondary"
+                          }
+                          className={cn(
+                            "text-xs",
+                            guardian.relationship === "Père" ||
+                              guardian.relationship === "Mère"
+                              ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                              : ""
+                          )}
+                        >
+                          {guardian.relationship || "Tuteur"}
+                        </Badge>
+                        {guardian.isPrimary && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs border-amber-200 bg-amber-50 text-amber-700"
+                          >
+                            <Star className="h-3 w-3 mr-1" />
+                            Principal
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    {guardian.isPrimary && (
+                      <Crown className="h-5 w-5 text-amber-500" />
+                    )}
+                  </div>
+
+                  <Separator className="my-3" />
+
+                  <div className="space-y-2">
+                    {guardian.email && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Mail className="h-4 w-4 text-slate-400" />
+                        <a
+                          href={`mailto:${guardian.email}`}
+                          className="text-primary hover:underline truncate"
+                        >
+                          {guardian.email}
+                        </a>
+                      </div>
+                    )}
+
+                    {guardian.phone && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Phone className="h-4 w-4 text-slate-400" />
+                        <a
+                          href={`tel:${guardian.phone}`}
+                          className="text-slate-700 hover:text-primary"
+                        >
+                          {guardian.phone}
+                        </a>
+                      </div>
+                    )}
+
+                    {guardian.address && (
+                      <div className="flex items-start gap-2 text-sm">
+                        <MapPin className="h-4 w-4 text-slate-400 mt-0.5" />
+                        <span className="text-slate-600 line-clamp-2">
+                          {guardian.address}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  };
+
+  // ============ CARTE D'INSCRIPTION AMÉLIORÉE ============
+
+  const renderEnrollmentCard = (enrollment: Enrollment, index: number) => {
+    const enrollmentYear = getAcademicYear(enrollment.academicYearId);
+    const className = getClassName(enrollment.classId);
+    const level = getClassLevel(enrollment.classId);
+    const enrollmentGrades = getGradesForEnrollment(enrollment);
+    const stats = getEnrollmentStats(enrollmentGrades);
+    const isCurrent = enrollment.status === "Active";
+
+    return (
+      <Card
+        key={enrollment.id}
+        className={cn(
+          "overflow-hidden border transition-all duration-300",
+          isCurrent
+            ? "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white"
+            : "border-slate-200 hover:border-slate-300"
+        )}
+      >
+        <CardContent className="p-0">
+          {/* En-tête de l'inscription */}
+          <div className="p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-3">
+                <div
+                  className={cn(
+                    "flex items-center justify-center w-10 h-10 rounded-lg",
+                    isCurrent
+                      ? "bg-emerald-100 text-emerald-600"
+                      : "bg-slate-100 text-slate-600"
+                  )}
+                >
+                  {isCurrent ? (
+                    <BookmarkCheck className="h-5 w-5" />
+                  ) : (
+                    <Bookmark className="h-5 w-5" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-slate-900">
+                      {enrollmentYear}
+                    </h3>
+                    {isCurrent && (
+                      <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                        En cours
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="outline" className="text-xs">
+                      {className}
+                    </Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {getLevelText(level)}
+                    </Badge>
+                    <span className="text-xs text-slate-500">
+                      <Calendar className="h-3 w-3 inline mr-1" />
+                      {formatDate(enrollment.enrollmentDate)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/*  Bouton pour ouvrir la modal des notes */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleViewGrades(enrollment)}
+                className="gap-1"
+              >
+                <Eye className="h-4 w-4" />
+                Notes
+              </Button>
+            </div>
+
+            {/* Statistiques académiques */}
+            {enrollmentGrades.length > 0 && (
+              <div className="mt-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-md bg-emerald-100 text-emerald-600">
+                        <TrendingUp className="h-3.5 w-3.5" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Moyenne</p>
+                        <p className="text-lg font-bold text-slate-900">
+                          {stats.weightedAverage.toFixed(2)}
+                          <span className="text-sm font-normal text-slate-500">
+                            /20
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-md bg-blue-100 text-blue-600">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Validés</p>
+                        <p className="text-lg font-bold text-slate-900">
+                          {stats.validatedCount}
+                          <span className="text-sm font-normal text-slate-500">
+                            /{enrollmentGrades.length}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-md bg-amber-100 text-amber-600">
+                        <Award className="h-3.5 w-3.5" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Crédits</p>
+                        <p className="text-lg font-bold text-slate-900">
+                          {stats.obtainedCredits}
+                          <span className="text-sm font-normal text-slate-500">
+                            /{stats.totalCredits}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-md bg-slate-100 text-slate-600">
+                        <Percent className="h-3.5 w-3.5" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Réussite</p>
+                        <p className="text-lg font-bold text-slate-900">
+                          {enrollmentGrades.length > 0
+                            ? Math.round(
+                                (stats.validatedCount /
+                                  enrollmentGrades.length) *
+                                  100
+                              )
+                            : 0}
+                          %
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progression des crédits */}
+                {stats.totalCredits > 0 && (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-slate-700">
+                        Progression des crédits
+                      </span>
+                      <span className="text-sm text-slate-500">
+                        {stats.obtainedCredits}/{stats.totalCredits}
+                      </span>
+                    </div>
+                    <Progress
+                      value={(stats.obtainedCredits / stats.totalCredits) * 100}
+                      className="h-2"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {enrollmentGrades.length === 0 && (
+              <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <BookOpen className="h-4 w-4" />
+                  <span className="text-sm">
+                    Aucune note enregistrée pour cette inscription
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // ============ MODAL DES NOTES ============
+
+  const renderGradesModal = () => {
+    if (!selectedEnrollmentForGrades) return null;
+
+    const enrollment = selectedEnrollmentForGrades;
+    const enrollmentYear = getAcademicYear(enrollment.academicYearId);
+    const className = getClassName(enrollment.classId);
+    const level = getClassLevel(enrollment.classId);
+    const enrollmentGrades = getGradesForEnrollment(enrollment);
+    const controlTypes = getControlTypes(enrollmentGrades);
+    const filteredGrades = filterGradesByControlType(
+      enrollmentGrades,
+      selectedControlType
+    );
+    const stats = getEnrollmentStats(filteredGrades);
+
+    return (
+      <Dialog open={showGradesModal} onOpenChange={handleCloseGradesModal}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" />
+              Détail des notes - {className} ({enrollmentYear})
+            </DialogTitle>
+          </DialogHeader>
+
+          {enrollmentGrades.length > 0 ? (
+            <div className="space-y-6">
+              {/* En-tête avec informations */}
+              <div className="bg-gradient-to-r from-slate-50 to-slate-100 p-4 rounded-lg border border-slate-200">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm text-slate-500">Année académique</p>
+                    <p className="font-semibold text-slate-900">
+                      {enrollmentYear}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-500">Classe</p>
+                    <p className="font-semibold text-slate-900">{className}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-500">Niveau</p>
+                    <p className="font-semibold text-slate-900">
+                      {getLevelText(level)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filtre par type de contrôle */}
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm text-slate-700 mb-2 block">
+                      Filtrer par type de contrôle
+                    </Label>
+                    <Select
+                      value={selectedControlType}
+                      onValueChange={setSelectedControlType}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tous les contrôles" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tous les contrôles</SelectItem>
+                        {controlTypes.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end">
+                    <p className="text-sm text-slate-600">
+                      {filteredGrades.length} note(s) trouvée(s)
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tableau des notes */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="text-left p-4 font-medium text-slate-700">
+                          Matière
+                        </th>
+                        <th className="text-left p-4 font-medium text-slate-700">
+                          Note / Max
+                        </th>
+                        <th className="text-left p-4 font-medium text-slate-700">
+                          Coefficient
+                        </th>
+                        <th className="text-left p-4 font-medium text-slate-700">
+                          Contrôle
+                        </th>
+                        <th className="text-left p-4 font-medium text-slate-700">
+                          Session
+                        </th>
+                        <th className="text-left p-4 font-medium text-slate-700">
+                          Statut
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredGrades.length > 0 ? (
+                        filteredGrades.map((grade) => {
+                          const normalizedGrade = getNormalizedGrade(grade);
+                          const coefficient = getSubjectCoefficient(grade);
+                          const maxGrade = getSubjectMaxGrade(grade);
+
+                          return (
+                            <tr
+                              key={grade.id}
+                              className="border-t hover:bg-slate-50 transition-colors"
+                            >
+                              <td className="p-4">
+                                <div>
+                                  <p className="font-medium text-slate-900">
+                                    {getSubjectName(grade)}
+                                  </p>
+                                  {grade.subject?.code && (
+                                    <p className="text-xs text-slate-500">
+                                      {grade.subject.code}
+                                    </p>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                <div>
+                                  <span
+                                    className={`text-lg font-bold ${getGradeColor(
+                                      normalizedGrade
+                                    )}`}
+                                  >
+                                    {grade.grade?.toFixed(2) || "0.00"}
+                                    <span className="text-sm font-normal text-slate-500">
+                                      /{maxGrade}
+                                    </span>
+                                  </span>
+                                  <p className="text-xs text-slate-500">
+                                    {normalizedGrade.toFixed(2)}/20
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                <Badge
+                                  variant="outline"
+                                  className="text-sm font-medium"
+                                >
+                                  {coefficient}
+                                </Badge>
+                              </td>
+                              <td className="p-4">
+                                <span className="text-sm text-slate-700">
+                                  {grade.controlType || "Contrôle"}
+                                </span>
+                              </td>
+                              <td className="p-4">
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs capitalize"
+                                >
+                                  {grade.session || "Session I"}
+                                </Badge>
+                              </td>
+                              <td className="p-4">
+                                {getGradeStatusBadge(grade)}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="text-center p-8 text-slate-500"
+                          >
+                            <div className="flex flex-col items-center gap-2">
+                              <BookOpen className="h-8 w-8 text-slate-300" />
+                              <p>Aucune note pour ce type de contrôle</p>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Résumé statistique */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
+                  <div className="text-center">
+                    <p className="text-sm text-emerald-700 mb-1">
+                      Moyenne pondérée
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-900">
+                      {stats.weightedAverage.toFixed(2)}
+                      <span className="text-sm font-normal text-emerald-700">
+                        /20
+                      </span>
+                    </p>
+                    {selectedControlType !== "all" && (
+                      <p className="text-xs text-emerald-600 mt-1">
+                        Pour: {selectedControlType}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <div className="text-center">
+                    <p className="text-sm text-blue-700 mb-1">
+                      Matières validées
+                    </p>
+                    <p className="text-2xl font-bold text-blue-900">
+                      {stats.validatedCount}
+                      <span className="text-sm font-normal text-blue-700">
+                        /{filteredGrades.length}
+                      </span>
+                    </p>
+                    {selectedControlType !== "all" && (
+                      <p className="text-xs text-blue-600 mt-1">
+                        Pour: {selectedControlType}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                  <div className="text-center">
+                    <p className="text-sm text-amber-700 mb-1">
+                      Crédits obtenus
+                    </p>
+                    <p className="text-2xl font-bold text-amber-900">
+                      {stats.obtainedCredits}
+                      <span className="text-sm font-normal text-amber-700">
+                        /{stats.totalCredits}
+                      </span>
+                    </p>
+                    {selectedControlType !== "all" && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Pour: {selectedControlType}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                  <div className="text-center">
+                    <p className="text-sm text-slate-700 mb-1">
+                      Taux de réussite
+                    </p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {filteredGrades.length > 0
+                        ? Math.round(
+                            (stats.validatedCount / filteredGrades.length) * 100
+                          )
+                        : 0}
+                      %
+                    </p>
+                    {selectedControlType !== "all" && (
+                      <p className="text-xs text-slate-600 mt-1">
+                        Pour: {selectedControlType}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Note d'information sur la pondération */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
+                    <Info className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-blue-800 mb-1">
+                      Calcul de la moyenne pondérée :
+                    </p>
+                    <p className="text-sm text-blue-700">
+                      Moyenne = Σ(Note normalisée sur 20 × Coefficient) /
+                      Σ(Coefficient)
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      * Les notes sont normalisées sur 20 lorsque l'échelle est
+                      différente
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-100 rounded-full mb-4">
+                <BookOpen className="h-8 w-8 text-slate-400" />
+              </div>
+              <h3 className="text-lg font-medium text-slate-700 mb-2">
+                Aucune note enregistrée
+              </h3>
+              <p className="text-slate-500">
+                Aucune note n'a été enregistrée pour cette inscription.
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4 border-t">
+            <Button variant="outline" onClick={handleCloseGradesModal}>
+              Fermer
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  // ============ EFFETS ============
 
   // Charger les classes et années académiques au montage
   useEffect(() => {
@@ -475,26 +1150,16 @@ export const StudentDetails = ({
     loadData();
   }, [fetchClasses, fetchAcademicYears]);
 
-  // 🔴 CORRECTION CRITIQUE: Charger les notes de l'étudiant avec protection
+  // Charger les notes de l'étudiant
   useEffect(() => {
-    // Fonction pour charger les notes
     const loadStudentGrades = async () => {
-      // Vérifier si déjà en cours ou déjà chargé
-      if (fetchInProgressRef.current || !student.id) {
-        console.log("⏭️ Fetch déjà en cours ou pas de studentId");
-        return;
-      }
+      if (fetchInProgressRef.current || !student.id) return;
 
-      // Vérifier si on est sur un onglet qui nécessite les notes
       if (!(activeTab === "academic" || activeTab === "enrollments")) {
         return;
       }
 
-      // Vérifier si déjà chargé
       if (hasFetchedRef.current) {
-        console.log("⏭️ Notes déjà chargées pour cet étudiant");
-
-        // Utiliser les notes déjà dans le store si disponibles
         if (storeStudentGrades && storeStudentGrades.length > 0) {
           setGrades(storeStudentGrades as GradeWithDetails[]);
         }
@@ -505,45 +1170,25 @@ export const StudentDetails = ({
       setLoadingGrades(true);
 
       try {
-        console.log(`🚀 Début du chargement des notes pour ${student.id}`);
+        const studentGrades = await fetchStudentGrades(student.id);
 
-        // 1. Essayer fetchStudentGrades (fonction dédiée)
-        try {
-          const studentGrades = await fetchStudentGrades(student.id);
-          console.log(
-            `✅ fetchStudentGrades réussi: ${studentGrades?.length || 0} notes`
-          );
-
-          if (studentGrades && Array.isArray(studentGrades)) {
-            setGrades(studentGrades as GradeWithDetails[]);
-            hasFetchedRef.current = true;
-            fetchInProgressRef.current = false;
-            return;
-          }
-        } catch (error) {
-          console.log(
-            "⚠️ fetchStudentGrades échoué, tentative alternative:",
-            error
-          );
+        if (studentGrades && Array.isArray(studentGrades)) {
+          setGrades(studentGrades as GradeWithDetails[]);
+          hasFetchedRef.current = true;
+          fetchInProgressRef.current = false;
+          return;
         }
 
-        // 2. Si échec, utiliser les notes existantes du store global
         const filteredGrades = allGrades.filter(
           (grade) => grade.studentId === student.id
         ) as GradeWithDetails[];
 
         if (filteredGrades.length > 0) {
-          console.log(
-            `✅ Utilisation des notes existantes: ${filteredGrades.length} notes`
-          );
           setGrades(filteredGrades);
           hasFetchedRef.current = true;
         } else {
-          // 3. Si aucune note, tenter fetchAllGrades
-          console.log("🔄 Aucune note trouvée, tentative fetchAllGrades");
           try {
             await fetchAllGrades({ studentId: student.id });
-            // Après fetchAllGrades, refiltrer
             const newFilteredGrades = allGrades.filter(
               (grade) => grade.studentId === student.id
             ) as GradeWithDetails[];
@@ -551,30 +1196,26 @@ export const StudentDetails = ({
             if (newFilteredGrades.length > 0) {
               setGrades(newFilteredGrades);
             } else {
-              console.log("ℹ️ Aucune note disponible pour cet étudiant");
               setGrades([]);
             }
             hasFetchedRef.current = true;
           } catch (fetchError) {
-            console.log("ℹ️ Aucune note disponible pour cet étudiant");
             setGrades([]);
-            hasFetchedRef.current = true; // Même si vide, marquer comme chargé
+            hasFetchedRef.current = true;
           }
         }
       } catch (error) {
-        console.error("❌ Erreur lors du chargement des notes:", error);
+        console.error("Erreur lors du chargement des notes:", error);
         setGrades([]);
-        hasFetchedRef.current = true; // Même en cas d'erreur, marquer comme chargé
+        hasFetchedRef.current = true;
       } finally {
         setLoadingGrades(false);
         fetchInProgressRef.current = false;
-        console.log("🏁 Fin du chargement des notes");
       }
     };
 
     loadStudentGrades();
 
-    // 🔴 Nettoyage: réinitialiser hasFetched quand le composant est démonté ou quand student.id change
     return () => {
       hasFetchedRef.current = false;
       fetchInProgressRef.current = false;
@@ -588,25 +1229,9 @@ export const StudentDetails = ({
     storeStudentGrades,
   ]);
 
-  // 🔴 NOUVEAU: Réinitialiser hasFetched quand l'onglet change (optionnel)
-  useEffect(() => {
-    if (activeTab === "academic" || activeTab === "enrollments") {
-      // Permettre un rechargement si nécessaire
-      if (
-        grades.length === 0 &&
-        !loadingGrades &&
-        !fetchInProgressRef.current
-      ) {
-        hasFetchedRef.current = false;
-      }
-    }
-  }, [activeTab, grades.length, loadingGrades]);
-
   // Grouper les notes par année académique
   useEffect(() => {
     const groupGradesByAcademicYear = () => {
-      console.log(`📊 Groupement des notes: ${grades.length} notes à traiter`);
-
       const grouped: AcademicYearGrades[] = [];
 
       studentEnrollments.forEach((enrollment) => {
@@ -671,112 +1296,34 @@ export const StudentDetails = ({
       if (grouped.length > 0 && expandedYears.size === 0) {
         setExpandedYears(new Set([grouped[0].academicYearId]));
       }
-
-      console.log(
-        `✅ Groupement terminé: ${grouped.length} années académiques`
-      );
     };
 
-    if (grades.length > 0 || studentEnrollments.length > 0) {
-      groupGradesByAcademicYear();
-    }
+    // Appel de la fonction de groupement
+    groupGradesByAcademicYear();
   }, [grades, studentEnrollments, expandedYears]);
 
+  // Calculs globaux placés hors de l'useEffect pour être accessibles dans le rendu
+  const gpa = grades.length > 0 ? calculateWeightedAverage(grades) : 0;
+
+  const successRate =
+    grades.length > 0
+      ? Math.round(
+          (grades.filter((g) => g.status === "Valid_" || (g.grade || 0) >= 10)
+            .length /
+            grades.length) *
+            100
+        )
+      : 0;
+
   const filteredGroupedGrades = useMemo(() => {
-    return groupedGrades.filter(
-      (group) =>
-        selectedAcademicYear === "all" ||
-        group.academicYearId === selectedAcademicYear
-    );
-  }, [groupedGrades, selectedAcademicYear]);
-
-  const toggleYearExpansion = (academicYearId: string) => {
-    setExpandedYears((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(academicYearId)) {
-        newSet.delete(academicYearId);
-      } else {
-        newSet.add(academicYearId);
-      }
-      return newSet;
-    });
-  };
-
-  // Calculer les statistiques globales
-  const globalStats = useMemo(() => {
-    const allGradesList = filteredGroupedGrades.flatMap(
-      (group) => group.grades
-    );
-
-    if (allGradesList.length === 0) {
-      return {
-        totalGrades: 0,
-        validatedCount: 0,
-        failedCount: 0,
-        retakeCount: 0,
-        weightedAverage: 0,
-        successRate: 0,
-        totalCredits: 0,
-        obtainedCredits: 0,
-        creditProgress: 0,
-      };
-    }
-
-    const validatedGrades = allGradesList.filter(
-      (g) => g.status === "Valid_" || (g.grade || 0) >= 10
-    );
-    const failedGrades = allGradesList.filter((g) => {
-      const status = String(g.status);
-      return (
-        status === "Non_valid_" || status === "Echec" || (g.grade || 0) < 10
+    if (!groupedGrades || groupedGrades.length === 0) return [];
+    if (selectedAcademicYear && selectedAcademicYear !== "all") {
+      return groupedGrades.filter(
+        (g) => g.academicYearId === selectedAcademicYear
       );
-    });
-    const retakeGrades = allGradesList.filter(
-      (g) => g.session === "Reprise" || g.status === "Reprise"
-    );
-
-    const weightedAverage = calculateWeightedAverage(allGradesList);
-
-    const totalCredits = allGradesList.reduce(
-      (sum, grade) => sum + getSubjectCoefficient(grade),
-      0
-    );
-
-    const obtainedCredits = validatedGrades.reduce(
-      (sum, grade) => sum + getSubjectCoefficient(grade),
-      0
-    );
-
-    return {
-      totalGrades: allGradesList.length,
-      validatedCount: validatedGrades.length,
-      failedCount: failedGrades.length,
-      retakeCount: retakeGrades.length,
-      weightedAverage: Math.round(weightedAverage * 100) / 100,
-      successRate: Math.round(
-        (validatedGrades.length / allGradesList.length) * 100
-      ),
-      totalCredits,
-      obtainedCredits,
-      creditProgress:
-        totalCredits > 0 ? (obtainedCredits / totalCredits) * 100 : 0,
-    };
-  }, [filteredGroupedGrades]);
-
-  // Calculer GPA pondéré et taux de réussite
-  const { gpa, successRate } = useMemo(() => {
-    if (grades.length === 0) return { gpa: 0, successRate: 0 };
-
-    const weightedAverage = calculateWeightedAverage(grades);
-    const validatedGrades = grades.filter(
-      (g) => g.status === "Valid_" || (g.grade || 0) >= 10
-    ).length;
-
-    return {
-      gpa: Math.round(weightedAverage * 100) / 100,
-      successRate: Math.round((validatedGrades / grades.length) * 100),
-    };
-  }, [grades]);
+    }
+    return groupedGrades;
+  }, [groupedGrades, selectedAcademicYear]);
 
   // ============ RENDER ============
 
@@ -865,9 +1412,23 @@ export const StudentDetails = ({
                       </div>
                       <div className="text-left">
                         <div className="text-lg font-bold text-slate-900">
-                          {grades.length}
+                          {student._count?.grades || 0}
                         </div>
                         <div className="text-xs text-slate-500">Notes</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center p-3 rounded-xl bg-white border border-slate-200 hover:border-primary/30 transition-all duration-300">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="p-2 rounded-lg bg-violet-100 text-violet-600">
+                        <Users className="h-4 w-4" />
+                      </div>
+                      <div className="text-left">
+                        <div className="text-lg font-bold text-slate-900">
+                          {student._count?.guardians || 0}
+                        </div>
+                        <div className="text-xs text-slate-500">Tuteurs</div>
                       </div>
                     </div>
                   </div>
@@ -984,6 +1545,9 @@ export const StudentDetails = ({
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               <span className="hidden xs:inline">Tuteurs</span>
+              <Badge variant="secondary" className="ml-1 h-5 w-5 p-0">
+                {student._count?.guardians || 0}
+              </Badge>
             </div>
           </TabsTrigger>
         </TabsList>
@@ -1109,7 +1673,7 @@ export const StudentDetails = ({
           </div>
         </TabsContent>
 
-        {/* Onglet Notes */}
+        {/* Onglet Notes (conservé inchangé) */}
         <TabsContent value="academic" className="mt-6 space-y-6">
           <Card className="border-slate-200">
             <CardHeader className="pb-4">
@@ -1202,6 +1766,18 @@ export const StudentDetails = ({
                     const isExpanded = expandedYears.has(group.academicYearId);
                     const className = getClassName(group.enrollment.classId);
                     const level = getClassLevel(group.enrollment.classId);
+
+                    function toggleYearExpansion(academicYearId: string): void {
+                      setExpandedYears((prev) => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(academicYearId)) {
+                          newSet.delete(academicYearId);
+                        } else {
+                          newSet.add(academicYearId);
+                        }
+                        return newSet;
+                      });
+                    }
 
                     return (
                       <Card
@@ -1378,7 +1954,7 @@ export const StudentDetails = ({
           </div>
         </TabsContent>
 
-        {/* Onglet Inscriptions */}
+        {/* Onglet Inscriptions  */}
         <TabsContent value="enrollments" className="mt-6">
           <Card className="border-slate-200 overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-slate-900 to-slate-800 text-white">
@@ -1389,7 +1965,7 @@ export const StudentDetails = ({
                     Historique des Inscriptions
                   </CardTitle>
                   <p className="text-slate-300 text-sm mt-1">
-                    Parcours académique complet
+                    Parcours académique complet de l'étudiant
                   </p>
                 </div>
                 <Badge
@@ -1400,442 +1976,34 @@ export const StudentDetails = ({
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-6">
               {studentEnrollments.length > 0 ? (
-                <div className="divide-y divide-slate-200">
-                  {studentEnrollments
-                    .sort(
-                      (a, b) =>
-                        new Date(b.enrollmentDate).getTime() -
-                        new Date(a.enrollmentDate).getTime()
-                    )
-                    .map((enrollment, index) => {
-                      const enrollmentYear = getAcademicYear(
-                        enrollment.academicYearId
-                      );
-                      const className = getClassName(enrollment.classId);
-                      const level = getClassLevel(enrollment.classId);
-                      const enrollmentGrades =
-                        getGradesForEnrollment(enrollment);
-                      const stats = getEnrollmentStats(enrollmentGrades);
-
-                      return (
-                        <div
-                          key={enrollment.id}
-                          className={`p-4 hover:bg-slate-50 transition-colors ${
-                            index === 0 ? "bg-emerald-50" : ""
-                          }`}
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary">
-                                  <Building className="h-4 w-4" />
-                                </div>
-                                <div>
-                                  <h3 className="font-semibold text-slate-900">
-                                    {className}
-                                  </h3>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <Badge
-                                      variant="outline"
-                                      className="text-xs"
-                                    >
-                                      {enrollmentYear}
-                                    </Badge>
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-xs"
-                                    >
-                                      {getLevelText(level)}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-4 text-sm text-slate-600">
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="h-3 w-3" />
-                                  {formatDate(enrollment.enrollmentDate)}
-                                </span>
-                                <span
-                                  className={`flex items-center gap-1 ${
-                                    enrollment.status === "Active"
-                                      ? "text-emerald-600"
-                                      : "text-slate-500"
-                                  }`}
-                                >
-                                  <Activity className="h-3 w-3" />
-                                  {enrollment.status === "Active"
-                                    ? "Actif"
-                                    : "Terminé"}
-                                </span>
-                              </div>
-                              {enrollmentGrades.length > 0 && (
-                                <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
-                                  <span className="text-slate-700">
-                                    Moyenne pondérée:{" "}
-                                    <span className="font-bold">
-                                      {stats.weightedAverage.toFixed(2)}/20
-                                    </span>
-                                  </span>
-                                  <span className="text-slate-700">
-                                    Validés:{" "}
-                                    <span className="font-bold">
-                                      {stats.validatedCount}/
-                                      {enrollmentGrades.length}
-                                    </span>
-                                  </span>
-                                  <span className="text-slate-700">
-                                    Crédits:{" "}
-                                    <span className="font-bold">
-                                      {stats.obtainedCredits}/
-                                      {stats.totalCredits}
-                                    </span>
-                                  </span>
-                                </div>
+                <div className="space-y-4">
+                  {/* Timeline visuelle */}
+                  <div className="relative">
+                    <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-slate-200" />
+                    {studentEnrollments
+                      .sort(
+                        (a, b) =>
+                          new Date(b.enrollmentDate).getTime() -
+                          new Date(a.enrollmentDate).getTime()
+                      )
+                      .map((enrollment, index) => (
+                        <div key={enrollment.id} className="relative pl-14">
+                          <div className="absolute left-4 top-4">
+                            <div
+                              className={cn(
+                                "w-4 h-4 rounded-full border-4 border-white",
+                                enrollment.status === "Active"
+                                  ? "bg-emerald-500"
+                                  : "bg-slate-400"
                               )}
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              {enrollment.status === "Active" && (
-                                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                                  En cours
-                                </Badge>
-                              )}
-
-                              {/* Bouton pour voir les notes */}
-                              <Dialog
-                                open={
-                                  showGradesModal &&
-                                  selectedEnrollmentForGrades?.id ===
-                                    enrollment.id
-                                }
-                                onOpenChange={setShowGradesModal}
-                              >
-                                <DialogTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleViewGrades(enrollment)}
-                                    className="gap-1"
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                    Voir les notes
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                                  <DialogHeader>
-                                    <DialogTitle>
-                                      Notes - {className} ({enrollmentYear})
-                                    </DialogTitle>
-                                  </DialogHeader>
-                                  {enrollmentGrades.length > 0 ? (
-                                    <div className="space-y-4">
-                                      {/* Filtre par type de contrôle */}
-                                      <div className="bg-slate-50 p-4 rounded-lg mb-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                          <div>
-                                            <Label className="text-sm text-slate-700">
-                                              Filtrer par contrôle
-                                            </Label>
-                                            <Select
-                                              value={selectedControlType}
-                                              onValueChange={
-                                                setSelectedControlType
-                                              }
-                                            >
-                                              <SelectTrigger>
-                                                <SelectValue placeholder="Tous les contrôles" />
-                                              </SelectTrigger>
-                                              <SelectContent>
-                                                <SelectItem value="all">
-                                                  Tous les contrôles
-                                                </SelectItem>
-                                                {getControlTypes(
-                                                  enrollmentGrades
-                                                ).map((type) => (
-                                                  <SelectItem
-                                                    key={type}
-                                                    value={type}
-                                                  >
-                                                    {type}
-                                                  </SelectItem>
-                                                ))}
-                                              </SelectContent>
-                                            </Select>
-                                          </div>
-                                          <div>
-                                            <p className="text-sm text-slate-500">
-                                              Année académique
-                                            </p>
-                                            <p className="font-semibold">
-                                              {enrollmentYear}
-                                            </p>
-                                          </div>
-                                          <div>
-                                            <p className="text-sm text-slate-500">
-                                              Classe
-                                            </p>
-                                            <p className="font-semibold">
-                                              {className}
-                                            </p>
-                                          </div>
-                                          <div>
-                                            <p className="text-sm text-slate-500">
-                                              Niveau
-                                            </p>
-                                            <p className="font-semibold">
-                                              {getLevelText(level)}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Notes filtrées */}
-                                      {(() => {
-                                        const filteredGrades =
-                                          filterGradesByControlType(
-                                            enrollmentGrades,
-                                            selectedControlType
-                                          );
-                                        const filteredStats =
-                                          getEnrollmentStats(filteredGrades);
-
-                                        return (
-                                          <>
-                                            {/* Tableau des notes */}
-                                            <div className="border rounded-lg overflow-hidden">
-                                              <table className="w-full">
-                                                <thead className="bg-slate-100">
-                                                  <tr>
-                                                    <th className="text-left p-3 font-medium">
-                                                      Matière
-                                                    </th>
-                                                    <th className="text-left p-3 font-medium">
-                                                      Note / Max
-                                                    </th>
-                                                    <th className="text-left p-3 font-medium">
-                                                      Coefficient
-                                                    </th>
-                                                    <th className="text-left p-3 font-medium">
-                                                      Contrôle
-                                                    </th>
-                                                    <th className="text-left p-3 font-medium">
-                                                      Session
-                                                    </th>
-                                                    <th className="text-left p-3 font-medium">
-                                                      Statut
-                                                    </th>
-                                                  </tr>
-                                                </thead>
-                                                <tbody>
-                                                  {filteredGrades.length > 0 ? (
-                                                    filteredGrades.map(
-                                                      (grade) => {
-                                                        const normalizedGrade =
-                                                          getNormalizedGrade(
-                                                            grade
-                                                          );
-                                                        const coefficient =
-                                                          getSubjectCoefficient(
-                                                            grade
-                                                          );
-                                                        const maxGrade =
-                                                          getSubjectMaxGrade(
-                                                            grade
-                                                          );
-
-                                                        return (
-                                                          <tr
-                                                            key={grade.id}
-                                                            className="border-t hover:bg-slate-50"
-                                                          >
-                                                            <td className="p-3">
-                                                              <div>
-                                                                <p className="font-medium">
-                                                                  {getSubjectName(
-                                                                    grade
-                                                                  )}
-                                                                </p>
-                                                              </div>
-                                                            </td>
-                                                            <td className="p-3">
-                                                              <div>
-                                                                <span
-                                                                  className={`font-bold ${getGradeColor(
-                                                                    normalizedGrade
-                                                                  )}`}
-                                                                >
-                                                                  {grade.grade?.toFixed(
-                                                                    2
-                                                                  ) || "0.00"}
-                                                                  /{maxGrade}
-                                                                </span>
-                                                                <p className="text-xs text-slate-500">
-                                                                  {normalizedGrade.toFixed(
-                                                                    2
-                                                                  )}
-                                                                  /20
-                                                                </p>
-                                                              </div>
-                                                            </td>
-                                                            <td className="p-3">
-                                                              <Badge
-                                                                variant="outline"
-                                                                className="text-xs"
-                                                              >
-                                                                {coefficient}
-                                                              </Badge>
-                                                            </td>
-                                                            <td className="p-3">
-                                                              <span className="text-sm">
-                                                                {grade.controlType ||
-                                                                  "Contrôle"}
-                                                              </span>
-                                                            </td>
-                                                            <td className="p-3">
-                                                              <Badge
-                                                                variant="outline"
-                                                                className="text-xs"
-                                                              >
-                                                                {grade.session ||
-                                                                  "Session I"}
-                                                              </Badge>
-                                                            </td>
-                                                            <td className="p-3">
-                                                              {getGradeStatusBadge(
-                                                                grade
-                                                              )}
-                                                            </td>
-                                                          </tr>
-                                                        );
-                                                      }
-                                                    )
-                                                  ) : (
-                                                    <tr>
-                                                      <td
-                                                        colSpan={6}
-                                                        className="text-center p-8 text-slate-500"
-                                                      >
-                                                        Aucune note pour ce type
-                                                        de contrôle
-                                                      </td>
-                                                    </tr>
-                                                  )}
-                                                </tbody>
-                                              </table>
-                                            </div>
-
-                                            {/* Résumé */}
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4">
-                                              <div className="bg-emerald-50 p-3 rounded-lg text-center">
-                                                <p className="text-sm text-emerald-700">
-                                                  Moyenne pondérée
-                                                </p>
-                                                <p className="text-2xl font-bold text-emerald-900">
-                                                  {filteredStats.weightedAverage.toFixed(
-                                                    2
-                                                  )}
-                                                  /20
-                                                </p>
-                                                <p className="text-xs text-emerald-600">
-                                                  {selectedControlType !==
-                                                    "all" &&
-                                                    `Pour: ${selectedControlType}`}
-                                                </p>
-                                              </div>
-                                              <div className="bg-blue-50 p-3 rounded-lg text-center">
-                                                <p className="text-sm text-blue-700">
-                                                  Validés
-                                                </p>
-                                                <p className="text-2xl font-bold text-blue-900">
-                                                  {filteredStats.validatedCount}
-                                                  /{filteredGrades.length}
-                                                </p>
-                                                <p className="text-xs text-blue-600">
-                                                  {selectedControlType !==
-                                                    "all" &&
-                                                    `Pour: ${selectedControlType}`}
-                                                </p>
-                                              </div>
-                                              <div className="bg-amber-50 p-3 rounded-lg text-center">
-                                                <p className="text-sm text-amber-700">
-                                                  Crédits obtenus
-                                                </p>
-                                                <p className="text-2xl font-bold text-amber-900">
-                                                  {
-                                                    filteredStats.obtainedCredits
-                                                  }
-                                                  /{filteredStats.totalCredits}
-                                                </p>
-                                                <p className="text-xs text-amber-600">
-                                                  {selectedControlType !==
-                                                    "all" &&
-                                                    `Pour: ${selectedControlType}`}
-                                                </p>
-                                              </div>
-                                              <div className="bg-slate-50 p-3 rounded-lg text-center">
-                                                <p className="text-sm text-slate-700">
-                                                  Taux de réussite
-                                                </p>
-                                                <p className="text-2xl font-bold text-slate-900">
-                                                  {filteredGrades.length > 0
-                                                    ? Math.round(
-                                                        (filteredStats.validatedCount /
-                                                          filteredGrades.length) *
-                                                          100
-                                                      )
-                                                    : 0}
-                                                  %
-                                                </p>
-                                                <p className="text-xs text-slate-600">
-                                                  {selectedControlType !==
-                                                    "all" &&
-                                                    `Pour: ${selectedControlType}`}
-                                                </p>
-                                              </div>
-                                            </div>
-
-                                            {/* Note sur la pondération */}
-                                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                                              <p className="font-medium mb-1">
-                                                Calcul de la moyenne pondérée :
-                                              </p>
-                                              <p className="text-xs">
-                                                Moyenne = Σ(Note normalisée sur
-                                                20 × Coefficient) /
-                                                Σ(Coefficient)
-                                              </p>
-                                            </div>
-                                          </>
-                                        );
-                                      })()}
-                                    </div>
-                                  ) : (
-                                    <div className="text-center py-12">
-                                      <BookOpen className="h-12 w-12 mx-auto text-slate-300 mb-4" />
-                                      <p className="text-slate-500">
-                                        Aucune note enregistrée pour cette
-                                        inscription
-                                      </p>
-                                    </div>
-                                  )}
-                                </DialogContent>
-                              </Dialog>
-                            </div>
+                            />
                           </div>
-
-                          {index === 0 && (
-                            <div className="mt-3 pt-3 border-t border-emerald-200">
-                              <div className="flex items-center gap-2 text-sm text-emerald-700">
-                                <Star className="h-4 w-4" />
-                                Inscription actuelle
-                              </div>
-                            </div>
-                          )}
+                          {renderEnrollmentCard(enrollment, index)}
                         </div>
-                      );
-                    })}
+                      ))}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-12 px-6">
@@ -1854,26 +2022,55 @@ export const StudentDetails = ({
           </Card>
         </TabsContent>
 
-        {/* Onglet Tuteurs */}
+        {/* Onglet Tuteurs  */}
         <TabsContent value="guardians" className="mt-6">
-          <Card className="border-slate-200">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Users className="h-5 w-5" />
-                Tuteurs et Responsables
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <Users className="h-12 w-12 mx-auto text-slate-300 mb-4" />
-                <p className="text-slate-500">
-                  {loadingClasses ? "Chargement..." : "Aucun tuteur enregistré"}
-                </p>
+          <Card className="border-slate-200 overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-slate-900 to-slate-800 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Tuteurs et Responsables
+                  </CardTitle>
+                  <p className="text-slate-300 text-sm mt-1">
+                    Personnes responsables de l'étudiant
+                  </p>
+                </div>
+                <Badge
+                  variant="secondary"
+                  className="bg-white/20 text-white border-0"
+                >
+                  {student._count?.guardians || 0} tuteur(s)
+                </Badge>
               </div>
-            </CardContent>
+            </CardHeader>
+            <CardContent className="p-6">{renderGuardians()}</CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/*  Modal des notes - placé en dehors des Tabs */}
+      {renderGradesModal()}
     </div>
   );
 };
+
+// Composant Info manquant (ajoutez-le)
+const Info = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" x2="12" y1="16" y2="12" />
+    <line x1="12" x2="12.01" y1="8" y2="8" />
+  </svg>
+);

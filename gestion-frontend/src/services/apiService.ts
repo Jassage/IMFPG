@@ -7,7 +7,7 @@ import axios, {
 
 // Configuration de base
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "https://imfpg.ddns.net/api";
+  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 // Configuration Axios
 const apiConfig: AxiosRequestConfig = {
@@ -27,6 +27,14 @@ const apiConfig: AxiosRequestConfig = {
 
 // Créer l'instance Axios
 const api: AxiosInstance = axios.create(apiConfig);
+
+export const unlockApi = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+  withCredentials: true,
+});
 
 // Intercepteur de requête
 api.interceptors.request.use(
@@ -168,6 +176,45 @@ export const retryRequest = async <T>(
   }
 
   throw lastError!;
+};
+
+export const verifyPasswordForUnlock = async (
+  email: string,
+  password: string
+): Promise<boolean> => {
+  try {
+    const response = await unlockApi.post("/auth/verify-unlock", {
+      email,
+      password,
+    });
+    return response.data.success === true;
+  } catch (error: any) {
+    console.error("Password verification error:", error);
+
+    // Si c'est une erreur d'authentification, essayer sans token
+    if (error.response?.status === 401) {
+      // Essayer une requête fetch directe sans headers d'authentification
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/verify-unlock`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, password }),
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          return data.success === true;
+        }
+      } catch (fetchError) {
+        console.error("Fetch verification error:", fetchError);
+      }
+    }
+
+    return false;
+  }
 };
 
 export default api;

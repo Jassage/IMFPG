@@ -23,20 +23,20 @@ interface FilterPanelProps {
 
 const CONTROL_TYPES = [
   { value: "all", label: "Toutes les périodes" },
-  { value: ControlType.CONTROLE_1, label: "1er Trimestre" },
-  { value: ControlType.CONTROLE_2, label: "2ème Trimestre" },
-  { value: ControlType.CONTROLE_3, label: "3ème Trimestre" },
-  { value: ControlType.CONTROLE_4, label: "Examen Final" },
+  { value: ControlType.CONTROLE_1, label: "1er Controle" },
+  { value: ControlType.CONTROLE_2, label: "2ème Controle" },
+  { value: ControlType.CONTROLE_3, label: "3ème Controle" },
+  { value: ControlType.CONTROLE_4, label: "4ème Controle" },
 ];
 
 const CLASS_LEVELS = [
   { value: "all", label: "Tous les niveaux" },
-  { value: "Sixieme", label: "6ème" },
-  { value: "Cinquieme", label: "5ème" },
-  { value: "Quatrieme", label: "4ème" },
+  { value: "Sixieme", label: "7ème A.F" },
+  { value: "Cinquieme", label: "8ème A.F" },
+  { value: "Quatrieme", label: "9ème A.F" },
   { value: "Troisieme", label: "3ème" },
   { value: "Seconde", label: "2nde" },
-  { value: "Premiere", label: "1ère" },
+  { value: "Premiere", label: "Rheto" },
   { value: "Terminale", label: "Terminale" },
   { value: "NSI", label: "NS I" },
   { value: "NSII", label: "NS II" },

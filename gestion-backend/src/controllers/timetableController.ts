@@ -70,22 +70,22 @@
 //       where.OR = [
 //         {
 //           subject: {
-//             name: { contains: searchStr, mode: "insensitive" },
+//             name: { contains: searchStr},
 //           },
 //         },
 //         {
 //           subject: {
-//             code: { contains: searchStr, mode: "insensitive" },
+//             code: { contains: searchStr},
 //           },
 //         },
 //         {
 //           professeur: {
-//             firstName: { contains: searchStr, mode: "insensitive" },
+//             firstName: { contains: searchStr},
 //           },
 //         },
 //         {
 //           professeur: {
-//             lastName: { contains: searchStr, mode: "insensitive" },
+//             lastName: { contains: searchStr},
 //           },
 //         },
 //       ];

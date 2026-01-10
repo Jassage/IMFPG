@@ -615,14 +615,6 @@ export const SubjectsManager = () => {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-            >
-              <Filter className="h-4 w-4 mr-2" />
-              Filtres
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
@@ -1001,51 +993,6 @@ export const SubjectsManager = () => {
                   )}
                 </div>
               </div>
-
-              {showAdvancedFilters && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-muted/30 rounded-lg">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Coefficient min</Label>
-                    <Input type="number" min="0.5" step="0.5" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Coefficient max</Label>
-                    <Input type="number" max="10" step="0.5" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Note max</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Toutes" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Toutes</SelectItem>
-                        {maxGradeOptions.map((opt) => (
-                          <SelectItem
-                            key={opt.value}
-                            value={opt.value.toString()}
-                          >
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Statut</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Tous" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tous</SelectItem>
-                        <SelectItem value="active">Actifs</SelectItem>
-                        <SelectItem value="inactive">Inactifs</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -1319,10 +1266,6 @@ export const SubjectsManager = () => {
                                   setSelectedSubject(subject);
                                   setShowDeleteDialog(true);
                                 }}
-                                disabled={
-                                  (subject._count?.assignments || 0) > 0 ||
-                                  (subject._count?.grades || 0) > 0
-                                }
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>

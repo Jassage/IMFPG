@@ -10,7 +10,7 @@ const daysOfWeek = [
   "SUNDAY",
 ];
 const scheduleStatus = ["ACTIVE", "INACTIVE", "CANCELLED"];
-const recurrenceTypes = ["WEEKLY", "BIWEEKLY", "MONTHLY"];
+const recurrenceTypes = ["WEEKLY", "BIWEEKLY", "MONTHLY", "NONE", ""];
 
 export const validateCreateSchedule = [
   body("assignmentId")

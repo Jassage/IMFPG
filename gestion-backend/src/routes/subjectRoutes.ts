@@ -15,6 +15,7 @@ import {
   handleValidationErrors,
   requireTeacher,
   requireTeacherOrStaff,
+  requireDirector,
 } from "../middleware";
 
 import {
@@ -74,7 +75,7 @@ router.get(
 router.post(
   "/",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -99,7 +100,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -114,6 +115,12 @@ router.put(
  * @access Admin
  * @param {string} id - ID de la matière
  */
-router.delete("/:id", requireAuth, requireAdmin, sanitizeInput, deleteSubject);
+router.delete(
+  "/:id",
+  requireAuth,
+  requireDirector,
+  sanitizeInput,
+  deleteSubject
+);
 
 export default router;

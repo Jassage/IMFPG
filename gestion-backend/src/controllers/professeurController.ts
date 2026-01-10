@@ -1,12 +1,14 @@
 /**
  * @file professeurController.ts
  * @description Contrôleurs pour la gestion des professeurs
+ * @version 1.1.0 - Compatible avec le service mis à jour
  */
 
 import { Request, Response } from "express";
 import { extractAuditData } from "./auth/authUtils";
 import { createAuditLog } from "./auditController";
 import * as professeurService from "../services/professeurService";
+import { ProfesseurError } from "../services/professeurService";
 
 interface ApiResponse {
   success: boolean;
@@ -14,7 +16,119 @@ interface ApiResponse {
   data?: any;
   code?: string;
   warning?: string;
+  details?: any;
+  errors?: any[];
 }
+
+/**
+ * Gestionnaire d'erreurs centralisé
+ */
+const handleError = async (
+  error: any,
+  req: Request,
+  res: Response,
+  auditData: any,
+  action: string,
+  entity: string = "Professeur",
+  entityId?: string
+): Promise<void> => {
+  console.error(`❌ ProfesseurController - ${action} error:`, error);
+
+  // Log d'audit
+  await createAuditLog({
+    ...auditData,
+    action: `${action}_ERROR`,
+    entity,
+    entityId,
+    description: `Erreur lors de l'opération: ${action}`,
+    status: "ERROR",
+    errorMessage: error.message?.substring(0, 200),
+    errorDetails: error.details,
+  });
+
+  // Si c'est une ProfesseurError, utiliser ses propriétés
+  if (error instanceof ProfesseurError) {
+    const response: ApiResponse = {
+      success: false,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+    };
+    res.status(error.statusCode || 400).json(response);
+    return;
+  }
+
+  // Gestion des erreurs spécifiques du service
+  if (error.code) {
+    const errorCodes: Record<string, { message: string; status: number }> = {
+      PROFESSEUR_NOT_FOUND: {
+        message: "Professeur non trouvé",
+        status: 404,
+      },
+      PROFESSEUR_EMAIL_EXISTS: {
+        message: "Un professeur avec cet email existe déjà",
+        status: 400,
+      },
+      PROFESSEUR_MATRICULE_EXISTS: {
+        message: "Un professeur avec ce matricule existe déjà",
+        status: 400,
+      },
+      USER_NOT_FOUND: {
+        message: "Utilisateur non trouvé",
+        status: 404,
+      },
+      USER_ALREADY_ASSOCIATED: {
+        message: "Cet utilisateur est déjà associé à un autre professeur",
+        status: 400,
+      },
+      USER_ALREADY_PROFESSEUR: {
+        message: "Cet utilisateur est déjà associé à un professeur",
+        status: 400,
+      },
+      NO_USER_ACCOUNT: {
+        message: "Ce professeur n'a pas de compte utilisateur associé",
+        status: 400,
+      },
+      PROFESSEUR_HAS_DEPENDENCIES: {
+        message: "Le professeur a des dépendances actives",
+        status: 400,
+      },
+      INVALID_EMAIL_FORMAT: {
+        message: "Format d'email invalide",
+        status: 422,
+      },
+      INVALID_PHONE_FORMAT: {
+        message:
+          "Format de téléphone invalide. Formats acceptés: +509XXXXXXXX, 509XXXXXXXX, 0XXXXXXXX, XXXXXXXXX (8-9 chiffres)",
+        status: 422,
+      },
+      MISSING_REQUIRED_FIELDS: {
+        message: "Champs requis manquants",
+        status: 422,
+      },
+    };
+
+    const errorInfo = errorCodes[error.code];
+    if (errorInfo) {
+      const response: ApiResponse = {
+        success: false,
+        message: errorInfo.message,
+        code: error.code,
+        details: error.details,
+      };
+      res.status(errorInfo.status).json(response);
+      return;
+    }
+  }
+
+  // Erreur générique
+  const response: ApiResponse = {
+    success: false,
+    message: "Erreur interne du serveur",
+    code: "INTERNAL_ERROR",
+  };
+  res.status(500).json(response);
+};
 
 /**
  * @desc Récupère la liste des professeurs avec pagination et filtres
@@ -44,34 +158,17 @@ export const getProfesseurs = async (
       entity: "Professeur",
       description: "Liste des professeurs récupérée",
       status: "SUCCESS",
+      metadata: {
+        page: filters.page,
+        limit: filters.limit,
+        search: filters.search,
+      },
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: "Professeurs récupérés avec succès",
-      data: result,
-    };
-
-    res.json(response);
+    // Retourner directement le résultat du service qui a déjà la structure correcte
+    res.json(result);
   } catch (error: any) {
-    console.error(" ProfesseurController - getProfesseurs error:", error);
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEURS_LIST_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors de la récupération des professeurs",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
-    });
-
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
-
-    res.status(500).json(response);
+    await handleError(error, req, res, auditData, "PROFESSEURS_LIST");
   }
 };
 
@@ -87,7 +184,15 @@ export const getProfesseurById = async (
   try {
     const { id } = req.params;
 
-    const professeur = await professeurService.getProfesseurByIdService(id);
+    if (!id) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID du professeur requis",
+        { field: "id" }
+      );
+    }
+
+    const result = await professeurService.getProfesseurByIdService(id);
 
     await createAuditLog({
       ...auditData,
@@ -98,42 +203,86 @@ export const getProfesseurById = async (
       status: "SUCCESS",
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: "Professeur récupéré avec succès",
-      data: { professeur },
-    };
-
-    res.json(response);
+    // Retourner directement le résultat du service
+    res.json(result);
   } catch (error: any) {
-    console.error(" ProfesseurController - getProfesseurById error:", error);
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_DETAILS",
+      "Professeur",
+      req.params.id
+    );
+  }
+};
 
-    if (error.message === "PROFESSEUR_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Professeur non trouvé",
-        code: "PROFESSEUR_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
-    }
+/**
+ * @desc Crée un nouveau professeur avec option de création de compte utilisateur
+ */
+export const createProfesseur = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+  const requestId = `req-${Date.now()}`;
 
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_DETAILS_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors de la récupération du professeur",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
+  try {
+    const data = req.body;
+
+    console.log(`[${requestId}] 📥 Requête création professeur:`, {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      createUserAccount: data.createUserAccount,
+      sendInvitation: data.sendInvitation,
     });
 
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
+    // Appeler le service
+    const result = await professeurService.createProfesseurService({
+      ...data,
+      createUserAccount: data.createUserAccount !== false,
+      sendInvitation: data.sendInvitation !== false,
+    });
 
-    res.status(500).json(response);
+    console.log(`[${requestId}] ✅ Service retourné:`, {
+      success: result.success,
+      code: result.code,
+      data: {
+        professeurId: result.data?.professeur?.id,
+        userAccountCreated: result.data?.userAccountCreated,
+        emailSent: result.data?.emailSent,
+      },
+    });
+
+    // Log d'audit
+    await createAuditLog({
+      ...auditData,
+      action: "PROFESSEUR_CREATED",
+      entity: "Professeur",
+      entityId: result.data?.professeur?.id,
+      description: `Professeur "${result.data?.professeur?.firstName} ${result.data?.professeur?.lastName}" créé`,
+      status: "SUCCESS",
+      metadata: {
+        email: result.data?.professeur?.email,
+        speciality: result.data?.professeur?.speciality,
+        userAccountCreated: result.data?.userAccountCreated,
+        emailSent: result.data?.emailSent,
+        hasUserAccount: !!result.data?.professeur?.userId,
+      },
+    });
+
+    console.log(`[${requestId}] 📤 Réponse envoyée:`, {
+      status: 201,
+      professeurId: result.data?.professeur?.id,
+    });
+
+    // Retourner directement le résultat du service avec le bon status
+    res.status(201).json(result);
+  } catch (error: any) {
+    console.error(`[${requestId}] ❌ Erreur contrôleur:`, error);
+    await handleError(error, req, res, auditData, "PROFESSEUR_CREATION");
   }
 };
 
@@ -150,7 +299,15 @@ export const updateProfesseur = async (
     const { id } = req.params;
     const updateData = req.body;
 
-    const professeur = await professeurService.updateProfesseurService(
+    if (!id) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID du professeur requis",
+        { field: "id" }
+      );
+    }
+
+    const result = await professeurService.updateProfesseurService(
       id,
       updateData
     );
@@ -160,82 +317,30 @@ export const updateProfesseur = async (
       action: "PROFESSEUR_UPDATED",
       entity: "Professeur",
       entityId: id,
-      description: `Professeur "${professeur.firstName} ${professeur.lastName}" mis à jour`,
+      description: `Professeur "${result.data?.firstName} ${result.data?.lastName}" mis à jour`,
       status: "SUCCESS",
+      metadata: {
+        fieldsUpdated: Object.keys(updateData),
+      },
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: "Professeur mis à jour avec succès",
-      data: { professeur },
-    };
-
-    res.json(response);
+    // Retourner directement le résultat du service
+    res.json(result);
   } catch (error: any) {
-    console.error(" ProfesseurController - updateProfesseur error:", error);
-
-    // Gérer les erreurs spécifiques
-    if (error.message === "PROFESSEUR_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Professeur non trouvé",
-        code: "PROFESSEUR_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
-    }
-
-    if (error.message === "PROFESSEUR_EMAIL_EXISTS") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Un autre professeur utilise déjà cet email",
-        code: "PROFESSEUR_EMAIL_EXISTS",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    if (error.message === "USER_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "L'utilisateur associé n'existe pas",
-        code: "USER_NOT_FOUND",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    if (error.message === "USER_ALREADY_ASSOCIATED") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Cet utilisateur est déjà associé à un autre professeur",
-        code: "USER_ALREADY_ASSOCIATED",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_UPDATE_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors de la mise à jour du professeur",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
-    });
-
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
-
-    res.status(500).json(response);
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_UPDATE",
+      "Professeur",
+      req.params.id
+    );
   }
 };
 
 /**
- * @desc Supprime un professeur
+ * @desc Supprime/désactive un professeur
  */
 export const deleteProfesseur = async (
   req: Request,
@@ -246,6 +351,14 @@ export const deleteProfesseur = async (
   try {
     const { id } = req.params;
 
+    if (!id) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID du professeur requis",
+        { field: "id" }
+      );
+    }
+
     const result = await professeurService.deleteProfesseurService(id);
 
     await createAuditLog({
@@ -255,54 +368,116 @@ export const deleteProfesseur = async (
       entityId: id,
       description: `Professeur désactivé`,
       status: "SUCCESS",
+      metadata: {
+        assignmentsCount: result.data?.assignmentsCount,
+        schedulesCount: result.data?.schedulesCount,
+      },
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: result.message,
-    };
-
-    res.json(response);
+    // Retourner directement le résultat du service
+    res.json(result);
   } catch (error: any) {
-    console.error(" ProfesseurController - deleteProfesseur error:", error);
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_DELETION",
+      "Professeur",
+      req.params.id
+    );
+  }
+};
 
-    if (error.message === "PROFESSEUR_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Professeur non trouvé",
-        code: "PROFESSEUR_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
+/**
+ * @desc Active un professeur
+ */
+export const activateProfesseur = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID du professeur requis",
+        { field: "id" }
+      );
     }
 
-    if (error.message === "PROFESSEUR_HAS_DEPENDENCIES") {
-      const response: ApiResponse = {
-        success: false,
-        message:
-          "Ce professeur ne peut pas être supprimé car il est assigné à des classes ou matières",
-        code: "PROFESSEUR_HAS_DEPENDENCIES",
-      };
-      res.status(400).json(response);
-      return;
-    }
+    const result = await professeurService.activateProfesseurService(id);
 
     await createAuditLog({
       ...auditData,
-      action: "PROFESSEUR_DELETION_ERROR",
+      action: "PROFESSEUR_ACTIVATED",
       entity: "Professeur",
-      description: "Erreur lors de la suppression du professeur",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
+      entityId: id,
+      description: `Professeur "${result.data.firstName} ${result.data.lastName}" activé`,
+      status: "SUCCESS",
     });
 
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
+    // Retourner directement le résultat du service
+    res.json(result);
+  } catch (error: any) {
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_ACTIVATION",
+      "Professeur",
+      req.params.id
+    );
+  }
+};
 
-    res.status(500).json(response);
+/**
+ * @desc Désactive un professeur
+ */
+export const deactivateProfesseur = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID du professeur requis",
+        { field: "id" }
+      );
+    }
+
+    const result = await professeurService.deactivateProfesseurService(id);
+
+    await createAuditLog({
+      ...auditData,
+      action: "PROFESSEUR_DEACTIVATED",
+      entity: "Professeur",
+      entityId: id,
+      description: `Professeur "${result.firstName} ${result.lastName}" désactivé`,
+      status: "SUCCESS",
+    });
+
+    // Retourner directement le résultat du service
+    res.json(result);
+  } catch (error: any) {
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_DEACTIVATION",
+      "Professeur",
+      req.params.id
+    );
   }
 };
 
@@ -318,6 +493,14 @@ export const getProfesseurSchedule = async (
   try {
     const { id } = req.params;
     const { weekStart } = req.query;
+
+    if (!id) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID du professeur requis",
+        { field: "id" }
+      );
+    }
 
     const result = await professeurService.getProfesseurScheduleService(
       id,
@@ -341,151 +524,15 @@ export const getProfesseurSchedule = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error(
-      " ProfesseurController - getProfesseurSchedule error:",
-      error
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_SCHEDULE",
+      "Professeur",
+      req.params.id
     );
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_SCHEDULE_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors de la récupération de l'emploi du temps",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
-    });
-
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
-
-    res.status(500).json(response);
-  }
-};
-
-/**
- * @desc Active un professeur
- */
-export const activateProfesseur = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  const auditData = extractAuditData(req);
-
-  try {
-    const { id } = req.params;
-
-    const professeur = await professeurService.activateProfesseurService(id);
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_ACTIVATED",
-      entity: "Professeur",
-      entityId: id,
-      description: `Professeur "${professeur.firstName} ${professeur.lastName}" activé`,
-      status: "SUCCESS",
-    });
-
-    const response: ApiResponse = {
-      success: true,
-      message: "Professeur activé avec succès",
-      data: { professeur },
-    };
-
-    res.json(response);
-  } catch (error: any) {
-    console.error(" ProfesseurController - activateProfesseur error:", error);
-
-    if (error.message === "PROFESSEUR_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Professeur non trouvé",
-        code: "PROFESSEUR_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
-    }
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_ACTIVATION_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors de l'activation du professeur",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
-    });
-
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
-
-    res.status(500).json(response);
-  }
-};
-
-/**
- * @desc Désactive un professeur
- */
-export const deactivateProfesseur = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  const auditData = extractAuditData(req);
-
-  try {
-    const { id } = req.params;
-
-    const professeur = await professeurService.deactivateProfesseurService(id);
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_DEACTIVATED",
-      entity: "Professeur",
-      entityId: id,
-      description: `Professeur "${professeur.firstName} ${professeur.lastName}" désactivé`,
-      status: "SUCCESS",
-    });
-
-    const response: ApiResponse = {
-      success: true,
-      message: "Professeur désactivé avec succès",
-      data: { professeur },
-    };
-
-    res.json(response);
-  } catch (error: any) {
-    console.error(" ProfesseurController - deactivateProfesseur error:", error);
-
-    if (error.message === "PROFESSEUR_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Professeur non trouvé",
-        code: "PROFESSEUR_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
-    }
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_DEACTIVATION_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors de la désactivation du professeur",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
-    });
-
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
-
-    res.status(500).json(response);
   }
 };
 
@@ -501,6 +548,14 @@ export const getProfesseurFullDetails = async (
   try {
     const { id } = req.params;
 
+    if (!id) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID du professeur requis",
+        { field: "id" }
+      );
+    }
+
     const result = await professeurService.getProfesseurFullDetailsService(id);
 
     await createAuditLog({
@@ -512,211 +567,23 @@ export const getProfesseurFullDetails = async (
       status: "SUCCESS",
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message: "Détails complets récupérés avec succès",
-      data: result,
-    };
-
-    res.json(response);
+    // Retourner directement le résultat du service
+    res.json(result);
   } catch (error: any) {
-    console.error(
-      " ProfesseurController - getProfesseurFullDetails error:",
-      error
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_FULL_DETAILS",
+      "Professeur",
+      req.params.id
     );
-
-    if (error.message === "PROFESSEUR_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Professeur non trouvé",
-        code: "PROFESSEUR_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
-    }
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_FULL_DETAILS_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors de la récupération des détails",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
-    });
-
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
-
-    res.status(500).json(response);
   }
 };
 
 /**
- * @desc Crée un nouveau professeur avec option de création de compte utilisateur et envoi d'identifiants
- */
-export const createProfesseur = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  const auditData = extractAuditData(req);
-  const requestId = `req-${Date.now()}`;
-
-  try {
-    const data = req.body;
-
-    console.log(`[${requestId}] 📥 Requête création professeur:`, {
-      firstName: data.firstName,
-      lastName: data.lastName,
-      email: data.email,
-      createUserAccount: data.createUserAccount,
-      sendInvitation: data.sendInvitation,
-    });
-
-    // Appeler le service - IMPORTANT: Le service retourne directement l'objet
-    const result = await professeurService.createProfesseurService({
-      ...data,
-      createUserAccount: data.createUserAccount !== false, // true par défaut
-      sendInvitation: data.sendInvitation !== false, // true par défaut
-    });
-
-    console.log(`[${requestId}] ✅ Service retourné:`, {
-      professeurId: result.professeur?.id,
-      userAccountCreated: result.userAccountCreated,
-      emailSent: result.emailSent,
-    });
-
-    // Extraire les données du résultat
-    const professeur = result.professeur;
-    const userAccountCreated = result.userAccountCreated || false;
-    const emailSent = result.emailSent || false;
-    const temporaryPassword = result.temporaryPassword;
-
-    // Construire le message en fonction du résultat
-    let message = "Professeur créé avec succès";
-
-    if (userAccountCreated) {
-      if (emailSent) {
-        message =
-          "Professeur créé avec succès. Les identifiants ont été envoyés par email.";
-      } else {
-        message =
-          "Professeur créé avec succès. IMPORTANT : Les identifiants n'ont pas pu être envoyés par email.";
-      }
-    }
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_CREATED",
-      entity: "Professeur",
-      entityId: professeur?.id,
-      description: `Professeur "${professeur?.firstName} ${professeur?.lastName}" créé`,
-      status: "SUCCESS",
-      metadata: {
-        email: professeur?.email,
-        speciality: professeur?.speciality,
-        userAccountCreated,
-        emailSent,
-        hasUserAccount: !!professeur?.userId,
-      },
-    });
-
-    // Construire la réponse
-    const responseData: any = {
-      professeur,
-      userAccountCreated,
-      emailSent,
-    };
-
-    // Ajouter le mot de passe temporaire seulement si nécessaire
-    if (temporaryPassword && !emailSent) {
-      responseData.temporaryPassword = temporaryPassword;
-      responseData.warning =
-        "Veuillez communiquer manuellement ce mot de passe au professeur";
-    }
-
-    const response: ApiResponse = {
-      success: true,
-      message,
-      data: responseData,
-    };
-
-    console.log(`[${requestId}] 📤 Réponse envoyée:`, {
-      status: 201,
-      professeurId: professeur?.id,
-    });
-
-    res.status(201).json(response);
-  } catch (error: any) {
-    console.error(`[${requestId}] ❌ Erreur contrôleur:`, error);
-
-    // Gérer les erreurs spécifiques
-    if (error.message === "PROFESSEUR_EMAIL_EXISTS") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Un professeur avec cet email existe déjà",
-        code: "PROFESSEUR_EMAIL_EXISTS",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    if (error.message === "USER_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "L'utilisateur associé n'existe pas",
-        code: "USER_NOT_FOUND",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    if (error.message === "USER_ALREADY_PROFESSEUR") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Cet utilisateur est déjà associé à un professeur",
-        code: "USER_ALREADY_PROFESSEUR",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    if (error.message === "EMAIL_SEND_FAILED") {
-      // Échec d'envoi d'email mais création réussie
-      const response: ApiResponse = {
-        success: true, // Succès partiel
-        message: "Professeur créé mais l'envoi d'email a échoué",
-        code: "EMAIL_SEND_FAILED",
-        warning:
-          "Veuillez communiquer manuellement les identifiants au professeur",
-      };
-      res.status(201).json(response);
-      return;
-    }
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_CREATION_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors de la création du professeur",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
-    });
-
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
-
-    res.status(500).json(response);
-  }
-};
-
-/**
- * @desc Associe un compte utilisateur à un professeur existant avec envoi d'identifiants
+ * @desc Associe un compte utilisateur à un professeur existant
  */
 export const attachUserToProfesseur = async (
   req: Request,
@@ -728,137 +595,50 @@ export const attachUserToProfesseur = async (
     const { id } = req.params;
     const options = req.body;
 
+    if (!id) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID du professeur requis",
+        { field: "professeurId" }
+      );
+    }
+
     const result = await professeurService.attachUserToProfesseurService(id, {
       ...options,
       sendCredentialsEmail: options.sendCredentialsEmail !== false,
     });
 
-    // Construire le message en fonction du résultat
-    let message = "Compte utilisateur associé avec succès";
-    if (result.userAccountCreated) {
-      if (result.emailSent) {
-        message = "Compte utilisateur créé et identifiants envoyés par email";
-      } else {
-        message = "Compte utilisateur créé mais l'envoi d'email a échoué";
-      }
-    }
-
     await createAuditLog({
       ...auditData,
-      action: result.userAccountCreated
+      action: result.data?.userAccountCreated
         ? "PROFESSEUR_USER_ACCOUNT_CREATED"
         : "PROFESSEUR_USER_ATTACHED",
       entity: "Professeur",
       entityId: id,
-      description: result.userAccountCreated
-        ? `Compte utilisateur créé et associé au professeur ${result.professeur.firstName} ${result.professeur.lastName}`
-        : `Compte utilisateur associé au professeur ${result.professeur.firstName} ${result.professeur.lastName}`,
+      description: result.data?.userAccountCreated
+        ? `Compte utilisateur créé et associé au professeur ${result.data?.professeur?.firstName} ${result.data?.professeur?.lastName}`
+        : `Compte utilisateur associé au professeur ${result.data?.professeur?.firstName} ${result.data?.professeur?.lastName}`,
       status: "SUCCESS",
       metadata: {
-        userId: result.professeur.userId,
-        userEmail: result.professeur.user?.email,
-        userCreated: result.userAccountCreated,
-        emailSent: result.emailSent,
+        userId: result.data?.professeur?.userId,
+        userEmail: result.data?.professeur?.user?.email,
+        userCreated: result.data?.userAccountCreated,
+        emailSent: result.data?.emailSent,
       },
     });
 
-    const response: ApiResponse = {
-      success: true,
-      message,
-      data: {
-        professeur: result.professeur,
-        userAccountCreated: result.userAccountCreated,
-        emailSent: result.emailSent,
-        // Ne pas envoyer le mot de passe dans la réponse sauf en cas d'erreur d'email
-        ...(result.temporaryPassword &&
-          !result.emailSent && {
-            temporaryPassword: result.temporaryPassword,
-            warning:
-              "Veuillez communiquer manuellement ce mot de passe au professeur",
-          }),
-      },
-    };
-
-    res.json(response);
+    // Retourner directement le résultat du service
+    res.json(result);
   } catch (error: any) {
-    console.error(
-      " ProfesseurController - attachUserToProfesseur error:",
-      error
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_USER_ATTACHMENT",
+      "Professeur",
+      req.params.id
     );
-
-    // Gérer les erreurs spécifiques
-    if (error.message === "PROFESSEUR_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Professeur non trouvé",
-        code: "PROFESSEUR_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
-    }
-
-    if (error.message === "USER_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Aucun utilisateur trouvé avec cet email",
-        code: "USER_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
-    }
-
-    if (error.message === "USER_ALREADY_ASSOCIATED") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Cet utilisateur est déjà associé à un autre professeur",
-        code: "USER_ALREADY_ASSOCIATED",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    if (error.message === "NO_USER_SPECIFIED") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Aucun utilisateur spécifié",
-        code: "NO_USER_SPECIFIED",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    if (error.message === "EMAIL_SEND_FAILED") {
-      // Compte créé mais email échoué
-      const response: ApiResponse = {
-        success: true, // Succès partiel
-        message: "Compte utilisateur créé mais l'envoi d'email a échoué",
-        code: "EMAIL_SEND_FAILED",
-        data: {
-          warning:
-            "Veuillez communiquer manuellement les identifiants au professeur",
-          manualCredentials: true,
-        },
-      };
-      res.json(response);
-      return;
-    }
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_USER_ATTACHMENT_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors de l'association du compte utilisateur",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
-    });
-
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
-
-    res.status(500).json(response);
   }
 };
 
@@ -874,6 +654,14 @@ export const detachUserFromProfesseur = async (
   try {
     const { id } = req.params;
 
+    if (!id) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID du professeur requis",
+        { field: "id" }
+      );
+    }
+
     const result = await professeurService.detachUserFromProfesseurService(id);
 
     await createAuditLog({
@@ -881,58 +669,125 @@ export const detachUserFromProfesseur = async (
       action: "PROFESSEUR_USER_DETACHED",
       entity: "Professeur",
       entityId: id,
-      description: `Compte utilisateur détaché du professeur ${result.professeur.firstName} ${result.professeur.lastName}`,
+      description: `Compte utilisateur détaché du professeur ${result.data?.professeur?.firstName} ${result.data?.professeur?.lastName}`,
+      status: "SUCCESS",
+    });
+
+    // Retourner directement le résultat du service
+    res.json(result);
+  } catch (error: any) {
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_USER_DETACHMENT",
+      "Professeur",
+      req.params.id
+    );
+  }
+};
+
+/**
+ * @desc Importe des professeurs en masse
+ */
+export const importProfesseurs = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const professeurs = req.body;
+
+    if (!professeurs || !Array.isArray(professeurs)) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "Données d'import requises",
+        { field: "professeurs" }
+      );
+    }
+
+    const result =
+      await professeurService.importProfesseursService(professeurs);
+
+    await createAuditLog({
+      ...auditData,
+      action: "PROFESSEURS_IMPORT",
+      entity: "Professeur",
+      description: `Import de ${result.data?.success} professeurs`,
+      status: "SUCCESS",
+      metadata: {
+        total: professeurs.length,
+        success: result.data?.success,
+        failed: result.data?.failed,
+      },
+    });
+
+    // Retourner directement le résultat du service
+    res.json(result);
+  } catch (error: any) {
+    await handleError(error, req, res, auditData, "PROFESSEURS_IMPORT");
+  }
+};
+
+/**
+ * @desc Récupère les statistiques des professeurs
+ */
+export const getProfesseurStatistics = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    // Compter les professeurs par statut
+    const [actifs, inactifs, total] = await Promise.all([
+      professeurService.getProfesseursService({ status: "Actif", limit: 1 }),
+      professeurService.getProfesseursService({ status: "Inactif", limit: 1 }),
+      professeurService.getProfesseursService({ limit: 1 }),
+    ]);
+
+    // Compter par spécialité
+    const specialities = await professeurService.getProfesseursService({
+      limit: 1000,
+    });
+
+    const specialityCounts: Record<string, number> = {};
+    specialities.data?.forEach((prof: any) => {
+      if (prof.speciality) {
+        specialityCounts[prof.speciality] =
+          (specialityCounts[prof.speciality] || 0) + 1;
+      }
+    });
+
+    // Statistiques
+    const stats = {
+      total: total.pagination?.total || 0,
+      actifs: actifs.pagination?.total || 0,
+      inactifs: inactifs.pagination?.total || 0,
+      withUserAccount:
+        specialities.data?.filter((p: any) => p.userId).length || 0,
+      specialityCounts,
+      recentAdditions: specialities.data?.slice(0, 5) || [],
+    };
+
+    await createAuditLog({
+      ...auditData,
+      action: "PROFESSEUR_STATISTICS_REQUEST",
+      entity: "Professeur",
+      description: "Statistiques des professeurs récupérées",
       status: "SUCCESS",
     });
 
     const response: ApiResponse = {
       success: true,
-      message: "Compte utilisateur détaché avec succès",
-      data: result,
+      message: "Statistiques récupérées avec succès",
+      data: stats,
     };
 
     res.json(response);
   } catch (error: any) {
-    console.error(
-      " ProfesseurController - detachUserFromProfesseur error:",
-      error
-    );
-
-    if (error.message === "PROFESSEUR_NOT_FOUND") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Professeur non trouvé",
-        code: "PROFESSEUR_NOT_FOUND",
-      };
-      res.status(404).json(response);
-      return;
-    }
-
-    if (error.message === "NO_USER_ACCOUNT") {
-      const response: ApiResponse = {
-        success: false,
-        message: "Ce professeur n'a pas de compte utilisateur associé",
-        code: "NO_USER_ACCOUNT",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    await createAuditLog({
-      ...auditData,
-      action: "PROFESSEUR_USER_DETACHMENT_ERROR",
-      entity: "Professeur",
-      description: "Erreur lors du détachement du compte utilisateur",
-      status: "ERROR",
-      errorMessage: error.message?.substring(0, 200),
-    });
-
-    const response: ApiResponse = {
-      success: false,
-      message: "Erreur interne du serveur",
-      code: "INTERNAL_ERROR",
-    };
-
-    res.status(500).json(response);
+    await handleError(error, req, res, auditData, "PROFESSEUR_STATISTICS");
   }
 };

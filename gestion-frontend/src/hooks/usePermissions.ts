@@ -1,6 +1,6 @@
 // hooks/usePermissions.ts - VERSION CORRIGÉE
 import { useAuthStore } from "@/store/authStore";
-import { roleConfigurations, rolePermissions } from "@/config/roleConfig"; // Import depuis config
+import ROLE_NAVIGATION_CONFIG, { rolePermissions } from "@/config/roleConfig";
 import { ActiveTab, UserRole, PERMISSIONS } from "@/types/navigation";
 
 export const usePermissions = () => {
@@ -32,7 +32,8 @@ export const usePermissions = () => {
     if (!user) return ["dashboard"];
 
     const userRole = user.role as UserRole;
-    const config = roleConfigurations[userRole] || roleConfigurations.Admin;
+    const config =
+      ROLE_NAVIGATION_CONFIG[userRole] || ROLE_NAVIGATION_CONFIG.Admin;
 
     const allItems = [
       ...config.mainItems,
@@ -51,7 +52,8 @@ export const usePermissions = () => {
     if (!user) return false;
 
     const userRole = user.role as UserRole;
-    const config = roleConfigurations[userRole] || roleConfigurations.Admin;
+    const config =
+      ROLE_NAVIGATION_CONFIG[userRole] || ROLE_NAVIGATION_CONFIG.Admin;
 
     const allItems = [
       ...config.mainItems,

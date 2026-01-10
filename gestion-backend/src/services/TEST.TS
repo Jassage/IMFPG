@@ -6,11 +6,603 @@
 import { PrismaClient, UserStatus } from "../../generated/prisma";
 import * as crypto from "crypto";
 import bcrypt from "bcrypt";
-import { sendEmail } from "./emailService"; // Assurez-vous que ce service existe
+import { sendEmail } from "./emailService";
 
 const prisma = new PrismaClient();
 
-// ... autres interfaces existantes ...
+export interface ProfesseurFilters {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+  speciality?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
+export interface CreateProfesseurData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  speciality?: string;
+  matricule?: string;
+  userId?: string | null;
+  createUserAccount?: boolean;
+  sendInvitation?: boolean;
+}
+
+export interface UpdateProfesseurData {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  speciality?: string;
+  matricule?: string;
+  status?: string;
+  userId?: string | null;
+}
+
+// Validation des données
+const validateEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+const validatePhone = (phone?: string): boolean => {
+  if (!phone) return true;
+  const phoneRegex = /^[\d\s\+\-\(\)]{10,15}$/;
+  return phoneRegex.test(phone);
+};
+
+const validateProfesseurData = (
+  data: CreateProfesseurData | UpdateProfesseurData
+): void => {
+  const errors: string[] = [];
+
+  if ("email" in data && data.email && !validateEmail(data.email)) {
+    errors.push("EMAIL_INVALID");
+  }
+
+  if ("phone" in data && data.phone && !validatePhone(data.phone)) {
+    errors.push("PHONE_INVALID");
+  }
+
+  if (
+    "firstName" in data &&
+    data.firstName &&
+    data.firstName.trim().length < 2
+  ) {
+    errors.push("FIRSTNAME_TOO_SHORT");
+  }
+
+  if ("lastName" in data && data.lastName && data.lastName.trim().length < 2) {
+    errors.push("LASTNAME_TOO_SHORT");
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`VALIDATION_ERROR: ${errors.join(", ")}`);
+  }
+};
+
+// Classes d'erreur spécifiques
+class ProfesseurError extends Error {
+  constructor(
+    public code: string,
+    message: string,
+    public details?: any
+  ) {
+    super(message);
+    this.name = "ProfesseurError";
+  }
+}
+
+/**
+ * @desc Récupère la liste des professeurs avec pagination et filtres
+ */
+export const getProfesseursService = async (filters: ProfesseurFilters) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      status,
+      speciality,
+      sortBy = "lastName",
+      sortOrder = "asc"} = filters;
+
+    const pageNum = parseInt(page as any);
+    const limitNum = parseInt(limit as any);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Validation des paramètres
+    if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+      throw new ProfesseurError(
+        "INVALID_PARAMETERS",
+        "Paramètres de pagination invalides"
+      );
+    }
+
+    // Filtres
+    const where: any = {};
+
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search} },
+        { lastName: { contains: search} },
+        { email: { contains: search} },
+      ];
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (speciality) {
+      where.speciality = {
+        contains: speciality};
+    }
+
+    // Récupération avec pagination
+    const [professeurs, total] = await Promise.all([
+      prisma.professeur.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              status: true}},
+          assignments: {
+            include: {
+              subject: true,
+              academicYear: true}},
+          _count: {
+            select: {
+              assignments: true,
+              schedules: true}}},
+        orderBy: {
+          [sortBy]: sortOrder === "desc" ? "desc" : "asc"},
+        skip,
+        take: limitNum}),
+      prisma.professeur.count({ where }),
+    ]);
+
+    return {
+      professeurs,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)}};
+  } catch (error) {
+    console.error("Erreur dans getProfesseursService:", error);
+    throw error;
+  }
+};
+
+/**
+ * @desc Récupère un professeur par ID
+ */
+export const getProfesseurByIdService = async (id: string) => {
+  try {
+    if (!id) {
+      throw new ProfesseurError("MISSING_ID", "ID du professeur requis");
+    }
+
+    const professeur = await prisma.professeur.findUnique({
+      where: { id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+            lastLogin: true,
+            createdAt: true}},
+        assignments: {
+          include: {
+            subject: true,
+            academicYear: true,
+            schedules: {
+              include: {
+                schoolClass: true}}}},
+        schedules: {
+          include: {
+            classAssignment: {
+              include: {
+                subject: true}},
+            schoolClass: true}}}});
+
+    if (!professeur) {
+      throw new ProfesseurError(
+        "PROFESSEUR_NOT_FOUND",
+        "Professeur non trouvé",
+        { id }
+      );
+    }
+
+    return professeur;
+  } catch (error) {
+    console.error("Erreur dans getProfesseurByIdService:", error);
+    throw error;
+  }
+};
+
+/**
+ * @desc Met à jour un professeur
+ */
+export const updateProfesseurService = async (
+  id: string,
+  data: UpdateProfesseurData
+) => {
+  try {
+    // Validation des données
+    validateProfesseurData(data);
+
+    return await prisma.$transaction(async (tx) => {
+      // Vérifier si le professeur existe
+      const existingProfesseur = await tx.professeur.findUnique({
+        where: { id }});
+
+      if (!existingProfesseur) {
+        throw new ProfesseurError(
+          "PROFESSEUR_NOT_FOUND",
+          "Professeur non trouvé",
+          { id }
+        );
+      }
+
+      // Vérifier si le nouvel email existe déjà
+      if (data.email && data.email !== existingProfesseur.email) {
+        const professeurWithEmail = await tx.professeur.findUnique({
+          where: { email: data.email }});
+
+        if (professeurWithEmail) {
+          throw new ProfesseurError(
+            "PROFESSEUR_EMAIL_EXISTS",
+            "Un professeur avec cet email existe déjà",
+            { email: data.email }
+          );
+        }
+      }
+
+      // Préparer les données de mise à jour
+      const updateData: any = { ...data };
+
+      // Gérer le userId (peut être null pour détacher)
+      if (data.userId !== undefined) {
+        if (data.userId === null || data.userId === "") {
+          // Détacher l'utilisateur
+          updateData.userId = null;
+        } else {
+          // Vérifier si l'utilisateur existe
+          const user = await tx.user.findUnique({
+            where: { id: data.userId }});
+
+          if (!user) {
+            throw new ProfesseurError(
+              "USER_NOT_FOUND",
+              "Utilisateur non trouvé",
+              { userId: data.userId }
+            );
+          }
+
+          // Vérifier si cet utilisateur est déjà associé à un autre professeur
+          if (data.userId !== existingProfesseur.userId) {
+            const existingProfesseurWithUser = await tx.professeur.findUnique({
+              where: { userId: data.userId }});
+
+            if (existingProfesseurWithUser) {
+              throw new ProfesseurError(
+                "USER_ALREADY_ASSOCIATED",
+                "Cet utilisateur est déjà associé à un autre professeur",
+                { userId: data.userId }
+              );
+            }
+          }
+
+          updateData.userId = data.userId;
+        }
+      }
+
+      // Mettre à jour le professeur
+      const professeur = await tx.professeur.update({
+        where: { id },
+        data: updateData,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true}}}});
+
+      // Mettre à jour l'email de l'utilisateur associé si nécessaire
+      if (data.email && professeur.userId) {
+        await tx.user.update({
+          where: { id: professeur.userId },
+          data: { email: data.email.toLowerCase().trim() }});
+      }
+
+      return professeur;
+    });
+  } catch (error) {
+    console.error("Erreur dans updateProfesseurService:", error);
+    throw error;
+  }
+};
+
+/**
+ * @desc Supprime/désactive un professeur
+ */
+export const deleteProfesseurService = async (id: string) => {
+  try {
+    if (!id) {
+      throw new ProfesseurError("MISSING_ID", "ID du professeur requis");
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      // Vérifier si le professeur existe
+      const professeur = await tx.professeur.findUnique({
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              assignments: true,
+              schedules: true}}}});
+
+      if (!professeur) {
+        throw new ProfesseurError(
+          "PROFESSEUR_NOT_FOUND",
+          "Professeur non trouvé",
+          { id }
+        );
+      }
+
+      // Vérifier les dépendances
+      if (professeur._count.assignments > 0) {
+        throw new ProfesseurError(
+          "PROFESSEUR_HAS_DEPENDENCIES",
+          "Impossible de supprimer un professeur avec des assignations actives",
+          {
+            assignmentsCount: professeur._count.assignments}
+        );
+      }
+
+      // Désactiver plutôt que supprimer
+      await tx.professeur.update({
+        where: { id },
+        data: { status: "Inactif" }});
+
+      // Si le professeur a un compte utilisateur, le désactiver aussi
+      if (professeur.userId) {
+        await tx.user.update({
+          where: { id: professeur.userId },
+          data: { status: UserStatus.Inactif }});
+      }
+
+      return {
+        message: "Professeur désactivé avec succès",
+        assignmentsCount: professeur._count.assignments};
+    });
+  } catch (error) {
+    console.error("Erreur dans deleteProfesseurService:", error);
+    throw error;
+  }
+};
+
+/**
+ * @desc Active un professeur
+ */
+export const activateProfesseurService = async (id: string) => {
+  try {
+    if (!id) {
+      throw new ProfesseurError("MISSING_ID", "ID du professeur requis");
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      // Vérifier si le professeur existe
+      const professeur = await tx.professeur.findUnique({
+        where: { id }});
+
+      if (!professeur) {
+        throw new ProfesseurError(
+          "PROFESSEUR_NOT_FOUND",
+          "Professeur non trouvé",
+          { id }
+        );
+      }
+
+      // Activer le professeur
+      const updatedProfesseur = await tx.professeur.update({
+        where: { id },
+        data: { status: "Actif" }});
+
+      // Activer l'utilisateur associé si existe
+      if (professeur.userId) {
+        await tx.user.update({
+          where: { id: professeur.userId },
+          data: { status: UserStatus.Actif }});
+      }
+
+      return updatedProfesseur;
+    });
+  } catch (error) {
+    console.error("Erreur dans activateProfesseurService:", error);
+    throw error;
+  }
+};
+
+/**
+ * @desc Désactive un professeur
+ */
+export const deactivateProfesseurService = async (id: string) => {
+  try {
+    if (!id) {
+      throw new ProfesseurError("MISSING_ID", "ID du professeur requis");
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      // Vérifier si le professeur existe
+      const professeur = await tx.professeur.findUnique({
+        where: { id }});
+
+      if (!professeur) {
+        throw new ProfesseurError(
+          "PROFESSEUR_NOT_FOUND",
+          "Professeur non trouvé",
+          { id }
+        );
+      }
+
+      // Désactiver le professeur
+      const updatedProfesseur = await tx.professeur.update({
+        where: { id },
+        data: { status: "Inactif" }});
+
+      // Désactiver l'utilisateur associé si existe
+      if (professeur.userId) {
+        await tx.user.update({
+          where: { id: professeur.userId },
+          data: { status: UserStatus.Inactif }});
+      }
+
+      return updatedProfesseur;
+    });
+  } catch (error) {
+    console.error("Erreur dans deactivateProfesseurService:", error);
+    throw error;
+  }
+};
+
+/**
+ * @desc Récupère les détails complets d'un professeur
+ */
+export const getProfesseurFullDetailsService = async (id: string) => {
+  try {
+    if (!id) {
+      throw new ProfesseurError("MISSING_ID", "ID du professeur requis");
+    }
+
+    const professeur = await prisma.professeur.findUnique({
+      where: { id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+            lastLogin: true,
+            createdAt: true,
+            updatedAt: true}},
+        assignments: {
+          include: {
+            subject: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                description: true}},
+            academicYear: {
+              select: {
+                id: true,
+                year: true}},
+            schedules: {
+              include: {
+                schoolClass: {
+                  select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                    capacity: true}}},
+              orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]}}},
+        schedules: {
+          include: {
+            classAssignment: {
+              include: {
+                subject: true,
+                academicYear: true}},
+            schoolClass: true},
+          orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]},
+        _count: {
+          select: {
+            assignments: true,
+            schedules: true}}}});
+
+    if (!professeur) {
+      throw new ProfesseurError(
+        "PROFESSEUR_NOT_FOUND",
+        "Professeur non trouvé",
+        { id }
+      );
+    }
+
+    // Organiser l'emploi du temps par jour avec validation
+    const scheduleByDay: Record<number, any[]> = {
+      1: [], // Lundi
+      2: [], // Mardi
+      3: [], // Mercredi
+      4: [], // Jeudi
+      5: [], // Vendredi
+      6: [], // Samedi
+      7: [], // Dimanche
+    };
+
+    professeur.schedules.forEach((schedule: any) => {
+      const day = Number(schedule.dayOfWeek);
+      if (!Number.isInteger(day) || day < 1 || day > 7) {
+        console.warn(
+          `Jour de semaine invalide pour le schedule ${schedule.id}: ${day}`
+        );
+        return;
+      }
+      scheduleByDay[day].push(schedule);
+    });
+
+    // Calculer les statistiques
+    const assignments = professeur.assignments || [];
+    const schedules = professeur.schedules || [];
+
+    const totalClasses = new Set(
+      assignments.flatMap((a: any) =>
+        (a.schedules || []).map((s: any) => s.schoolClassId)
+      )
+    ).size;
+
+    const totalSubjects = new Set(assignments.map((a: any) => a.subjectId))
+      .size;
+
+    const weeklyHours = schedules.reduce((total: number, schedule: any) => {
+      try {
+        const start = new Date(`1970-01-01T${schedule.startTime}`);
+        const end = new Date(`1970-01-01T${schedule.endTime}`);
+        const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        return total + (isNaN(hours) ? 0 : hours);
+      } catch (error) {
+        console.warn(
+          `Format d'heure invalide pour le schedule ${schedule.id}: ${schedule.startTime}-${schedule.endTime}`
+        );
+        return total;
+      }
+    }, 0);
+
+    const stats = {
+      totalClasses,
+      totalSubjects,
+      weeklyHours: Math.round(weeklyHours * 100) / 100};
+
+    return {
+      professeur,
+      scheduleByDay,
+      stats};
+  } catch (error) {
+    console.error("Erreur dans getProfesseurFullDetailsService:", error);
+    throw error;
+  }
+};
 
 /**
  * @desc Génère et envoie les identifiants de connexion par email
@@ -21,8 +613,20 @@ export const sendLoginCredentialsEmail = async (
   password: string
 ) => {
   try {
-    const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:4000"}/auth/login`;
-    const resetPasswordUrl = `${process.env.FRONTEND_URL || "http://localhost:4000"}/auth/reset-password`;
+    if (!email || !firstName || !password) {
+      throw new ProfesseurError(
+        "MISSING_DATA",
+        "Données manquantes pour l'envoi d'email"
+      );
+    }
+
+    if (!validateEmail(email)) {
+      throw new ProfesseurError("INVALID_EMAIL", "Format d'email invalide", {
+        email});
+    }
+
+    const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login`;
+    const resetPasswordUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/reset-password`;
 
     const html = `
       <!DOCTYPE html>
@@ -86,8 +690,7 @@ export const sendLoginCredentialsEmail = async (
     await sendEmail({
       to: email,
       subject: `[${process.env.APP_NAME || "Plateforme"}] Vos identifiants de connexion`,
-      html,
-    });
+      html});
 
     console.log(`✅ Identifiants envoyés à ${email}`);
     return true;
@@ -96,69 +699,11 @@ export const sendLoginCredentialsEmail = async (
       `❌ Erreur lors de l'envoi des identifiants à ${email}:`,
       error
     );
-    throw new Error("EMAIL_SEND_FAILED");
-  }
-};
-
-/**
- * @desc Crée un utilisateur pour un professeur avec envoi d'email
- */
-export const createProfesseurUserAccountService = async (
-  email: string,
-  firstName: string,
-  lastName: string,
-  sendCredentialsEmail: boolean = true
-) => {
-  try {
-    // Vérifier si l'utilisateur existe déjà
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (existingUser) {
-      return { userId: existingUser.id, password: null };
-    }
-
-    // Générer un mot de passe temporaire
-    const temporaryPassword = generateTemporaryPassword();
-
-    // Hasher le mot de passe
-    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
-
-    // Créer un nouvel utilisateur
-    const user = await prisma.user.create({
-      data: {
-        email,
-        firstName,
-        lastName,
-        role: "Professeur",
-        status: UserStatus.Actif,
-        password: hashedPassword,
-        mustChangePassword: true, // Ajouter ce champ pour forcer le changement
-      },
-    });
-
-    console.log(`✅ Compte professeur créé pour ${email}`);
-
-    // Envoyer les identifiants par email si demandé
-    if (sendCredentialsEmail) {
-      try {
-        await sendLoginCredentialsEmail(email, firstName, temporaryPassword);
-        console.log(`📧 Email avec identifiants envoyé à ${email}`);
-      } catch (emailError) {
-        console.error(`⚠️ Échec envoi email à ${email}, mais compte créé`);
-        // On continue même si l'email échoue
-      }
-    }
-
-    return {
-      userId: user.id,
-      password: temporaryPassword,
-      emailSent: sendCredentialsEmail,
-    };
-  } catch (error) {
-    console.error("❌ Erreur création compte utilisateur:", error);
-    throw error;
+    throw new ProfesseurError(
+      "EMAIL_SEND_FAILED",
+      "Échec de l'envoi de l'email",
+      { email }
+    );
   }
 };
 
@@ -189,148 +734,281 @@ const generateTemporaryPassword = (): string => {
 };
 
 /**
- * @desc Crée un nouveau professeur avec envoi d'identifiants par email
+ * @desc Crée un nouvel utilisateur pour un professeur
  */
-export const createProfesseurService = async (data: CreateProfesseurData) => {
-  const {
-    firstName,
-    lastName,
-    email,
-    phone,
-    speciality,
-    matricule,
-    userId,
-    createUserAccount = false,
-    sendInvitation = true, // Par défaut, on envoie l'invitation
-  } = data;
+const createUserForProfesseur = async (
+  email: string,
+  firstName: string,
+  lastName: string,
+  sendCredentialsEmail: boolean = true
+) => {
+  try {
+    // Validation
+    if (!email || !firstName || !lastName) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "Champs requis manquants pour la création d'utilisateur"
+      );
+    }
 
-  // Vérifier si l'email existe déjà
-  const existingProfesseur = await prisma.professeur.findUnique({
-    where: { email },
-  });
+    if (!validateEmail(email)) {
+      throw new ProfesseurError("INVALID_EMAIL", "Format d'email invalide", {
+        email});
+    }
 
-  if (existingProfesseur) {
-    throw new Error("PROFESSEUR_EMAIL_EXISTS");
-  }
-
-  let finalUserId = userId || null;
-  let userAccountCreated = false;
-  let temporaryPassword: string | null = null;
-  let emailSent = false;
-
-  // Si createUserAccount est true et qu'aucun userId n'est fourni, créer un utilisateur
-  if (createUserAccount && !finalUserId) {
-    // Vérifier si un utilisateur avec cet email existe déjà
+    // Vérifier si l'utilisateur existe déjà
     const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
+      where: { email }});
 
     if (existingUser) {
-      // Associer l'utilisateur existant
-      finalUserId = existingUser.id;
+      return {
+        userId: existingUser.id,
+        password: null,
+        userExists: true};
+    }
 
-      // Vérifier si cet utilisateur a déjà un profil professeur
-      const existingProfesseurWithUser = await prisma.professeur.findUnique({
-        where: { userId: existingUser.id },
-      });
+    // Générer un mot de passe temporaire
+    const temporaryPassword = generateTemporaryPassword();
 
-      if (existingProfesseurWithUser) {
-        throw new Error("USER_ALREADY_PROFESSEUR");
+    // Hasher le mot de passe
+    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+
+    // Créer un nouvel utilisateur
+    const user = await prisma.user.create({
+      data: {
+        email: email.toLowerCase().trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        role: "Professeur",
+        status: UserStatus.Actif,
+        password: hashedPassword,
+        isInitialPassword: true}});
+
+    console.log(`✅ Compte professeur créé pour ${email}`);
+
+    // Envoyer les identifiants par email si demandé
+    let emailSent = false;
+    if (sendCredentialsEmail) {
+      try {
+        await sendLoginCredentialsEmail(email, firstName, temporaryPassword);
+        emailSent = true;
+        console.log(`📧 Email avec identifiants envoyé à ${email}`);
+      } catch (emailError) {
+        console.error(`⚠️ Échec envoi email à ${email}, mais compte créé`);
+        // On continue même si l'email échoue
       }
-    } else {
-      // Créer un nouvel utilisateur
-      const result = await createProfesseurUserAccountService(
-        email,
-        firstName,
-        lastName,
-        sendInvitation
-      );
-      finalUserId = result.userId;
-      temporaryPassword = result.password;
-      userAccountCreated = true;
-      emailSent = result.emailSent || false;
-    }
-  }
-
-  // Si un userId est fourni, vérifier qu'il existe
-  if (finalUserId) {
-    const user = await prisma.user.findUnique({
-      where: { id: finalUserId },
-    });
-
-    if (!user) {
-      throw new Error("USER_NOT_FOUND");
     }
 
-    // Vérifier si l'utilisateur a déjà un profil professeur
-    const existingProfesseurWithUser = await prisma.professeur.findUnique({
-      where: { userId: finalUserId },
-    });
-
-    if (existingProfesseurWithUser) {
-      throw new Error("USER_ALREADY_PROFESSEUR");
-    }
+    return {
+      userId: user.id,
+      password: temporaryPassword,
+      emailSent,
+      userExists: false};
+  } catch (error) {
+    console.error("❌ Erreur création compte utilisateur:", error);
+    throw error;
   }
-
-  // Créer le professeur
-  const createData: any = {
-    firstName,
-    lastName,
-    email,
-    phone,
-    speciality,
-    status: UserStatus.Actif,
-    userId: finalUserId,
-  };
-
-  // Ajouter matricule uniquement s'il est défini
-  if (matricule !== undefined) {
-    createData.matricule = matricule;
-  }
-
-  const professeur = await prisma.professeur.create({
-    data: createData,
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          status: true,
-          mustChangePassword: true,
-        },
-      },
-    },
-  });
-
-  // Préparer la réponse
-  const responseData: any = {
-    success: true,
-    professeur,
-    userAccountCreated,
-    emailSent,
-    message: "Professeur créé avec succès",
-  };
-
-  // Ajouter des informations supplémentaires si un compte a été créé
-  if (userAccountCreated) {
-    responseData.temporaryPassword = temporaryPassword;
-
-    if (emailSent) {
-      responseData.message += " - Les identifiants ont été envoyés par email";
-    } else {
-      responseData.message +=
-        " - IMPORTANT : Les identifiants n'ont pas pu être envoyés par email";
-      responseData.warning =
-        "Veuillez communiquer manuellement le mot de passe au professeur";
-    }
-  }
-
-  return responseData;
 };
 
 /**
- * @desc Associe un compte utilisateur à un professeur existant avec envoi d'email
+ * @desc Crée un nouveau professeur avec envoi d'identifiants par email
+ * RETOURNE: { professeur, userAccountCreated, emailSent, temporaryPassword? }
+ */
+export const createProfesseurService = async (data: CreateProfesseurData) => {
+  try {
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      speciality,
+      matricule,
+      userId,
+      createUserAccount = false,
+      sendInvitation = true} = data;
+
+    console.log("🚀 Création professeur:", {
+      firstName,
+      lastName,
+      email,
+      createUserAccount,
+      sendInvitation});
+
+    // Validation des données
+    validateProfesseurData(data);
+
+    if (!email || !firstName || !lastName) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "Prénom, nom et email sont requis"
+      );
+    }
+
+    return await prisma.$transaction(
+      async (tx) => {
+        // Vérifier si l'email existe déjà (dans la transaction)
+        const existingProfesseur = await tx.professeur.findUnique({
+          where: { email: email.toLowerCase().trim() }});
+
+        if (existingProfesseur) {
+          throw new ProfesseurError(
+            "PROFESSEUR_EMAIL_EXISTS",
+            "Un professeur avec cet email existe déjà",
+            { email }
+          );
+        }
+
+        let finalUserId = userId || null;
+        let userAccountCreated = false;
+        let emailSent = false;
+        let temporaryPassword: string | null = null;
+
+        // Création du compte utilisateur dans la transaction
+        if (createUserAccount && !finalUserId) {
+          try {
+            // Vérifier si l'utilisateur existe déjà (même transaction)
+            const existingUser = await tx.user.findUnique({
+              where: { email: email.toLowerCase().trim() }});
+
+            if (existingUser) {
+              finalUserId = existingUser.id;
+              userAccountCreated = false;
+
+              // Vérifier si cet utilisateur est déjà associé à un professeur
+              const existingProfesseurWithUser = await tx.professeur.findUnique(
+                {
+                  where: { userId: existingUser.id }}
+              );
+
+              if (existingProfesseurWithUser) {
+                throw new ProfesseurError(
+                  "USER_ALREADY_PROFESSEUR",
+                  "Cet utilisateur est déjà associé à un professeur"
+                );
+              }
+            } else {
+              // Générer un mot de passe temporaire
+              temporaryPassword = generateTemporaryPassword();
+              const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+
+              // Créer l'utilisateur
+              const user = await tx.user.create({
+                data: {
+                  email: email.toLowerCase().trim(),
+                  firstName: firstName.trim(),
+                  lastName: lastName.trim(),
+                  role: "Professeur",
+                  status: UserStatus.Actif,
+                  password: hashedPassword,
+                  isInitialPassword: true}});
+
+              finalUserId = user.id;
+              userAccountCreated = true;
+
+              // Envoyer les identifiants par email si demandé
+              if (sendInvitation) {
+                try {
+                  await sendLoginCredentialsEmail(
+                    email,
+                    firstName,
+                    temporaryPassword
+                  );
+                  emailSent = true;
+                  console.log(`📧 Email avec identifiants envoyé à ${email}`);
+                } catch (emailError) {
+                  console.error(
+                    `⚠️ Échec envoi email à ${email}, mais compte créé`
+                  );
+                  // On continue même si l'email échoue
+                }
+              }
+            }
+
+            console.log("✅ Compte utilisateur traité:", {
+              userId: finalUserId,
+              created: userAccountCreated,
+              emailSent});
+          } catch (userError: any) {
+            console.error("❌ Erreur création utilisateur:", userError);
+            // Annuler toute la transaction en cas d'erreur
+            throw userError;
+          }
+        }
+
+        // Si un userId est fourni, vérifier qu'il existe
+        if (finalUserId && !userAccountCreated) {
+          const user = await tx.user.findUnique({
+            where: { id: finalUserId }});
+
+          if (!user) {
+            throw new ProfesseurError(
+              "USER_NOT_FOUND",
+              "Utilisateur non trouvé"
+            );
+          }
+
+          // Vérifier si l'utilisateur a déjà un professeur
+          const existingProfesseurWithUser = await tx.professeur.findUnique({
+            where: { userId: finalUserId }});
+
+          if (existingProfesseurWithUser) {
+            throw new ProfesseurError(
+              "USER_ALREADY_PROFESSEUR",
+              "Cet utilisateur est déjà associé à un professeur"
+            );
+          }
+        }
+
+        // Créer le professeur
+        const createData: any = {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.toLowerCase().trim(),
+          status: "Actif"};
+
+        // Ajouter les champs optionnels
+        if (phone && phone.trim()) createData.phone = phone.trim();
+        if (speciality && speciality.trim())
+          createData.speciality = speciality.trim();
+        if (matricule && matricule.trim())
+          createData.matricule = matricule.trim();
+        if (finalUserId) createData.userId = finalUserId;
+
+        const professeur = await tx.professeur.create({
+          data: createData,
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                role: true,
+                status: true,
+                isInitialPassword: true}},
+            _count: {
+              select: {
+                assignments: true,
+                schedules: true}}}});
+
+        console.log("✅ Professeur créé:", professeur.id);
+
+        return {
+          professeur,
+          userAccountCreated,
+          emailSent,
+          ...(temporaryPassword && { temporaryPassword })};
+      },
+      {
+        timeout: 10000, // Timeout de 10 secondes pour la transaction
+      }
+    );
+  } catch (error) {
+    console.error("❌ Erreur dans createProfesseurService:", error);
+    throw error;
+  }
+};
+
+/**
+ * @desc Associe un compte utilisateur à un professeur existant
  */
 export const attachUserToProfesseurService = async (
   professeurId: string,
@@ -341,105 +1019,181 @@ export const attachUserToProfesseurService = async (
     sendCredentialsEmail?: boolean;
   }
 ) => {
-  const {
-    userId,
-    email,
-    createIfNotExists = false,
-    sendCredentialsEmail = true,
-  } = options;
+  try {
+    const {
+      userId,
+      email,
+      createIfNotExists = false,
+      sendCredentialsEmail = true} = options;
 
-  // Vérifier si le professeur existe
-  const professeur = await prisma.professeur.findUnique({
-    where: { id: professeurId },
-  });
-
-  if (!professeur) {
-    throw new Error("PROFESSEUR_NOT_FOUND");
-  }
-
-  let finalUserId = userId;
-  let userCreated = false;
-  let temporaryPassword: string | null = null;
-  let emailSent = false;
-
-  // Si email fourni sans userId
-  if (email && !userId) {
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (existingUser) {
-      finalUserId = existingUser.id;
-    } else if (createIfNotExists) {
-      // Créer un nouvel utilisateur
-      const result = await createProfesseurUserAccountService(
-        email,
-        professeur.firstName,
-        professeur.lastName,
-        sendCredentialsEmail
-      );
-      finalUserId = result.userId;
-      temporaryPassword = result.password;
-      userCreated = true;
-      emailSent = result.emailSent || false;
-    } else {
-      throw new Error("USER_NOT_FOUND");
-    }
-  }
-
-  // Vérifier si l'utilisateur existe
-  if (finalUserId) {
-    const user = await prisma.user.findUnique({
-      where: { id: finalUserId },
-    });
-
-    if (!user) {
-      throw new Error("USER_NOT_FOUND");
+    if (!professeurId) {
+      throw new ProfesseurError("MISSING_ID", "ID du professeur requis");
     }
 
-    // Vérifier si cet utilisateur est déjà associé à un autre professeur
-    const existingProfesseurWithUser = await prisma.professeur.findUnique({
-      where: { userId: finalUserId },
+    return await prisma.$transaction(async (tx) => {
+      // Vérifier si le professeur existe
+      const professeur = await tx.professeur.findUnique({
+        where: { id: professeurId }});
+
+      if (!professeur) {
+        throw new ProfesseurError(
+          "PROFESSEUR_NOT_FOUND",
+          "Professeur non trouvé",
+          { professeurId }
+        );
+      }
+
+      let finalUserId = userId;
+      let userCreated = false;
+      let temporaryPassword: string | null = null;
+      let emailSent = false;
+
+      // Si email fourni sans userId
+      if (email && !userId) {
+        if (!validateEmail(email)) {
+          throw new ProfesseurError(
+            "INVALID_EMAIL",
+            "Format d'email invalide",
+            { email }
+          );
+        }
+
+        const existingUser = await tx.user.findUnique({
+          where: { email: email.toLowerCase().trim() }});
+
+        if (existingUser) {
+          finalUserId = existingUser.id;
+        } else if (createIfNotExists) {
+          // Générer un mot de passe temporaire
+          temporaryPassword = generateTemporaryPassword();
+          const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+
+          // Créer un nouvel utilisateur
+          const user = await tx.user.create({
+            data: {
+              email: email.toLowerCase().trim(),
+              firstName: professeur.firstName,
+              lastName: professeur.lastName,
+              role: "Professeur",
+              status: UserStatus.Actif,
+              password: hashedPassword,
+              isInitialPassword: true}});
+
+          finalUserId = user.id;
+          userCreated = true;
+
+          // Envoyer les identifiants
+          if (sendCredentialsEmail) {
+            try {
+              await sendLoginCredentialsEmail(
+                email,
+                professeur.firstName,
+                temporaryPassword
+              );
+              emailSent = true;
+            } catch (emailError) {
+              console.error("⚠️ Échec envoi email, mais compte créé");
+            }
+          }
+        } else {
+          throw new ProfesseurError(
+            "USER_NOT_FOUND",
+            "Utilisateur non trouvé",
+            { email }
+          );
+        }
+      }
+
+      // Vérifier si l'utilisateur existe
+      if (finalUserId) {
+        const user = await tx.user.findUnique({
+          where: { id: finalUserId }});
+
+        if (!user) {
+          throw new ProfesseurError("USER_NOT_FOUND", "Utilisateur non trouvé");
+        }
+
+        // Vérifier si cet utilisateur est déjà associé à un autre professeur
+        const existingProfesseurWithUser = await tx.professeur.findUnique({
+          where: { userId: finalUserId }});
+
+        if (
+          existingProfesseurWithUser &&
+          existingProfesseurWithUser.id !== professeurId
+        ) {
+          throw new ProfesseurError(
+            "USER_ALREADY_ASSOCIATED",
+            "Cet utilisateur est déjà associé à un autre professeur"
+          );
+        }
+
+        // Mettre à jour le professeur
+        const updatedProfesseur = await tx.professeur.update({
+          where: { id: professeurId },
+          data: { userId: finalUserId },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                role: true,
+                status: true}}}});
+
+        return {
+          professeur: updatedProfesseur,
+          userAccountCreated: userCreated,
+          emailSent,
+          temporaryPassword};
+      } else {
+        throw new ProfesseurError(
+          "NO_USER_SPECIFIED",
+          "Aucun utilisateur spécifié"
+        );
+      }
     });
-
-    if (
-      existingProfesseurWithUser &&
-      existingProfesseurWithUser.id !== professeurId
-    ) {
-      throw new Error("USER_ALREADY_ASSOCIATED");
-    }
-
-    // Mettre à jour le professeur
-    const updatedProfesseur = await prisma.professeur.update({
-      where: { id: professeurId },
-      data: { userId: finalUserId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            status: true,
-          },
-        },
-      },
-    });
-
-    return {
-      success: true,
-      professeur: updatedProfesseur,
-      userAccountCreated: userCreated,
-      emailSent,
-      temporaryPassword,
-      message: userCreated
-        ? emailSent
-          ? "Compte utilisateur créé et identifiants envoyés par email"
-          : "Compte utilisateur créé (échec envoi email)"
-        : "Compte utilisateur associé avec succès",
-    };
-  } else {
-    throw new Error("NO_USER_SPECIFIED");
+  } catch (error) {
+    console.error("Erreur dans attachUserToProfesseurService:", error);
+    throw error;
   }
 };
 
-// ... le reste du code reste inchangé ...
+/**
+ * @desc Détache un compte utilisateur d'un professeur
+ */
+export const detachUserFromProfesseurService = async (id: string) => {
+  try {
+    if (!id) {
+      throw new ProfesseurError("MISSING_ID", "ID du professeur requis");
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      const professeur = await tx.professeur.findUnique({
+        where: { id }});
+
+      if (!professeur) {
+        throw new ProfesseurError(
+          "PROFESSEUR_NOT_FOUND",
+          "Professeur non trouvé",
+          { id }
+        );
+      }
+
+      if (!professeur.userId) {
+        throw new ProfesseurError(
+          "NO_USER_ACCOUNT",
+          "Ce professeur n'a pas de compte utilisateur associé"
+        );
+      }
+
+      // Détacher l'utilisateur
+      const updatedProfesseur = await tx.professeur.update({
+        where: { id },
+        data: { userId: null }});
+
+      return { professeur: updatedProfesseur };
+    });
+  } catch (error) {
+    console.error("Erreur dans detachUserFromProfesseurService:", error);
+    throw error;
+  }
+};

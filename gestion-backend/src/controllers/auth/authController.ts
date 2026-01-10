@@ -25,6 +25,7 @@ import {
   AuthActionTypes,
   AuthControllerResponse,
 } from "./authTypes";
+import prisma from "../../prisma";
 
 /**
  * @controller login
@@ -33,7 +34,14 @@ import {
  * @access Public
  */
 export const login = async (req: Request, res: Response): Promise<void> => {
-  const auditData = createSafeAuditData(extractAuditData(req));
+  // NE PAS appeler extractAuditData ici, créer des données d'audit manuelles
+  const auditData = {
+    userId: null,
+    userRole: null,
+    userEmail: req.body?.email || "unknown",
+    ipAddress: req.ip || "127.0.0.1",
+    userAgent: req.headers["user-agent"] || "unknown",
+  };
 
   try {
     const { email, password } = req.body;
@@ -90,9 +98,16 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       authResult.user.id
     );
 
+    // Mettre à jour les données d'audit avec l'ID utilisateur
+    const updatedAuditData = {
+      ...auditData,
+      userId: authResult.user.id,
+      userRole: authResult.user.role,
+    };
+
     // Log de connexion réussie
     await createAuditLog({
-      ...auditData,
+      ...updatedAuditData,
       action: AuthActionTypes.LOGIN_SUCCESS,
       entity: "User",
       entityId: authResult.user.id,
@@ -118,7 +133,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     res.json(response);
   } catch (error: any) {
-    console.error(" AuthController - login error:", error);
+    console.error("❌ AuthController - login error:", error);
 
     // Utiliser un message d'erreur court pour l'audit log
     const shortErrorMessage = error.message
@@ -241,6 +256,115 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     };
 
     res.status(500).json(response);
+  }
+};
+
+export const verifyPasswordForUnlock = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+
+    // Validation simple
+    if (!email || !password) {
+      res.status(400).json({
+        success: false,
+        message: "Email et mot de passe requis",
+      });
+      return;
+    }
+
+    // Vérifier le mot de passe
+    const isValid = await AuthService.verifyPassword(email, password);
+
+    if (!isValid) {
+      res.status(401).json({
+        success: false,
+        message: "Mot de passe incorrect",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Mot de passe vérifié",
+    });
+  } catch (error) {
+    console.error("Password verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Erreur serveur",
+    });
+  }
+};
+
+/**
+ * Vérification de mot de passe pour l'utilisateur courant (avec token)
+ */
+export const verifyCurrentPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    // Récupérer l'ID utilisateur du token (middleware d'authentification)
+    const userId = (req as any).user?.id;
+    const { currentPassword } = req.body;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Non authentifié",
+      });
+      return;
+    }
+
+    if (!currentPassword) {
+      res.status(400).json({
+        success: false,
+        message: "Mot de passe actuel requis",
+      });
+      return;
+    }
+
+    // Récupérer l'utilisateur
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, password: true },
+    });
+
+    if (!user || !user.password) {
+      res.status(404).json({
+        success: false,
+        message: "Utilisateur non trouvé",
+      });
+      return;
+    }
+
+    // Vérifier le mot de passe
+    const isValid = await AuthService.verifyPassword(
+      user.email,
+      currentPassword
+    );
+
+    if (!isValid) {
+      res.status(401).json({
+        success: false,
+        message: "Mot de passe incorrect",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Mot de passe vérifié",
+    });
+  } catch (error) {
+    console.error("Current password verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Erreur serveur",
+    });
   }
 };
 

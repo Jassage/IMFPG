@@ -7,6 +7,7 @@ import ParentDashboard from "./dashboards/ParentDashboard";
 import StudentDashboard from "./dashboards/StudentDashboard";
 import ProfessorDashboard from "./dashboards/ProfessorDashboard";
 import DirectorDashboard from "./dashboards/DirectorDashboard";
+import AccountantDashboard from "./dashboards/AccountantDashboard";
 
 interface RoleBasedDashboardProps {
   role: UserRole;
@@ -20,8 +21,8 @@ export const RoleBasedDashboard: React.FC<RoleBasedDashboardProps> = ({
       return <AdminDashboard />;
     case "Secretaire":
       return <SecretaryDashboard />;
-    case "Parent":
-      return <ParentDashboard />;
+    case "Comptable":
+      return <AccountantDashboard />;
     case "Student":
       return <StudentDashboard />;
     case "Professeur":

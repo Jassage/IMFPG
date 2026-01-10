@@ -53,7 +53,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { SettingsPage } from "./SettingsPage";
 import { UsersManager } from "../components/UsersManager";
-import { AnalyticsDashboard } from "../components/AnalyticsDashboard";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuthStore } from "@/store/authStore";
 import { FeeStructureManager } from "@/components/FeeStructureManager";
@@ -84,12 +83,15 @@ import BulletinPage from "./BulletinPage";
 import ProfessorGradeManager from "@/components/ProfessorGradesManager";
 import AnnouncementManager from "@/components/AnnouncementManager";
 import TranscriptsPage from "./transcriptPages";
+import { AutoLockNotification } from "@/components/AutoLockNotification";
+import { useAutoLock } from "@/hooks/useAutoLock";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 // Types pour les rôles
 type UserRole =
   | "Admin"
   | "Secretaire"
-  | "Parent"
+  | "Comptable"
   | "Student"
   | "Professeur"
   | "Directeur";
@@ -186,7 +188,7 @@ const MobileSidebar = ({
                     />
                   </div>
                   <div className="flex flex-col text-white">
-                    <h3 className="text-lg font-bold">IMFP</h3>
+                    <h3 className="text-lg font-bold">SYSG-IMFP</h3>
                     <span className="text-xs opacity-90">
                       Institution Mixte Faustin 1er
                     </span>
@@ -384,7 +386,7 @@ const Index = () => {
       subject: <SubjectsManager />,
       grades:
         user?.role === "Professeur" ? (
-          <ProfessorGradeManager professorId={user.id} />
+          <ProfessorGradeManager />
         ) : (
           <GradeManager />
         ),
@@ -397,7 +399,6 @@ const Index = () => {
       payments: <PaymentManager />,
       settings: <SettingsPage />,
       "audit-logs": <AuditLogsManager />,
-      analytics: <AnalyticsDashboard />,
       announcements: <AnnouncementManager />,
       events: <EventManager />,
       schedule: <ScheduleManager />,
@@ -638,6 +639,9 @@ const Index = () => {
                 <Moon className="h-4 w-4" />
               )}
             </Button>
+
+            {/* notifications */}
+            {user && <NotificationBell />}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

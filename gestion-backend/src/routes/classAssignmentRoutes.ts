@@ -15,6 +15,7 @@ import {
   handleValidationErrors,
   requireTeacher,
   requireTeacherOrStaff,
+  requireDirector,
 } from "../middleware";
 import {
   createClassAssignment,
@@ -79,7 +80,7 @@ router.get(
 router.post(
   "/",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -103,7 +104,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -121,7 +122,7 @@ router.put(
 router.delete(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   sanitizeInput,
   deleteClassAssignment
 );

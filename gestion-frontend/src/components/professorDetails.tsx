@@ -47,6 +47,11 @@ import {
   MoreVertical,
   Trash2,
   AlertTriangle,
+  Star,
+  StarHalf,
+  Clock3,
+  Target,
+  Layers,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -57,6 +62,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
@@ -70,9 +77,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import type { Professeur as StoreProfesseur } from "@/store/professorStore";
+import type {
+  Professeur as StoreProfesseur,
+  ProfesseurSubject,
+} from "@/store/professorStore";
 import useProfesseurStore from "@/store/professorStore";
 import { useAuthStore } from "@/store/authStore";
+import { Select, SelectContent, SelectTrigger, SelectValue } from "./ui/select";
 
 interface ProfesseurDetailsProps {
   professeur: StoreProfesseur;
@@ -93,6 +104,13 @@ export const ProfesseurDetails = ({
   const [activeTab, setActiveTab] = useState("overview");
   const [scheduleView, setScheduleView] = useState<"weekly" | "list">("weekly");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showAddSubjectDialog, setShowAddSubjectDialog] = useState(false);
+  const [newSubject, setNewSubject] = useState({
+    subjectId: "",
+    isPrimary: false,
+    yearsOfExperience: 0,
+    notes: "",
+  });
 
   const {
     currentProfesseur,
@@ -101,10 +119,13 @@ export const ProfesseurDetails = ({
     loadingDetails,
     fetchProfesseurFullDetails,
     clearCurrentProfesseur,
+    addSubjectToProfesseur,
+    removeSubjectFromProfesseur,
   } = useProfesseurStore();
 
   useEffect(() => {
     if (professeur.id) {
+      console.log("🔍 Chargement détails pour professeur ID:", professeur.id);
       loadProfesseurFullDetails();
     }
 
@@ -115,8 +136,17 @@ export const ProfesseurDetails = ({
 
   const loadProfesseurFullDetails = async () => {
     try {
-      await fetchProfesseurFullDetails(professeur.id);
+      console.log("🔄 Début chargement détails...");
+      const details = await fetchProfesseurFullDetails(professeur.id);
+      console.log("✅ Détails chargés avec succès:", {
+        id: details.id,
+        name: `${details.firstName} ${details.lastName}`,
+        subjectsCount: details.subjectsTaught?.length,
+        assignmentsCount: details._count?.assignments,
+        userExists: !!details.user,
+      });
     } catch (error) {
+      console.error("❌ Erreur chargement détails:", error);
       toast({
         title: "Erreur",
         description: "Impossible de charger les détails du professeur",
@@ -124,6 +154,19 @@ export const ProfesseurDetails = ({
       });
     }
   };
+
+  // Fonction pour accéder aux données en toute sécurité
+  const getProfesseurData = () => {
+    return currentProfesseur || professeur;
+  };
+
+  const data = getProfesseurData();
+  console.log("📊 Données pour affichage:", {
+    currentProfesseur: !!currentProfesseur,
+    originalProfesseur: !!professeur,
+    subjectsTaught: data.subjectsTaught?.length || 0,
+    loading: loadingDetails,
+  });
 
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase();
@@ -194,17 +237,62 @@ export const ProfesseurDetails = ({
     setShowDeleteDialog(false);
   };
 
-  const handleSendEmail = () => {
-    if (currentProfesseur?.email) {
-      window.location.href = `mailto:${currentProfesseur.email}`;
+  const handleAddSubject = async () => {
+    if (!newSubject.subjectId) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner une matière",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await addSubjectToProfesseur(professeur.id, newSubject);
+      toast({
+        title: "Succès",
+        description: "Matière ajoutée avec succès",
+      });
+      setShowAddSubjectDialog(false);
+      setNewSubject({
+        subjectId: "",
+        isPrimary: false,
+        yearsOfExperience: 0,
+        notes: "",
+      });
+      loadProfesseurFullDetails();
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible d'ajouter la matière",
+        variant: "destructive",
+      });
     }
   };
 
-  const handleGenerateReport = () => {
-    toast({
-      title: "Fonctionnalité à venir",
-      description: "La génération de rapport sera bientôt disponible",
-    });
+  const handleRemoveSubject = async (subjectId: string) => {
+    try {
+      await removeSubjectFromProfesseur(professeur.id, subjectId);
+      toast({
+        title: "Succès",
+        description: "Matière retirée avec succès",
+      });
+      loadProfesseurFullDetails();
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de retirer la matière",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getExperienceStars = (years: number) => {
+    if (years < 1) return "Débutant";
+    if (years < 3) return "Junior";
+    if (years < 5) return "Intermédiaire";
+    if (years < 10) return "Expérimenté";
+    return "Expert";
   };
 
   // Organiser l'emploi du temps par jour pour l'affichage
@@ -266,6 +354,7 @@ export const ProfesseurDetails = ({
 
   const scheduleByDay = getScheduleByDay();
   const assignments = currentProfesseur.assignments || professeurAssignments;
+  const subjectsTaught = currentProfesseur.subjectsTaught || [];
 
   return (
     <TooltipProvider>
@@ -346,38 +435,35 @@ export const ProfesseurDetails = ({
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onEdit(currentProfesseur)}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Modifier
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
                   <MoreVertical className="h-4 w-4 mr-2" />
-                  Actions
+                  Plus
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={handleSendEmail}>
-                  <MailCheck className="h-4 w-4 mr-2" />
-                  Envoyer un email
-                </DropdownMenuItem>
-
-                <DropdownMenuItem onClick={handleGenerateReport}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Générer rapport
+                <DropdownMenuItem onClick={() => setShowAddSubjectDialog(true)}>
+                  <BookOpen className="h-4 w-4 mr-2" />
+                  Ajouter une matière
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {currentUser?.role === "Admin" && (
-                  <>
-                    <DropdownMenuItem onClick={() => onEdit(currentProfesseur)}>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Modifier
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setShowDeleteDialog(true)}
-                      className="text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Supprimer
-                    </DropdownMenuItem>
-                  </>
+                  <DropdownMenuItem
+                    onClick={() => setShowDeleteDialog(true)}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Supprimer
+                  </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -409,7 +495,7 @@ export const ProfesseurDetails = ({
                 <div>
                   <p className="text-sm text-green-600 font-medium">Matières</p>
                   <p className="text-2xl font-bold mt-1">
-                    {assignments?.length || 0}
+                    {subjectsTaught.length || 0}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     Enseignées
@@ -482,10 +568,17 @@ export const ProfesseurDetails = ({
                 Aperçu
               </TabsTrigger>
               <TabsTrigger
-                value="courses"
+                value="subjects"
                 className="relative py-3 px-4 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
               >
                 <BookOpen className="h-4 w-4 mr-2" />
+                Matières ({subjectsTaught.length})
+              </TabsTrigger>
+              <TabsTrigger
+                value="courses"
+                className="relative py-3 px-4 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
+              >
+                <Layers className="h-4 w-4 mr-2" />
                 Cours
               </TabsTrigger>
               <TabsTrigger
@@ -555,6 +648,111 @@ export const ProfesseurDetails = ({
                 </CardContent>
               </Card>
 
+              {/* Matières principales */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5" />
+                    Matières enseignées
+                  </CardTitle>
+                  <CardDescription>
+                    {subjectsTaught.length} matière
+                    {subjectsTaught.length > 1 ? "s" : ""} au total
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {subjectsTaught.length > 0 ? (
+                    <div className="space-y-3">
+                      {subjectsTaught
+                        .filter((subject) => subject.isPrimary)
+                        .map((subjectItem) => (
+                          <div
+                            key={subjectItem.id}
+                            className="p-3 bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-lg"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <Star className="h-4 w-4 text-yellow-500" />
+                                  <h4 className="font-semibold">
+                                    {subjectItem.subject?.name}
+                                  </h4>
+                                  <Badge variant="default" className="text-xs">
+                                    Principal
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {subjectItem.subject?.code}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-sm font-medium">
+                                  {subjectItem.yearsOfExperience || 0} an
+                                  {subjectItem.yearsOfExperience > 1 ? "s" : ""}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {getExperienceStars(
+                                    subjectItem.yearsOfExperience || 0
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                      <div className="pt-2">
+                        <h4 className="text-sm font-medium mb-2">
+                          Autres matières
+                        </h4>
+                        <div className="space-y-2">
+                          {subjectsTaught
+                            .filter((subject) => !subject.isPrimary)
+                            .slice(0, 3)
+                            .map((subjectItem) => (
+                              <div
+                                key={subjectItem.id}
+                                className="flex items-center justify-between p-2 hover:bg-muted/50 rounded"
+                              >
+                                <span className="text-sm">
+                                  {subjectItem.subject?.name}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {subjectItem.yearsOfExperience || 0} an
+                                  {subjectItem.yearsOfExperience > 1 ? "s" : ""}
+                                </span>
+                              </div>
+                            ))}
+                          {subjectsTaught.filter((s) => !s.isPrimary).length >
+                            3 && (
+                            <div className="text-center text-sm text-muted-foreground pt-1">
+                              +{" "}
+                              {subjectsTaught.filter((s) => !s.isPrimary)
+                                .length - 3}{" "}
+                              autres
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6">
+                      <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                      <p className="text-muted-foreground">
+                        Aucune matière enseignée
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={() => setActiveTab("subjects")}
+                      >
+                        Ajouter des matières
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* Informations professionnelles */}
               <Card>
                 <CardHeader>
@@ -576,17 +774,7 @@ export const ProfesseurDetails = ({
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">
-                          {formatDate(currentProfesseur.hireDate)}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Date d'embauche
-                        </p>
-                      </div>
-                    </div>
+
                     <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                       <Clock4 className="h-4 w-4 text-muted-foreground" />
                       <div>
@@ -598,99 +786,274 @@ export const ProfesseurDetails = ({
                         </p>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
 
-              {/* Détails du compte */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ShieldAlert className="h-5 w-5" />
-                    Détails du compte
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {currentProfesseur.user ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                        <div>
-                          <p className="font-medium">Compte actif</p>
-                          <p className="text-sm text-muted-foreground">
-                            Statut: {currentProfesseur.user.status}
-                          </p>
-                        </div>
+                    {currentProfesseur.qualifications && (
+                      <div className="mt-4">
+                        <h4 className="text-sm font-medium mb-2">
+                          Qualifications
+                        </h4>
+                        <p className="text-sm text-muted-foreground line-clamp-3">
+                          {currentProfesseur.qualifications}
+                        </p>
                       </div>
-                      <div className="text-sm space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">
-                            Dernière connexion
-                          </span>
-                          <span className="font-medium">
-                            {formatDateTime(currentProfesseur.user.lastLogin)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Rôle</span>
-                          <Badge variant="outline">
-                            {currentProfesseur.user.role}
-                          </Badge>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">
-                            Email vérifié
-                          </span>
-                          <Badge
-                            variant={
-                              currentProfesseur.user.emailVerified
-                                ? "default"
-                                : "secondary"
-                            }
-                          >
-                            {currentProfesseur.user.emailVerified
-                              ? "Oui"
-                              : "Non"}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground mb-4">
-                        Aucun compte utilisateur associé
-                      </p>
-                      <Button variant="outline" size="sm">
-                        Créer un compte
-                      </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
 
-            {/* Qualifications */}
-            {currentProfesseur.qualifications && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <GraduationCap className="h-5 w-5" />
-                    Qualifications & Diplômes
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm max-w-none">
-                    <p className="whitespace-pre-line">
-                      {currentProfesseur.qualifications}
-                    </p>
-                  </div>
+          {/* Onglet Matières */}
+          <TabsContent value="subjects" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-semibold">Matières enseignées</h2>
+                <p className="text-sm text-muted-foreground">
+                  Gestion des matières que ce professeur peut enseigner
+                </p>
+              </div>
+              <Button onClick={() => setShowAddSubjectDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Ajouter une matière
+              </Button>
+            </div>
+
+            {subjectsTaught.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {subjectsTaught.map((subjectItem) => (
+                  <Card key={subjectItem.id} className="overflow-hidden">
+                    <CardHeader
+                      className={`pb-3 ${
+                        subjectItem.isPrimary
+                          ? "bg-gradient-to-r from-primary/10 to-primary/5"
+                          : "bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <CardTitle className="text-base flex items-center gap-2">
+                            {subjectItem.subject?.name}
+                            {subjectItem.isPrimary && (
+                              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                            )}
+                          </CardTitle>
+                          <CardDescription className="mt-1">
+                            Code: {subjectItem.subject?.code}
+                          </CardDescription>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                // Logique pour définir comme matière principale
+                              }}
+                            >
+                              {subjectItem.isPrimary ? (
+                                <>
+                                  <StarHalf className="h-4 w-4 mr-2" />
+                                  Retirer principal
+                                </>
+                              ) : (
+                                <>
+                                  <Star className="h-4 w-4 mr-2" />
+                                  Définir comme principal
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleRemoveSubject(subjectItem.subjectId)
+                              }
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Retirer
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Clock3 className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm">Expérience</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold">
+                              {subjectItem.yearsOfExperience || 0} an
+                              {subjectItem.yearsOfExperience > 1 ? "s" : ""}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {getExperienceStars(
+                                subjectItem.yearsOfExperience || 0
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {subjectItem.notes && (
+                          <div className="pt-2 border-t">
+                            <h4 className="text-sm font-medium mb-1">Notes</h4>
+                            <p className="text-sm text-muted-foreground">
+                              {subjectItem.notes}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="pt-2 border-t">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">
+                              Matière
+                            </span>
+                            <Badge variant="outline" className="text-xs">
+                              {subjectItem.subject?.type || "Obligatoire"}
+                            </Badge>
+                          </div>
+                          <div className="flex justify-between text-sm mt-1">
+                            <span className="text-muted-foreground">
+                              Coefficient
+                            </span>
+                            <span>{subjectItem.subject?.coefficient || 1}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="border-dashed">
+                <CardContent className="text-center py-12">
+                  <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">
+                    Aucune matière enseignée
+                  </h3>
+                  <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                    Ce professeur n'est pas encore associé à des matières.
+                    Ajoutez des matières pour définir ses compétences
+                    d'enseignement.
+                  </p>
+                  <Button onClick={() => setShowAddSubjectDialog(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Ajouter une première matière
+                  </Button>
                 </CardContent>
               </Card>
             )}
+
+            {/* Dialogue pour ajouter une matière */}
+            <AlertDialog
+              open={showAddSubjectDialog}
+              onOpenChange={setShowAddSubjectDialog}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Ajouter une matière</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Sélectionnez une matière que ce professeur peut enseigner.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="subject-select">
+                      Sélectionner une matière
+                    </Label>
+                    <Select
+                      value={newSubject.subjectId}
+                      onValueChange={(value) =>
+                        setNewSubject({ ...newSubject, subjectId: value })
+                      }
+                    >
+                      <SelectTrigger id="subject-select">
+                        <SelectValue placeholder="Choisir une matière..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/* Vous devrez charger les matières disponibles ici */}
+                        {/* Exemple: */}
+                        {/* {availableSubjects.map((subject) => (
+                          <SelectItem key={subject.id} value={subject.id}>
+                            {subject.name} ({subject.code})
+                          </SelectItem>
+                        ))} */}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="isPrimary"
+                      checked={newSubject.isPrimary}
+                      onChange={(e) =>
+                        setNewSubject({
+                          ...newSubject,
+                          isPrimary: e.target.checked,
+                        })
+                      }
+                      className="h-4 w-4"
+                    />
+                    <Label htmlFor="isPrimary" className="cursor-pointer">
+                      Définir comme matière principale
+                    </Label>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="yearsOfExperience">
+                      Années d'expérience
+                    </Label>
+                    <Input
+                      id="yearsOfExperience"
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={newSubject.yearsOfExperience}
+                      onChange={(e) =>
+                        setNewSubject({
+                          ...newSubject,
+                          yearsOfExperience: parseInt(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="notes">Notes (optionnel)</Label>
+                    <textarea
+                      id="notes"
+                      value={newSubject.notes}
+                      onChange={(e) =>
+                        setNewSubject({ ...newSubject, notes: e.target.value })
+                      }
+                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      placeholder="Compétences spécifiques, certifications, commentaires..."
+                    />
+                  </div>
+                </div>
+
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleAddSubject}>
+                    Ajouter
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </TabsContent>
 
-          {/* Onglet Cours */}
+          {/* Onglet Cours  */}
           <TabsContent value="courses" className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold">Cours assignés</h2>
@@ -775,7 +1138,7 @@ export const ProfesseurDetails = ({
             )}
           </TabsContent>
 
-          {/* Onglet Emploi du temps */}
+          {/* Onglet Emploi du temps (inchangé) */}
           <TabsContent value="schedule" className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold">Emploi du temps</h2>
@@ -974,7 +1337,7 @@ export const ProfesseurDetails = ({
             )}
           </TabsContent>
 
-          {/* Onglet Compte */}
+          {/* Onglet Compte  */}
           <TabsContent value="account" className="space-y-6">
             <Card>
               <CardHeader>
@@ -1058,43 +1421,6 @@ export const ProfesseurDetails = ({
                     </div>
 
                     <Separator />
-
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground mb-4">
-                        Actions de gestion
-                      </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <Button variant="outline" size="sm">
-                          <Key className="h-4 w-4 mr-2" />
-                          Réinitialiser MDP
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <ShieldAlert className="h-4 w-4 mr-2" />
-                          Changer rôle
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          {currentProfesseur.user.status === "ACTIVE" ? (
-                            <>
-                              <XCircle className="h-4 w-4 mr-2" />
-                              Désactiver
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Activer
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Supprimer compte
-                        </Button>
-                      </div>
-                    </div>
                   </>
                 ) : (
                   <div className="text-center py-8">

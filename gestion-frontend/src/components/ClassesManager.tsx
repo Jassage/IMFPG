@@ -17,6 +17,7 @@ import {
   ChevronUp,
   Building,
   UserCog,
+  Loader2,
 } from "lucide-react";
 import {
   Dialog,
@@ -37,7 +38,6 @@ import {
 import { Label } from "@/components/ui/label";
 import { useClassStore, SchoolClass } from "@/store/classStore";
 import { useAcademicYearStore } from "@/store/academicYearStore";
-import { toast } from "@/components/ui/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,6 +69,7 @@ import {
 import { Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import api from "@/services/api";
+import { toast } from "react-toastify";
 
 // Schéma de validation avec Zod
 const classSchema = z.object({
@@ -222,11 +223,7 @@ export const ClassesManager = () => {
 
       setIsFormOpen(true);
     } catch (error) {
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger les détails de la classe",
-        variant: "destructive",
-      });
+      toast.error("Impossible de charger les détails de la classe");
     }
   };
 
@@ -245,27 +242,15 @@ export const ClassesManager = () => {
     try {
       if (editingClass) {
         await updateClass(editingClass.id, data);
-        toast({
-          title: "Classe mise à jour",
-          description: `La classe ${data.name} a été modifiée avec succès`,
-        });
+        toast.success(`La classe ${data.name} a été modifiée avec succès`);
       } else {
         await createClass(data);
-        toast({
-          title: "Classe créée",
-          description: `La classe ${data.name} a été ajoutée avec succès`,
-        });
+        toast.success(`La classe ${data.name} a été ajoutée avec succès`);
       }
 
       setIsFormOpen(false);
       resetForm();
-    } catch (error: any) {
-      toast({
-        title: "Erreur",
-        description: error.message || "Une erreur est survenue",
-        variant: "destructive",
-      });
-    }
+    } catch (error: any) {}
   };
 
   const confirmDelete = async () => {
@@ -273,16 +258,9 @@ export const ClassesManager = () => {
 
     try {
       await deleteClass(selectedClass.id);
-      toast({
-        title: "Suppression réussie",
-        description: "La classe a été supprimée avec succès",
-      });
+      toast.success("La classe a été supprimée avec succès");
     } catch (error: any) {
-      toast({
-        title: "Erreur",
-        description: error.message || "Erreur lors de la suppression",
-        variant: "destructive",
-      });
+      toast.error("Erreur lors de la suppression");
     } finally {
       setShowDeleteDialog(false);
       setSelectedClass(null);
@@ -382,16 +360,8 @@ export const ClassesManager = () => {
     return currentYear?.id || "";
   };
 
-  if (loading && classes.length === 0)
-    return <div className="flex justify-center p-8">Chargement...</div>;
-
-  if (error) {
-    return (
-      <div className="p-4 text-red-500">
-        <p>Erreur de chargement des classes</p>
-        <p className="text-sm">{error}</p>
-      </div>
-    );
+  if (loading && classes.length === 0) {
+    <Loader2 className="h-6 w-6 animate-spin mx-auto mt-8" />;
   }
 
   return (
@@ -583,32 +553,6 @@ export const ClassesManager = () => {
                 <SelectItem value="NSII">NSII</SelectItem>
                 <SelectItem value="NSIII">NSIII</SelectItem>
                 <SelectItem value="NSIV">NSIV</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={filters.academicYearId}
-              onValueChange={(value) =>
-                setFilters({ academicYearId: value === "all" ? "" : value })
-              }
-            >
-              <SelectTrigger className="w-[180px]">
-                <Calendar className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Année scolaire" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les années</SelectItem>
-                {academicYears && academicYears.length > 0 ? (
-                  academicYears.map((year) => (
-                    <SelectItem key={year.id} value={year.id}>
-                      {year.year}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="loading" disabled>
-                    Chargement...
-                  </SelectItem>
-                )}
               </SelectContent>
             </Select>
           </div>

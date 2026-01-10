@@ -294,6 +294,215 @@ export class EnrollmentService {
   }
 
   /**
+   * Récupère l'année académique courante ou la plus récente
+   */
+  private async getCurrentOrMostRecentAcademicYear(): Promise<any> {
+    try {
+      // D'abord essayer de trouver l'année courante
+      const currentYear = await prisma.academicYear.findFirst({
+        where: { isCurrent: true },
+      });
+
+      if (currentYear) {
+        return currentYear;
+      }
+
+      // Sinon, prendre l'année la plus récente
+      const mostRecentYear = await prisma.academicYear.findFirst({
+        orderBy: {
+          startDate: "desc",
+        },
+      });
+
+      return mostRecentYear;
+    } catch (error) {
+      console.error("Erreur récupération année courante:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Crée une nouvelle inscription avec option d'attribution de frais
+   */
+  // async createEnrollment(data: CreateEnrollmentData, auditData: AuditData) {
+  //   try {
+  //     const {
+  //       studentId,
+  //       classId,
+  //       academicYearId,
+  //       enrollmentDate,
+  //       assignFees = false,
+  //       selectedFeeStructures = [],
+  //     } = data;
+
+  //     console.log("Debut creation inscription", {
+  //       studentId,
+  //       classId,
+  //       academicYearId,
+  //     });
+
+  //     // Vérifier si l'étudiant existe
+  //     const student = await prisma.student.findUnique({
+  //       where: { id: studentId },
+  //     });
+
+  //     if (!student) {
+  //       return {
+  //         success: false,
+  //         message: "Étudiant non trouvé",
+  //         code: "STUDENT_NOT_FOUND",
+  //       };
+  //     }
+
+  //     // Vérifier si la classe existe
+  //     const schoolClass = await prisma.schoolClass.findUnique({
+  //       where: { id: classId },
+  //     });
+
+  //     if (!schoolClass) {
+  //       return {
+  //         success: false,
+  //         message: "Classe non trouvée",
+  //         code: "CLASS_NOT_FOUND",
+  //       };
+  //     }
+
+  //     // Vérifier si l'année académique existe
+  //     const academicYear = await prisma.academicYear.findUnique({
+  //       where: { id: academicYearId },
+  //     });
+
+  //     if (!academicYear) {
+  //       return {
+  //         success: false,
+  //         message: "Année académique non trouvée",
+  //         code: "ACADEMIC_YEAR_NOT_FOUND",
+  //       };
+  //     }
+
+  //     // Valider la date d'inscription
+  //     const enrollmentDateObj = enrollmentDate
+  //       ? new Date(enrollmentDate)
+  //       : new Date();
+  //     const dateValidation = await this.validateEnrollmentDate(
+  //       enrollmentDateObj,
+  //       academicYearId
+  //     );
+
+  //     if (!dateValidation.valid) {
+  //       return {
+  //         success: false,
+  //         message: dateValidation.reason,
+  //         code: "INVALID_ENROLLMENT_DATE",
+  //         data: {
+  //           enrollmentDate: enrollmentDateObj,
+  //           academicYearStart: academicYear.startDate,
+  //           academicYearEnd: academicYear.endDate,
+  //         },
+  //       };
+  //     }
+
+  //     // Vérifier si l'étudiant est déjà inscrit pour cette année
+  //     const existingEnrollment = await prisma.enrollment.findUnique({
+  //       where: {
+  //         studentId_academicYearId: {
+  //           studentId,
+  //           academicYearId,
+  //         },
+  //       },
+  //     });
+
+  //     if (existingEnrollment) {
+  //       return {
+  //         success: false,
+  //         message: "Cet étudiant est déjà inscrit pour cette année académique",
+  //         code: "ENROLLMENT_EXISTS",
+  //       };
+  //     }
+
+  //     // Vérifier la capacité de la classe
+  //     const currentEnrollments = await prisma.enrollment.count({
+  //       where: {
+  //         classId,
+  //         academicYearId,
+  //         status: "Active",
+  //       },
+  //     });
+
+  //     if (currentEnrollments >= (schoolClass.capacity || 30)) {
+  //       return {
+  //         success: false,
+  //         message: "La classe a atteint sa capacité maximale",
+  //         code: "CLASS_FULL",
+  //         data: {
+  //           capacity: schoolClass.capacity,
+  //           current: currentEnrollments,
+  //         },
+  //       };
+  //     }
+
+  //     // Créer l'inscription
+  //     const enrollment = await prisma.enrollment.create({
+  //       data: {
+  //         studentId,
+  //         classId,
+  //         academicYearId,
+  //         enrollmentDate: enrollmentDateObj,
+  //         status: "Active",
+  //         isReenrollment: false,
+  //       },
+  //       include: {
+  //         student: true,
+  //         schoolClass: true,
+  //         academicYear: true,
+  //       },
+  //     });
+
+  //     // Mettre à jour la classe de l'étudiant
+  //     await prisma.student.update({
+  //       where: { id: studentId },
+  //       data: {
+  //         classId,
+  //         status: "Active",
+  //       },
+  //     });
+
+  //     // Gérer l'attribution des frais
+  //     let feeAssignmentResult = null;
+  //     if (assignFees) {
+  //       feeAssignmentResult = await this.assignFeesOnEnrollment(
+  //         studentId,
+  //         academicYearId,
+  //         selectedFeeStructures
+  //       );
+  //     }
+
+  //     console.log("Inscription creee avec succes", enrollment.id);
+
+  //     return {
+  //       success: true,
+  //       message: "Inscription créée avec succès",
+  //       data: {
+  //         enrollment,
+  //         ...(feeAssignmentResult && { feeAssignment: feeAssignmentResult }),
+  //       },
+  //       metadata: {
+  //         studentId,
+  //         classId,
+  //         academicYearId,
+  //         studentCode: student.studentCode,
+  //         className: schoolClass.name,
+  //         feesAssigned: assignFees,
+  //         feeStructures: selectedFeeStructures.length,
+  //       },
+  //     };
+  //   } catch (error: any) {
+  //     console.error("EnrollmentService - createEnrollment error:", error);
+  //     throw error;
+  //   }
+  // }
+
+  /**
    * Crée une nouvelle inscription avec option d'attribution de frais
    */
   async createEnrollment(data: CreateEnrollmentData, auditData: AuditData) {
@@ -313,6 +522,36 @@ export class EnrollmentService {
         academicYearId,
       });
 
+      // ==================== VALIDATION DES PARAMÈTRES ====================
+
+      // Vérification des champs obligatoires
+      if (!studentId || !classId || !academicYearId) {
+        return {
+          success: false,
+          message:
+            "Données manquantes: studentId, classId et academicYearId sont requis",
+          code: "MISSING_REQUIRED_FIELDS",
+        };
+      }
+
+      // Validation du format des IDs (si UUID)
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (
+        !uuidRegex.test(studentId) ||
+        !uuidRegex.test(classId) ||
+        !uuidRegex.test(academicYearId)
+      ) {
+        console.warn("Format d'ID potentiellement invalide", {
+          studentId,
+          classId,
+          academicYearId,
+        });
+        // On continue mais on log un avertissement
+      }
+
+      // ==================== VÉRIFICATION DES RÉFÉRENCES ====================
+
       // Vérifier si l'étudiant existe
       const student = await prisma.student.findUnique({
         where: { id: studentId },
@@ -323,6 +562,20 @@ export class EnrollmentService {
           success: false,
           message: "Étudiant non trouvé",
           code: "STUDENT_NOT_FOUND",
+        };
+      }
+
+      // Vérifier le statut de l'étudiant
+      if (student.status !== "Active") {
+        return {
+          success: false,
+          message: `L'étudiant n'est pas actif (statut: ${student.status})`,
+          code: "STUDENT_NOT_ACTIVE",
+          data: {
+            studentId,
+            currentStatus: student.status,
+            requiredStatus: "Active",
+          },
         };
       }
 
@@ -339,6 +592,20 @@ export class EnrollmentService {
         };
       }
 
+      // Vérifier si la classe est active
+      if (schoolClass.status !== "Active") {
+        return {
+          success: false,
+          message: "La classe n'est pas active",
+          code: "CLASS_NOT_ACTIVE",
+          data: {
+            classId,
+            className: schoolClass.name,
+            currentStatus: schoolClass.status,
+          },
+        };
+      }
+
       // Vérifier si l'année académique existe
       const academicYear = await prisma.academicYear.findUnique({
         where: { id: academicYearId },
@@ -352,10 +619,58 @@ export class EnrollmentService {
         };
       }
 
+      // ==================== CONTRAINTE : EMPÊCHER L'ANNÉE FUTURE ====================
+
+      // Vérifier si l'année cible est future par rapport à l'année courante
+      const currentAcademicYear = await prisma.academicYear.findFirst({
+        where: { isCurrent: true },
+      });
+
+      if (currentAcademicYear) {
+        // Comparer par date de début
+        if (academicYear.startDate > currentAcademicYear.startDate) {
+          return {
+            success: false,
+            message:
+              "Impossible de s'inscrire dans une année académique future",
+            code: "FUTURE_ACADEMIC_YEAR",
+            data: {
+              targetYear: academicYear.year,
+              targetStartDate: academicYear.startDate,
+              currentYear: currentAcademicYear.year,
+              currentStartDate: currentAcademicYear.startDate,
+              reason:
+                "L'année académique cible commence après l'année courante",
+            },
+          };
+        }
+      }
+
+      // Vérifier aussi que l'année n'a pas commencé dans le futur
+      const today = new Date();
+      if (academicYear.startDate > today) {
+        return {
+          success: false,
+          message: "L'année académique n'a pas encore commencé",
+          code: "ACADEMIC_YEAR_NOT_STARTED",
+          data: {
+            targetYear: academicYear.year,
+            startDate: academicYear.startDate,
+            daysUntilStart: Math.ceil(
+              (academicYear.startDate.getTime() - today.getTime()) /
+                (1000 * 3600 * 24)
+            ),
+          },
+        };
+      }
+
+      // ==================== VALIDATION DE LA DATE ====================
+
       // Valider la date d'inscription
       const enrollmentDateObj = enrollmentDate
         ? new Date(enrollmentDate)
         : new Date();
+
       const dateValidation = await this.validateEnrollmentDate(
         enrollmentDateObj,
         academicYearId
@@ -374,6 +689,8 @@ export class EnrollmentService {
         };
       }
 
+      // ==================== CONTRAINTES D'UNICITÉ ====================
+
       // Vérifier si l'étudiant est déjà inscrit pour cette année
       const existingEnrollment = await prisma.enrollment.findUnique({
         where: {
@@ -389,8 +706,15 @@ export class EnrollmentService {
           success: false,
           message: "Cet étudiant est déjà inscrit pour cette année académique",
           code: "ENROLLMENT_EXISTS",
+          data: {
+            existingEnrollmentId: existingEnrollment.id,
+            status: existingEnrollment.status,
+            classId: existingEnrollment.classId,
+          },
         };
       }
+
+      // ==================== CONTRAINTE DE CAPACITÉ ====================
 
       // Vérifier la capacité de la classe
       const currentEnrollments = await prisma.enrollment.count({
@@ -409,71 +733,300 @@ export class EnrollmentService {
           data: {
             capacity: schoolClass.capacity,
             current: currentEnrollments,
+            available: (schoolClass.capacity || 30) - currentEnrollments,
+            classId,
+            className: schoolClass.name,
           },
         };
       }
 
-      // Créer l'inscription
-      const enrollment = await prisma.enrollment.create({
-        data: {
-          studentId,
-          classId,
-          academicYearId,
-          enrollmentDate: enrollmentDateObj,
-          status: "Active",
-          isReenrollment: false,
-        },
-        include: {
-          student: true,
-          schoolClass: true,
-          academicYear: true,
-        },
-      });
+      // ==================== VALIDATION DE L'ÂGE/NIVEAU ====================
 
-      // Mettre à jour la classe de l'étudiant
-      await prisma.student.update({
-        where: { id: studentId },
-        data: {
-          classId,
-          status: "Active",
-        },
-      });
-
-      // Gérer l'attribution des frais
-      let feeAssignmentResult = null;
-      if (assignFees) {
-        feeAssignmentResult = await this.assignFeesOnEnrollment(
-          studentId,
-          academicYearId,
-          selectedFeeStructures
+      // Vérifier l'adéquation âge/niveau (optionnel)
+      if (student.dateOfBirth && schoolClass.level) {
+        const age = this.calculateAge(student.dateOfBirth);
+        const ageValidation = this.validateAgeForClassLevel(
+          age,
+          schoolClass.level
         );
+
+        if (!ageValidation.valid) {
+          console.warn("Avertissement âge/niveau:", ageValidation.message);
+          // Vous pouvez choisir de retourner une erreur ou juste un avertissement
+          // Pour l'instant, on loggue seulement
+        }
       }
 
-      console.log("Inscription creee avec succes", enrollment.id);
+      // ==================== VALIDATION DE L'HISTORIQUE ====================
+
+      // Vérifier si l'étudiant a des inscriptions en cours ailleurs
+      const currentYearEnrollments = await prisma.enrollment.findMany({
+        where: {
+          studentId,
+          academicYear: {
+            isCurrent: true,
+          },
+          status: "Active",
+          NOT: {
+            academicYearId: academicYearId, // Exclure l'année cible si c'est l'année courante
+          },
+        },
+        include: {
+          schoolClass: {
+            select: {
+              name: true,
+              level: true,
+            },
+          },
+          academicYear: {
+            select: {
+              year: true,
+            },
+          },
+        },
+      });
+
+      if (currentYearEnrollments.length > 0) {
+        return {
+          success: false,
+          message:
+            "L'étudiant est déjà inscrit pour l'année en cours dans une autre classe",
+          code: "ALREADY_ENROLLED_CURRENT_YEAR",
+          data: {
+            currentEnrollments: currentYearEnrollments.map((e) => ({
+              classId: e.classId,
+              className: e.schoolClass?.name,
+              classLevel: e.schoolClass?.level,
+              academicYear: e.academicYear?.year,
+              status: e.status,
+            })),
+          },
+        };
+      }
+
+      // ==================== CRÉATION AVEC TRANSACTION ====================
+
+      // Utiliser une transaction pour garantir l'intégrité
+      const result = await prisma.$transaction(async (tx) => {
+        // Créer l'inscription
+        const enrollment = await tx.enrollment.create({
+          data: {
+            studentId,
+            classId,
+            academicYearId,
+            enrollmentDate: enrollmentDateObj,
+            status: "Active",
+            isReenrollment: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          include: {
+            student: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                studentCode: true,
+                email: true,
+              },
+            },
+            schoolClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+                capacity: true,
+              },
+            },
+            academicYear: {
+              select: {
+                id: true,
+                year: true,
+                startDate: true,
+                endDate: true,
+              },
+            },
+          },
+        });
+
+        console.log("Inscription creee avec succes", enrollment.id);
+
+        // Mettre à jour la classe de l'étudiant
+        await tx.student.update({
+          where: { id: studentId },
+          data: {
+            classId,
+            status: "Active",
+            updatedAt: new Date(),
+          },
+        });
+
+        console.log("Classe de l'etudiant mise a jour", studentId);
+
+        // Gérer l'attribution des frais si demandé
+        let feeAssignmentResult = null;
+        if (assignFees) {
+          feeAssignmentResult = await this.assignFeesOnEnrollment(
+            studentId,
+            academicYearId,
+            selectedFeeStructures,
+            tx // Passer la transaction
+          );
+
+          console.log(
+            "Frais attribues:",
+            feeAssignmentResult.assignedFees?.length || 0
+          );
+        }
+
+        return {
+          enrollment,
+          feeAssignment: feeAssignmentResult,
+        };
+      });
+
+      // Journalisation d'audit
+      console.log(`[AUDIT] Creation inscription - 
+      User: ${auditData.userId}
+      Student: ${student.firstName} ${student.lastName} (${student.studentCode})
+      Class: ${schoolClass.name} (${schoolClass.level})
+      Year: ${academicYear.year}
+      Date: ${enrollmentDateObj.toISOString()}
+      Fees: ${assignFees ? "Yes" : "No"}
+    `);
 
       return {
         success: true,
         message: "Inscription créée avec succès",
         data: {
-          enrollment,
-          ...(feeAssignmentResult && { feeAssignment: feeAssignmentResult }),
+          enrollment: result.enrollment,
+          ...(result.feeAssignment && { feeAssignment: result.feeAssignment }),
         },
         metadata: {
           studentId,
-          classId,
-          academicYearId,
           studentCode: student.studentCode,
+          studentName: `${student.firstName} ${student.lastName}`,
+          classId,
           className: schoolClass.name,
+          classLevel: schoolClass.level,
+          academicYearId,
+          academicYear: academicYear.year,
+          enrollmentDate: enrollmentDateObj,
           feesAssigned: assignFees,
-          feeStructures: selectedFeeStructures.length,
+          feeStructuresCount: selectedFeeStructures.length,
+          audit: {
+            userId: auditData.userId,
+            timestamp: new Date().toISOString(),
+          },
         },
       };
     } catch (error: any) {
       console.error("EnrollmentService - createEnrollment error:", error);
+
+      // Gestion des erreurs spécifiques
+      if (error.code === "P2002") {
+        return {
+          success: false,
+          message:
+            "Violation de contrainte unique - L'étudiant est peut-être déjà inscrit",
+          code: "UNIQUE_CONSTRAINT_VIOLATION",
+          details: error.meta,
+        };
+      }
+
+      if (error.code === "P2003") {
+        return {
+          success: false,
+          message: "Référence de clé étrangère invalide",
+          code: "FOREIGN_KEY_ERROR",
+          details: error.meta,
+        };
+      }
+
+      if (error.code === "P2025") {
+        return {
+          success: false,
+          message: "Un enregistrement nécessaire n'a pas été trouvé",
+          code: "RECORD_NOT_FOUND",
+          details: error.meta,
+        };
+      }
+
+      // Erreur générique
       throw error;
     }
   }
 
+  // ==================== MÉTHODES UTILITAIRES À AJOUTER ====================
+
+  /**
+   * Calcule l'âge à partir de la date de naissance
+   */
+  private calculateAge(dateOfBirth: Date): number {
+    const today = new Date();
+    const birthDate = new Date(dateOfBirth);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+
+    return age;
+  }
+
+  /**
+   * Valide l'âge pour un niveau de classe
+   */
+  private validateAgeForClassLevel(
+    age: number,
+    classLevel: string
+  ): { valid: boolean; message?: string; recommendedAge?: number } {
+    // Tableau des âges recommandés par niveau
+    const ageRanges: Record<
+      string,
+      { min: number; max: number; recommended: number }
+    > = {
+      [ClassLevel.Sixieme]: { min: 10, max: 13, recommended: 11 },
+      [ClassLevel.Cinquieme]: { min: 11, max: 14, recommended: 12 },
+      [ClassLevel.Quatrieme]: { min: 12, max: 15, recommended: 13 },
+      [ClassLevel.Troisieme]: { min: 13, max: 16, recommended: 14 },
+      [ClassLevel.Seconde]: { min: 14, max: 17, recommended: 15 },
+      [ClassLevel.Premiere]: { min: 15, max: 18, recommended: 16 },
+      [ClassLevel.Terminale]: { min: 16, max: 19, recommended: 17 },
+      [ClassLevel.NSI]: { min: 13, max: 16, recommended: 14 },
+      [ClassLevel.NSII]: { min: 14, max: 17, recommended: 15 },
+      [ClassLevel.NSIII]: { min: 15, max: 18, recommended: 16 },
+      [ClassLevel.NSIV]: { min: 16, max: 19, recommended: 17 },
+    };
+
+    const range = ageRanges[classLevel];
+
+    if (!range) {
+      return { valid: true }; // Niveau non reconnu, on ne valide pas
+    }
+
+    if (age < range.min) {
+      return {
+        valid: false,
+        message: `L'étudiant a ${age} ans mais le niveau ${classLevel} nécessite au moins ${range.min} ans`,
+        recommendedAge: range.recommended,
+      };
+    }
+
+    if (age > range.max) {
+      return {
+        valid: false,
+        message: `L'étudiant a ${age} ans mais le niveau ${classLevel} est généralement jusqu'à ${range.max} ans`,
+        recommendedAge: range.recommended,
+      };
+    }
+
+    return { valid: true };
+  }
   async updateEnrollment(
     id: string,
     data: UpdateEnrollmentData,
@@ -865,16 +1418,376 @@ export class EnrollmentService {
   }
 
   /**
-   * Valide un étudiant pour la réinscription (version avec redoublement autorisé)
+   * Trouve l'année académique suivante après une année donnée
+   */
+  private async findNextAcademicYear(currentYearId: string): Promise<any> {
+    try {
+      // 1. Récupérer l'année actuelle
+      const currentYear = await prisma.academicYear.findUnique({
+        where: { id: currentYearId },
+      });
+
+      if (!currentYear) {
+        console.error("Annee academique actuelle non trouvee:", currentYearId);
+        return null;
+      }
+
+      console.log("Recherche annee suivant:", currentYear.year);
+
+      // 2. DEBUG: Lister toutes les années pour voir ce qui existe
+      const allYears = await prisma.academicYear.findMany({
+        orderBy: {
+          startDate: "asc",
+        },
+      });
+
+      console.log("=== DEBUG: Liste de toutes les années ===");
+      allYears.forEach((year, index) => {
+        console.log(
+          `${index + 1}. ${year.year} (ID: ${year.id}) - ${year.startDate.toISOString().split("T")[0]} à ${year.endDate.toISOString().split("T")[0]}`
+        );
+      });
+      console.log("=== FIN DEBUG ===");
+
+      // 3. Nettoyer le nom de l'année courante
+      const cleanCurrentYear = currentYear.year.trim().replace(/\s+/g, " ");
+      console.log("Annee courante nettoyee:", cleanCurrentYear);
+
+      // 4. Essayer plusieurs méthodes pour trouver l'année suivante
+
+      // Méthode 1: Recherche par date (la plus fiable)
+      const nextYearByDate = await prisma.academicYear.findFirst({
+        where: {
+          startDate: {
+            gt: currentYear.endDate,
+          },
+        },
+        orderBy: {
+          startDate: "asc",
+        },
+      });
+
+      if (nextYearByDate) {
+        console.log("Annee suivante trouvee par DATE:", nextYearByDate.year);
+        return nextYearByDate;
+      }
+
+      // Méthode 2: Recherche par calcul d'année
+      // Extraire les années du format "2022-2023"
+      const yearMatches = cleanCurrentYear.match(/(\d{4})\D*(\d{4})?/);
+
+      if (yearMatches) {
+        const startYear = parseInt(yearMatches[1]);
+        let endYear = yearMatches[2] ? parseInt(yearMatches[2]) : startYear + 1;
+
+        console.log("Annees extraites:", { startYear, endYear });
+
+        // Rechercher l'année qui commence par la fin de l'année courante
+        const searchPatterns = [
+          `${endYear}-${endYear + 1}`, // 2023-2024
+          `${endYear} - ${endYear + 1}`, // 2023 - 2024
+          `${endYear}–${endYear + 1}`, // 2023–2024 (tiret différent)
+          `${endYear}/${endYear + 1}`, // 2023/2024
+          ` ${endYear} `, // contient 2023
+        ];
+
+        console.log("Patterns de recherche:", searchPatterns);
+
+        for (const pattern of searchPatterns) {
+          const foundYear = await prisma.academicYear.findFirst({
+            where: {
+              year: {
+                contains: pattern.replace(/\s+/g, " "), // Normaliser les espaces
+              },
+              NOT: {
+                id: currentYear.id, // Exclure l'année courante
+              },
+            },
+          });
+
+          if (foundYear) {
+            console.log(`Trouve avec pattern "${pattern}":`, foundYear.year);
+            return foundYear;
+          }
+        }
+      }
+
+      // Méthode 3: Prendre l'année la plus récente après la courante
+      const nextByMostRecent = await prisma.academicYear.findFirst({
+        where: {
+          startDate: {
+            gt: currentYear.startDate,
+          },
+          NOT: {
+            id: currentYear.id,
+          },
+        },
+        orderBy: {
+          startDate: "asc",
+        },
+      });
+
+      if (nextByMostRecent) {
+        console.log(
+          "Annee suivante (plus recente apres):",
+          nextByMostRecent.year
+        );
+        return nextByMostRecent;
+      }
+
+      console.warn("AUCUNE annee suivante trouvee apres", currentYear.year);
+      return null;
+    } catch (error) {
+      console.error("Erreur recherche année suivante:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Détermine le niveau recommandé basé sur les résultats
+   * @private
+   */
+  private async determineRecommendedLevel(
+    currentLevel: string,
+    academicStatus: "Passed" | "Failed" | "NoGrades",
+    studentId: string
+  ): Promise<{
+    recommendedLevel: string;
+    reason: string;
+    isRedoublement: boolean;
+    allowedTransitions: string[];
+  }> {
+    const levelOrder = this.getClassLevelOrder();
+
+    // Si échec → redoublement obligatoire
+    if (academicStatus === "Failed") {
+      return {
+        recommendedLevel: currentLevel,
+        reason: "L'élève a échoué, redoublement obligatoire",
+        isRedoublement: true,
+        allowedTransitions: [currentLevel], // Seulement redoublement
+      };
+    }
+
+    // Si pas de notes → redoublement par sécurité
+    if (academicStatus === "NoGrades") {
+      return {
+        recommendedLevel: currentLevel,
+        reason: "Aucune note disponible, redoublement recommandé",
+        isRedoublement: true,
+        allowedTransitions: [currentLevel], // Seulement redoublement
+      };
+    }
+
+    // Si réussite → passage normal
+    // Trouver le prochain niveau dans l'ordre
+    const currentOrder = levelOrder.get(currentLevel);
+
+    if (currentOrder !== undefined) {
+      // Trouver le prochain niveau dans l'ordre
+      const nextLevels = Array.from(levelOrder.entries())
+        .filter(([_, order]) => order === currentOrder + 1)
+        .map(([level, _]) => level);
+
+      if (nextLevels.length > 0) {
+        // Cas spécial: après la Quatrième, on peut choisir entre Troisième et NSI
+        if (currentLevel === ClassLevel.Quatrieme) {
+          return {
+            recommendedLevel: ClassLevel.Troisieme, // Par défaut Troisième
+            reason: "Passage normal après la Quatrième",
+            isRedoublement: false,
+            allowedTransitions: [ClassLevel.Troisieme, ClassLevel.NSI],
+          };
+        }
+
+        // Pour les autres niveaux, prendre le premier suivant
+        return {
+          recommendedLevel: nextLevels[0],
+          reason: "Passage normal - élève a réussi",
+          isRedoublement: false,
+          allowedTransitions: nextLevels,
+        };
+      }
+    }
+
+    // Si pas de niveau suivant (ex: Terminale, NSIV) → terminé
+    return {
+      recommendedLevel: currentLevel,
+      reason: "Dernier niveau atteint - cycle terminé",
+      isRedoublement: false,
+      allowedTransitions: [],
+    };
+  }
+
+  /**
+   * Trouve les classes disponibles pour un niveau donné
+   * @private
+   */
+  private async findAvailableClassesForLevel(
+    level: string,
+    academicYearId: string
+  ) {
+    try {
+      const classes = await prisma.schoolClass.findMany({
+        where: {
+          level: level as ClassLevel,
+          status: "Active",
+        },
+        select: {
+          id: true,
+          name: true,
+          level: true,
+          capacity: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+            select: {
+              enrollments: true,
+            },
+          },
+          enrollments: {
+            where: {
+              academicYearId: academicYearId,
+              status: "Active",
+            },
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      // Filtrer les classes qui ont encore de la place
+      return classes.filter((cls) => {
+        const currentEnrollments = cls._count?.enrollments || 0;
+        const capacity = cls.capacity || 30;
+        return currentEnrollments < capacity;
+      });
+    } catch (error) {
+      console.error("Erreur recherche classes:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Génère des recommandations adaptées
+   * @private
+   */
+  private generateReenrollmentRecommendations(
+    academicStatus: "Passed" | "Failed" | "NoGrades",
+    averageGrade: number,
+    previousLevel: string,
+    financialValidation: any,
+    isRedoublement: boolean
+  ) {
+    const recommendations: Array<{
+      type: "warning" | "info" | "success" | "error";
+      message: string;
+      action?: string;
+    }> = [];
+
+    // Recommandations académiques
+    if (academicStatus === "Failed") {
+      recommendations.push({
+        type: "warning",
+        message: `Échec académique (${averageGrade.toFixed(1)}/100) - Redoublement obligatoire`,
+        action: "Inscrire dans le même niveau",
+      });
+    } else if (academicStatus === "NoGrades") {
+      recommendations.push({
+        type: "info",
+        message: "Aucune note disponible - Redoublement recommandé",
+        action: "Inscrire dans le même niveau pour consolidation",
+      });
+    } else {
+      recommendations.push({
+        type: "success",
+        message: `Réussite académique (${averageGrade.toFixed(1)}/100)`,
+        action: isRedoublement
+          ? "Redoublement recommandé"
+          : "Passage au niveau supérieur",
+      });
+
+      if (averageGrade >= 80) {
+        recommendations.push({
+          type: "success",
+          message: "Excellents résultats",
+          action: "Peut être considéré pour les classes d'excellence",
+        });
+      } else if (averageGrade < 60) {
+        recommendations.push({
+          type: "warning",
+          message: "Résultats juste suffisants",
+          action: "Surveiller la progression",
+        });
+      }
+    }
+
+    // Recommandations de niveau
+    if (isRedoublement) {
+      recommendations.push({
+        type: "info",
+        message: "Redoublement du niveau actuel",
+        action: "Planifier un suivi pédagogique renforcé",
+      });
+    } else {
+      recommendations.push({
+        type: "success",
+        message: "Passage au niveau supérieur",
+        action: "Continuer le parcours normal",
+      });
+    }
+
+    // Recommandations financières
+    if (!financialValidation.eligible) {
+      recommendations.push({
+        type: "error",
+        message: `Solde impayé: ${financialValidation.balance} HTG (max: 5000 HTG)`,
+        action: "Régulariser avant réinscription",
+      });
+    } else if (financialValidation.balance > 0) {
+      recommendations.push({
+        type: "warning",
+        message: `Frais en attente: ${financialValidation.balance} HTG`,
+        action: "Encaisser les paiements restants",
+      });
+    }
+
+    // Recommandations spécifiques par niveau
+    if (previousLevel === ClassLevel.Quatrieme && !isRedoublement) {
+      recommendations.push({
+        type: "info",
+        message: "Choix de parcours après la Quatrième",
+        action:
+          "Orienter vers Troisième (classique) ou NSI (Nouveau Secondaire)",
+      });
+    }
+
+    return recommendations;
+  }
+  /**
+   * Valide un étudiant pour la réinscription avec détection automatique du niveau
+   * Retourne les options possibles: passage normal ou redoublement
    */
   async validateReenrollment(studentId: string, auditData: AuditData) {
     try {
-      // Vérifier si l'étudiant existe
+      console.log("Debut validation reinscription pour etudiant:", studentId);
+
+      // 1. Vérifier si l'étudiant existe
       const student = await prisma.student.findUnique({
         where: { id: studentId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          studentCode: true,
+          status: true,
+        },
       });
 
       if (!student) {
+        console.error("Etudiant non trouve:", studentId);
         return {
           success: false,
           message: "Étudiant non trouvé",
@@ -882,49 +1795,37 @@ export class EnrollmentService {
         };
       }
 
-      // Récupérer l'année académique actuelle
-      const currentYear = await prisma.academicYear.findFirst({
-        where: { isCurrent: true },
-      });
-
-      if (!currentYear) {
+      // Vérifier que l'étudiant est actif
+      if (student.status !== "Active") {
         return {
           success: false,
-          message: "Aucune année académique courante trouvée",
-          code: "NO_CURRENT_YEAR",
+          message: "L'étudiant n'est pas actif",
+          code: "STUDENT_NOT_ACTIVE",
         };
       }
 
-      // Vérifier si l'étudiant n'est pas déjà inscrit pour l'année courante
-      const currentEnrollment = await prisma.enrollment.findUnique({
-        where: {
-          studentId_academicYearId: {
-            studentId,
-            academicYearId: currentYear.id,
-          },
-        },
-      });
-
-      if (currentEnrollment) {
-        return {
-          success: false,
-          message: "L'étudiant est déjà inscrit pour l'année courante",
-          code: "ALREADY_ENROLLED",
-          data: {
-            currentClass: currentEnrollment.classId,
-          },
-        };
-      }
-
-      // Récupérer la dernière inscription de l'étudiant
+      // 2. Récupérer l'inscription active la plus récente
       const previousEnrollment = await prisma.enrollment.findFirst({
         where: {
           studentId,
           status: { in: ["Active", "Completed"] },
         },
         include: {
-          schoolClass: true,
-          academicYear: true,
+          schoolClass: {
+            select: {
+              id: true,
+              name: true,
+              level: true,
+            },
+          },
+          academicYear: {
+            select: {
+              id: true,
+              year: true,
+              startDate: true,
+              endDate: true,
+            },
+          },
         },
         orderBy: {
           enrollmentDate: "desc",
@@ -932,6 +1833,7 @@ export class EnrollmentService {
       });
 
       if (!previousEnrollment) {
+        console.error("Aucune inscription precedente trouvee");
         return {
           success: false,
           message: "L'étudiant n'a pas d'inscription précédente",
@@ -939,100 +1841,226 @@ export class EnrollmentService {
         };
       }
 
-      // Vérifier les résultats académiques (si disponibles)
+      console.log("Inscription precedente trouvee:", {
+        year: previousEnrollment.academicYear.year,
+        class: previousEnrollment.schoolClass.name,
+        level: previousEnrollment.schoolClass.level,
+      });
+
+      // 3. DÉTECTION DE L'ANNÉE SUIVANTE
+      const nextAcademicYear = await this.findNextAcademicYear(
+        previousEnrollment.academicYearId
+      );
+
+      if (!nextAcademicYear) {
+        console.error(
+          "Pas d'annee suivante trouvee apres:",
+          previousEnrollment.academicYear.year
+        );
+        return {
+          success: false,
+          message: "Aucune année académique suivante disponible",
+          code: "NO_NEXT_ACADEMIC_YEAR",
+          data: {
+            previousYear: previousEnrollment.academicYear.year,
+          },
+        };
+      }
+
+      console.log("Annee suivante detectee:", nextAcademicYear.year);
+
+      // 4. Vérifier si l'étudiant est déjà inscrit pour l'année suivante
+      const existingEnrollment = await prisma.enrollment.findFirst({
+        where: {
+          studentId,
+          academicYearId: nextAcademicYear.id,
+          status: "Active", // Seulement vérifier les inscriptions actives
+        },
+        include: {
+          schoolClass: {
+            select: {
+              name: true,
+              level: true,
+            },
+          },
+        },
+      });
+
+      if (existingEnrollment) {
+        console.error("Etudiant deja inscrit pour l'annee suivante");
+        return {
+          success: false,
+          message: `L'étudiant est déjà inscrit pour l'année ${nextAcademicYear.year}`,
+          code: "ALREADY_ENROLLED",
+          data: {
+            existingEnrollmentId: existingEnrollment.id,
+            currentClass: existingEnrollment.schoolClass?.name || "Inconnu",
+            nextYear: nextAcademicYear.year,
+          },
+        };
+      }
+
+      // 5. ÉVALUER LES RÉSULTATS ACADÉMIQUES
       const grades = await prisma.grade.findMany({
         where: {
           studentId,
           academicYearId: previousEnrollment.academicYearId,
         },
-        include: {
-          subject: true,
-        },
       });
 
-      let academicStatus: "Passed" | "Failed" | "NoGrades" = "NoGrades";
-      let academicDetails = null;
-      let averageGrade = 0;
+      const academicEvaluation = {
+        status: this.determineAcademicStatus(grades),
+        averageGrade:
+          grades.length > 0
+            ? grades.reduce((sum, grade) => sum + grade.grade, 0) /
+              grades.length
+            : 0,
+        hasGrades: grades.length > 0,
+        grades: grades,
+      };
 
-      if (grades.length > 0) {
-        averageGrade =
-          grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length;
-        const passed = averageGrade >= 50;
-        academicStatus = passed ? "Passed" : "Failed";
+      console.log("Evaluation academique:", {
+        status: academicEvaluation.status,
+        average: academicEvaluation.averageGrade,
+        hasGrades: academicEvaluation.hasGrades,
+      });
 
-        academicDetails = {
-          hasGrades: true,
-          totalGrades: grades.length,
-          averageGrade,
-          passed,
-          grades: grades.map((g) => ({
-            subject: g.subject.name,
-            grade: g.grade,
-          })),
-        };
-      }
+      // 6. DÉTERMINER LE NIVEAU RECOMMANDÉ
+      const levelRecommendation = await this.determineRecommendedLevel(
+        previousEnrollment.schoolClass.level,
+        academicEvaluation.status,
+        studentId
+      );
 
-      // Vérifier la situation financière
+      console.log("Recommandation de niveau:", levelRecommendation);
+
+      // 7. TROUVER LES CLASSES DISPONIBLES pour le niveau recommandé
+      const availableClasses = await this.findAvailableClassesForLevel(
+        levelRecommendation.recommendedLevel,
+        nextAcademicYear.id
+      );
+
+      console.log("Classes disponibles:", availableClasses.length);
+
+      // 8. Vérifier la situation financière
       const financialValidation = await this.checkFinancialEligibility(
         studentId,
         previousEnrollment.academicYearId
       );
 
-      // IMPORTANT: Permettre la réinscription même si échec (pour redoublement)
-      const academicEligible = true; // Toujours true maintenant - permet le redoublement
-      const financialEligible = financialValidation.eligible;
+      console.log("Validation financiere:", {
+        eligible: financialValidation.eligible,
+        balance: financialValidation.balance,
+      });
 
-      const canReenroll = financialEligible && !currentEnrollment;
+      // 9. Calculer les frais de réinscription
+      const reenrollmentFee = await this.calculateReenrollmentFee(
+        studentId,
+        previousEnrollment.academicYearId,
+        nextAcademicYear.id
+      );
 
-      const validation = {
-        canReenroll,
-        academicStatus,
-        financialStatus: financialValidation.eligible ? "Clear" : "BalanceDue",
-        details: {
-          studentInfo: {
-            id: student.id,
-            firstName: student.firstName,
-            lastName: student.lastName,
-            studentCode: student.studentCode,
-          },
-          previousEnrollment: {
-            id: previousEnrollment.id,
-            academicYear: previousEnrollment.academicYear.year,
-            className: previousEnrollment.schoolClass.name,
-            classLevel: previousEnrollment.schoolClass.level,
-            status: previousEnrollment.status,
-            classId: previousEnrollment.classId,
-          },
-          academic: academicDetails || {
-            hasGrades: false,
-            passed: false,
-            averageGrade: 0,
-          },
-          financial: {
-            eligible: financialValidation.eligible,
-            balance: financialValidation.balance,
-            overdueAmount: financialValidation.overdueAmount,
-            hasOverdueFees: financialValidation.overdueAmount > 0,
-          },
-          eligibility: {
-            academicEligible,
-            financialEligible,
-            notCurrentlyEnrolled: !currentEnrollment,
-            canRepeatLevel: academicStatus === "Failed", // True si échec = peut redoubler
-          },
-          recommendations: this.generateReenrollmentRecommendations(
-            academicStatus,
-            averageGrade,
-            previousEnrollment.schoolClass.level,
-            financialValidation
-          ),
+      // 10. Construire la réponse avec toutes les options
+      const validationResult = {
+        canReenroll: financialValidation.eligible && !existingEnrollment,
+        student: {
+          id: student.id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          studentCode: student.studentCode,
         },
+        previousEnrollment: {
+          id: previousEnrollment.id,
+          academicYear: previousEnrollment.academicYear.year,
+          academicYearId: previousEnrollment.academicYear.id,
+          className: previousEnrollment.schoolClass.name,
+          classLevel: previousEnrollment.schoolClass.level,
+          classId: previousEnrollment.classId,
+          status: previousEnrollment.status,
+        },
+        nextAcademicYear: {
+          id: nextAcademicYear.id,
+          year: nextAcademicYear.year,
+          startDate: nextAcademicYear.startDate,
+          endDate: nextAcademicYear.endDate,
+        },
+        academicEvaluation: {
+          status: academicEvaluation.status,
+          averageGrade: academicEvaluation.averageGrade,
+          hasGrades: academicEvaluation.hasGrades,
+          passed: academicEvaluation.status === "Passed",
+          failed: academicEvaluation.status === "Failed",
+          grades: academicEvaluation.grades,
+        },
+        levelRecommendation: {
+          recommendedLevel: levelRecommendation.recommendedLevel,
+          reason: levelRecommendation.reason,
+          isRedoublement: levelRecommendation.isRedoublement,
+          allowedTransitions: levelRecommendation.allowedTransitions,
+        },
+        availableClasses: availableClasses.map((cls) => ({
+          id: cls.id,
+          name: cls.name,
+          level: cls.level,
+          capacity: cls.capacity,
+          currentEnrollments: cls._count?.enrollments || 0,
+          availableSpots: cls.capacity - (cls._count?.enrollments || 0),
+        })),
+        financialStatus: {
+          eligible: financialValidation.eligible,
+          balance: financialValidation.balance,
+          overdueAmount: financialValidation.overdueAmount,
+          hasOverdueFees: financialValidation.overdueAmount > 0,
+          maxAllowedBalance: 5000,
+        },
+        reenrollmentFee: {
+          amount: reenrollmentFee.amount,
+          details: reenrollmentFee.details,
+        },
+        recommendations: this.generateReenrollmentRecommendations(
+          academicEvaluation.status,
+          academicEvaluation.averageGrade,
+          previousEnrollment.schoolClass.level,
+          financialValidation,
+          levelRecommendation.isRedoublement
+        ),
+        // Options de réinscription
+        reenrollmentOptions: [
+          {
+            type: "recommended",
+            description: levelRecommendation.isRedoublement
+              ? "Redoublement recommandé"
+              : "Passage normal recommandé",
+            classLevel: levelRecommendation.recommendedLevel,
+            reason: levelRecommendation.reason,
+          },
+          // Ajouter d'autres options si disponibles
+          ...(academicEvaluation.status === "Passed"
+            ? [
+                {
+                  type: "alternative",
+                  description: "Redoublement (optionnel)",
+                  classLevel: previousEnrollment.schoolClass.level,
+                  reason: "Pour consolider les acquis malgré la réussite",
+                },
+              ]
+            : []),
+        ],
       };
+
+      // 11. Journalisation
+      console.log("Validation terminee:", {
+        student: student.studentCode,
+        previousLevel: previousEnrollment.schoolClass.level,
+        recommendedLevel: levelRecommendation.recommendedLevel,
+        canReenroll: validationResult.canReenroll,
+        financialEligible: financialValidation.eligible,
+      });
 
       return {
         success: true,
         message: "Validation de réinscription terminée",
-        data: { validation },
+        data: { validation: validationResult },
       };
     } catch (error: any) {
       console.error("EnrollmentService - validateReenrollment error:", error);
@@ -1048,7 +2076,7 @@ export class EnrollmentService {
       const {
         studentId,
         classId,
-        academicYearId,
+        academicYearId, // Peut être undefined pour la détection automatique
         previousAcademicYearId,
         previousEnrollmentId,
         enrollmentDate,
@@ -1058,7 +2086,7 @@ export class EnrollmentService {
       console.log("Debut reinscription - Donnees recues:", {
         studentId,
         classId,
-        targetYearId: academicYearId,
+        academicYearId: academicYearId || "AUTO-DETECT",
         previousYearId: previousAcademicYearId,
         previousEnrollmentId,
       });
@@ -1077,21 +2105,128 @@ export class EnrollmentService {
         };
       }
 
-      console.log("Etudiant trouve:", student.studentCode);
+      // 2. Déterminer l'inscription précédente
+      let previousEnrollment = null;
+      let previousYear = null;
 
-      // 2. Vérifier l'année académique cible
-      const targetYear = await prisma.academicYear.findUnique({
-        where: { id: academicYearId },
-      });
+      if (previousEnrollmentId) {
+        // Cas 1: L'utilisateur a spécifié l'inscription précédente
+        previousEnrollment = await prisma.enrollment.findUnique({
+          where: { id: previousEnrollmentId },
+          include: {
+            academicYear: true,
+            schoolClass: true,
+          },
+        });
 
-      if (!targetYear) {
-        console.error("Annee cible non trouvee:", academicYearId);
+        if (!previousEnrollment) {
+          return {
+            success: false,
+            message: "L'inscription précédente spécifiée n'existe pas",
+            code: "PREVIOUS_ENROLLMENT_NOT_FOUND",
+          };
+        }
+        previousYear = previousEnrollment.academicYear;
+      } else if (previousAcademicYearId) {
+        // Cas 2: Recherche par année académique précédente
+        previousYear = await prisma.academicYear.findUnique({
+          where: { id: previousAcademicYearId },
+        });
+
+        if (!previousYear) {
+          return {
+            success: false,
+            message: "L'année académique précédente spécifiée n'existe pas",
+            code: "PREVIOUS_YEAR_NOT_FOUND",
+          };
+        }
+
+        previousEnrollment = await prisma.enrollment.findUnique({
+          where: {
+            studentId_academicYearId: {
+              studentId,
+              academicYearId: previousAcademicYearId,
+            },
+          },
+          include: {
+            academicYear: true,
+            schoolClass: true,
+          },
+        });
+
+        if (!previousEnrollment) {
+          return {
+            success: false,
+            message: `L'étudiant n'était pas inscrit pour l'année ${previousYear.year}`,
+            code: "NO_ENROLLMENT_FOR_YEAR",
+          };
+        }
+      } else {
+        // Cas 3: Recherche automatique de la dernière inscription
+        previousEnrollment = await prisma.enrollment.findFirst({
+          where: {
+            studentId,
+            status: { in: ["Active", "Completed"] },
+          },
+          include: {
+            academicYear: true,
+            schoolClass: true,
+          },
+          orderBy: {
+            enrollmentDate: "desc",
+          },
+        });
+
+        if (previousEnrollment) {
+          previousYear = previousEnrollment.academicYear;
+        }
+      }
+
+      if (!previousEnrollment || !previousYear) {
         return {
           success: false,
-          message: "Année académique cible non trouvée",
-          code: "TARGET_YEAR_NOT_FOUND",
+          message: "Aucune inscription précédente trouvée",
+          code: "NO_PREVIOUS_ENROLLMENT",
         };
       }
+
+      // 3. DÉTERMINER L'ANNÉE CIBLE
+      let targetYear = null;
+
+      if (academicYearId) {
+        // Cas A: L'utilisateur a spécifié l'année cible
+        targetYear = await prisma.academicYear.findUnique({
+          where: { id: academicYearId },
+        });
+
+        if (!targetYear) {
+          return {
+            success: false,
+            message: "Année académique cible non trouvée",
+            code: "TARGET_YEAR_NOT_FOUND",
+          };
+        }
+      } else {
+        // Cas B: Détection automatique de l'année suivante
+        targetYear = await this.findNextAcademicYear(previousYear.id);
+
+        if (!targetYear) {
+          return {
+            success: false,
+            message: `Impossible de déterminer l'année académique suivante après ${previousYear.year}`,
+            code: "CANNOT_DETERMINE_NEXT_YEAR",
+            data: {
+              previousYear: previousYear.year,
+            },
+          };
+        }
+      }
+
+      console.log("Annee cible determinee:", {
+        method: academicYearId ? "MANUEL" : "AUTO-DETECT",
+        targetYear: targetYear.year,
+        previousYear: previousYear.year,
+      });
 
       console.log("Annee cible trouvee:", targetYear.year);
 
@@ -1101,7 +2236,7 @@ export class EnrollmentService {
         : new Date();
       const dateValidation = await this.validateEnrollmentDate(
         enrollmentDateObj,
-        academicYearId
+        targetYear.id
       );
 
       if (!dateValidation.valid) {
@@ -1111,10 +2246,6 @@ export class EnrollmentService {
           code: "INVALID_ENROLLMENT_DATE",
         };
       }
-
-      // 4. Déterminer l'inscription précédente
-      let previousEnrollment = null;
-      let previousYear = null;
 
       if (previousEnrollmentId) {
         // Cas 1: L'utilisateur a spécifié l'inscription précédente
@@ -2053,7 +3184,11 @@ export class EnrollmentService {
   private async assignFeesOnEnrollment(
     studentId: string,
     academicYearId: string,
-    feeStructureIds: string[] = []
+    feeStructureIds: string[] = [],
+    tx?: Omit<
+      PrismaClient<Prisma.PrismaClientOptions, never, DefaultArgs>,
+      "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
+    >
   ): Promise<{ success: boolean; message: string; assignedFees: any[] }> {
     try {
       const assignedFees = [];
@@ -2454,12 +3589,30 @@ export class EnrollmentService {
    * Valide les résultats académiques
    * @private
    */
-  private validateAcademicResults(grades: any[]): boolean {
+  private validateAcademicResults(
+    studentId: string,
+    academicYearId: string,
+    grades: any[]
+  ): boolean {
     if (grades.length === 0) return false;
 
     const average =
       grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length;
     return average >= 50; // Note moyenne minimale de 50
+  }
+
+  /**
+   * Détermine le statut académique à partir des notes
+   * @private
+   */
+  private determineAcademicStatus(
+    grades: any[]
+  ): "Passed" | "Failed" | "NoGrades" {
+    if (grades.length === 0) return "NoGrades";
+
+    const average =
+      grades.reduce((sum, grade) => sum + grade.grade, 0) / grades.length;
+    return average >= 50 ? "Passed" : "Failed";
   }
 
   /**
@@ -2637,7 +3790,11 @@ export class EnrollmentService {
       });
 
       if (grades.length > 0) {
-        const passed = this.validateAcademicResults(grades);
+        const passed = this.validateAcademicResults(
+          enrollment.studentId,
+          enrollment.academicYearId,
+          grades
+        );
         if (!passed) {
           return {
             valid: false,
@@ -3286,82 +4443,82 @@ export class EnrollmentService {
    * Génère des recommandations pour la réinscription
    * @private
    */
-  private generateReenrollmentRecommendations(
-    academicStatus: "Passed" | "Failed" | "NoGrades",
-    averageGrade: number,
-    previousLevel: string,
-    financialValidation: any
-  ): Array<{
-    type: "warning" | "info" | "success" | "error";
-    message: string;
-    action?: string;
-  }> {
-    const recommendations: Array<{
-      type: "warning" | "info" | "success" | "error";
-      message: string;
-      action?: string;
-    }> = [];
+  // private generateReenrollmentRecommendations(
+  //   academicStatus: "Passed" | "Failed" | "NoGrades",
+  //   averageGrade: number,
+  //   previousLevel: string,
+  //   financialValidation: any
+  // ): Array<{
+  //   type: "warning" | "info" | "success" | "error";
+  //   message: string;
+  //   action?: string;
+  // }> {
+  //   const recommendations: Array<{
+  //     type: "warning" | "info" | "success" | "error";
+  //     message: string;
+  //     action?: string;
+  //   }> = [];
 
-    // Recommandations académiques
-    if (academicStatus === "Failed") {
-      recommendations.push({
-        type: "warning",
-        message: `L'étudiant a échoué avec une moyenne de ${averageGrade.toFixed(2)}/100`,
-        action: "Redoublement recommandé",
-      });
+  //   // Recommandations académiques
+  //   if (academicStatus === "Failed") {
+  //     recommendations.push({
+  //       type: "warning",
+  //       message: `L'étudiant a échoué avec une moyenne de ${averageGrade.toFixed(2)}/100`,
+  //       action: "Redoublement recommandé",
+  //     });
 
-      if (averageGrade < 30) {
-        recommendations.push({
-          type: "error",
-          message:
-            "Résultats très faibles - Recommander une évaluation pédagogique",
-          action: "Consulter le conseiller pédagogique",
-        });
-      }
-    } else if (academicStatus === "Passed") {
-      recommendations.push({
-        type: "success",
-        message: `L'étudiant a réussi avec une moyenne de ${averageGrade.toFixed(2)}/100`,
-      });
+  //     if (averageGrade < 30) {
+  //       recommendations.push({
+  //         type: "error",
+  //         message:
+  //           "Résultats très faibles - Recommander une évaluation pédagogique",
+  //         action: "Consulter le conseiller pédagogique",
+  //       });
+  //     }
+  //   } else if (academicStatus === "Passed") {
+  //     recommendations.push({
+  //       type: "success",
+  //       message: `L'étudiant a réussi avec une moyenne de ${averageGrade.toFixed(2)}/100`,
+  //     });
 
-      if (averageGrade >= 80) {
-        recommendations.push({
-          type: "info",
-          message: "Excellents résultats - Possibilité de saut de niveau",
-          action: "Considérer le passage anticipé",
-        });
-      }
-    } else {
-      recommendations.push({
-        type: "info",
-        message: "Aucune note disponible pour l'année précédente",
-      });
-    }
+  //     if (averageGrade >= 80) {
+  //       recommendations.push({
+  //         type: "info",
+  //         message: "Excellents résultats - Possibilité de saut de niveau",
+  //         action: "Considérer le passage anticipé",
+  //       });
+  //     }
+  //   } else {
+  //     recommendations.push({
+  //       type: "info",
+  //       message: "Aucune note disponible pour l'année précédente",
+  //     });
+  //   }
 
-    // Recommandations financières
-    if (!financialValidation.eligible) {
-      recommendations.push({
-        type: "error",
-        message: `Solde impayé de ${financialValidation.balance} HTG`,
-        action: "Régulariser la situation financière avant réinscription",
-      });
-    } else if (financialValidation.balance > 0) {
-      recommendations.push({
-        type: "warning",
-        message: `Solde restant: ${financialValidation.balance} HTG`,
-        action: "Encaisser les frais restants",
-      });
-    }
+  //   // Recommandations financières
+  //   if (!financialValidation.eligible) {
+  //     recommendations.push({
+  //       type: "error",
+  //       message: `Solde impayé de ${financialValidation.balance} HTG`,
+  //       action: "Régulariser la situation financière avant réinscription",
+  //     });
+  //   } else if (financialValidation.balance > 0) {
+  //     recommendations.push({
+  //       type: "warning",
+  //       message: `Solde restant: ${financialValidation.balance} HTG`,
+  //       action: "Encaisser les frais restants",
+  //     });
+  //   }
 
-    // Recommandations de niveau
-    const levelRecommendations = this.getLevelRecommendations(
-      previousLevel,
-      academicStatus
-    );
-    recommendations.push(...levelRecommendations);
+  //   // Recommandations de niveau
+  //   const levelRecommendations = this.getLevelRecommendations(
+  //     previousLevel,
+  //     academicStatus
+  //   );
+  //   recommendations.push(...levelRecommendations);
 
-    return recommendations;
-  }
+  //   return recommendations;
+  // }
 
   /**
    * Génère des recommandations spécifiques au niveau

@@ -57,30 +57,6 @@ export class UserService {
             },
           },
         },
-        parentAccount: {
-          select: {
-            id: true,
-            guardians: {
-              include: {
-                student: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    studentCode: true,
-                    schoolClass: {
-                      select: {
-                        id: true,
-                        name: true,
-                        level: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
       },
     });
 
@@ -113,18 +89,6 @@ export class UserService {
           classId: null,
           schoolClass: null,
         };
-        break;
-      case "Parent":
-        profileData.parent = user.parentAccount;
-        if (user.parentAccount) {
-          profileData.children = user.parentAccount.guardians.map(
-            (guardian) => ({
-              ...guardian.student,
-              relationship: guardian.relationship,
-              isPrimary: guardian.isPrimary,
-            })
-          );
-        }
         break;
     }
 
@@ -275,30 +239,6 @@ export class UserService {
             },
           },
         },
-        parentAccount: {
-          select: {
-            id: true,
-            guardians: {
-              include: {
-                student: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    studentCode: true,
-                    schoolClass: {
-                      select: {
-                        id: true,
-                        name: true,
-                        level: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
       },
     });
 
@@ -352,22 +292,10 @@ export class UserService {
         }
         break;
 
-      case "Parent":
-        profileData.parent = user.parentAccount;
-        if (user.parentAccount) {
-          profileData.children = user.parentAccount.guardians.map(
-            (guardian) => ({
-              ...guardian.student,
-              relationship: guardian.relationship,
-              isPrimary: guardian.isPrimary,
-            })
-          );
-        }
-        break;
-
       case "Admin":
       case "Secretaire":
       case "Directeur":
+      case "Comptable":
         // Pas de données supplémentaires
         break;
     }

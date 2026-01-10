@@ -16,12 +16,10 @@ import { useDataContext } from "./contexts/DataContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { AppInitializer } from "./components/AppInitializer";
-// import { initializeAuthStore, useAuthStore } from "./store/authStore";
 import { useEnrollmentStore } from "./store/enrollmentStore";
 import { useAcademicYearStore } from "./store/academicYearStore";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { ForgotPassword } from "./components/ForgotPassword";
-// import { LoginPage } from "./components/login";
 import { useBackupStore } from "./store/backupStore";
 import { UnauthorizedPage } from "./components/UnauthorizedPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -31,8 +29,62 @@ import { ToastContainer, toast } from "react-toastify";
 import { useAuthStore } from "./store/authStore";
 import { LoginPage } from "./components/login";
 
-const queryClient = new QueryClient();
+// IMPORT DES COMPOSANTS D'AIDE
+import { HelpProvider } from "./help-section/context/HelpContext";
+import { HelpDashboard } from "./help-section/components/HelpDashboard";
+import { HelpLauncher } from "./help-section/HelpLauncher";
+import LockPage from "./pages/LockPage";
+import { useAutoLock } from "./hooks/useAutoLock";
+import { DataInitializer } from "./components/DataInitializer";
 
+const queryClient = new QueryClient();
+// Ajoutez ceci à votre App.tsx pour le mode capture
+// Cela masque les données sensibles pendant les captures
+const isScreenshotMode = window.location.search.includes("screenshot-mode");
+// Dans ton App.tsx ou un composant utilitaire
+export const enableScreenshotMode = () => {
+  // Mode pour faciliter les captures
+  if (typeof window !== "undefined") {
+    // Ajouter des data-testid aux éléments importants
+    document
+      .querySelectorAll("nav button, aside button")
+      .forEach((btn, index) => {
+        const text = btn.textContent?.toLowerCase() || "";
+        if (text.includes("dashboard"))
+          btn.setAttribute("data-testid", "dashboard");
+        if (text.includes("élève") || text.includes("student"))
+          btn.setAttribute("data-testid", "students");
+        if (text.includes("professeur"))
+          btn.setAttribute("data-testid", "professeurs");
+        if (text.includes("note") || text.includes("grade"))
+          btn.setAttribute("data-testid", "grades");
+        if (text.includes("classe")) btn.setAttribute("data-testid", "classes");
+        // etc...
+      });
+
+    // Désactiver les animations
+    document.body.style.setProperty("--animate-duration", "0s");
+
+    // Charger des données de démo si nécessaire
+    if (window.location.search.includes("demo")) {
+      // Charger des données fictives
+    }
+  }
+};
+
+// Appeler cette fonction au chargement en mode capture
+if (window.location.search.includes("screenshot")) {
+  enableScreenshotMode();
+}
+if (isScreenshotMode) {
+  // Masquer les données personnelles
+  document.querySelectorAll("[data-sensitive]").forEach((el) => {
+    el.textContent = "***";
+  });
+
+  // Charger des données de démo
+  localStorage.setItem("demo-mode", "true");
+}
 // Composant pour les routes protégées par rôle
 const ProtectedRoute = ({
   children,
@@ -78,6 +130,8 @@ const RoleBasedRedirect = () => {
       return <Navigate to="/professor/dashboard" replace />;
     case "Directeur":
       return <Navigate to="/director/dashboard" replace />;
+    case "Comptable":
+      return <Navigate to="/comptable/dashboard" replace />;
     default:
       return <Navigate to="/login" replace />;
   }
@@ -92,175 +146,183 @@ const AppContent = () => {
   }
 
   return (
-    <SidebarProvider forceOpen={true}>
-      <div className="min-h-screen flex w-full">
-        <Routes>
-          {/* Routes publiques */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/unauthorized" element={<UnauthorizedPage />} />
+    // AJOUT DU HELPPROVIDER ICI
+    <HelpProvider defaultRole={user?.role || "Admin"}>
+      <SidebarProvider forceOpen={true}>
+        <div className="min-h-screen flex w-full">
+          {/* AJOUT DU HELP LAUNCHER ICI - accessible partout */}
+          <HelpLauncher />
+          <HelpDashboard />
 
-          {/* Route racine - redirection selon le rôle */}
-          <Route
-            path="/"
-            element={
-              isAuthenticated ? (
-                <RoleBasedRedirect />
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+          <Routes>
+            {/* Routes publiques */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/unauthorized" element={<UnauthorizedPage />} />
+            <Route path="/lock" element={<LockPage />} />
 
-          {/* Routes ADMIN */}
-          <Route
-            path="/admin/*"
-            element={
-              <ProtectedRoute allowedRoles={["Admin"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
+            {/* Route racine - redirection selon le rôle */}
+            <Route
+              path="/"
+              element={
+                isAuthenticated ? (
+                  <RoleBasedRedirect />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-          {/* Routes SECRETAIRE */}
-          <Route
-            path="/secretary/*"
-            element={
-              <ProtectedRoute allowedRoles={["Secretaire"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
+            {/* Routes ADMIN */}
+            <Route
+              path="/admin/*"
+              element={
+                <ProtectedRoute allowedRoles={["Admin"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Routes PARENT */}
-          <Route
-            path="/parent/*"
-            element={
-              <ProtectedRoute allowedRoles={["Parent"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
+            {/* Routes SECRETAIRE */}
+            <Route
+              path="/secretary/*"
+              element={
+                <ProtectedRoute allowedRoles={["Secretaire"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Routes STUDENT */}
-          <Route
-            path="/student/*"
-            element={
-              <ProtectedRoute allowedRoles={["Student"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
+            {/* Routes COMPTABLE */}
+            <Route
+              path="/comptable/*"
+              element={
+                <ProtectedRoute allowedRoles={["Comptable"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Routes PROFESSEUR */}
-          <Route
-            path="/professor/*"
-            element={
-              <ProtectedRoute allowedRoles={["Professeur"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
+            {/* Routes STUDENT */}
+            <Route
+              path="/student/*"
+              element={
+                <ProtectedRoute allowedRoles={["Student"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Routes DIRECTION */}
-          <Route
-            path="/director/*"
-            element={
-              <ProtectedRoute allowedRoles={["Directeur"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
+            {/* Routes PROFESSEUR */}
+            <Route
+              path="/professor/*"
+              element={
+                <ProtectedRoute allowedRoles={["Professeur"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Dashboards spécifiques par rôle */}
-          <Route
-            path="/admin/dashboard"
-            element={
-              <ProtectedRoute allowedRoles={["Admin"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/secretary/dashboard"
-            element={
-              <ProtectedRoute allowedRoles={["Secretaire"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/parent/dashboard"
-            element={
-              <ProtectedRoute allowedRoles={["Parent"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/student/dashboard"
-            element={
-              <ProtectedRoute allowedRoles={["Student"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/professor/dashboard"
-            element={
-              <ProtectedRoute allowedRoles={["Professeur"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/director/dashboard"
-            element={
-              <ProtectedRoute allowedRoles={["Directeur"]}>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/professeurs/:id"
-            element={
-              <ProtectedRoute
-                allowedRoles={[
-                  "Admin",
-                  "Secretaire",
-                  "Directeur",
-                  "Professeur",
-                ]}
-              >
-                <Index />
-              </ProtectedRoute>
-            }
-          />
+            {/* Routes DIRECTION */}
+            <Route
+              path="/director/*"
+              element={
+                <ProtectedRoute allowedRoles={["Directeur"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/force-password-change"
-            element={
-              <ProtectedRoute
-                allowedRoles={[
-                  "Admin",
-                  "Secretaire",
-                  "Parent",
-                  "Student",
-                  "Professeur",
-                  "Directeur",
-                ]}
-              >
-                <ForcePasswordChange />
-              </ProtectedRoute>
-            }
-          />
+            {/* Dashboards spécifiques par rôle */}
+            <Route
+              path="/admin/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["Admin"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/secretary/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["Secretaire"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/comptable/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["Comptable"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/student/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["Student"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/professor/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["Professeur"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/director/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["Directeur"]}>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/professeurs/:id"
+              element={
+                <ProtectedRoute
+                  allowedRoles={[
+                    "Admin",
+                    "Secretaire",
+                    "Directeur",
+                    "Professeur",
+                  ]}
+                >
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Route 404 */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </div>
-    </SidebarProvider>
+            <Route
+              path="/force-password-change"
+              element={
+                <ProtectedRoute
+                  allowedRoles={[
+                    "Admin",
+                    "Secretaire",
+                    "Comptable",
+                    "Student",
+                    "Professeur",
+                    "Directeur",
+                  ]}
+                >
+                  <ForcePasswordChange />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Route 404 */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </div>
+      </SidebarProvider>
+    </HelpProvider>
   );
 };
 
@@ -283,12 +345,12 @@ const App = () => {
   const [checkingPassword, setCheckingPassword] = useState(true);
   const initializationRef = useRef(false);
 
-  // DÉPLACER useNavigate ICI, à l'intérieur du composant
   const navigate = useNavigate();
 
+  useAutoLock();
+  <DataInitializer />;
   // Initialisation des stores
   useEffect(() => {
-    // Éviter les initialisations multiples
     if (initializationRef.current) return;
     initializationRef.current = true;
 
@@ -299,14 +361,9 @@ const App = () => {
         setInitializationState("loading");
         console.log("🚀 Initialisation de l'application...");
 
-        // 1. Initialiser l'auth UNE SEULE FOIS
-        // await initializeAuthStore();
-
-        // 2. Vérifier l'authentification
         const { isAuthenticated, token, user } = useAuthStore.getState();
 
         if (isAuthenticated && token && user) {
-          // Charger les données de base pour tous les rôles
           const baseLoaders = [
             useAcademicYearStore
               .getState()
@@ -318,7 +375,6 @@ const App = () => {
               .catch((err) => console.warn("Erreur sauvegardes:", err)),
           ];
 
-          // Chargement supplémentaire selon le rôle
           switch (user.role) {
             case "Admin":
               await Promise.all([
@@ -360,14 +416,14 @@ const App = () => {
           }
         } else {
           console.log(
-            " Utilisateur non authentifié, chargement des données différé"
+            "Utilisateur non authentifié, chargement des données différé"
           );
         }
 
-        console.log(" Initialisation terminée");
+        console.log("Initialisation terminée");
         setInitializationState("success");
       } catch (error: any) {
-        console.error(" Erreur lors de l'initialisation:", error);
+        console.error("Erreur lors de l'initialisation:", error);
         setInitializationError(error.message);
         setInitializationState("error");
       }
@@ -386,7 +442,6 @@ const App = () => {
     }
   }, [user]);
 
-  // Utiliser navigate pour rediriger si nécessaire
   useEffect(() => {
     if (!checkingPassword && user && requiresPasswordChange) {
       navigate("/force-password-change");
@@ -397,7 +452,6 @@ const App = () => {
     return <div>Chargement...</div>;
   }
 
-  // Afficher l'écran de chargement pendant l'initialisation
   if (initializationState === "loading" || initializationState === "idle") {
     return (
       <QueryClientProvider client={queryClient}>
@@ -408,7 +462,6 @@ const App = () => {
     );
   }
 
-  // Afficher une erreur si l'initialisation a échoué
   if (initializationState === "error") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">

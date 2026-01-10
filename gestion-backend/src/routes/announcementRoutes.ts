@@ -13,6 +13,7 @@ import {
   validateContentType,
   sanitizeInput,
   handleValidationErrors,
+  requireDirector,
 } from "../middleware";
 
 import {
@@ -114,7 +115,7 @@ router.put(
 router.delete(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   sanitizeInput,
   announcementController.deleteAnnouncement
 );

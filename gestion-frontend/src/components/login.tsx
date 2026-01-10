@@ -43,8 +43,8 @@ export const LoginPage = () => {
         return "/admin/dashboard";
       case "Secretaire":
         return "/secretary/dashboard";
-      case "Parent":
-        return "/parent/dashboard";
+      case "Comptable":
+        return "/comptable/dashboard";
       case "Student":
         return "/student/dashboard";
       case "Professeur":

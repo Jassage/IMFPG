@@ -904,6 +904,79 @@ export const PaymentManager = () => {
     }
   }, [selectedStudent, loadStudentFees]);
 
+  // Composant pour formater les montants de manière optimisée
+  const AmountDisplay: React.FC<{
+    amount: number;
+    className?: string;
+    showFullOnHover?: boolean;
+    compact?: boolean;
+  }> = ({
+    amount,
+    className = "",
+    showFullOnHover = true,
+    compact = false,
+  }) => {
+    const formatCompact = useCallback((value: number): string => {
+      if (value === 0) return "0 HTG";
+
+      const absValue = Math.abs(value);
+
+      if (absValue >= 1_000_000_000) {
+        // Milliard
+        const formatted = (value / 1_000_000_000).toFixed(2);
+        return `${formatted.replace(/\.?0+$/, "")}Md HTG`;
+      }
+      if (absValue >= 1_000_000) {
+        // Million
+        const formatted = (value / 1_000_000).toFixed(2);
+        return `${formatted.replace(/\.?0+$/, "")}M HTG`;
+      }
+      if (absValue >= 100_000) {
+        // Cent mille et plus
+        const formatted = (value / 1_000).toFixed(1);
+        return `${formatted.replace(/\.?0+$/, "")}K HTG`;
+      }
+      if (absValue >= 10_000) {
+        // Dix mille et plus
+        const formatted = (value / 1_000).toFixed(1);
+        return `${formatted.replace(/\.?0+$/, "")}K HTG`;
+      }
+      // Pour les petits montants, garder 2 décimales
+      return (
+        value.toLocaleString("fr-FR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }) + " HTG"
+      );
+    }, []);
+
+    const formatFull = useCallback((value: number): string => {
+      return (
+        value.toLocaleString("fr-FR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }) + " HTG"
+      );
+    }, []);
+
+    const displayAmount = compact ? formatCompact(amount) : formatFull(amount);
+    const fullAmount = formatFull(amount);
+
+    if (!showFullOnHover || displayAmount === fullAmount) {
+      return <span className={className}>{displayAmount}</span>;
+    }
+
+    return (
+      <div className="relative inline-block group">
+        <span className={`${className} cursor-help`}>{displayAmount}</span>
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+          {fullAmount}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
+        </div>
+      </div>
+    );
+  };
+
   // Afficher un loader pendant le chargement initial
   if (initialLoading) {
     return (
@@ -943,7 +1016,6 @@ export const PaymentManager = () => {
           Nouveau Paiement
         </Button>
       </div>
-
       {/* Cartes de statistiques */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
@@ -972,11 +1044,29 @@ export const PaymentManager = () => {
                   Montant total
                 </p>
                 <p className="text-2xl font-bold text-green-900">
-                  {stats.totalAmount.toLocaleString()} HTG
+                  <AmountDisplay
+                    amount={stats.totalAmount}
+                    compact
+                    showFullOnHover={stats.totalAmount >= 10000}
+                  />
                 </p>
               </div>
               <div className="p-2 rounded-full bg-green-200">
                 <DollarSign className="h-5 w-5 text-green-700" />
+              </div>
+            </div>
+            <div className="mt-4 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Moyenne par frais</span>
+                <span>
+                  <AmountDisplay
+                    amount={
+                      stats.total > 0 ? stats.totalAmount / stats.total : 0
+                    }
+                    compact
+                    showFullOnHover={stats.totalAmount >= 10000}
+                  />
+                </span>
               </div>
             </div>
           </CardContent>
@@ -990,11 +1080,26 @@ export const PaymentManager = () => {
                   Montant payé
                 </p>
                 <p className="text-2xl font-bold text-amber-900">
-                  {stats.paidAmount.toLocaleString()} HTG
+                  <AmountDisplay
+                    amount={stats.paidAmount}
+                    compact
+                    showFullOnHover={stats.paidAmount >= 10000}
+                  />
                 </p>
               </div>
               <div className="p-2 rounded-full bg-amber-200">
                 <Check className="h-5 w-5 text-amber-700" />
+              </div>
+            </div>
+            <div className="mt-4 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Taux de paiement</span>
+                <span className="font-medium">
+                  {stats.totalAmount > 0
+                    ? Math.round((stats.paidAmount / stats.totalAmount) * 100)
+                    : 0}
+                  %
+                </span>
               </div>
             </div>
           </CardContent>
@@ -1008,11 +1113,32 @@ export const PaymentManager = () => {
                   Solde restant
                 </p>
                 <p className="text-2xl font-bold text-purple-900">
-                  {(stats.totalAmount - stats.paidAmount).toLocaleString()} HTG
+                  <AmountDisplay
+                    amount={stats.totalAmount - stats.paidAmount}
+                    compact
+                    showFullOnHover={
+                      stats.totalAmount - stats.paidAmount >= 10000
+                    }
+                  />
                 </p>
               </div>
               <div className="p-2 rounded-full bg-purple-200">
                 <Wallet className="h-5 w-5 text-purple-700" />
+              </div>
+            </div>
+            <div className="mt-4 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Pourcentage restant</span>
+                <span className="font-medium">
+                  {stats.totalAmount > 0
+                    ? Math.round(
+                        ((stats.totalAmount - stats.paidAmount) /
+                          stats.totalAmount) *
+                          100
+                      )
+                    : 0}
+                  %
+                </span>
               </div>
             </div>
           </CardContent>

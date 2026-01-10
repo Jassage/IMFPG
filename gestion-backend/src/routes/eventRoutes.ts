@@ -14,6 +14,7 @@ import {
   validateContentType,
   sanitizeInput,
   handleValidationErrors,
+  requireDirector,
 } from "../middleware";
 
 import {
@@ -50,7 +51,12 @@ router.get("/upcoming", requireAuth, eventController.getUpcomingEvents);
  * @description Récupère les statistiques des événements
  * @access Admin/Directeur
  */
-router.get("/stats", requireAuth, requireAdmin, eventController.getEventStats);
+router.get(
+  "/stats",
+  requireAuth,
+  requireDirector,
+  eventController.getEventStats
+);
 
 /**
  * @route GET /api/events/category/:category
@@ -78,7 +84,7 @@ router.get("/:id", requireAuth, sanitizeInput, eventController.getEventById);
 router.post(
   "/",
   requireAuth,
-  requireTeacherOrStaff,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -95,7 +101,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireTeacherOrStaff,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -112,7 +118,7 @@ router.put(
 router.delete(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireStaff,
   sanitizeInput,
   eventController.deleteEvent
 );

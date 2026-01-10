@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -38,8 +38,15 @@ import {
   TrendingDown,
   UserPlus,
   BookCheck,
+  Home,
+  Building,
+  Bookmark,
+  ChevronRight,
+  Filter,
+  X,
+  School2,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+
 import { useAcademicYearStore } from "@/store/academicYearStore";
 import {
   LineChart,
@@ -64,9 +71,17 @@ import { useEnrollmentStore } from "@/store/enrollmentStore";
 import { useAssignmentStore } from "@/store/assignmentStore";
 import { useFeeStructureStore } from "@/store/feeStructureStore";
 import { useGradeStore } from "@/store/gradeStore";
+import { toast } from "react-toastify";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const AdminDashboard = () => {
-  const { toast } = useToast();
   const { currentAcademicYear } = useAcademicYearStore();
   const { students, fetchStudents } = useStudentStore();
   const { studentFees, getAllStudentFees } = useFeeStructureStore();
@@ -78,13 +93,17 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [timeRange, setTimeRange] = useState("month");
   const [activeTab, setActiveTab] = useState("overview");
+  const [selectedStat, setSelectedStat] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalData, setModalData] = useState<any[]>([]);
+  const [modalLoading, setModalLoading] = useState(false);
 
-  // FONCTION CORRIGÉE : Convertir studentFees (Record) en tableau
+  // Convertir studentFees (Record) en tableau
   const allFeesArray = useMemo(() => {
     try {
       if (!studentFees || typeof studentFees !== "object") return [];
 
-      // studentFees est un Record<string, StudentFee[]>
       // Convertir en tableau plat
       return Object.values(studentFees).flat();
     } catch (error) {
@@ -93,12 +112,12 @@ const AdminDashboard = () => {
     }
   }, [studentFees]);
 
-  // FONCTION CORRIGÉE : Calculer les niveaux depuis les ENROLLMENTS
+  // Calculer les niveaux depuis les ENROLLMENTS
   const calculateStudentLevelDistribution = useMemo(() => {
     try {
       const levelDistribution: Record<string, number> = {};
 
-      // VERSION AMÉLIORÉE : Utiliser les inscriptions (enrollments)
+      // Utiliser les inscriptions (enrollments)
       if (Array.isArray(enrollments) && enrollments.length > 0) {
         // Pour chaque inscription, récupérer le niveau de la classe
         enrollments.forEach((enrollment) => {
@@ -111,20 +130,23 @@ const AdminDashboard = () => {
         });
       }
 
-      // Fallback : Si pas de données dans les inscriptions, utiliser les étudiants
+      // Si pas de données dans les inscriptions, utiliser les étudiants
       if (
         Object.keys(levelDistribution).length === 0 &&
         Array.isArray(students)
       ) {
         students.forEach((student) => {
-          if (student.status?.toLowerCase() === "active" && student.level) {
+          if (
+            student.status?.toLowerCase() === "active" &&
+            student.schoolClass?.level
+          ) {
             levelDistribution[student.schoolClass.level] =
               (levelDistribution[student.schoolClass.level] || 0) + 1;
           }
         });
       }
 
-      // Fallback 2 : Si toujours pas, utiliser les classes
+      //  Si toujours pas, utiliser les classes
       if (
         Object.keys(levelDistribution).length === 0 &&
         Array.isArray(classes)
@@ -139,7 +161,6 @@ const AdminDashboard = () => {
           }
         });
       }
-
       const colors = [
         "#0088FE",
         "#00C49F",
@@ -203,7 +224,10 @@ const AdminDashboard = () => {
       // Statistiques académiques
       const totalGrades = Array.isArray(grades) ? grades.length : 0;
       const validGrades = Array.isArray(grades)
-        ? grades.filter((g) => g.status === "Valid_").length
+        ? grades.filter(
+            (g) =>
+              g.grade >= g.subject.maxGrade * (g.subject.passingGrade / 100)
+          ).length
         : 0;
 
       const passRate =
@@ -220,11 +244,15 @@ const AdminDashboard = () => {
         totalStudents,
         activeStudents,
         totalCourses,
-        totalPayments: allFeesArray.length,
+        totalPayments: allFeesArray.filter(
+          (fee) =>
+            fee?.status &&
+            (String(fee.status).toLowerCase() === "partial" ||
+              String(fee.status).toLowerCase() === "paid")
+        ).length,
         totalRevenue,
         pendingPayments,
         enrollmentRate,
-        attendanceRate: 95,
         totalGrades,
         passRate,
         averageGrade: averageGrade.toFixed(1),
@@ -239,7 +267,6 @@ const AdminDashboard = () => {
         totalRevenue: 0,
         pendingPayments: 0,
         enrollmentRate: 0,
-        attendanceRate: 95,
         totalGrades: 0,
         passRate: 0,
         averageGrade: "0.0",
@@ -247,7 +274,7 @@ const AdminDashboard = () => {
     }
   }, [students, assignments, allFeesArray, enrollments, grades]);
 
-  // Générer les données pour les graphiques - CORRIGÉ
+  // Générer les données pour les graphiques -
   const generateChartData = useMemo(() => {
     try {
       const enrollmentTrend = [];
@@ -289,7 +316,7 @@ const AdminDashboard = () => {
         }
       }
 
-      // Tendance des revenus - CORRIGÉ
+      // Tendance des revenus -
       const revenueTrend = [];
 
       for (let i = 5; i >= 0; i--) {
@@ -362,7 +389,7 @@ const AdminDashboard = () => {
         performanceBySubject.sort((a, b) => b.average - a.average);
       }
 
-      // Statut des paiements - CORRIGÉ
+      // Statut des paiements -
       const paymentStatus = [];
       if (allFeesArray.length > 0) {
         const statusCounts: Record<string, number> = {};
@@ -469,84 +496,794 @@ const AdminDashboard = () => {
 
       await Promise.all(promises);
 
-      toast({
-        title: "Succès",
-        description: "Dashboard mis à jour avec succès",
-      });
+      toast.success("Dashboard mis à jour avec succès");
     } catch (error) {
       console.error("Erreur générale lors du chargement des données:", error);
-      toast({
-        title: "Attention",
-        description: "Certaines données n'ont pas pu être chargées",
-        variant: "destructive",
-      });
+      toast.error("Certaines données n'ont pas pu être chargées");
     } finally {
       setLoading(false);
     }
   };
 
-  const StatCard = ({
-    title,
-    value,
-    icon: Icon,
-    trend,
-    description,
-    color = "primary",
-    loading = false,
-  }: {
-    title: string;
-    value: string | number;
-    icon: any;
-    trend?: number;
-    description?: string;
-    color?: string;
-    loading?: boolean;
-  }) => (
-    <Card className="hover:shadow-lg transition-shadow duration-300">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-        <Icon
-          className={`h-5 w-5 ${
-            color === "primary"
-              ? "text-primary"
-              : color === "success"
-              ? "text-green-600"
-              : color === "warning"
-              ? "text-yellow-600"
-              : color === "danger"
-              ? "text-red-600"
-              : "text-blue-600"
-          }`}
-        />
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="h-8 w-24 bg-muted animate-pulse rounded"></div>
-        ) : (
-          <div className="text-2xl font-bold">{value}</div>
-        )}
-        {trend !== undefined && !loading && (
-          <div className="flex items-center text-xs mt-1">
-            {trend >= 0 ? (
-              <TrendingUp className="h-3 w-3 mr-1 text-green-600" />
-            ) : (
-              <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
-            )}
-            <span className={trend >= 0 ? "text-green-600" : "text-red-600"}>
-              {trend >= 0 ? "+" : ""}
-              {trend}%
-            </span>
-            <span className="text-muted-foreground ml-2">vs mois dernier</span>
-          </div>
-        )}
-        {description && !loading && (
-          <p className="text-xs text-muted-foreground mt-2">{description}</p>
-        )}
-      </CardContent>
-    </Card>
+  // Fonction pour gérer le clic sur une carte -  AVEC useCallback
+  const handleCardClick = useCallback(
+    (statType: string, event?: React.MouseEvent) => {
+      // Empêcher la propagation si un événement est fourni
+      if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+
+      console.log(`Clic sur la carte: ${statType}`);
+
+      // Prévenir les doublons en fermant d'abord la modal
+      if (modalOpen) {
+        setModalOpen(false);
+        // Petit délai pour éviter les conflits
+        setTimeout(() => {
+          openModalWithData(statType);
+        }, 100);
+      } else {
+        openModalWithData(statType);
+      }
+    },
+    [modalOpen]
   );
+
+  const openModalWithData = (statType: string) => {
+    setModalLoading(true);
+    setSelectedStat(statType);
+
+    let title = "";
+    let data: any[] = [];
+
+    try {
+      switch (statType) {
+        case "activeStudents":
+          title = "Étudiants Actifs";
+          data = students
+            .filter(
+              (s) => s?.status && String(s.status).toLowerCase() === "active"
+            )
+            .map((student) => ({
+              id: student.id,
+              name: `${student.firstName} ${student.lastName}`,
+              email: student.email || "Non spécifié",
+              class: student.schoolClass?.name || "Non assigné",
+              status: student.status,
+            }));
+          break;
+
+        case "activeClasses":
+          title = "Classes Actives";
+          data = classes
+            .filter((c) => c.status === "Active")
+            .map((cls) => ({
+              id: cls.id,
+              name: cls.name,
+              level: cls.level || "Non spécifié",
+              capacity: cls.capacity,
+              currentStudents: cls._count?.students || 0,
+            }));
+          break;
+
+        case "pendingPayments":
+          title = "Paiements en Attente";
+          data = allFeesArray
+            .filter(
+              (fee) =>
+                fee?.status && String(fee.status).toLowerCase() === "pending"
+            )
+            .map((fee) => ({
+              id: fee.id,
+              student: fee.student?.firstName
+                ? `${fee.student.firstName} ${fee.student.lastName}`
+                : `Étudiant #${fee.studentId?.substring(0, 8)}`,
+              amount: fee.paidAmount || 0,
+              totalAmount: fee.totalAmount || 0,
+              dueDate: fee.dueDate
+                ? new Date(fee.dueDate).toLocaleDateString("fr-FR")
+                : "Non spécifié",
+            }));
+          break;
+
+        case "totalCourses":
+          title = "Cours Assignés";
+          data = assignments.map((assignment) => ({
+            id: assignment.id,
+            subject: assignment.subject?.name || "Non spécifié",
+            class:
+              assignment.schoolClass?.name ||
+              assignment.classLevel ||
+              "Non spécifié",
+            professor: assignment.professeur?.firstName
+              ? `${assignment.professeur.firstName} ${assignment.professeur.lastName}`
+              : "Non assigné",
+          }));
+          break;
+
+        case "totalRevenue":
+          title = "Détails des Revenus";
+          data = allFeesArray
+            .filter(
+              (fee) =>
+                fee?.status && String(fee.status).toLowerCase() === "paid"
+            )
+            .map((fee) => ({
+              id: fee.id,
+              student: fee.student?.firstName
+                ? `${fee.student.firstName} ${fee.student.lastName}`
+                : `Étudiant #${fee.studentId?.substring(0, 8)}`,
+              amount: fee.paidAmount || 0,
+              date: fee.updatedAt
+                ? new Date(fee.updatedAt).toLocaleDateString("fr-FR")
+                : fee.createdAt
+                ? new Date(fee.createdAt).toLocaleDateString("fr-FR")
+                : "Date inconnue",
+            }));
+          break;
+
+        case "enrollmentRate":
+          title = "Inscriptions Actives";
+          data = enrollments
+            .filter(
+              (e) => e?.status && String(e.status).toLowerCase() === "active"
+            )
+            .map((enrollment) => ({
+              id: enrollment.id,
+              student: enrollment.student?.firstName
+                ? `${enrollment.student.firstName} ${enrollment.student.lastName}`
+                : `Étudiant #${enrollment.studentCode?.substring(0, 8)}`,
+              class: enrollment.schoolClass?.name || "Non spécifié",
+              enrollmentDate: enrollment.enrollmentDate
+                ? new Date(enrollment.enrollmentDate).toLocaleDateString(
+                    "fr-FR"
+                  )
+                : "Date inconnue",
+            }));
+          break;
+
+        case "totalPayments":
+          title = "Tous les Paiements";
+          data = allFeesArray
+            .filter(
+              (fee) =>
+                fee?.status && String(fee.status).toLowerCase() === "partial"
+            )
+            .map((fee) => ({
+              id: fee.id,
+              student: fee.student?.firstName
+                ? `${fee.student.firstName} ${fee.student.lastName}`
+                : `Étudiant #${fee.studentId?.substring(0, 8)}`,
+              amount: fee.paidAmount || 0,
+              status: fee.status || "inconnu",
+              date: fee.updatedAt
+                ? new Date(fee.updatedAt).toLocaleDateString("fr-FR")
+                : fee.createdAt
+                ? new Date(fee.createdAt).toLocaleDateString("fr-FR")
+                : "Date inconnue",
+            }));
+          break;
+
+        case "passRate":
+          title = "Statistiques des Notes";
+          const validGrades = grades.filter(
+            (g) =>
+              g.grade >= (g.subject.passingGrade / 100) * g.subject.maxGrade
+          ).length;
+          const totalGrades = grades.length;
+          data = [
+            {
+              id: "stats",
+              totalGrades,
+              validGrades,
+              passRate:
+                totalGrades > 0
+                  ? Math.round((validGrades / totalGrades) * 100)
+                  : 0,
+              average:
+                totalGrades > 0
+                  ? (
+                      grades.reduce(
+                        (sum, g) => sum + (Number(g.grade) || 0),
+                        0
+                      ) / totalGrades
+                    ).toFixed(1)
+                  : "0.0",
+            },
+          ];
+          break;
+
+        case "averageGrade":
+          title = "Moyenne Générale";
+          const average =
+            Array.isArray(grades) && grades.length > 0
+              ? grades.reduce((sum, g) => sum + (Number(g.grade) || 0), 0) /
+                grades.length
+              : 0;
+          data = [
+            {
+              id: "average",
+              value: average.toFixed(1),
+              totalStudents: calculateStats.activeStudents,
+              noteMax: 20,
+              noteMin: 0,
+            },
+          ];
+          break;
+
+        default:
+          title = "Détails";
+          data = [];
+          break;
+      }
+    } catch (error) {
+      console.error(
+        "Erreur lors de la préparation des données modales:",
+        error
+      );
+      title = "Erreur";
+      data = [{ error: "Impossible de charger les données" }];
+    }
+
+    setModalTitle(title);
+    setModalData(data);
+    setModalLoading(false);
+    setModalOpen(true);
+  };
+
+  const StatCard = React.memo(
+    ({
+      title,
+      value,
+      icon: Icon,
+      trend,
+      description,
+      color = "primary",
+      loading = false,
+      clickable = true,
+      statKey = "",
+    }: {
+      title: string;
+      value: string | number;
+      icon: any;
+      trend?: number;
+      description?: string;
+      color?: string;
+      loading?: boolean;
+      clickable?: boolean;
+      statKey?: string;
+    }) => {
+      const handleClick = (e: React.MouseEvent) => {
+        if (clickable && statKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleCardClick(statKey, e);
+        }
+      };
+
+      return (
+        <Card
+          className={`hover:shadow-lg transition-all duration-300 ${
+            clickable
+              ? "cursor-pointer hover:scale-[1.02] active:scale-[0.98] select-none"
+              : ""
+          }`}
+          onClick={handleClick}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              {title}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Icon
+                className={`h-5 w-5 ${
+                  color === "primary"
+                    ? "text-primary"
+                    : color === "success"
+                    ? "text-green-600"
+                    : color === "warning"
+                    ? "text-yellow-600"
+                    : color === "danger"
+                    ? "text-red-600"
+                    : "text-blue-600"
+                }`}
+              />
+              {clickable && (
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="h-8 w-24 bg-muted animate-pulse rounded"></div>
+            ) : (
+              <div className="text-2xl font-bold">{value}</div>
+            )}
+            {trend !== undefined && !loading && (
+              <div className="flex items-center text-xs mt-1">
+                {trend >= 0 ? (
+                  <TrendingUp className="h-3 w-3 mr-1 text-green-600" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 mr-1 text-red-600" />
+                )}
+                <span
+                  className={trend >= 0 ? "text-green-600" : "text-red-600"}
+                >
+                  {trend >= 0 ? "+" : ""}
+                  {trend}%
+                </span>
+                <span className="text-muted-foreground ml-2">
+                  vs mois dernier
+                </span>
+              </div>
+            )}
+            {description && !loading && (
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-xs text-muted-foreground">{description}</p>
+                {clickable && (
+                  <span className="text-xs text-primary font-medium flex items-center gap-1">
+                    Voir détails <Eye className="h-3 w-3" />
+                  </span>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
+  );
+
+  StatCard.displayName = "StatCard";
+
+  // Composant Modal pour afficher les détails
+  const StatModal = useCallback(() => {
+    const handleClose = () => {
+      setModalOpen(false);
+      setModalLoading(false);
+      setModalData([]);
+      setModalTitle("");
+      setSelectedStat(null);
+    };
+
+    const renderTableData = () => {
+      if (modalLoading) {
+        return (
+          <div className="flex items-center justify-center h-48">
+            <div className="text-center">
+              <RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+              <p className="text-muted-foreground">Chargement des données...</p>
+            </div>
+          </div>
+        );
+      }
+
+      if (modalData.length === 0) {
+        return (
+          <div className="text-center py-8 text-muted-foreground">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>Aucune donnée disponible</p>
+          </div>
+        );
+      }
+
+      // Rendu selon le type de données
+      switch (selectedStat) {
+        case "activeStudents":
+          return (
+            <div className="space-y-3">
+              {modalData.map((student: any) => (
+                <div
+                  key={student.id}
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Users className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{student.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {student.email}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="bg-green-50 text-green-700 border-green-200"
+                  >
+                    {student.class}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          );
+
+        case "activeClasses":
+          return (
+            <div className="space-y-4">
+              {modalData.map((cls: any) => (
+                <div
+                  key={cls.id}
+                  className="p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <School className="h-5 w-5 text-primary" />
+                      <h4 className="font-semibold">{cls.name}</h4>
+                    </div>
+                    <Badge variant="outline">{cls.level}</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Capacité</p>
+                      <p className="font-medium">
+                        {cls.currentStudents} / {cls.capacity}
+                      </p>
+                      <Progress
+                        value={(cls.currentStudents / cls.capacity) * 100}
+                        className="h-2 mt-1"
+                      />
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Professeur</p>
+                      <p className="font-medium truncate">{cls.teacher}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+
+        case "pendingPayments":
+        case "totalPayments":
+          return (
+            <div className="space-y-3">
+              {modalData.map((payment: any) => (
+                <div
+                  key={payment.id}
+                  className="p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="font-medium">{payment.student}</p>
+                      {payment.dueDate && (
+                        <p className="text-sm text-muted-foreground">
+                          Échéance: {payment.dueDate}
+                        </p>
+                      )}
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={
+                        payment.status === "paid"
+                          ? "bg-green-50 text-green-700 border-green-200"
+                          : payment.status === "pending"
+                          ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                          : "bg-gray-50 text-gray-700 border-gray-200"
+                      }
+                    >
+                      {payment.status === "paid" ? "Payé" : "En attente"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Montant</p>
+                      <p
+                        className={`text-lg font-bold ${
+                          payment.status === "paid"
+                            ? "text-green-600"
+                            : "text-amber-600"
+                        }`}
+                      >
+                        {payment.amount.toLocaleString()} HTG
+                      </p>
+                    </div>
+                    {payment.totalAmount > 0 && (
+                      <div className="text-right">
+                        <p className="text-sm text-muted-foreground">
+                          Total dû
+                        </p>
+                        <p className="text-sm">
+                          {payment.totalAmount.toLocaleString()} HTG
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+
+        case "totalCourses":
+          return (
+            <div className="space-y-4">
+              {modalData.map((course: any) => (
+                <div
+                  key={course.id}
+                  className="p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Book className="h-5 w-5 text-primary" />
+                      <div>
+                        <h4 className="font-semibold">{course.subject}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {course.class}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="bg-blue-50 text-blue-700 border-blue-200"
+                    >
+                      {course.schedules} créneau(s)
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Professeur</p>
+                      <p className="font-medium truncate">{course.professor}</p>
+                    </div>
+                    <Button variant="ghost" size="sm">
+                      Voir horaires
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+
+        case "totalRevenue":
+          return (
+            <div className="space-y-3">
+              {modalData.map((revenue: any) => (
+                <div
+                  key={revenue.id}
+                  className="p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="font-medium">{revenue.student}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {revenue.date}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="bg-green-50 text-green-700 border-green-200"
+                    >
+                      {revenue.method}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Montant</p>
+                      <p className="text-lg font-bold text-green-600">
+                        {revenue.amount.toLocaleString()} HTG
+                      </p>
+                    </div>
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+
+        case "enrollmentRate":
+          return (
+            <div className="space-y-4">
+              {modalData.map((enrollment: any) => (
+                <div
+                  key={enrollment.id}
+                  className="p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="h-5 w-5 text-primary" />
+                      <div>
+                        <h4 className="font-semibold">{enrollment.student}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Inscrit le {enrollment.enrollmentDate}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline">{enrollment.class}</Badge>
+                  </div>
+                  <div className="text-sm">
+                    <p className="text-muted-foreground">
+                      Statut:{" "}
+                      <span className="font-medium text-green-600">Actif</span>
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+
+        case "passRate":
+          return modalData.length > 0 && modalData[0] ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700">Notes totales</p>
+                  <p className="text-2xl font-bold text-blue-800">
+                    {modalData[0].totalGrades}
+                  </p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <p className="text-sm text-green-700">Notes validées</p>
+                  <p className="text-2xl font-bold text-green-800">
+                    {modalData[0].validGrades}
+                  </p>
+                </div>
+              </div>
+              <div className="p-4 bg-primary/5 rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  Taux de réussite
+                </p>
+                <div className="flex items-center gap-4 mt-2">
+                  <div className="flex-1">
+                    <Progress value={modalData[0].passRate} className="h-3" />
+                  </div>
+                  <span className="text-2xl font-bold">
+                    {modalData[0].passRate}%
+                  </span>
+                </div>
+              </div>
+              <div className="p-4 bg-purple-50 rounded-lg">
+                <p className="text-sm text-purple-700">Moyenne générale</p>
+                <p className="text-2xl font-bold text-purple-800">
+                  {modalData[0].average}/20
+                </p>
+              </div>
+            </div>
+          ) : null;
+
+        case "averageGrade":
+          return modalData.length > 0 && modalData[0] ? (
+            <div className="space-y-6">
+              <div className="p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg text-center">
+                <p className="text-sm text-muted-foreground">Moyenne sur</p>
+                <p className="text-3xl font-bold text-primary mb-2">
+                  {modalData[0].value}/20
+                </p>
+                <p className="text-muted-foreground">
+                  {modalData[0].totalStudents} étudiants
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-gray-50 rounded-lg text-center">
+                  <p className="text-xs text-muted-foreground">Note minimale</p>
+                  <p className="text-lg font-bold">{modalData[0].noteMin}/20</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg text-center">
+                  <p className="text-xs text-muted-foreground">Note maximale</p>
+                  <p className="text-lg font-bold">{modalData[0].noteMax}/20</p>
+                </div>
+              </div>
+            </div>
+          ) : null;
+
+        default:
+          if (modalData.length > 0 && modalData[0]?.message) {
+            return (
+              <div className="text-center py-8">
+                <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+                <h3 className="font-semibold text-lg mb-2">
+                  {modalData[0].message}
+                </h3>
+                <p className="text-muted-foreground">
+                  {modalData[0].suggestion}
+                </p>
+              </div>
+            );
+          } else {
+            return (
+              <div className="space-y-4">
+                {modalData.map((item: any, index: number) => (
+                  <div key={index} className="p-4 border rounded-lg">
+                    {item.error ? (
+                      <>
+                        <AlertCircle className="h-6 w-6 text-red-500 mb-2" />
+                        <p className="font-medium text-red-600">{item.error}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {item.details}
+                        </p>
+                      </>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(item).map(([key, value]) => (
+                          <div key={key}>
+                            <span className="text-xs text-muted-foreground">
+                              {key}:
+                            </span>
+                            <span className="ml-2 font-medium">
+                              {String(value)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          }
+      }
+    };
+
+    return (
+      <Dialog
+        open={modalOpen}
+        onOpenChange={(open) => {
+          if (!open) handleClose();
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[80vh] sm:max-w-4xl">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="flex items-center gap-2">
+                <span>{modalTitle}</span>
+                <Badge variant="secondary">{modalData.length} élément(s)</Badge>
+              </DialogTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClose}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <DialogDescription>
+              Détails complets pour {modalTitle.toLowerCase()}
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="h-[60vh] pr-4">{renderTableData()}</ScrollArea>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={handleClose}>
+              Fermer
+            </Button>
+            {modalData.length > 0 && modalData[0] && !modalData[0].error && (
+              <Button
+                onClick={() => {
+                  try {
+                    const dataStr = JSON.stringify(modalData, null, 2);
+                    const dataUri =
+                      "data:application/json;charset=utf-8," +
+                      encodeURIComponent(dataStr);
+                    const exportFileDefaultName = `${modalTitle
+                      .toLowerCase()
+                      .replace(/\s+/g, "_")}_${
+                      new Date().toISOString().split("T")[0]
+                    }.json`;
+
+                    const linkElement = document.createElement("a");
+                    linkElement.setAttribute("href", dataUri);
+                    linkElement.setAttribute("download", exportFileDefaultName);
+                    document.body.appendChild(linkElement);
+                    linkElement.click();
+                    document.body.removeChild(linkElement);
+
+                    toast.success("Données exportées avec succès");
+                  } catch (error) {
+                    console.error("Erreur lors de l'export:", error);
+                    toast.error("Erreur lors de l'export");
+                  }
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Exporter
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }, [modalOpen, modalTitle, modalData, modalLoading, selectedStat]);
 
   // Calcul des métriques sécurisé
   const totalClassCapacity = classes.reduce(
@@ -576,11 +1313,12 @@ const AdminDashboard = () => {
     }
   }).length;
 
-  // Derniers paiements - CORRIGÉ
+  // Derniers paiements effectués
   const recentPayments = useMemo(() => {
     if (allFeesArray.length === 0) return [];
 
     return [...allFeesArray]
+      .filter((fee) => fee.status === "partial" || fee.status === "paid")
       .filter((fee) => fee.updatedAt || fee.createdAt)
       .sort((a, b) => {
         const dateA = new Date(a.updatedAt || a.createdAt || 0);
@@ -600,7 +1338,7 @@ const AdminDashboard = () => {
       }));
   }, [allFeesArray]);
 
-  // NOUVEAU : Dernières inscriptions
+  // Dernières inscriptions
   const recentEnrollments = useMemo(() => {
     if (!Array.isArray(enrollments) || enrollments.length === 0) return [];
 
@@ -697,11 +1435,13 @@ const AdminDashboard = () => {
 
   return (
     <div className="space-y-6">
+      <StatModal />
+
       {/* Header avec filtres */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-            Tableau de bord Administrateur
+            TABLEAU DE BORD ADMINISTRATEUR
           </h1>
           <p className="text-muted-foreground mt-1">
             Vue d'ensemble complète - Année académique{" "}
@@ -739,44 +1479,81 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Alertes rapides */}
+      {/* Alertes rapides - AUSSI CLIQUABLES */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-blue-500 bg-gradient-to-r from-white to-blue-50">
+        <Card
+          className="border-l-4 border-l-blue-500 bg-gradient-to-r from-white to-blue-50 hover:shadow-lg cursor-pointer hover:scale-[1.02] transition-all active:scale-[0.98]"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleCardClick("totalPayments", e);
+          }}
+        >
           <CardContent className="p-4">
             <div className="flex items-center">
               <AlertCircle className="h-5 w-5 text-blue-500 mr-3" />
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-medium">Paiements effectués</p>
                 <p className="text-2xl font-bold">
                   {calculateStats.totalPayments}
                 </p>
               </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-yellow-500 bg-gradient-to-r from-white to-yellow-50">
+        <Card
+          className="border-l-4 border-l-yellow-500 bg-gradient-to-r from-white to-yellow-50 hover:shadow-lg cursor-pointer hover:scale-[1.02] transition-all active:scale-[0.98]"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const pendingGrades = grades.filter(
+              (a) => a.status === "Submitted"
+            );
+            setModalTitle("Total Notes");
+            setModalData(
+              pendingGrades.map((grade) => ({
+                Matieres: grade.subject?.name || "Non spécifié",
+                Étudiant: grade.student
+                  ? `${grade.student.firstName} ${grade.student.lastName}`
+                  : "Inconnu",
+                Note: grade.grade || "N/A",
+                Statut: grade.status,
+              }))
+            );
+            setModalOpen(true);
+          }}
+        >
           <CardContent className="p-4">
             <div className="flex items-center">
               <Clock className="h-5 w-5 text-yellow-500 mr-3" />
-              <div>
-                <p className="text-sm font-medium">Notes à valider</p>
+              <div className="flex-1">
+                <p className="text-sm font-medium">Notes a valider</p>
                 <p className="text-2xl font-bold">
-                  {assignments.filter((a) => a._count?.grades > 0).length}
+                  {grades.filter((a) => a.status === "Submitted").length}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   En attente de validation
                 </p>
               </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-blue-500 bg-gradient-to-r from-white to-blue-50">
+        <Card
+          className="border-l-4 border-l-blue-500 bg-gradient-to-r from-white to-blue-50 hover:shadow-lg cursor-pointer hover:scale-[1.02] transition-all active:scale-[0.98]"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleCardClick("activeClasses", e);
+          }}
+        >
           <CardContent className="p-4">
             <div className="flex items-center">
               <Shield className="h-5 w-5 text-blue-500 mr-3" />
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-medium">Classes actives</p>
                 <p className="text-2xl font-bold">
                   {classes.filter((c) => c.status === "Active").length}
@@ -785,15 +1562,23 @@ const AdminDashboard = () => {
                   Sur {classes.length} classes
                 </p>
               </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-green-500 bg-gradient-to-r from-white to-green-50">
+        <Card
+          className="border-l-4 border-l-green-500 bg-gradient-to-r from-white to-green-50 hover:shadow-lg cursor-pointer hover:scale-[1.02] transition-all active:scale-[0.98]"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleCardClick("enrollmentRate", e);
+          }}
+        >
           <CardContent className="p-4">
             <div className="flex items-center">
               <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-medium">Taux de rétention</p>
                 <p className="text-2xl font-bold">
                   {calculateStats.enrollmentRate}%
@@ -802,6 +1587,7 @@ const AdminDashboard = () => {
                   Étudiants actifs
                 </p>
               </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
@@ -828,7 +1614,7 @@ const AdminDashboard = () => {
         </nav>
       </div>
 
-      {/* Statistiques principales */}
+      {/* Statistiques principales - CLIQUABLES */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Étudiants actifs"
@@ -837,6 +1623,8 @@ const AdminDashboard = () => {
           description={`Total: ${calculateStats.totalStudents}`}
           color="primary"
           loading={loading}
+          clickable={true}
+          statKey="activeStudents"
         />
         <StatCard
           title="Taux de réussite"
@@ -845,6 +1633,8 @@ const AdminDashboard = () => {
           description={`${calculateStats.totalGrades} notes`}
           color="success"
           loading={loading}
+          clickable={true}
+          statKey="passRate"
         />
         <StatCard
           title="Revenus totaux"
@@ -853,6 +1643,8 @@ const AdminDashboard = () => {
           description={`${calculateStats.totalPayments} paiements`}
           color="warning"
           loading={loading}
+          clickable={true}
+          statKey="totalRevenue"
         />
         <StatCard
           title="Moyenne générale"
@@ -861,6 +1653,8 @@ const AdminDashboard = () => {
           description="Score moyen des étudiants"
           color="info"
           loading={loading}
+          clickable={true}
+          statKey="averageGrade"
         />
       </div>
 
@@ -923,7 +1717,7 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* RÉPARTITION PAR NIVEAU  */}
+          {/* RÉPARTITION PAR NIVEAU */}
           <Card>
             <CardHeader>
               <CardTitle>Répartition par niveau</CardTitle>
@@ -987,7 +1781,28 @@ const AdminDashboard = () => {
                         (entry, index) => (
                           <div
                             key={index}
-                            className="flex items-center justify-between p-2 hover:bg-muted rounded"
+                            className="flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const levelStudents = students.filter(
+                                (s) =>
+                                  s.schoolClass?.level === entry.level &&
+                                  s.status?.toLowerCase() === "active"
+                              );
+                              setModalTitle(`Étudiants - ${entry.level}`);
+                              setModalData(
+                                levelStudents.map((student) => ({
+                                  id: student.id,
+                                  name: `${student.firstName} ${student.lastName}`,
+                                  email: student.email || "Non spécifié",
+                                  class:
+                                    student.schoolClass?.name || "Non assigné",
+                                  status: student.status,
+                                }))
+                              );
+                              setModalOpen(true);
+                            }}
                           >
                             <div className="flex items-center">
                               <div
@@ -1006,6 +1821,7 @@ const AdminDashboard = () => {
                                 ).toFixed(0)}
                                 %
                               </span>
+                              <ChevronRight className="h-3 w-3 text-muted-foreground" />
                             </div>
                           </div>
                         )
@@ -1138,7 +1954,44 @@ const AdminDashboard = () => {
                       {dashboardData.paymentStatus.map((status, index) => (
                         <div
                           key={index}
-                          className="flex items-center justify-between p-2 hover:bg-muted rounded"
+                          className="flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const filteredFees = allFeesArray.filter(
+                              (fee) =>
+                                (fee.status?.toLowerCase() === "paid" &&
+                                  status.status === "Payé") ||
+                                (fee.status?.toLowerCase() === "pending" &&
+                                  status.status === "En attente") ||
+                                (fee.status?.toLowerCase() === "overdue" &&
+                                  status.status === "En retard")
+                            );
+                            setModalTitle(`Paiements - ${status.status}`);
+                            setModalData(
+                              filteredFees.map((fee) => ({
+                                id: fee.id,
+                                student: fee.student?.firstName
+                                  ? `${fee.student.firstName} ${fee.student.lastName}`
+                                  : `Étudiant #${fee.studentId?.substring(
+                                      0,
+                                      8
+                                    )}`,
+                                amount: fee.paidAmount || 0,
+                                date: fee.updatedAt
+                                  ? new Date(fee.updatedAt).toLocaleDateString(
+                                      "fr-FR"
+                                    )
+                                  : fee.createdAt
+                                  ? new Date(fee.createdAt).toLocaleDateString(
+                                      "fr-FR"
+                                    )
+                                  : "Date inconnue",
+                                status: fee.status,
+                              }))
+                            );
+                            setModalOpen(true);
+                          }}
                         >
                           <div className="flex items-center">
                             <div
@@ -1147,7 +2000,10 @@ const AdminDashboard = () => {
                             />
                             <span className="text-sm">{status.status}</span>
                           </div>
-                          <span className="font-medium">{status.count}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{status.count}</span>
+                            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1232,7 +2088,14 @@ const AdminDashboard = () => {
                     {recentPayments.map((payment, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
+                        className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors cursor-pointer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setModalTitle("Détails du Paiement");
+                          setModalData([payment]);
+                          setModalOpen(true);
+                        }}
                       >
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
@@ -1372,7 +2235,23 @@ const AdminDashboard = () => {
             <div className="space-y-4">
               {recentActivities.length > 0 ? (
                 recentActivities.map((activity, index) => (
-                  <div key={index} className="flex items-start space-x-3">
+                  <div
+                    key={index}
+                    className="flex items-start space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded transition-colors"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setModalTitle(activity.title);
+                      setModalData([
+                        {
+                          description: activity.description,
+                          time: activity.time,
+                          type: activity.type,
+                        },
+                      ]);
+                      setModalOpen(true);
+                    }}
+                  >
                     <div
                       className={`p-2 rounded-full ${activity.color.replace(
                         "text-",
@@ -1390,6 +2269,7 @@ const AdminDashboard = () => {
                         {activity.time}
                       </p>
                     </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />
                   </div>
                 ))
               ) : (

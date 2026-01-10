@@ -1,65 +1,131 @@
-// timetableStore.ts - Version corrigée
-import api from "@/services/api";
-import { toast } from "sonner";
+/**
+ * @file timetableStore.ts
+ * @description Store Zustand pour la gestion des emplois du temps - Version compatible avec le nouveau ScheduleService
+ */
+
 import { create } from "zustand";
+import { toast } from "@/components/ui/use-toast";
+import api from "@/services/api";
+import {
+  ApiResponse,
+  ConflictCheckResult,
+  CreateScheduleData,
+  DAYS_OF_WEEK,
+  GenerateTimetableData,
+  Schedule,
+  ScheduleFilters,
+  UpdateScheduleData,
+} from "@/types/timesTableTypes";
 
-export interface TimetableEvent {
-  id: string;
-  title: string;
-  description?: string;
-  teacherId: string;
-  teacherName?: string;
-  className: string;
-  classId: string;
-  subject: string;
-  room?: string;
-  startTime: string;
-  endTime: string;
-  dayOfWeek: number;
-  color?: string;
-  isRecurring: boolean;
-  startDate?: string;
-  endDate?: string;
-}
+// Fonction utilitaire pour formater les temps pour l'API (version simplifiée)
+const formatTimeForAPI = (time: string): string => {
+  if (!time) return "";
 
-interface TimetableStore {
-  events: TimetableEvent[];
-  schedules: any[];
-  assignments: any[];
+  // Supprimer les espaces
+  const trimmedTime = time.trim();
+
+  // Si c'est déjà au format HH:MM:SS, utiliser tel quel
+  if (trimmedTime.match(/^\d{1,2}:\d{2}:\d{2}$/)) {
+    return trimmedTime;
+  }
+
+  // Si c'est au format HH:MM, ajouter :00
+  if (trimmedTime.match(/^\d{1,2}:\d{2}$/)) {
+    return `${trimmedTime}:00`;
+  }
+
+  // Si c'est un timestamp ISO, convertir en format temps simple
+  if (trimmedTime.includes("T")) {
+    try {
+      const date = new Date(trimmedTime);
+      if (!isNaN(date.getTime())) {
+        const hours = date.getUTCHours().toString().padStart(2, "0");
+        const minutes = date.getUTCMinutes().toString().padStart(2, "0");
+        const seconds = date.getUTCSeconds().toString().padStart(2, "0");
+        return `${hours}:${minutes}:${seconds}`;
+      }
+    } catch {
+      // En cas d'erreur, utiliser le format par défaut
+    }
+  }
+
+  // Par défaut, essayer de formater
+  try {
+    // Extraire les heures et minutes
+    const timeParts = trimmedTime.split(/[:\s]/).filter(Boolean);
+    if (timeParts.length >= 2) {
+      const hours = parseInt(timeParts[0]).toString().padStart(2, "0");
+      const minutes = parseInt(timeParts[1]).toString().padStart(2, "0");
+      const seconds = timeParts[2] || "00";
+      return `${hours}:${minutes}:${seconds}`;
+    }
+  } catch {
+    // En cas d'erreur, retourner un format par défaut
+  }
+
+  return "00:00:00";
+};
+
+// Fonction pour analyser le temps côté client
+const parseTimeForClient = (time: string): string => {
+  if (!time) return "00:00";
+
+  try {
+    // Si c'est au format HH:MM:SS, extraire HH:MM
+    if (time.match(/^\d{1,2}:\d{2}:\d{2}$/)) {
+      return time.substring(0, 5);
+    }
+
+    // Si c'est au format HH:MM
+    if (time.match(/^\d{1,2}:\d{2}$/)) {
+      return time;
+    }
+
+    // Si c'est un timestamp ISO
+    if (time.includes("T")) {
+      const date = new Date(time);
+      if (!isNaN(date.getTime())) {
+        const hours = date.getHours().toString().padStart(2, "0");
+        const minutes = date.getMinutes().toString().padStart(2, "0");
+        return `${hours}:${minutes}`;
+      }
+    }
+
+    return "00:00";
+  } catch {
+    return "00:00";
+  }
+};
+
+interface TimetableState {
+  // État
+  schedules: Schedule[];
+  timetable: Record<string, Schedule[]>;
+  filters: ScheduleFilters;
   loading: boolean;
   error: string | null;
-  errorDetails: any;
-  lastErrorTime: Date | null;
-  currentTimetable: any;
-  filters: {
-    classId?: string;
-    teacherId?: string;
-    dayOfWeek?: number;
-    room?: string;
-  };
 
   // Actions
-  fetchEvents: () => Promise<void>;
+  fetchSchedules: (filters?: ScheduleFilters) => Promise<ApiResponse>;
   fetchClassTimetable: (
     classId: string,
-    options?: { academicYearId?: string }
-  ) => Promise<any[]>;
-  fetchTimetableSessions: (timetableId: string) => Promise<void>;
-  getEventsForDay: (dayOfWeek: number) => TimetableEvent[];
-  getEventsForClass: (classId: string) => TimetableEvent[];
-  getEventsForTeacher: (teacherId: string) => TimetableEvent[];
+    academicYearId?: string
+  ) => Promise<ApiResponse>;
 
-  // CRUD Operations
-  addSchedule: (assignmentId: string, scheduleData: any) => Promise<void>;
-  updateSchedule: (scheduleId: string, scheduleData: any) => Promise<void>;
-  deleteSchedule: (scheduleId: string) => Promise<void>;
-  generateClassTimetable: (
-    classId: string,
-    academicYearId: string,
-    constraints?: any
-  ) => Promise<void>;
+  fetchProfessorSchedule: (
+    professeurId: string,
+    filters?: { startDate?: string; endDate?: string; status?: string }
+  ) => Promise<ApiResponse>;
 
-  // Vérification de conflits
+  createSchedule: (data: CreateScheduleData) => Promise<ApiResponse>;
+  updateSchedule: (
+    id: string,
+    data: UpdateScheduleData
+  ) => Promise<ApiResponse>;
+  deleteSchedule: (id: string) => Promise<ApiResponse>;
+
+  generateTimetable: (data: GenerateTimetableData) => Promise<ApiResponse>;
+
   checkScheduleConflicts: (data: {
     professeurId: string;
     classId: string;
@@ -68,556 +134,738 @@ interface TimetableStore {
     endTime: string;
     classroom?: string;
     excludeScheduleId?: string;
-  }) => Promise<{ hasConflict: boolean; conflicts: any[] }>;
+  }) => Promise<ConflictCheckResult>;
 
-  // Filters
-  setFilters: (filters: Partial<TimetableStore["filters"]>) => void;
-  clearFilters: () => void;
-  clearError: () => void;
+  getAvailableTimeSlots: (filters: {
+    classId?: string;
+    dayOfWeek?: string;
+    professeurId?: string;
+    classroom?: string;
+  }) => Promise<ApiResponse>;
 
-  // Getters
-  getFilteredEvents: () => TimetableEvent[];
-  getFilteredSchedules: () => any[];
+  // Filtres
+  setFilters: (filters: Partial<ScheduleFilters>) => void;
+  resetFilters: () => void;
+
+  // Utilitaires
+  getSchedulesByDay: (day: string) => Schedule[];
+  getTimetableForWeek: () => Record<string, Schedule[]>;
+  getScheduleById: (id: string) => Schedule | undefined;
+
+  // Loading states
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+
+  // Formattage
+  formatTimeForDisplay: (time: string) => string;
+  calculateDuration: (
+    startTime: string,
+    endTime: string
+  ) => {
+    minutes: number;
+    hours: number;
+    display: string;
+  };
+
+  // Nouvelle méthode pour créer un horaire avec assignation ID
+  addSchedule: (
+    assignmentId: string,
+    data: Partial<CreateScheduleData>
+  ) => Promise<ApiResponse>;
+
+  // Nouvelle méthode pour générer l'emploi du temps d'une classe
+  generateClassTimetable: (
+    classId: string,
+    academicYearId: string,
+    options?: { clearExisting?: boolean }
+  ) => Promise<ApiResponse>;
 }
 
-export const useTimetableStore = create<TimetableStore>((set, get) => ({
-  events: [],
+export const useTimetableStore = create<TimetableState>((set, get) => ({
+  // État initial
   schedules: [],
-  assignments: [],
+  timetable: {},
+  filters: { status: "ACTIVE" },
   loading: false,
-  currentTimetable: null,
   error: null,
-  errorDetails: null,
-  lastErrorTime: null,
-  filters: {},
 
-  fetchEvents: async () => {
-    set({ loading: true });
+  // Actions principales
+  fetchSchedules: async (filters = {}) => {
+    set({ loading: true, error: null });
+
     try {
-      const response = await api.get("/events");
-      set({ events: response.data, loading: false });
-    } catch (error) {
-      console.error("Error fetching events:", error);
-      set({ loading: false });
-    }
-  },
+      const params = new URLSearchParams();
 
-  // Fonction pour récupérer l'emploi du temps d'une classe
-  fetchClassTimetable: async (
-    classId: string,
-    options?: { academicYearId?: string }
-  ) => {
-    set({ loading: true, error: null, errorDetails: null });
-    try {
-      console.log("📋 Fetching timetable for class:", classId, options);
-
-      // CORRECTION : Utiliser le bon endpoint académique
-      const response = await api.get(`/schedules/class/${classId}`, {
-        params: {
-          academicYearId: options?.academicYearId,
-        },
+      // Appliquer les filtres
+      const allFilters = { ...get().filters, ...filters };
+      Object.entries(allFilters).forEach(([key, value]) => {
+        if (value !== undefined && value !== "" && value !== null) {
+          params.append(key, String(value));
+        }
       });
 
-      // Vérifier si la réponse contient une erreur
-      if (!response.data?.success) {
-        const errorMessage =
-          response.data?.message || "Erreur inconnue lors du chargement";
+      const response = await api.get(`/api/academic/schedules?${params}`);
+
+      if (response.data.success) {
+        const schedules = response.data.data?.schedules || [];
+
+        // Formater les temps pour le client
+        const formattedSchedules = schedules.map((schedule: Schedule) => ({
+          ...schedule,
+          displayStartTime: get().formatTimeForDisplay(schedule.startTime),
+          displayEndTime: get().formatTimeForDisplay(schedule.endTime),
+        }));
+
         set({
+          schedules: formattedSchedules,
           loading: false,
-          error: errorMessage,
-          errorDetails: response.data,
-          lastErrorTime: new Date(),
         });
 
-        toast.error(errorMessage);
-        return [];
+        // Mettre à jour aussi le timetable si une classe est spécifiée
+        if (allFilters.classId) {
+          const timetableByDay: Record<string, Schedule[]> = {};
+          DAYS_OF_WEEK.forEach((day) => {
+            timetableByDay[day.value] = [];
+          });
+
+          formattedSchedules.forEach((schedule: Schedule) => {
+            if (timetableByDay[schedule.dayOfWeek]) {
+              timetableByDay[schedule.dayOfWeek].push(schedule);
+            }
+          });
+
+          set({ timetable: timetableByDay });
+        }
       }
 
-      const schedules = response.data?.data?.schedules || [];
-
-      console.log("Schedules loaded:", {
-        count: schedules.length,
-        schedules: schedules.map((s: any) => ({
-          id: s.id,
-          day: s.dayOfWeek,
-          time: `${s.startTime}-${s.endTime}`,
-          subject: s.classAssignment?.subject?.name || "No subject",
-          professeurId: s.professeurId || s.classAssignment?.professeur?.id,
-          classId: s.classId,
-        })),
-      });
-
-      set({
-        schedules: schedules,
-        loading: false,
-        error: null,
-        errorDetails: null,
-      });
-      return schedules;
+      return response.data;
     } catch (error: any) {
-      console.error("Error fetching class timetable:", error);
-
-      const errorMessage =
+      const errorMsg =
         error.response?.data?.message ||
         error.message ||
-        "Erreur réseau lors du chargement";
+        "Erreur lors du chargement des horaires";
 
-      set({
-        loading: false,
-        error: errorMessage,
-        errorDetails: {
-          code: error.response?.status,
-          data: error.response?.data,
-          originalError: error.message,
-        },
-        lastErrorTime: new Date(),
+      set({ error: errorMsg, loading: false });
+
+      toast({
+        title: "❌ Erreur",
+        description: errorMsg,
+        variant: "destructive",
       });
 
-      toast.error(errorMessage);
-      return [];
+      throw error;
     }
   },
 
-  fetchTimetableSessions: async (timetableId: string) => {
-    set({ loading: true });
-    try {
-      const response = await api.get(`/${timetableId}/sessions`);
-      set({
-        schedules: response.data?.data || [],
-        currentTimetable: response.data?.data?.timetable,
-        loading: false,
-      });
-    } catch (error) {
-      console.error("Error fetching timetable sessions:", error);
-      set({ loading: false });
-    }
-  },
-
-  // Vérification des conflits d'horaire
-  checkScheduleConflicts: async (data: {
-    professeurId: string;
-    classId: string;
-    dayOfWeek: string;
-    startTime: string;
-    endTime: string;
-    classroom?: string;
-    excludeScheduleId?: string;
-  }): Promise<{ hasConflict: boolean; conflicts: any[] }> => {
-    const {
-      professeurId,
-      classId,
-      dayOfWeek,
-      startTime,
-      endTime,
-      classroom,
-      excludeScheduleId,
-    } = data;
+  fetchClassTimetable: async (classId: string, academicYearId?: string) => {
+    set({ loading: true, error: null });
 
     try {
-      console.log("🔍 Checking schedule conflicts:", data);
+      const params = new URLSearchParams();
+      if (academicYearId) {
+        params.append("academicYearId", academicYearId);
+      }
 
-      // CORRECTION : Utiliser le bon endpoint académique
-      const response = await api.get("/schedules/check-conflicts", {
-        params: {
-          professeurId,
-          classId,
-          dayOfWeek,
-          startTime,
-          endTime,
-          classroom,
-          excludeScheduleId,
-        },
-      });
+      const response = await api.get(
+        `/api/academic/schedules/class/${classId}?${params}`
+      );
 
-      const resData = response.data || {};
-      const payload = resData.data || resData;
-      const hasConflict =
-        payload?.hasConflict ??
-        (Array.isArray(payload?.conflicts) && payload.conflicts.length > 0) ??
-        false;
-      const conflicts = payload?.conflicts || [];
+      if (response.data.success) {
+        const schedules = response.data.data?.schedules || [];
 
-      console.log("✅ Check conflicts response:", payload);
-      return { hasConflict, conflicts };
+        // Formater les temps pour le client
+        const formattedSchedules = schedules.map((schedule: Schedule) => ({
+          ...schedule,
+          displayStartTime: get().formatTimeForDisplay(schedule.startTime),
+          displayEndTime: get().formatTimeForDisplay(schedule.endTime),
+        }));
+
+        const timetableByDay: Record<string, Schedule[]> = {};
+        DAYS_OF_WEEK.forEach((day) => {
+          timetableByDay[day.value] = [];
+        });
+
+        formattedSchedules.forEach((schedule: Schedule) => {
+          if (timetableByDay[schedule.dayOfWeek]) {
+            timetableByDay[schedule.dayOfWeek].push(schedule);
+          }
+        });
+
+        // Trier chaque jour par heure
+        Object.keys(timetableByDay).forEach((day) => {
+          timetableByDay[day].sort((a, b) =>
+            a.startTime.localeCompare(b.startTime)
+          );
+        });
+
+        set({
+          schedules: formattedSchedules,
+          timetable: timetableByDay,
+          loading: false,
+          filters: { ...get().filters, classId },
+        });
+      }
+
+      return response.data;
     } catch (error: any) {
-      console.error("❌ Error checking conflicts:", {
-        message: error.message,
-        status: error.response?.status,
-        url: error.config?.url,
-        data: error.response?.data,
+      const errorMsg =
+        error.response?.data?.message ||
+        "Erreur lors du chargement de l'emploi du temps";
+
+      set({ error: errorMsg, loading: false });
+
+      toast({
+        title: "❌ Erreur",
+        description: errorMsg,
+        variant: "destructive",
       });
 
-      // Fallback sécurisé : pas de conflit détecté
+      throw error;
+    }
+  },
+
+  fetchProfessorSchedule: async (professeurId: string, filters = {}) => {
+    set({ loading: true, error: null });
+
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== "") {
+          params.append(key, String(value));
+        }
+      });
+
+      const response = await api.get(
+        `/api/academic/schedules/professor/${professeurId}?${params}`
+      );
+
+      if (response.data.success) {
+        const schedules = response.data.data?.schedules || [];
+
+        // Formater les temps pour le client
+        const formattedSchedules = schedules.map((schedule: Schedule) => ({
+          ...schedule,
+          displayStartTime: get().formatTimeForDisplay(schedule.startTime),
+          displayEndTime: get().formatTimeForDisplay(schedule.endTime),
+        }));
+
+        const scheduleByDay: Record<string, Schedule[]> = {};
+        DAYS_OF_WEEK.forEach((day) => {
+          scheduleByDay[day.value] = [];
+        });
+
+        formattedSchedules.forEach((schedule: Schedule) => {
+          if (scheduleByDay[schedule.dayOfWeek]) {
+            scheduleByDay[schedule.dayOfWeek].push(schedule);
+          }
+        });
+
+        set({
+          schedules: formattedSchedules,
+          timetable: scheduleByDay,
+          loading: false,
+          filters: { ...get().filters, professeurId },
+        });
+      }
+
+      return response.data;
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.message ||
+        "Erreur lors du chargement de l'emploi du temps du professeur";
+
+      set({ error: errorMsg, loading: false });
+
+      toast({
+        title: "❌ Erreur",
+        description: errorMsg,
+        variant: "destructive",
+      });
+
+      throw error;
+    }
+  },
+
+  createSchedule: async (data: CreateScheduleData) => {
+    set({ loading: true, error: null });
+
+    try {
+      // Formater les données pour l'API
+      const formattedData = {
+        ...data,
+        dayOfWeek: data.dayOfWeek?.toUpperCase(),
+        startTime: formatTimeForAPI(data.startTime),
+        endTime: formatTimeForAPI(data.endTime),
+        classroom: data.classroom?.trim() || null,
+        recurrence: data.recurrence?.trim() || null,
+        untilDate: data.untilDate?.trim() || null,
+        notes: data.notes?.trim() || null,
+      };
+
+      console.log("📤 Création horaire - Données envoyées:", formattedData);
+
+      const response = await api.post("/api/academic/schedules", formattedData);
+
+      if (response.data.success) {
+        const newSchedule = response.data.data?.schedule;
+
+        if (newSchedule) {
+          // Formater le nouveau schedule pour le client
+          const formattedSchedule = {
+            ...newSchedule,
+            displayStartTime: get().formatTimeForDisplay(newSchedule.startTime),
+            displayEndTime: get().formatTimeForDisplay(newSchedule.endTime),
+          };
+
+          set((state) => ({
+            schedules: [formattedSchedule, ...state.schedules],
+            loading: false,
+          }));
+
+          // Mettre à jour le timetable si la classe correspond
+          if (
+            formattedSchedule &&
+            get().timetable[formattedSchedule.dayOfWeek]
+          ) {
+            set((state) => ({
+              timetable: {
+                ...state.timetable,
+                [formattedSchedule.dayOfWeek]: [
+                  formattedSchedule,
+                  ...state.timetable[formattedSchedule.dayOfWeek],
+                ].sort((a, b) => a.startTime.localeCompare(b.startTime)),
+              },
+            }));
+          }
+        }
+
+        toast({
+          title: "✅ Cours planifié",
+          description: "Le cours a été ajouté à l'emploi du temps",
+        });
+      }
+
+      return response.data;
+    } catch (error: any) {
+      let errorMsg =
+        error.response?.data?.message || "Erreur lors de la création du cours";
+
+      // Afficher les détails de l'erreur de validation
+      if (error.response?.data?.errors) {
+        console.error("Erreurs de validation:", error.response.data.errors);
+        errorMsg = `${errorMsg}: ${error.response.data.errors
+          .map((e: any) => e.message)
+          .join(", ")}`;
+      } else if (error.response?.data?.code === "SCHEDULE_CONFLICT") {
+        // Formater les conflits pour l'affichage
+        const conflicts = error.response.data?.data?.conflicts || [];
+        if (conflicts.length > 0) {
+          errorMsg = `Conflits détectés:\n${conflicts
+            .map((c: any) => `• ${c.message}`)
+            .join("\n")}`;
+        }
+      }
+
+      set({ error: errorMsg, loading: false });
+
+      toast({
+        title: "❌ Erreur",
+        description: errorMsg,
+        variant: "destructive",
+      });
+
+      throw error;
+    }
+  },
+
+  // Nouvelle méthode pour créer un horaire avec assignmentId
+  addSchedule: async (
+    assignmentId: string,
+    data: Partial<CreateScheduleData>
+  ) => {
+    set({ loading: true, error: null });
+
+    try {
+      // Construire l'objet complet CreateScheduleData
+      const createData: CreateScheduleData = {
+        assignmentId,
+        classId: data.classId || "",
+        dayOfWeek: data.dayOfWeek || "",
+        startTime: data.startTime || "",
+        endTime: data.endTime || "",
+        classroom: data.classroom,
+        recurrence: data.recurrence,
+        untilDate: data.untilDate,
+        notes: data.notes,
+      };
+
+      // Utiliser la méthode createSchedule existante
+      return await get().createSchedule(createData);
+    } catch (error: any) {
+      set({ loading: false, error: error.message });
+      throw error;
+    }
+  },
+
+  updateSchedule: async (id: string, data: UpdateScheduleData) => {
+    set({ loading: true, error: null });
+
+    try {
+      // Formater les données pour l'API
+      const formattedData = { ...data };
+
+      if (data.startTime !== undefined) {
+        formattedData.startTime = formatTimeForAPI(data.startTime);
+      }
+
+      if (data.endTime !== undefined) {
+        formattedData.endTime = formatTimeForAPI(data.endTime);
+      }
+
+      if (data.dayOfWeek !== undefined) {
+        formattedData.dayOfWeek = data.dayOfWeek.toUpperCase();
+      }
+
+      if (data.classroom !== undefined) {
+        formattedData.classroom = data.classroom.trim() || null;
+      }
+
+      if (data.recurrence !== undefined) {
+        formattedData.recurrence = data.recurrence.trim() || null;
+      }
+
+      if (data.untilDate !== undefined) {
+        formattedData.untilDate = data.untilDate.trim() || null;
+      }
+
+      if (data.notes !== undefined) {
+        formattedData.notes = data.notes.trim() || null;
+      }
+
+      console.log("📤 Mise à jour horaire - Données envoyées:", formattedData);
+
+      const response = await api.put(
+        `/api/academic/schedules/${id}`,
+        formattedData
+      );
+
+      if (response.data.success) {
+        const updatedSchedule = response.data.data?.schedule;
+
+        if (updatedSchedule) {
+          // Formater le schedule mis à jour pour le client
+          const formattedSchedule = {
+            ...updatedSchedule,
+            displayStartTime: get().formatTimeForDisplay(
+              updatedSchedule.startTime
+            ),
+            displayEndTime: get().formatTimeForDisplay(updatedSchedule.endTime),
+          };
+
+          set((state) => ({
+            schedules: state.schedules.map((schedule) =>
+              schedule.id === id ? formattedSchedule : schedule
+            ),
+            loading: false,
+          }));
+
+          // Mettre à jour le timetable
+          const oldSchedule = get().schedules.find((s) => s.id === id);
+
+          if (
+            oldSchedule &&
+            oldSchedule.dayOfWeek !== formattedSchedule.dayOfWeek
+          ) {
+            // Retirer de l'ancien jour
+            set((state) => ({
+              timetable: {
+                ...state.timetable,
+                [oldSchedule.dayOfWeek]:
+                  state.timetable[oldSchedule.dayOfWeek]?.filter(
+                    (s) => s.id !== id
+                  ) || [],
+              },
+            }));
+          }
+
+          // Ajouter au nouveau jour
+          if (get().timetable[formattedSchedule.dayOfWeek]) {
+            set((state) => ({
+              timetable: {
+                ...state.timetable,
+                [formattedSchedule.dayOfWeek]: [
+                  ...(state.timetable[formattedSchedule.dayOfWeek]?.filter(
+                    (s) => s.id !== id
+                  ) || []),
+                  formattedSchedule,
+                ].sort((a, b) => a.startTime.localeCompare(b.startTime)),
+              },
+            }));
+          }
+        }
+
+        toast({
+          title: "✅ Cours modifié",
+          description: "Le cours a été modifié avec succès",
+        });
+      }
+
+      return response.data;
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.message ||
+        "Erreur lors de la mise à jour du cours";
+
+      set({ error: errorMsg, loading: false });
+
+      toast({
+        title: "❌ Erreur",
+        description: errorMsg,
+        variant: "destructive",
+      });
+
+      throw error;
+    }
+  },
+
+  deleteSchedule: async (id: string) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.delete(`/api/academic/schedules/${id}`);
+
+      if (response.data.success) {
+        const deletedSchedule = get().schedules.find((s) => s.id === id);
+
+        set((state) => ({
+          schedules: state.schedules.filter((schedule) => schedule.id !== id),
+          loading: false,
+        }));
+
+        // Retirer du timetable
+        if (deletedSchedule && get().timetable[deletedSchedule.dayOfWeek]) {
+          set((state) => ({
+            timetable: {
+              ...state.timetable,
+              [deletedSchedule.dayOfWeek]:
+                state.timetable[deletedSchedule.dayOfWeek]?.filter(
+                  (s) => s.id !== id
+                ) || [],
+            },
+          }));
+        }
+
+        toast({
+          title: "✅ Cours supprimé",
+          description: "Le cours a été supprimé de l'emploi du temps",
+        });
+      }
+
+      return response.data;
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.message ||
+        "Erreur lors de la suppression du cours";
+
+      set({ error: errorMsg, loading: false });
+
+      toast({
+        title: "❌ Erreur",
+        description: errorMsg,
+        variant: "destructive",
+      });
+
+      throw error;
+    }
+  },
+
+  generateTimetable: async (data: GenerateTimetableData) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.post("/api/academic/schedules/generate", data);
+
+      if (response.data.success) {
+        // Recharger l'emploi du temps de la classe
+        await get().fetchClassTimetable(data.classId, data.academicYearId);
+
+        toast({
+          title: "✅ Emploi du temps généré",
+          description: `${
+            response.data.data?.statistics?.successfullyPlaced || 0
+          } cours planifiés`,
+        });
+      }
+
+      return response.data;
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.message ||
+        "Erreur lors de la génération de l'emploi du temps";
+
+      set({ error: errorMsg, loading: false });
+
+      toast({
+        title: "❌ Erreur",
+        description: errorMsg,
+        variant: "destructive",
+      });
+
+      throw error;
+    }
+  },
+
+  // Nouvelle méthode pour générer l'emploi du temps d'une classe (simplifiée)
+  generateClassTimetable: async (
+    classId: string,
+    academicYearId: string,
+    options?: { clearExisting?: boolean }
+  ) => {
+    return get().generateTimetable({
+      classId,
+      academicYearId,
+      constraints: {
+        // Contraintes par défaut pour la génération automatique
+        maxHoursPerDay: 6,
+      },
+    });
+  },
+
+  checkScheduleConflicts: async (data) => {
+    console.log("🔍 Vérification des conflits avec données:", data);
+
+    try {
+      const params = new URLSearchParams();
+
+      // Formater les temps pour l'API
+      const formattedData = {
+        ...data,
+        startTime: formatTimeForAPI(data.startTime),
+        endTime: formatTimeForAPI(data.endTime),
+      };
+
+      Object.entries(formattedData).forEach(([key, value]) => {
+        if (value !== undefined && value !== "" && value !== null) {
+          params.append(key, String(value));
+        }
+      });
+
+      console.log(
+        "🔗 URL de vérification:",
+        `/api/academic/schedules/check-conflicts?${params}`
+      );
+
+      const response = await api.get(
+        `/api/academic/schedules/check-conflicts?${params}`
+      );
+
+      console.log("✅ Réponse vérification conflits:", response.data);
+
+      if (response.data.success) {
+        return response.data.data;
+      }
+
+      return { hasConflict: false, conflicts: [] };
+    } catch (error: any) {
+      console.error("❌ Erreur vérification conflits:", {
+        message: error.message,
+        response: error.response?.data,
+        url: error.config?.url,
+      });
+
+      // Retourner un résultat par défaut en cas d'erreur
       return { hasConflict: false, conflicts: [] };
     }
   },
 
-  getEventsForDay: (dayOfWeek: number) => {
-    const { events } = get();
-    return events
-      .filter((event) => event.dayOfWeek === dayOfWeek)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  },
+  getAvailableTimeSlots: async (filters) => {
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== "") {
+          params.append(key, String(value));
+        }
+      });
 
-  getEventsForClass: (classId: string) => {
-    const { events } = get();
-    return events
-      .filter((event) => event.classId === classId)
-      .sort(
-        (a, b) =>
-          a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime)
+      const response = await api.get(
+        `/api/academic/schedules/available-slots?${params}`
       );
-  },
-
-  getEventsForTeacher: (teacherId: string) => {
-    const { events } = get();
-    return events
-      .filter((event) => event.teacherId === teacherId)
-      .sort(
-        (a, b) =>
-          a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime)
-      );
-  },
-
-  addSchedule: async (assignmentId: string, scheduleData: any) => {
-    set({ loading: true, error: null, errorDetails: null });
-
-    try {
-      // Validation des données
-      if (
-        !scheduleData.dayOfWeek ||
-        !scheduleData.startTime ||
-        !scheduleData.endTime
-      ) {
-        throw new Error("Jour, heure de début et heure de fin sont requis");
-      }
-
-      // Formater les données pour l'API
-      const scheduleToSend = {
-        assignmentId,
-        classId: scheduleData.classId,
-        dayOfWeek: scheduleData.dayOfWeek,
-        startTime: scheduleData.startTime,
-        endTime: scheduleData.endTime,
-        classroom: scheduleData.classroom || null,
-        recurrence: scheduleData.recurrence || null,
-        untilDate: scheduleData.untilDate || null,
-        notes: scheduleData.notes || null,
-      };
-
-      console.log("Sending schedule data:", scheduleToSend);
-
-      // CORRECTION : Utiliser le bon endpoint académique
-      const response = await api.post(`/schedules`, scheduleToSend);
-
-      // Vérifier la réponse du serveur
-      if (!response.data?.success) {
-        const errorMessage =
-          response.data?.message || "Erreur lors de la création";
-        set({
-          loading: false,
-          error: errorMessage,
-          errorDetails: response.data,
-          lastErrorTime: new Date(),
-        });
-
-        toast.error(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      const newSchedule = response.data?.data?.schedule || response.data?.data;
-
-      if (!newSchedule) {
-        const errorMessage = "Aucune donnée d'horaire reçue du serveur";
-        set({
-          loading: false,
-          error: errorMessage,
-          errorDetails: response.data,
-          lastErrorTime: new Date(),
-        });
-
-        toast.error(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      console.log("New schedule created:", newSchedule);
-
-      // Ajouter à la liste actuelle
-      set((state) => ({
-        schedules: [...state.schedules, newSchedule],
-        loading: false,
-        error: null,
-        errorDetails: null,
-      }));
-
-      toast.success("Horaire créé avec succès");
-      return newSchedule;
-    } catch (error: any) {
-      console.error("Error adding schedule:", error);
-
-      let errorMessage = "Erreur lors de l'ajout de l'horaire";
-      let errorCode = "UNKNOWN_ERROR";
-
-      if (error.response?.data?.code === "VALIDATION_ERROR") {
-        errorMessage =
-          error.response.data.errors
-            ?.map((err: any) => `${err.field}: ${err.message}`)
-            .join("\n") || "Erreur de validation";
-        errorCode = "VALIDATION_ERROR";
-      } else if (error.response?.data?.code === "PROFESSEUR_CONFLICT") {
-        errorMessage = "Le professeur a déjà un cours à ce créneau horaire.";
-        errorCode = "PROFESSEUR_CONFLICT";
-      } else if (error.response?.data?.code === "CLASS_CONFLICT") {
-        errorMessage = "La classe a déjà un cours à ce créneau horaire.";
-        errorCode = "CLASS_CONFLICT";
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-        errorCode = error.response.data.code || "API_ERROR";
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
-      set({
-        loading: false,
-        error: errorMessage,
-        errorDetails: {
-          code: errorCode,
-          data: error.response?.data,
-          originalError: error.message,
-        },
-        lastErrorTime: new Date(),
-      });
-
-      toast.error(errorMessage, { duration: 5000 });
-      throw error;
-    }
-  },
-
-  updateSchedule: async (scheduleId: string, scheduleData: any) => {
-    set({ loading: true, error: null, errorDetails: null });
-    try {
-      // CORRECTION : Utiliser le bon endpoint académique
-      const response = await api.put(`/schedules/${scheduleId}`, scheduleData);
-
-      if (!response.data?.success) {
-        const errorMessage =
-          response.data?.message || "Erreur lors de la mise à jour";
-        set({
-          loading: false,
-          error: errorMessage,
-          errorDetails: response.data,
-          lastErrorTime: new Date(),
-        });
-
-        toast.error(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      const updatedSchedule =
-        response.data?.data?.schedule || response.data?.data;
-
-      if (updatedSchedule) {
-        set((state) => ({
-          schedules: state.schedules.map((schedule) =>
-            schedule.id === scheduleId
-              ? { ...schedule, ...updatedSchedule }
-              : schedule
-          ),
-          loading: false,
-          error: null,
-          errorDetails: null,
-        }));
-
-        toast.success("Horaire mis à jour avec succès");
-      }
-
-      return updatedSchedule;
-    } catch (error: any) {
-      console.error("Error updating schedule:", error);
-
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        "Erreur lors de la mise à jour";
-
-      set({
-        loading: false,
-        error: errorMessage,
-        errorDetails: {
-          code: error.response?.status,
-          data: error.response?.data,
-          originalError: error.message,
-        },
-        lastErrorTime: new Date(),
-      });
-
-      toast.error(errorMessage);
-      throw error;
-    }
-  },
-
-  deleteSchedule: async (scheduleId: string) => {
-    set({ loading: true, error: null, errorDetails: null });
-    try {
-      // CORRECTION : Utiliser le bon endpoint académique
-      const response = await api.delete(`/schedules/${scheduleId}`);
-
-      if (!response.data?.success) {
-        const errorMessage =
-          response.data?.message || "Erreur lors de la suppression";
-        set({
-          loading: false,
-          error: errorMessage,
-          errorDetails: response.data,
-          lastErrorTime: new Date(),
-        });
-
-        toast.error(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      // Supprimer l'horaire de la liste
-      set((state) => ({
-        schedules: state.schedules.filter(
-          (schedule) => schedule.id !== scheduleId
-        ),
-        loading: false,
-        error: null,
-        errorDetails: null,
-      }));
-
-      toast.success("Horaire supprimé avec succès");
-    } catch (error: any) {
-      console.error("Error deleting schedule:", error);
-
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        "Erreur lors de la suppression";
-
-      set({
-        loading: false,
-        error: errorMessage,
-        errorDetails: {
-          code: error.response?.status,
-          data: error.response?.data,
-          originalError: error.message,
-        },
-        lastErrorTime: new Date(),
-      });
-
-      toast.error(errorMessage);
-      throw error;
-    }
-  },
-
-  generateClassTimetable: async (
-    classId: string,
-    academicYearId: string,
-    constraints?: any
-  ) => {
-    set({ loading: true, error: null, errorDetails: null });
-    try {
-      // CORRECTION : Utiliser le bon endpoint académique
-      const response = await api.post(`/schedules/generate`, {
-        classId,
-        academicYearId,
-        constraints,
-      });
-
-      if (!response.data?.success) {
-        const errorMessage =
-          response.data?.message || "Erreur lors de la génération";
-        set({
-          loading: false,
-          error: errorMessage,
-          errorDetails: response.data,
-          lastErrorTime: new Date(),
-        });
-
-        toast.error(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      const newSchedules = response.data?.data?.generatedSchedules || [];
-      if (newSchedules.length > 0) {
-        set((state) => ({
-          schedules: [...state.schedules, ...newSchedules],
-          loading: false,
-          error: null,
-          errorDetails: null,
-        }));
-      }
-
-      toast.success("Emploi du temps généré avec succès");
       return response.data;
     } catch (error: any) {
-      console.error("Error generating timetable:", error);
-
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        "Erreur lors de la génération";
-
-      set({
-        loading: false,
-        error: errorMessage,
-        errorDetails: {
-          code: error.response?.status,
-          data: error.response?.data,
-          originalError: error.message,
-        },
-        lastErrorTime: new Date(),
-      });
-
-      toast.error(errorMessage);
+      console.error("Erreur récupération créneaux:", error);
       throw error;
     }
   },
 
-  setFilters: (filters) => {
-    set((state) => ({ filters: { ...state.filters, ...filters } }));
+  // Gestion des filtres
+  setFilters: (newFilters) => {
+    set((state) => ({
+      filters: { ...state.filters, ...newFilters },
+    }));
   },
-  clearError: () => {
+
+  resetFilters: () => {
     set({
-      error: null,
-      errorDetails: null,
-      lastErrorTime: null,
-    });
-  },
-  clearFilters: () => {
-    set({ filters: {} });
-  },
-
-  getFilteredEvents: () => {
-    const { events, filters } = get();
-    return events.filter((event) => {
-      if (filters.classId && event.classId !== filters.classId) return false;
-      if (filters.teacherId && event.teacherId !== filters.teacherId)
-        return false;
-      if (
-        filters.dayOfWeek !== undefined &&
-        event.dayOfWeek !== filters.dayOfWeek
-      )
-        return false;
-      if (filters.room && event.room !== filters.room) return false;
-      return true;
+      filters: { status: "ACTIVE" },
+      schedules: [],
+      timetable: {},
     });
   },
 
-  getFilteredSchedules: () => {
-    const { schedules, filters } = get();
-    return schedules.filter((schedule) => {
-      if (filters.classId && schedule.classId !== filters.classId) return false;
-      if (filters.teacherId && schedule.professeurId !== filters.teacherId)
-        return false;
-      if (
-        filters.dayOfWeek !== undefined &&
-        schedule.dayOfWeek !== filters.dayOfWeek
-      )
-        return false;
-      if (filters.room && schedule.classroom !== filters.room) return false;
-      return true;
-    });
+  // Utilitaires
+  getSchedulesByDay: (day) => {
+    return get().timetable[day] || [];
+  },
+
+  getTimetableForWeek: () => {
+    return get().timetable;
+  },
+
+  getScheduleById: (id) => {
+    return get().schedules.find((schedule) => schedule.id === id);
+  },
+
+  // États de chargement
+  setLoading: (loading) => {
+    set({ loading });
+  },
+
+  setError: (error) => {
+    set({ error });
+  },
+
+  // Formattage
+  formatTimeForDisplay: (time: string): string => {
+    return parseTimeForClient(time);
+  },
+
+  calculateDuration: (startTime: string, endTime: string) => {
+    try {
+      const start = parseTimeForClient(startTime);
+      const end = parseTimeForClient(endTime);
+
+      const [startHours, startMinutes] = start.split(":").map(Number);
+      const [endHours, endMinutes] = end.split(":").map(Number);
+
+      const startTotal = startHours * 60 + startMinutes;
+      const endTotal = endHours * 60 + endMinutes;
+
+      const minutes = endTotal - startTotal;
+      const hours = minutes / 60;
+
+      const hoursPart = Math.floor(minutes / 60);
+      const minutesPart = minutes % 60;
+
+      return {
+        minutes,
+        hours: parseFloat(hours.toFixed(1)),
+        display:
+          `${hoursPart > 0 ? `${hoursPart}h` : ""}${
+            minutesPart > 0 ? `${minutesPart}min` : ""
+          }`.trim() || "0min",
+      };
+    } catch {
+      return { minutes: 0, hours: 0, display: "0min" };
+    }
   },
 }));

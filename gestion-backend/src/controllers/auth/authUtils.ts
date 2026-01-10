@@ -6,6 +6,7 @@
 
 import { Request } from "express";
 import { AuditData } from "../../types/auth";
+import { UserRole } from "../../../generated/prisma";
 
 /**
  * @function extractAuditData
@@ -14,14 +15,25 @@ import { AuditData } from "../../types/auth";
  * @returns {AuditData} Données d'audit
  */
 export const extractAuditData = (req: Request): AuditData => {
-  // S'assurer que userId est soit string soit null, jamais undefined
-  const userId = (req as any).userId ? String((req as any).userId) : null;
+  const user = (req as any).user;
+
+  if (!user) {
+    return {
+      userId: null,
+      userAgent: req.headers["user-agent"] || "unknown",
+      ipAddress: req.ip || req.connection?.remoteAddress || "unknown",
+      userRole: "",
+    };
+  }
+
+  // CORRECTION : Assurez-vous que le rôle est bien extrait
+  const userRole = user.role as UserRole;
 
   return {
-    ipAddress: req.ip || req.connection.remoteAddress || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: userId,
-    userRole: "",
+    userId: user.id,
+    userRole: userRole,
+    ipAddress: req.ip || "unknown",
+    userAgent: req.headers["user-agent"] || "unknown",
   };
 };
 

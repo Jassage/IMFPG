@@ -71,8 +71,10 @@ export const validateGradeFilters = [
 
   query("status")
     .optional()
-    .isIn(["Valid_", "Non_valid_", "Reprendre"])
-    .withMessage("Le statut doit être 'Valid_', 'Non_valid_' ou 'Reprendre'"),
+    .isIn(["Draft", "Submitted", "Rejected", "Published", "Archived"])
+    .withMessage(
+      "Le statut doit être 'Draft', 'Submitted', 'Rejected', 'Published' ou 'Archived'"
+    ),
 
   query("minGrade")
     .optional()
@@ -156,13 +158,17 @@ export const validateCreateGrade = [
 
   body("status")
     .optional()
-    .isIn(["Valid_", "Non_valid_", "Reprendre"])
-    .withMessage("Le statut doit être 'Valid_', 'Non_valid_' ou 'Reprendre'"),
-
-  body("session")
-    .optional()
-    .isIn(["Normale", "Reprise"])
-    .withMessage("La session doit être 'Normale' ou 'Reprise'"),
+    .isIn([
+      "Draft",
+      "Submitted",
+      "Rejected",
+      "Published",
+      "Archived",
+      "Approved",
+    ])
+    .withMessage(
+      "Le statut doit être 'Draft', 'Submitted', 'Rejected','Approved', 'Published' ou 'Archived'"
+    ),
 
   body("controlType")
     .optional()
@@ -219,13 +225,17 @@ export const validateUpdateGrade = [
 
   body("status")
     .optional()
-    .isIn(["Valid_", "Non_valid_", "Reprendre"])
-    .withMessage("Le statut doit être 'Valid_', 'Non_valid_' ou 'Reprendre'"),
-
-  body("session")
-    .optional()
-    .isIn(["Normale", "Reprise"])
-    .withMessage("La session doit être 'Normale' ou 'Reprise'"),
+    .isIn([
+      "Draft",
+      "Submitted",
+      "Rejected",
+      "Published",
+      "Archived",
+      "Approved",
+    ])
+    .withMessage(
+      "Le statut doit être 'Draft', 'Submitted', 'Rejected','Approved', 'Published' ou 'Archived'"
+    ),
 
   body("controlType")
     .optional()

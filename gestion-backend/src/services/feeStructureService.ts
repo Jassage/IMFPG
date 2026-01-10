@@ -69,9 +69,9 @@ export class FeeStructureService {
 
       if (search) {
         where.OR = [
-          { name: { contains: search, mode: "insensitive" } },
-          { academicYear: { contains: search, mode: "insensitive" } },
-          { description: { contains: search, mode: "insensitive" } },
+          { name: { contains: search} },
+          { academicYear: { contains: search} },
+          { description: { contains: search} },
         ];
       }
 
@@ -93,11 +93,7 @@ export class FeeStructureService {
             updatedAt: true,
             _count: {
               select: {
-                studentFees: true,
-              },
-            },
-          },
-        }),
+                studentFees: true}}}}),
         prisma.feeStructure.count({ where }),
       ]);
 
@@ -114,10 +110,7 @@ export class FeeStructureService {
             total,
             totalPages,
             hasNextPage: pageNum < totalPages,
-            hasPrevPage: pageNum > 1,
-          },
-        },
-      };
+            hasPrevPage: pageNum > 1}}};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - getAllFeeStructures error:",
@@ -143,23 +136,15 @@ export class FeeStructureService {
                   firstName: true,
                   lastName: true,
                   studentCode: true,
-                  email: true,
-                },
-              },
+                  email: true}},
               payments: {
                 select: {
                   id: true,
                   amount: true,
                   paymentDate: true,
-                  paymentMethod: true,
-                },
-                orderBy: { paymentDate: "desc" },
-              },
-            },
-            take: 100,
-          },
-        },
-      });
+                  paymentMethod: true},
+                orderBy: { paymentDate: "desc" }}},
+            take: 100}}});
 
       if (!feeStructure) {
         return {
@@ -167,16 +152,13 @@ export class FeeStructureService {
           message: "Structure de frais non trouvée",
           error: "NOT_FOUND",
           details: {
-            message: `Aucune structure de frais trouvée avec l'ID: ${id}`,
-          },
-        };
+            message: `Aucune structure de frais trouvée avec l'ID: ${id}`}};
       }
 
       return {
         success: true,
         message: "Structure de frais récupérée avec succès",
-        data: { feeStructure },
-      };
+        data: { feeStructure }};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - getFeeStructureById error:",
@@ -206,10 +188,7 @@ export class FeeStructureService {
             missing: {
               name: !name,
               academicYear: !academicYear,
-              amount: amount === undefined,
-            },
-          },
-        };
+              amount: amount === undefined}}};
       }
 
       // Validation du montant
@@ -220,18 +199,14 @@ export class FeeStructureService {
           message: "Montant invalide",
           error: "VALIDATION_ERROR",
           details: {
-            message: "Le montant doit être un nombre positif",
-          },
-        };
+            message: "Le montant doit être un nombre positif"}};
       }
 
       // Vérification de l'unicité
       const existingStructure = await prisma.feeStructure.findFirst({
         where: {
           name,
-          academicYear,
-        },
-      });
+          academicYear}});
 
       if (existingStructure) {
         return {
@@ -240,9 +215,7 @@ export class FeeStructureService {
           error: "DUPLICATE_ERROR",
           details: {
             message: `Une structure de frais avec le nom "${name}" existe déjà pour l'année ${academicYear}`,
-            existingId: existingStructure.id,
-          },
-        };
+            existingId: existingStructure.id}};
       }
 
       // Création
@@ -252,15 +225,12 @@ export class FeeStructureService {
           academicYear,
           amount: amountValue,
           description,
-          isActive,
-        },
-      });
+          isActive}});
 
       return {
         success: true,
         message: "Structure de frais créée avec succès",
-        data: { feeStructure: newFeeStructure },
-      };
+        data: { feeStructure: newFeeStructure }};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - createFeeStructure error:",
@@ -281,8 +251,7 @@ export class FeeStructureService {
 
       // Vérification de l'existence
       const existingStructure = await prisma.feeStructure.findUnique({
-        where: { id },
-      });
+        where: { id }});
 
       if (!existingStructure) {
         return {
@@ -290,9 +259,7 @@ export class FeeStructureService {
           message: "Structure de frais non trouvée",
           error: "NOT_FOUND",
           details: {
-            message: `Aucune structure de frais trouvée avec l'ID: ${id}`,
-          },
-        };
+            message: `Aucune structure de frais trouvée avec l'ID: ${id}`}};
       }
 
       // Vérification d'unicité si l'année académique est modifiée
@@ -301,9 +268,7 @@ export class FeeStructureService {
           where: {
             name: name || existingStructure.name,
             academicYear,
-            id: { not: id },
-          },
-        });
+            id: { not: id }}});
 
         if (duplicateStructure) {
           return {
@@ -311,9 +276,7 @@ export class FeeStructureService {
             message: "Conflit de données",
             error: "DUPLICATE_ERROR",
             details: {
-              message: `Une structure de frais avec ce nom existe déjà pour l'année ${academicYear}`,
-            },
-          };
+              message: `Une structure de frais avec ce nom existe déjà pour l'année ${academicYear}`}};
         }
       }
 
@@ -326,9 +289,7 @@ export class FeeStructureService {
             message: "Montant invalide",
             error: "VALIDATION_ERROR",
             details: {
-              message: "Le montant doit être un nombre positif",
-            },
-          };
+              message: "Le montant doit être un nombre positif"}};
         }
       }
 
@@ -345,16 +306,14 @@ export class FeeStructureService {
       // Mise à jour
       const updatedFeeStructure = await prisma.feeStructure.update({
         where: { id },
-        data: updateData,
-      });
+        data: updateData});
 
       console.log("✅ Structure mise à jour:", id);
 
       return {
         success: true,
         message: "Structure de frais mise à jour avec succès",
-        data: { feeStructure: updatedFeeStructure },
-      };
+        data: { feeStructure: updatedFeeStructure }};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - updateFeeStructure error:",
@@ -376,11 +335,7 @@ export class FeeStructureService {
         include: {
           studentFees: {
             include: {
-              payments: true,
-            },
-          },
-        },
-      });
+              payments: true}}}});
 
       if (!feeStructure) {
         return {
@@ -388,9 +343,7 @@ export class FeeStructureService {
           message: "Structure de frais non trouvée",
           error: "NOT_FOUND",
           details: {
-            message: `Aucune structure de frais trouvée avec l'ID: ${id}`,
-          },
-        };
+            message: `Aucune structure de frais trouvée avec l'ID: ${id}`}};
       }
 
       // Vérification des paiements
@@ -406,9 +359,7 @@ export class FeeStructureService {
           details: {
             message: "Des paiements sont associés à cette structure",
             totalStudents: feeStructure.studentFees.length,
-            suggestion: "Désactivez la structure plutôt que de la supprimer",
-          },
-        };
+            suggestion: "Désactivez la structure plutôt que de la supprimer"}};
       }
 
       // Vérification des étudiants associés
@@ -420,24 +371,20 @@ export class FeeStructureService {
           details: {
             totalStudents: feeStructure.studentFees.length,
             suggestion:
-              "Utilisez la suppression forcée pour supprimer également les associations étudiants",
-          },
-        };
+              "Utilisez la suppression forcée pour supprimer également les associations étudiants"}};
       }
 
       // Soft delete via désactivation
       const updatedFeeStructure = await prisma.feeStructure.update({
         where: { id },
-        data: { isActive: false },
-      });
+        data: { isActive: false }});
 
       console.log("✅ Structure désactivée:", id);
 
       return {
         success: true,
         message: "Structure de frais désactivée avec succès",
-        data: { feeStructure: updatedFeeStructure },
-      };
+        data: { feeStructure: updatedFeeStructure }};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - deleteFeeStructure error:",
@@ -459,11 +406,7 @@ export class FeeStructureService {
         include: {
           studentFees: {
             include: {
-              payments: true,
-            },
-          },
-        },
-      });
+              payments: true}}}});
 
       if (!feeStructure) {
         return {
@@ -471,9 +414,7 @@ export class FeeStructureService {
           message: "Structure de frais non trouvée",
           error: "NOT_FOUND",
           details: {
-            message: `Aucune structure de frais trouvée avec l'ID: ${id}`,
-          },
-        };
+            message: `Aucune structure de frais trouvée avec l'ID: ${id}`}};
       }
 
       // Blocage si des paiements existent
@@ -490,22 +431,18 @@ export class FeeStructureService {
             totalPayments: feeStructure.studentFees.reduce(
               (sum, sf) => sum + sf.payments.length,
               0
-            ),
-          },
-        };
+            )}};
       }
 
       // Transaction pour la suppression en cascade
       await prisma.$transaction(async (tx) => {
         if (feeStructure.studentFees.length > 0) {
           await tx.studentFee.deleteMany({
-            where: { feeStructureId: id },
-          });
+            where: { feeStructureId: id }});
         }
 
         await tx.feeStructure.delete({
-          where: { id },
-        });
+          where: { id }});
       });
 
       console.log("✅ Structure supprimée avec cascade:", id);
@@ -517,10 +454,7 @@ export class FeeStructureService {
         data: {
           deletedData: {
             feeStructureId: id,
-            deletedStudentsCount: feeStructure.studentFees.length,
-          },
-        },
-      };
+            deletedStudentsCount: feeStructure.studentFees.length}}};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - forceDeleteFeeStructure error:",
@@ -538,8 +472,7 @@ export class FeeStructureService {
       const feeStructure = await prisma.feeStructure.findFirst({
         where: {
           academicYear,
-          isActive: true,
-        },
+          isActive: true},
         include: {
           studentFees: {
             include: {
@@ -549,14 +482,8 @@ export class FeeStructureService {
                   firstName: true,
                   lastName: true,
                   studentCode: true,
-                  email: true,
-                },
-              },
-            },
-            take: 50,
-          },
-        },
-      });
+                  email: true}}},
+            take: 50}}});
 
       if (!feeStructure) {
         return {
@@ -566,16 +493,13 @@ export class FeeStructureService {
           details: {
             message: `Aucune structure de frais active trouvée pour l'année ${academicYear}`,
             suggestion:
-              "Vérifiez que l'année académique existe et qu'une structure est active",
-          },
-        };
+              "Vérifiez que l'année académique existe et qu'une structure est active"}};
       }
 
       return {
         success: true,
         message: "Structure de frais récupérée avec succès",
-        data: { feeStructure },
-      };
+        data: { feeStructure }};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - getFeeStructureByAcademicYear error:",
@@ -591,8 +515,7 @@ export class FeeStructureService {
   async getFeeStructuresByAcademicYearId(academicYearId: string) {
     try {
       const academicYear = await prisma.academicYear.findUnique({
-        where: { id: academicYearId },
-      });
+        where: { id: academicYearId }});
 
       if (!academicYear) {
         return {
@@ -600,16 +523,13 @@ export class FeeStructureService {
           message: "Année académique non trouvée",
           error: "NOT_FOUND",
           details: {
-            message: `Aucune année académique trouvée avec l'ID: ${academicYearId}`,
-          },
-        };
+            message: `Aucune année académique trouvée avec l'ID: ${academicYearId}`}};
       }
 
       const feeStructures = await prisma.feeStructure.findMany({
         where: {
           academicYear: academicYear.year,
-          isActive: true,
-        },
+          isActive: true},
         select: {
           id: true,
           name: true,
@@ -619,12 +539,8 @@ export class FeeStructureService {
           isActive: true,
           _count: {
             select: {
-              studentFees: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      });
+              studentFees: true}}},
+        orderBy: { createdAt: "desc" }});
 
       return {
         success: true,
@@ -632,9 +548,7 @@ export class FeeStructureService {
         data: {
           academicYear: academicYear.year,
           feeStructures,
-          count: feeStructures.length,
-        },
-      };
+          count: feeStructures.length}};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - getFeeStructuresByAcademicYearId error:",
@@ -659,12 +573,8 @@ export class FeeStructureService {
           createdAt: true,
           _count: {
             select: {
-              studentFees: true,
-            },
-          },
-        },
-        orderBy: { academicYear: "desc" },
-      });
+              studentFees: true}}},
+        orderBy: { academicYear: "desc" }});
 
       // Regroupement par année académique
       const yearsMap = new Map();
@@ -675,8 +585,7 @@ export class FeeStructureService {
             academicYear: year,
             structures: [],
             totalStructures: 0,
-            totalStudents: 0,
-          });
+            totalStudents: 0});
         }
 
         const yearData = yearsMap.get(year);
@@ -700,10 +609,7 @@ export class FeeStructureService {
             totalStudents: feeStructures.reduce(
               (sum, s) => sum + s._count.studentFees,
               0
-            ),
-          },
-        },
-      };
+            )}}};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - getAcademicYearsWithFees error:",
@@ -719,8 +625,7 @@ export class FeeStructureService {
   async toggleFeeStructureStatus(id: string) {
     try {
       const feeStructure = await prisma.feeStructure.findUnique({
-        where: { id },
-      });
+        where: { id }});
 
       if (!feeStructure) {
         return {
@@ -728,17 +633,13 @@ export class FeeStructureService {
           message: "Structure de frais non trouvée",
           error: "NOT_FOUND",
           details: {
-            message: `Aucune structure de frais trouvée avec l'ID: ${id}`,
-          },
-        };
+            message: `Aucune structure de frais trouvée avec l'ID: ${id}`}};
       }
 
       const updatedFeeStructure = await prisma.feeStructure.update({
         where: { id },
         data: {
-          isActive: !feeStructure.isActive,
-        },
-      });
+          isActive: !feeStructure.isActive}});
 
       return {
         success: true,
@@ -746,9 +647,7 @@ export class FeeStructureService {
         data: {
           feeStructure: updatedFeeStructure,
           previousStatus: feeStructure.isActive,
-          newStatus: updatedFeeStructure.isActive,
-        },
-      };
+          newStatus: updatedFeeStructure.isActive}};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - toggleFeeStructureStatus error:",
@@ -781,9 +680,9 @@ export class FeeStructureService {
 
       if (search) {
         where.OR = [
-          { name: { contains: search, mode: "insensitive" } },
-          { academicYear: { contains: search, mode: "insensitive" } },
-          { description: { contains: search, mode: "insensitive" } },
+          { name: { contains: search} },
+          { academicYear: { contains: search} },
+          { description: { contains: search} },
         ];
       }
 
@@ -800,11 +699,7 @@ export class FeeStructureService {
           createdAt: true,
           _count: {
             select: {
-              studentFees: true,
-            },
-          },
-        },
-      });
+              studentFees: true}}}});
 
       return {
         success: true,
@@ -815,10 +710,7 @@ export class FeeStructureService {
           filtersApplied: {
             academicYear: !!academicYear,
             isActive: isActive !== undefined,
-            search: !!search,
-          },
-        },
-      };
+            search: !!search}}};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - searchFeeStructures error:",
@@ -843,14 +735,12 @@ export class FeeStructureService {
         prisma.feeStructure.count(),
         prisma.feeStructure.count({ where: { isActive: true } }),
         prisma.feeStructure.aggregate({
-          _sum: { amount: true },
-        }),
+          _sum: { amount: true }}),
         prisma.feeStructure.groupBy({
           by: ["academicYear"],
           _count: { id: true },
           _sum: { amount: true },
-          orderBy: { academicYear: "desc" },
-        }),
+          orderBy: { academicYear: "desc" }}),
         prisma.feeStructure.findMany({
           take: 5,
           orderBy: { createdAt: "desc" },
@@ -860,9 +750,7 @@ export class FeeStructureService {
             academicYear: true,
             amount: true,
             isActive: true,
-            createdAt: true,
-          },
-        }),
+            createdAt: true}}),
       ]);
 
       return {
@@ -873,16 +761,12 @@ export class FeeStructureService {
             totalStructures,
             activeStructures,
             inactiveStructures: totalStructures - activeStructures,
-            totalAmount: totalAmount._sum.amount || 0,
-          },
+            totalAmount: totalAmount._sum.amount || 0},
           byYear: structuresByYear.map((year) => ({
             academicYear: year.academicYear,
             count: year._count.id,
-            totalAmount: year._sum.amount || 0,
-          })),
-          recent: recentStructures,
-        },
-      };
+            totalAmount: year._sum.amount || 0})),
+          recent: recentStructures}};
     } catch (error: any) {
       console.error(
         "❌ FeeStructureService - getFeeStructureStats error:",

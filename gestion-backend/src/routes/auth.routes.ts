@@ -13,6 +13,8 @@ import {
   forgotPassword,
   checkPasswordChangeRequired,
   forcePasswordChange,
+  verifyPasswordForUnlock,
+  verifyCurrentPassword,
 } from "../controllers/auth/authController";
 import {
   validateLogin,
@@ -129,6 +131,16 @@ router.post(
   handleValidationErrors,
   verifyPassword
 );
+
+/**
+ * Routes publiques (sans authentification)
+ */
+router.post("/verify-unlock", verifyPasswordForUnlock);
+
+/**
+ * Routes protégées (avec authentification)
+ */
+router.post("/verify-password", requireAuth, verifyCurrentPassword);
 
 /**
  * @route POST /api/auth/forgot-password
@@ -561,4 +573,5 @@ router.get(
   sanitizeInput,
   getUserDependencies
 );
+
 export default router;

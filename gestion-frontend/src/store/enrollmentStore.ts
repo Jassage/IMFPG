@@ -29,6 +29,7 @@ interface EnrollmentStore {
   validateReenrollment: (studentId: string) => Promise<any>;
 
   getAvailableFeeStructures: () => Promise<any[]>;
+  getEnrollmentsByStudent: (studentId: string) => any[];
 
   assignFeesToEnrollment: (
     enrollmentId: string,
@@ -151,6 +152,13 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
       );
       throw error;
     }
+  },
+  getEnrollmentsByStudent: (studentId: string) => {
+    const { enrollments } = get();
+
+    return enrollments.filter(
+      (enrollment) => enrollment.studentId === studentId
+    );
   },
 
   assignFeesToEnrollment: async (enrollmentId, feeStructureIds) => {

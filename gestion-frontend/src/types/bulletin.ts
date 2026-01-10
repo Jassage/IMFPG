@@ -1,14 +1,43 @@
 export enum GradeStatus {
-  Valid_ = "Valid_",
-  Non_valid_ = "Non_valid_",
-  Reprendre = "Reprendre",
+  DRAFT = "Draft",
+  SUBMITTED = "Submitted",
+  APPROVED = "Approved",
+  REJECTED = "Rejected",
+  PUBLISHED = "Published",
+  ARCHIVED = "Archived",
+
+  VALID = "Valid_",
+  NON_VALID = "Non_valid_",
+  REPRENDRE = "Reprendre",
 }
 
+// Enum pour les types de contrôle
 export enum ControlType {
   CONTROLE_1 = "CONTROLE_1",
   CONTROLE_2 = "CONTROLE_2",
   CONTROLE_3 = "CONTROLE_3",
   CONTROLE_4 = "CONTROLE_4",
+}
+
+// Enum pour les sessions
+export enum GradeSession {
+  NORMALE = "Normale",
+  REPRISE = "Reprise",
+}
+
+// Enum pour les niveaux de classe
+export enum ClassLevel {
+  SIXIEME = "7eme A.F",
+  CINQUIEME = "8eme A.F",
+  QUATRIEME = "9eme A.F",
+  TROISIEME = "3e Secondaire",
+  SECONDE = "Seconde",
+  PREMIERE = "Rheto",
+  TERMINALE = "Terminale",
+  NSI = "NSI",
+  NSII = "NSII",
+  NSIII = "NSIII",
+  NSIV = "NSIV",
 }
 
 export enum DocumentType {
@@ -40,6 +69,7 @@ export interface Student {
   updatedAt: Date;
   enrollments?: Enrollment[];
   grades?: Grade[];
+  schoolClass?: SchoolClass;
 }
 
 export interface Subject {
@@ -57,12 +87,14 @@ export interface Subject {
 }
 
 export interface Grade {
+  validatedAt: any;
+  submittedBy: string;
   id: string;
   studentId: string;
   subjectId: string;
   assignmentId: string;
-  grade: number; // Note sur maxGrade
-  normalizedGrade?: number; // Note sur 20
+  grade: number;
+  normalizedGrade?: number;
   status: GradeStatus;
   controlType: ControlType;
   createdAt: Date;

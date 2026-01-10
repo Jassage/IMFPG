@@ -2,7 +2,7 @@
 export type UserRole =
   | "Admin"
   | "Secretaire"
-  | "Parent"
+  | "Comptable"
   | "Student"
   | "Professeur"
   | "Directeur";
@@ -417,7 +417,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
     adminItems: [],
   },
 
-  Parent: {
+  Comptable: {
     mainItems: [
       createNavigationItem(
         "dashboard",
@@ -426,23 +426,16 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.VIEW_DASHBOARD
       ),
       createNavigationItem(
-        "grades",
-        "Notes enfants",
-        "FileText",
-        PERMISSIONS.VIEW_CHILDREN_GRADES
+        "fees",
+        "Frais scolaires",
+        "Wallet",
+        PERMISSIONS.VIEW_FEES
       ),
-
       createNavigationItem(
         "payments",
         "Paiements",
         "DollarSign",
         PERMISSIONS.VIEW_OWN_PAYMENTS
-      ),
-      createNavigationItem(
-        "schedule",
-        "Emploi du temps",
-        "CalendarDays",
-        PERMISSIONS.VIEW_SCHEDULE
       ),
     ],
     academicItems: [],
@@ -458,34 +451,8 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Home",
         PERMISSIONS.VIEW_DASHBOARD
       ),
-      createNavigationItem(
-        "grades",
-        "Mes notes",
-        "FileText",
-        PERMISSIONS.VIEW_OWN_GRADES
-      ),
-
-      createNavigationItem(
-        "subject",
-        "Mes cours",
-        "BookOpen",
-        PERMISSIONS.VIEW_OWN_SUBJECTS
-      ),
-      createNavigationItem(
-        "schedule",
-        "Mon emploi du temps",
-        "CalendarDays",
-        PERMISSIONS.VIEW_SCHEDULE
-      ),
     ],
-    academicItems: [
-      createNavigationItem(
-        "payments",
-        "Mes paiements",
-        "DollarSign",
-        PERMISSIONS.VIEW_OWN_PAYMENTS
-      ),
-    ],
+    academicItems: [],
     documentItems: [],
     adminItems: [],
   },
@@ -506,14 +473,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.MANAGE_OWN_GRADES
       ),
     ],
-    academicItems: [
-      createNavigationItem(
-        "schedule",
-        "Mon planning",
-        "CalendarDays",
-        PERMISSIONS.VIEW_SCHEDULE
-      ),
-    ],
+    academicItems: [],
     documentItems: [],
     adminItems: [],
   },
@@ -551,12 +511,6 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Matières",
         "BookOpen",
         PERMISSIONS.VIEW_SUBJECTS
-      ),
-      createNavigationItem(
-        "grades",
-        "Notes",
-        "FileText",
-        PERMISSIONS.MANAGE_GRADES
       ),
 
       createNavigationItem(

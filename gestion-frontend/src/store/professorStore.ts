@@ -6,7 +6,27 @@
 import { create } from "zustand";
 
 // Types
+export interface ProfesseurSubject {
+  id: string;
+  professeurId: string;
+  subjectId: string;
+  isPrimary: boolean;
+  yearsOfExperience: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  subject?: {
+    id: string;
+    name: string;
+    code: string;
+    coefficient: number;
+    type: string;
+    description?: string;
+  };
+}
+
 export interface Professeur {
+  subjects: any[];
   id: string;
   firstName: string;
   lastName: string;
@@ -34,7 +54,9 @@ export interface Professeur {
     assignments: number;
     schedules: number;
     classes?: number;
+    subjectsTaught?: number;
   };
+  subjectsTaught?: ProfesseurSubject[];
   assignments?: ProfesseurAssignment[];
   schedules?: ProfesseurSchedule[];
 }
@@ -70,9 +92,12 @@ export interface ProfesseurSchedule {
 }
 
 export interface ProfesseurAssignment {
+  schoolClass: any;
+  pendingGrades: number;
   id: string;
   classLevel: string;
   status: string;
+  createdAt: string;
   subject: {
     id: string;
     name: string;
@@ -122,8 +147,16 @@ interface CreateProfesseurData {
   matricule?: string;
   address?: string;
   qualifications?: string;
+  subjects?: Array<{
+    subjectId: string;
+    isPrimary?: boolean;
+    yearsOfExperience?: number;
+    notes?: string;
+  }>;
   userId?: string;
   status?: "Actif" | "Inactif";
+  createUserAccount?: boolean;
+  sendInvitation?: boolean;
 }
 
 interface UpdateProfesseurData {
@@ -137,6 +170,12 @@ interface UpdateProfesseurData {
   matricule?: string;
   address?: string;
   qualifications?: string;
+  subjects?: Array<{
+    subjectId: string;
+    isPrimary?: boolean;
+    yearsOfExperience?: number;
+    notes?: string;
+  }>;
   userId?: string | null;
 }
 
@@ -184,6 +223,38 @@ interface ProfesseurStore {
   deleteProfesseur: (id: string) => Promise<void>;
   activateProfesseur: (id: string) => Promise<Professeur>;
   deactivateProfesseur: (id: string) => Promise<Professeur>;
+
+  // Nouvelles actions pour la gestion des matières
+  addSubjectToProfesseur: (
+    professeurId: string,
+    subjectData: {
+      subjectId: string;
+      isPrimary?: boolean;
+      yearsOfExperience?: number;
+      notes?: string;
+    }
+  ) => Promise<ProfesseurSubject>;
+
+  removeSubjectFromProfesseur: (
+    professeurId: string,
+    subjectId: string
+  ) => Promise<void>;
+
+  updateProfesseurSubject: (
+    professeurId: string,
+    subjectId: string,
+    data: {
+      isPrimary?: boolean;
+      yearsOfExperience?: number;
+      notes?: string;
+    }
+  ) => Promise<ProfesseurSubject>;
+
+  setSubjectAsPrimary: (
+    professeurId: string,
+    subjectId: string
+  ) => Promise<ProfesseurSubject>;
+
   clearCurrentProfesseur: () => void;
   clearError: () => void;
   clearProfesseurs: () => void;
@@ -228,43 +299,33 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     get().fetchProfesseurs();
   },
 
-  fetchProfesseurs: async () => {
+  fetchProfesseurs: async (params?: any) => {
     set({ loading: true, error: null });
-
     try {
-      const { filters } = get();
+      console.log("📡 Fetching professeurs avec params:", params || "aucun");
 
-      const response = await api.get("/professeurs", {
-        params: {
-          search: filters.search || undefined,
-          status: filters.status || undefined,
-          speciality: filters.speciality || undefined,
-          page: filters.page || 1,
-          limit: filters.limit || 20,
-          sortBy: filters.sortBy,
-          sortOrder: filters.sortOrder,
-        },
+      const response = await api.get("/professeurs", { params });
+      console.log("📥 Réponse fetchProfesseurs:", {
+        count: response.data.data?.length || 0,
+        data: response.data.data,
       });
 
-      const { professeurs, pagination } = response.data.data;
+      // Assurez-vous de bien extraire les données
+      const professeurs = response.data.data || response.data || [];
 
       set({
         professeurs,
         loading: false,
-        pagination: {
-          page: pagination.page,
-          limit: pagination.limit,
-          total: pagination.total,
-          totalPages: pagination.totalPages,
-        },
+        // Réinitialiser les filtres si nécessaire
+        ...(params && { filters: params }),
       });
+
+      return professeurs;
     } catch (error: any) {
-      set({
-        error:
-          error.response?.data?.message ||
-          "Erreur lors du chargement des professeurs",
-        loading: false,
-      });
+      console.error("❌ Erreur fetchProfesseurs:", error);
+      const errorMessage = error.response?.data?.message || error.message;
+      set({ error: errorMessage, loading: false });
+      throw new Error(errorMessage);
     }
   },
 
@@ -274,6 +335,7 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     try {
       const response = await api.get(`/professeurs/${id}`);
       const professeur = response.data.data.professeur;
+      // console.log("📥 Réponse fetchProfesseurById:", professeur);
 
       set({
         currentProfesseur: professeur,
@@ -290,98 +352,153 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
     }
   },
 
-  // Dans fetchProfesseurFullDetails
   fetchProfesseurFullDetails: async (id: string) => {
     set({ loadingDetails: true, error: null });
 
     try {
-      const response = await api.get(`/professeurs/${id}/full-details`);
-      const { professeur, scheduleByDay, stats } = response.data.data;
+      console.log("📡 Chargement des détails complets pour professeur:", id);
 
-      // Convertir les jours de texte en nombre pour scheduleByDay
-      const processedScheduleByDay: Record<number, any[]> = {
-        1: [],
-        2: [],
-        3: [],
-        4: [],
-        5: [],
-        6: [],
-        7: [],
+      const response = await api.get(`/professeurs/${id}`);
+      console.log("📥 Réponse API:", response.data);
+
+      // Extraire les données de base
+      const data = response.data.data || response.data;
+
+      if (!data) {
+        throw new Error("Réponse vide de l'API");
+      }
+
+      // Créer un objet professeur standardisé
+      const professeur: Professeur = {
+        id: data.id || data.professeur?.id,
+        firstName: data.firstName || data.professeur?.firstName || "",
+        lastName: data.lastName || data.professeur?.lastName || "",
+        email: data.email || data.professeur?.email || "",
+        phone: data.phone || data.professeur?.phone,
+        speciality: data.speciality || data.professeur?.speciality,
+        hireDate: data.hireDate || data.professeur?.hireDate,
+        status: data.status || data.professeur?.status || "Actif",
+        matricule: data.matricule || data.professeur?.matricule,
+        address: data.address || data.professeur?.address,
+        qualifications: data.qualifications || data.professeur?.qualifications,
+        createdAt:
+          data.createdAt ||
+          data.professeur?.createdAt ||
+          new Date().toISOString(),
+        updatedAt:
+          data.updatedAt ||
+          data.professeur?.updatedAt ||
+          new Date().toISOString(),
+        userId: data.userId || data.professeur?.userId,
+        user: data.user || data.professeur?.user,
+        subjects: data.subjects || data.professeur?.subjects || [],
+        subjectsTaught: ensureArray(
+          data.subjectsTaught || data.professeur?.subjectsTaught
+        ),
+        assignments: ensureArray(
+          data.assignments || data.professeur?.assignments
+        ),
+        schedules: ensureArray(data.schedules || data.professeur?.schedules),
+        _count: {
+          assignments:
+            data._count?.assignments ||
+            data.professeur?._count?.assignments ||
+            (data.assignments || []).length ||
+            0,
+          schedules:
+            data._count?.schedules ||
+            data.professeur?._count?.schedules ||
+            (data.schedules || []).length ||
+            0,
+          classes:
+            data._count?.classes || data.professeur?._count?.classes || 0,
+          subjectsTaught:
+            data._count?.subjectsTaught ||
+            data.professeur?._count?.subjectsTaught ||
+            (data.subjectsTaught || []).length ||
+            0,
+        },
       };
 
-      // Fonction pour convertir le jour
-      const dayToNumber = (dayString: string): number => {
-        const daysMap: Record<string, number> = {
-          MONDAY: 1,
-          TUESDAY: 2,
-          WEDNESDAY: 3,
-          THURSDAY: 4,
-          FRIDAY: 5,
-          SATURDAY: 6,
-          SUNDAY: 7,
-        };
-        return daysMap[dayString] || 0;
-      };
+      // Extraire les schedules pour le store
+      const schedules: ProfesseurSchedule[] = [];
 
-      // Traiter les schedules des assignments
-      if (professeur.assignments && Array.isArray(professeur.assignments)) {
-        professeur.assignments.forEach((assignment: any) => {
-          if (assignment.schedules && Array.isArray(assignment.schedules)) {
-            assignment.schedules.forEach((schedule: any) => {
-              const dayNumber = dayToNumber(schedule.dayOfWeek);
-              if (dayNumber > 0) {
-                processedScheduleByDay[dayNumber].push({
-                  ...schedule,
-                  assignment: {
-                    subject: assignment.subject,
-                    academicYear: assignment.academicYear,
-                    classLevel: assignment.classLevel,
-                  },
-                });
-              }
-            });
-          }
+      // 1. Extraire des assignments
+      professeur.assignments?.forEach((assignment: any) => {
+        if (assignment.schedules && Array.isArray(assignment.schedules)) {
+          assignment.schedules.forEach((schedule: any) => {
+            schedules.push(createScheduleObject(schedule, assignment));
+          });
+        }
+      });
+
+      // 2. Extraire des schedules directs si pas encore trouvé
+      if (schedules.length === 0 && professeur.schedules) {
+        professeur.schedules.forEach((schedule: any) => {
+          schedules.push(createScheduleObject(schedule));
         });
       }
 
-      // Convertir processedScheduleByDay en tableau plat
-      const scheduleArray: ProfesseurSchedule[] = [];
-      Object.entries(processedScheduleByDay).forEach(
-        ([day, schedules]: [string, any]) => {
-          schedules.forEach((schedule: any) => {
-            scheduleArray.push({
-              ...schedule,
-              dayOfWeek: parseInt(day),
-              subject:
-                schedule.assignment?.subject ||
-                schedule.classAssignment?.subject,
-              schoolClass: schedule.schoolClass || {
-                name: schedule.assignment?.classLevel,
-              },
-            });
-          });
-        }
-      );
+      // Fonction helper pour créer un objet schedule standardisé
+      function createScheduleObject(
+        schedule: any,
+        assignment?: any
+      ): ProfesseurSchedule {
+        return {
+          id: schedule.id || `temp-${Date.now()}`,
+          dayOfWeek: schedule.dayOfWeek || 1,
+          startTime: schedule.startTime || "08:00",
+          endTime: schedule.endTime || "09:00",
+          classroom: schedule.classroom,
+          subject: schedule.subject ||
+            assignment?.subject || { id: "", name: "Cours", code: "" },
+          schoolClass: schedule.schoolClass || {
+            id: "",
+            name: "Classe",
+            level: assignment?.classLevel || "",
+          },
+          classAssignment: schedule.classAssignment || {
+            classLevel: assignment?.classLevel || "",
+            subject: assignment?.subject || {},
+            academicYear: assignment?.academicYear || {},
+          },
+        };
+      }
 
+      // Fonction helper pour garantir les tableaux
+      function ensureArray(value: any): any[] {
+        if (Array.isArray(value)) return value;
+        if (value === undefined || value === null) return [];
+        return [value];
+      }
+
+      console.log("✅ Professeur normalisé:", {
+        id: professeur.id,
+        nom: `${professeur.firstName} ${professeur.lastName}`,
+        matieres: professeur.subjectsTaught.length,
+        assignments: professeur.assignments.length,
+        schedules: schedules.length,
+      });
+
+      // Mettre à jour le store
       set({
         currentProfesseur: professeur,
-        professeurSchedule: scheduleArray,
-        professeurAssignments: professeur.assignments || [],
+        professeurSchedule: schedules,
+        professeurAssignments: professeur.assignments,
         loadingDetails: false,
       });
 
       return professeur;
     } catch (error: any) {
+      console.error("❌ Erreur fetchProfesseurFullDetails:", error);
       set({
-        error:
-          error.response?.data?.message ||
-          "Erreur lors du chargement des détails",
+        error: error.response?.data?.message || error.message,
         loadingDetails: false,
       });
       throw error;
     }
   },
-  // Dans professeurStore.ts
+
   fetchProfesseurSchedule: async (id: string) => {
     set({ loading: true, error: null });
 
@@ -652,6 +769,7 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
       throw error;
     }
   },
+
   sendInvitationEmail: async (professeurId) => {
     set({ loading: true, error: null });
 
@@ -666,6 +784,151 @@ export const useProfesseurStore = create<ProfesseurStore>((set, get) => ({
       });
       throw error;
     }
+  },
+
+  // Nouvelles actions pour la gestion des matières
+
+  addSubjectToProfesseur: async (professeurId, subjectData) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.post(
+        `/professeurs/${professeurId}/subjects`,
+        subjectData
+      );
+      const newSubject = response.data.data.subject;
+
+      // Mettre à jour le professeur courant avec la nouvelle matière
+      set((state) => {
+        if (!state.currentProfesseur) return state;
+
+        const updatedSubjects = [
+          ...(state.currentProfesseur.subjectsTaught || []),
+          newSubject,
+        ];
+
+        return {
+          currentProfesseur: {
+            ...state.currentProfesseur,
+            subjectsTaught: updatedSubjects,
+            _count: {
+              ...state.currentProfesseur._count,
+              subjectsTaught: updatedSubjects.length,
+            },
+          },
+          loading: false,
+        };
+      });
+
+      return newSubject;
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur lors de l'ajout de la matière",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  removeSubjectFromProfesseur: async (professeurId, subjectId) => {
+    set({ loading: true, error: null });
+
+    try {
+      await api.delete(`/professeurs/${professeurId}/subjects/${subjectId}`);
+
+      // Mettre à jour le professeur courant en retirant la matière
+      set((state) => {
+        if (!state.currentProfesseur) return state;
+
+        const updatedSubjects = (
+          state.currentProfesseur.subjectsTaught || []
+        ).filter(
+          (subject) =>
+            subject.id !== subjectId && subject.subjectId !== subjectId
+        );
+
+        return {
+          currentProfesseur: {
+            ...state.currentProfesseur,
+            subjectsTaught: updatedSubjects,
+            _count: {
+              ...state.currentProfesseur._count,
+              subjectsTaught: updatedSubjects.length,
+            },
+          },
+          loading: false,
+        };
+      });
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur lors de la suppression de la matière",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  updateProfesseurSubject: async (professeurId, subjectId, data) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.patch(
+        `/professeurs/${professeurId}/subjects/${subjectId}`,
+        data
+      );
+      const updatedSubject = response.data.data.subject;
+
+      // Mettre à jour le professeur courant avec la matière modifiée
+      set((state) => {
+        if (!state.currentProfesseur) return state;
+
+        const updatedSubjects = (
+          state.currentProfesseur.subjectsTaught || []
+        ).map((subject) => {
+          if (subject.id === subjectId || subject.subjectId === subjectId) {
+            return { ...subject, ...updatedSubject };
+          }
+          return subject;
+        });
+
+        // Si on définit une matière comme principale, s'assurer qu'une seule matière est principale
+        if (data.isPrimary === true) {
+          updatedSubjects.forEach((subject) => {
+            if (subject.id !== subjectId && subject.subjectId !== subjectId) {
+              subject.isPrimary = false;
+            }
+          });
+        }
+
+        return {
+          currentProfesseur: {
+            ...state.currentProfesseur,
+            subjectsTaught: updatedSubjects,
+          },
+          loading: false,
+        };
+      });
+
+      return updatedSubject;
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur lors de la mise à jour de la matière",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  setSubjectAsPrimary: async (professeurId, subjectId) => {
+    return get().updateProfesseurSubject(professeurId, subjectId, {
+      isPrimary: true,
+    });
   },
 
   clearCurrentProfesseur: () =>

@@ -41,7 +41,13 @@ router.get("/", requireAuth, requireStaff, getProfesseurs);
  * @description Récupère un professeur par ID
  * @access Staff/Admin
  */
-router.get("/:id", requireAuth, requireStaff, sanitizeInput, getProfesseurById);
+router.get(
+  "/:id",
+  requireAuth,
+  requireTeacherOrStaff,
+  sanitizeInput,
+  getProfesseurById
+);
 
 /**
  * @route GET /api/:id/schedule
@@ -51,7 +57,7 @@ router.get("/:id", requireAuth, requireStaff, sanitizeInput, getProfesseurById);
 router.get(
   "/:id/schedule",
   requireAuth,
-  requireStaff,
+  requireTeacherOrStaff,
   sanitizeInput,
   getProfesseurSchedule
 );
@@ -64,7 +70,7 @@ router.get(
 router.post(
   "/",
   requireAuth,
-  requireAdmin,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -81,7 +87,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -98,7 +104,7 @@ router.put(
 router.delete(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireStaff,
   sanitizeInput,
   deleteProfesseur
 );
@@ -111,7 +117,7 @@ router.delete(
 router.put(
   "/:id/activate",
   requireAuth,
-  requireAdmin,
+  requireStaff,
   sanitizeInput,
   activateProfesseur
 );
@@ -124,7 +130,7 @@ router.put(
 router.put(
   "/:id/deactivate",
   requireAuth,
-  requireAdmin,
+  requireStaff,
   sanitizeInput,
   deactivateProfesseur
 );
@@ -148,7 +154,7 @@ router.get(
  */
 router.post(
   "/:id/attach-user",
-  requireAdmin,
+  requireStaff,
   requireAuth,
   attachUserToProfesseur
 );
@@ -160,7 +166,7 @@ router.post(
  */
 router.delete(
   "/:id/detach-user",
-  requireAdmin,
+  requireStaff,
   requireAuth,
   detachUserFromProfesseur
 );

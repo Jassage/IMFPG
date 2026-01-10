@@ -281,6 +281,27 @@ export class AuthService {
     }
   }
 
+  //verify password method for lock page
+  static async verifyPassword(
+    email: string,
+    password: string
+  ): Promise<boolean> {
+    try {
+      const cleanEmail = sanitizeInput(email).toLowerCase();
+      const cleanPassword = sanitizeInput(password);
+      const user = await prisma.user.findUnique({
+        where: { email: cleanEmail },
+      });
+      if (!user || !user.password) {
+        return false;
+      }
+      return await verifyPassword(cleanPassword, user.password);
+    } catch (error) {
+      console.error("AuthService - verifyPassword error:", error);
+      throw new Error("Erreur lors de la vérification du mot de passe");
+    }
+  }
+
   /**
    * @method createRoleSpecificProfile
    * @description Crée le profil spécifique selon le rôle
@@ -314,12 +335,6 @@ export class AuthService {
               email: "",
               studentCode: "",
             },
-          });
-          break;
-
-        case "Parent":
-          await prisma.parent.create({
-            data: { userId: userId },
           });
           break;
 

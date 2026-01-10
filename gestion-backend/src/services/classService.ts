@@ -57,8 +57,7 @@ export class ClassService {
         academicYearId,
         status = "Active",
         sortBy = "name",
-        sortOrder = "asc",
-      } = filters;
+        sortOrder = "asc"} = filters;
 
       const pageNum = parseInt(page.toString());
       const limitNum = parseInt(limit.toString());
@@ -68,7 +67,7 @@ export class ClassService {
       const where: any = { status };
 
       if (search) {
-        where.OR = [{ name: { contains: search, mode: "insensitive" } }];
+        where.OR = [{ name: { contains: search} }];
       }
 
       if (level) {
@@ -84,18 +83,15 @@ export class ClassService {
         prisma.schoolClass.findMany({
           where,
           orderBy: {
-            [sortBy as string]: sortOrder === "desc" ? "desc" : "asc",
-          },
+            [sortBy as string]: sortOrder === "desc" ? "desc" : "asc"},
           skip,
-          take: limitNum,
-        }),
+          take: limitNum}),
         prisma.schoolClass.count({ where }),
       ]);
 
       // Récupérer les années académiques pour le filtre
       const academicYears = await prisma.academicYear.findMany({
-        orderBy: { year: "desc" },
-      });
+        orderBy: { year: "desc" }});
 
       return {
         success: true,
@@ -107,10 +103,7 @@ export class ClassService {
             page: pageNum,
             limit: limitNum,
             total,
-            totalPages: Math.ceil(total / limitNum),
-          },
-        },
-      };
+            totalPages: Math.ceil(total / limitNum)}}};
     } catch (error: any) {
       console.error("❌ ClassService - getClasses error:", error);
       throw error;
@@ -123,42 +116,34 @@ export class ClassService {
   async getClassById(id: string, auditData: AuditData) {
     try {
       const schoolClass = await prisma.schoolClass.findUnique({
-        where: { id },
-      });
+        where: { id }});
 
       if (!schoolClass) {
         return {
           success: false,
           message: "Classe non trouvée",
-          code: "CLASS_NOT_FOUND",
-        };
+          code: "CLASS_NOT_FOUND"};
       }
 
       // Récupérer les professeurs disponibles
       const availableTeachers = await prisma.professeur.findMany({
         where: {
-          status: "Actif",
-        },
+          status: "Actif"},
         select: {
           id: true,
           firstName: true,
           lastName: true,
           email: true,
-          speciality: true,
-        },
+          speciality: true},
         orderBy: {
-          lastName: "asc",
-        },
-      });
+          lastName: "asc"}});
 
       return {
         success: true,
         message: "Classe récupérée avec succès",
         data: {
           class: schoolClass,
-          availableTeachers,
-        },
-      };
+          availableTeachers}};
     } catch (error: any) {
       console.error("❌ ClassService - getClassById error:", error);
       throw error;
@@ -175,16 +160,13 @@ export class ClassService {
       // Vérifier l'unicité du nom dans l'année académique
       const existingClass = await prisma.schoolClass.findFirst({
         where: {
-          name,
-        },
-      });
+          name}});
 
       if (existingClass) {
         return {
           success: false,
           message: "Une classe avec ce nom existe déjà",
-          code: "CLASS_NAME_EXISTS",
-        };
+          code: "CLASS_NAME_EXISTS"};
       }
 
       // Créer la classe
@@ -193,9 +175,7 @@ export class ClassService {
           name,
           level,
           capacity: capacity || 30,
-          status: "Active",
-        },
-      });
+          status: "Active"}});
 
       return {
         success: true,
@@ -203,9 +183,7 @@ export class ClassService {
         data: { class: schoolClass },
         metadata: {
           level,
-          capacity: capacity || 30,
-        },
-      };
+          capacity: capacity || 30}};
     } catch (error: any) {
       console.error("❌ ClassService - createClass error:", error);
       throw error;
@@ -221,15 +199,13 @@ export class ClassService {
 
       // Vérifier si la classe existe
       const existingClass = await prisma.schoolClass.findUnique({
-        where: { id },
-      });
+        where: { id }});
 
       if (!existingClass) {
         return {
           success: false,
           message: "Classe non trouvée",
-          code: "CLASS_NOT_FOUND",
-        };
+          code: "CLASS_NOT_FOUND"};
       }
 
       // Vérifier l'unicité du nom si modifié
@@ -237,17 +213,14 @@ export class ClassService {
         const classWithName = await prisma.schoolClass.findFirst({
           where: {
             name,
-            id: { not: id },
-          },
-        });
+            id: { not: id }}});
 
         if (classWithName) {
           return {
             success: false,
             message:
               "Une autre classe utilise déjà ce nom pour cette année académique",
-            code: "CLASS_NAME_EXISTS",
-          };
+            code: "CLASS_NAME_EXISTS"};
         }
       }
 
@@ -258,9 +231,7 @@ export class ClassService {
           name,
           level,
           capacity,
-          status,
-        },
-      });
+          status}});
 
       return {
         success: true,
@@ -268,9 +239,7 @@ export class ClassService {
         data: { class: schoolClass },
         metadata: {
           oldName: existingClass.name,
-          newName: name,
-        },
-      };
+          newName: name}};
     } catch (error: any) {
       console.error("❌ ClassService - updateClass error:", error);
       throw error;
@@ -290,18 +259,13 @@ export class ClassService {
             select: {
               students: true,
               schedules: true,
-              enrollments: true,
-            },
-          },
-        },
-      });
+              enrollments: true}}}});
 
       if (!schoolClass) {
         return {
           success: false,
           message: "Classe non trouvée",
-          code: "CLASS_NOT_FOUND",
-        };
+          code: "CLASS_NOT_FOUND"};
       }
 
       // Vérifier les dépendances
@@ -312,24 +276,19 @@ export class ClassService {
             "Cette classe ne peut pas être supprimée car elle contient des élèves",
           code: "CLASS_HAS_STUDENTS",
           data: {
-            students: schoolClass._count.students,
-          },
-        };
+            students: schoolClass._count.students}};
       }
 
       // Désactiver plutôt que supprimer
       await prisma.schoolClass.update({
         where: { id },
-        data: { status: "Inactive" },
-      });
+        data: { status: "Inactive" }});
 
       return {
         success: true,
         message: "Classe désactivée avec succès",
         metadata: {
-          className: schoolClass.name,
-        },
-      };
+          className: schoolClass.name}};
     } catch (error: any) {
       console.error("❌ ClassService - deleteClass error:", error);
       throw error;
@@ -349,23 +308,16 @@ export class ClassService {
           _count: {
             select: {
               students: true,
-              schedules: true,
-            },
-          },
+              schedules: true}},
           students: {
             select: {
-              status: true,
-            },
-          },
-        },
-      });
+              status: true}}}});
 
       if (!stats) {
         return {
           success: false,
           message: "Classe non trouvée",
-          code: "CLASS_NOT_FOUND",
-        };
+          code: "CLASS_NOT_FOUND"};
       }
 
       // Calculer les statistiques
@@ -383,9 +335,7 @@ export class ClassService {
         data: {
           totalStudents: stats._count.students,
           totalSchedules: stats._count.schedules,
-          statusDistribution: statusCounts,
-        },
-      };
+          statusDistribution: statusCounts}};
     } catch (error: any) {
       console.error("❌ ClassService - getClassStats error:", error);
       throw error;
@@ -400,8 +350,7 @@ export class ClassService {
       const students = await prisma.student.findMany({
         where: {
           classId,
-          status: "Active",
-        },
+          status: "Active"},
         select: {
           id: true,
           firstName: true,
@@ -410,18 +359,14 @@ export class ClassService {
           email: true,
           phone: true,
           dateOfBirth: true,
-          photo: true,
-        },
+          photo: true},
         orderBy: {
-          lastName: "asc",
-        },
-      });
+          lastName: "asc"}});
 
       return {
         success: true,
         message: "Étudiants de la classe récupérés",
-        data: { students },
-      };
+        data: { students }};
     } catch (error: any) {
       console.error("❌ ClassService - getClassStudents error:", error);
       throw error;
@@ -435,25 +380,19 @@ export class ClassService {
     try {
       const schedules = await prisma.schedule.findMany({
         where: {
-          classId,
-        },
+          classId},
         include: {
           professeur: {
             select: {
               id: true,
               firstName: true,
-              lastName: true,
-            },
-          },
-        },
-        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
-      });
+              lastName: true}}},
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]});
 
       return {
         success: true,
         message: "Emploi du temps récupéré",
-        data: { schedules },
-      };
+        data: { schedules }};
     } catch (error: any) {
       console.error("❌ ClassService - getClassSchedule error:", error);
       throw error;
@@ -467,25 +406,20 @@ export class ClassService {
     try {
       const classes = await prisma.schoolClass.findMany({
         where: {
-          status: "Active",
-        },
+          status: "Active"},
         select: {
           id: true,
           name: true,
           level: true,
-          capacity: true,
-        },
+          capacity: true},
         orderBy: {
           level: "asc",
-          name: "asc",
-        },
-      });
+          name: "asc"}});
 
       return {
         success: true,
         message: "Classes récupérées",
-        data: { classes },
-      };
+        data: { classes }};
     } catch (error: any) {
       console.error("❌ ClassService - getAllClasses error:", error);
       throw error;
@@ -500,15 +434,11 @@ export class ClassService {
       const levels = await prisma.schoolClass.groupBy({
         by: ["level"],
         where: {
-          status: "Active",
-        },
+          status: "Active"},
         _count: {
-          id: true,
-        },
+          id: true},
         orderBy: {
-          level: "asc",
-        },
-      });
+          level: "asc"}});
 
       return {
         success: true,
@@ -516,10 +446,7 @@ export class ClassService {
         data: {
           levels: levels.map((level) => ({
             level: level.level,
-            count: level._count.id,
-          })),
-        },
-      };
+            count: level._count.id}))}};
     } catch (error: any) {
       console.error("❌ ClassService - getClassLevels error:", error);
       throw error;
@@ -535,20 +462,15 @@ export class ClassService {
       const statsByLevel = await prisma.schoolClass.groupBy({
         by: ["level"],
         where: {
-          status: "Active",
-        },
+          status: "Active"},
         _count: {
-          id: true,
-        },
+          id: true},
         _sum: {
-          capacity: true,
-        },
-      });
+          capacity: true}});
 
       // Total des classes
       const totalClasses = await prisma.schoolClass.count({
-        where: { status: "Active" },
-      });
+        where: { status: "Active" }});
 
       // Total des étudiants inscrits par classe
       const classStudentCounts = await prisma.schoolClass.findMany({
@@ -558,12 +480,8 @@ export class ClassService {
           name: true,
           _count: {
             select: {
-              students: true,
-            },
-          },
-          capacity: true,
-        },
-      });
+              students: true}},
+          capacity: true}});
 
       const classOccupancy = classStudentCounts.map((cls) => ({
         id: cls.id,
@@ -571,8 +489,7 @@ export class ClassService {
         current: cls._count.students,
         capacity: cls.capacity,
         occupancyRate:
-          cls.capacity > 0 ? (cls._count.students / cls.capacity) * 100 : 0,
-      }));
+          cls.capacity > 0 ? (cls._count.students / cls.capacity) * 100 : 0}));
 
       // Moyenne d'occupation
       const avgOccupancy =
@@ -589,12 +506,9 @@ export class ClassService {
           statsByLevel: statsByLevel.map((stat) => ({
             level: stat.level,
             classCount: stat._count.id,
-            totalCapacity: stat._sum.capacity || 0,
-          })),
+            totalCapacity: stat._sum.capacity || 0})),
           classOccupancy,
-          avgOccupancy: Math.round(avgOccupancy * 100) / 100,
-        },
-      };
+          avgOccupancy: Math.round(avgOccupancy * 100) / 100}};
     } catch (error: any) {
       console.error("❌ ClassService - getOverallClassStats error:", error);
       throw error;

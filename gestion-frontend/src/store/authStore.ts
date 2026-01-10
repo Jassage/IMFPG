@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import api from "../services/api";
 import { User } from "../types/academic";
 import { toast } from "react-toastify";
+import { verifyPasswordForUnlock } from "@/services/apiService";
 
 interface AuthState {
   user: User | null;
@@ -29,6 +30,11 @@ interface AuthState {
   updateActivity: () => void;
   initialize: () => Promise<void>;
   setLoading: (loading: boolean) => void;
+  verifyCurrentPassword: (password: string) => Promise<boolean>;
+  verifyPasswordForUnlock: (
+    email: string,
+    password: string
+  ) => Promise<boolean>;
 }
 
 // Timeout d'inactivité (30 minutes)
@@ -292,7 +298,48 @@ export const useAuthStore = create<AuthState>()(
           throw error;
         }
       },
+      verifyCurrentPassword: async (password: string): Promise<boolean> => {
+        try {
+          const user = get().user;
+          if (!user?.email) {
+            throw new Error("Aucun utilisateur connecté");
+          }
 
+          const response = await api.post("/auth/verify-password", {
+            currentPassword: password,
+          });
+
+          return response.data.success === true;
+        } catch (error: any) {
+          console.error("Password verification failed:", error);
+
+          // Si le token est expiré, essayer la méthode de déverrouillage
+          if (error.response?.status === 401) {
+            const user = get().user;
+            if (user?.email) {
+              try {
+                return await verifyPasswordForUnlock(user.email, password);
+              } catch (unlockError) {
+                console.error("Unlock verification failed:", unlockError);
+              }
+            }
+          }
+
+          return false;
+        }
+      },
+
+      verifyPasswordForUnlock: async (
+        email: string,
+        password: string
+      ): Promise<boolean> => {
+        try {
+          return await verifyPasswordForUnlock(email, password);
+        } catch (error) {
+          console.error("Password unlock verification failed:", error);
+          return false;
+        }
+      },
       // MÉTHODE DE DÉCONNEXION
       logout: (reason = "Déconnexion utilisateur") => {
         console.log(` Déconnexion: ${reason}`);

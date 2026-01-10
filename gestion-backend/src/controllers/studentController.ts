@@ -155,6 +155,11 @@ export const getStudentById = async (
  * @route POST /api/students
  * @access Admin/Staff
  */
+/**
+ * @desc Crée un nouvel étudiant
+ * @route POST /api/students
+ * @access Admin/Staff
+ */
 export const createStudent = async (
   req: Request,
   res: Response
@@ -214,47 +219,113 @@ export const createStudent = async (
   } catch (error: any) {
     console.error(" StudentController - createStudent error:", error);
 
+    // Extraire le code d'erreur du message
+    const errorParts = error.message.split(":");
+    const errorCode = errorParts[0].trim();
+    const errorMessage =
+      errorParts.length > 1
+        ? errorParts.slice(1).join(":").trim()
+        : error.message;
+
     // Gestion des erreurs spécifiques
     let statusCode = 500;
-    let errorCode = "INTERNAL_ERROR";
-    let errorMessage = "Erreur interne du serveur";
+    let responseMessage = errorMessage;
+    let responseCode = errorCode;
 
-    if (error.message === "MISSING_REQUIRED_FIELDS") {
-      statusCode = 400;
-      errorCode = "MISSING_REQUIRED_FIELDS";
-      errorMessage = "Prénom, nom et email sont requis";
-    } else if (error.message === "EMAIL_ALREADY_EXISTS") {
-      statusCode = 400;
-      errorCode = "EMAIL_ALREADY_EXISTS";
-      errorMessage = "Un étudiant avec cet email existe déjà";
-    } else if (error.message === "USER_EMAIL_ALREADY_EXISTS") {
-      statusCode = 400;
-      errorCode = "USER_EMAIL_ALREADY_EXISTS";
-      errorMessage =
-        "Un utilisateur avec cet email existe déjà. Désactivez 'Créer un compte utilisateur' ou utilisez un email différent.";
-    } else if (error.message === "CIN_ALREADY_EXISTS") {
-      statusCode = 400;
-      errorCode = "CIN_ALREADY_EXISTS";
-      errorMessage = "Un étudiant avec ce CIN existe déjà";
-    } else if (error.message === "CLASS_NOT_FOUND") {
-      statusCode = 404;
-      errorCode = "CLASS_NOT_FOUND";
-      errorMessage = "La classe spécifiée n'existe pas";
+    const errorMapping: Record<
+      string,
+      { status: number; message: string; code?: string }
+    > = {
+      MISSING_REQUIRED_FIELDS: {
+        status: 400,
+        message: "Prénom, nom et email sont requis",
+      },
+      EMAIL_ALREADY_EXISTS: {
+        status: 409,
+        message: errorMessage,
+      },
+      USER_EMAIL_ALREADY_EXISTS: {
+        status: 409,
+        message: errorMessage,
+      },
+      CIN_ALREADY_EXISTS: {
+        status: 409,
+        message: errorMessage,
+      },
+      CLASS_NOT_FOUND: {
+        status: 404,
+        message: errorMessage,
+      },
+      CLASS_NOT_ACTIVE: {
+        status: 400,
+        message: errorMessage,
+      },
+      ACADEMIC_YEAR_NOT_FOUND: {
+        status: 404,
+        message: errorMessage,
+      },
+      FUTURE_ACADEMIC_YEAR: {
+        status: 400,
+        message: errorMessage,
+      },
+      ACADEMIC_YEAR_NOT_STARTED: {
+        status: 400,
+        message: errorMessage,
+      },
+      ACADEMIC_YEAR_NOT_ACTIVE: {
+        status: 400,
+        message: errorMessage,
+      },
+      CLASS_YEAR_MISMATCH: {
+        status: 400,
+        message: errorMessage,
+      },
+      CLASS_FULL: {
+        status: 400,
+        message: errorMessage,
+      },
+      CANNOT_CREATE_INACTIVE_STUDENT: {
+        status: 400,
+        message: errorMessage,
+      },
+      STUDENT_ALREADY_ENROLLED_FOR_YEAR: {
+        status: 409,
+        message: errorMessage,
+      },
+      AGE_CLASS_MISMATCH: {
+        status: 400,
+        message: errorMessage,
+      },
+    };
+
+    if (errorMapping[errorCode]) {
+      statusCode = errorMapping[errorCode].status;
+      responseMessage = errorMapping[errorCode].message;
+      responseCode = errorCode;
+    } else {
+      // Erreur générique non mappée
+      responseMessage = "Erreur interne du serveur";
+      responseCode = "INTERNAL_ERROR";
     }
 
     await createAuditLog({
       ...auditData,
       action: StudentActionTypes.STUDENT_CREATION_ERROR,
       entity: "Student",
-      description: "Erreur lors de la création de l'étudiant",
+      description: `Erreur création étudiant: ${errorCode}`,
       status: "ERROR",
       errorMessage: error.message?.substring(0, 500),
+      metadata: {
+        errorCode,
+        errorMessage: error.message,
+      },
     });
 
     const response: StudentControllerResponse = {
       success: false,
-      message: errorMessage,
-      code: errorCode,
+      message: responseMessage,
+      code: responseCode,
+      ...(process.env.NODE_ENV === "development" && { details: error.message }),
     };
 
     res.status(statusCode).json(response);
@@ -769,53 +840,6 @@ export const checkEmailAvailability = async (
       success: false,
       message: "Erreur lors de la vérification de l'email",
       code: "CHECK_EMAIL_ERROR",
-    };
-
-    res.status(500).json(response);
-  }
-};
-
-/**
- * @desc Vérifie la disponibilité d'un CIN
- * @route GET /api/students/check-cin
- * @access Admin/Staff
- */
-export const checkCINAvailability = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  try {
-    const { cin, excludeStudentId } = req.query;
-
-    if (!cin) {
-      const response: StudentControllerResponse = {
-        success: true,
-        message: "CIN non fourni (optionnel)",
-        data: { available: true },
-      };
-      res.json(response);
-      return;
-    }
-
-    const isAvailable = await StudentService.checkCINAvailability(
-      cin.toString(),
-      excludeStudentId?.toString()
-    );
-
-    const response: StudentControllerResponse = {
-      success: true,
-      message: isAvailable ? "CIN disponible" : "CIN déjà utilisé",
-      data: { available: isAvailable },
-    };
-
-    res.json(response);
-  } catch (error: any) {
-    console.error(" StudentController - checkCINAvailability error:", error);
-
-    const response: StudentControllerResponse = {
-      success: false,
-      message: "Erreur lors de la vérification du CIN",
-      code: "CHECK_CIN_ERROR",
     };
 
     res.status(500).json(response);

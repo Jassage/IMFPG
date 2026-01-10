@@ -256,7 +256,7 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
         startTime: extractTimeFromISO(schedule.startTime) || "08:00",
         endTime: extractTimeFromISO(schedule.endTime) || "09:30",
         classroom: schedule.classroom || "",
-        recurrence: schedule.recurrence || "",
+        recurrence: schedule.recurrence || "NONE",
         untilDate: schedule.untilDate
           ? new Date(schedule.untilDate).toISOString().split("T")[0]
           : "",
@@ -304,51 +304,51 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
         };
 
         // Si une fonction de vérification des conflits est fournie, l'utiliser
-        if (checkScheduleConflicts) {
-          try {
-            // Trouver l'assignation pour obtenir le professeurId
-            const assignment = assignments.find(
-              (a) => a.id === formData.assignmentId
-            );
+        // if (checkScheduleConflicts) {
+        //   try {
+        //     // Trouver l'assignation pour obtenir le professeurId
+        //     const assignment = assignments.find(
+        //       (a) => a.id === formData.assignmentId
+        //     );
 
-            if (assignment) {
-              const conflictData = {
-                professeurId: assignment.professeur.id,
-                classId: formData.classId,
-                dayOfWeek: formData.dayOfWeek,
-                startTime: formattedData.startTime,
-                endTime: formattedData.endTime,
-                classroom: formData.classroom,
-                excludeScheduleId: isEdit ? schedule?.id : undefined,
-              };
+        //     if (assignment) {
+        //       const conflictData = {
+        //         professeurId: assignment.professeur.id,
+        //         classId: formData.classId,
+        //         dayOfWeek: formData.dayOfWeek,
+        //         startTime: formattedData.startTime,
+        //         endTime: formattedData.endTime,
+        //         classroom: formData.classroom,
+        //         excludeScheduleId: isEdit ? schedule?.id : undefined,
+        //       };
 
-              const conflictCheck = await checkScheduleConflicts(conflictData);
+        //       const conflictCheck = await checkScheduleConflicts(conflictData);
 
-              if (conflictCheck.hasConflict) {
-                const conflictMessages = conflictCheck.conflicts
-                  .map((conflict: any) => {
-                    if (conflict.type === "PROFESSEUR_CONFLICT") {
-                      return `• Le professeur a déjà un cours à ce créneau`;
-                    } else if (conflict.type === "CLASS_CONFLICT") {
-                      return `• La classe a déjà un cours à ce créneau`;
-                    } else if (conflict.type === "CLASSROOM_CONFLICT") {
-                      return `• La salle est déjà occupée à ce créneau`;
-                    }
-                    return `• ${conflict.message}`;
-                  })
-                  .join("\n");
+        //       if (conflictCheck.hasConflict) {
+        //         const conflictMessages = conflictCheck.conflicts
+        //           .map((conflict: any) => {
+        //             if (conflict.type === "PROFESSEUR_CONFLICT") {
+        //               return `• Le professeur a déjà un cours à ce créneau`;
+        //             } else if (conflict.type === "CLASS_CONFLICT") {
+        //               return `• La classe a déjà un cours à ce créneau`;
+        //             } else if (conflict.type === "CLASSROOM_CONFLICT") {
+        //               return `• La salle est déjà occupée à ce créneau`;
+        //             }
+        //             return `• ${conflict.message}`;
+        //           })
+        //           .join("\n");
 
-                toast.error(`Conflits détectés:\n${conflictMessages}`, {
-                  duration: 8000,
-                });
-                return;
-              }
-            }
-          } catch (conflictError) {
-            console.warn("Could not check conflicts:", conflictError);
-            // Continuer même si la vérification échoue
-          }
-        }
+        //         toast.error(`Conflits détectés:\n${conflictMessages}`, {
+        //           duration: 8000,
+        //         });
+        //         return;
+        //       }
+        //     }
+        //   } catch (conflictError) {
+        //     console.warn("Could not check conflicts:", conflictError);
+        //     // Continuer même si la vérification échoue
+        //   }
+        // }
 
         // Appeler la fonction de soumission fournie par le parent
         await onSubmit(formattedData, isEdit);

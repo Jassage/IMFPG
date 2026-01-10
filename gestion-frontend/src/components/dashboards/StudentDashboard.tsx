@@ -39,6 +39,9 @@ import {
   AlertCircle,
   XCircle,
   CheckCircle,
+  EyeOff,
+  CheckCheck,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
@@ -82,6 +85,11 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import api from "@/services/api";
 import { useTimetableStore } from "@/store/timetableStore";
+import { GradeStatus } from "@/types/bulletin";
+import { is } from "date-fns/locale";
+
+// Import des types de statut
+// import { GradeStatus } from "@/types/grade";
 
 // Types pour le dashboard
 interface Course {
@@ -147,7 +155,7 @@ interface GradeWithDetails {
   grade?: number; // Note obtenue
   maxGrade?: number; // Note maximale possible (ex: 20, 100, 40)
   passingGrade?: number; // Note de passage (50% de maxGrade)
-  status?: string | null;
+  status?: GradeStatus | null;
   session?: string | null;
   controlType?: string | null;
   subject?: {
@@ -156,10 +164,13 @@ interface GradeWithDetails {
     code: string;
     coefficient?: number;
     maxGrade?: number;
+    passingGrade?: number;
   } | null;
   academicYearId?: string;
   classLevel?: string;
   createdAt?: Date;
+  publishedAt?: Date;
+  ApproveAt?: Date;
   [key: string]: any;
 }
 
@@ -361,7 +372,7 @@ const StudentDashboard = () => {
     loading: studentLoading,
   } = useStudentStore();
 
-  const { fetchStudentGrades } = useGradeStore();
+  const { fetchStudentGrades, fetchStudentDashboardGrades } = useGradeStore();
   const { announcements, fetchAnnouncements } = useAnnouncementStore();
   const { assignments, fetchAssignmentsByClass } = useAssignmentStore();
   const { schedules, fetchClassTimetable } = useTimetableStore();
@@ -371,10 +382,13 @@ const StudentDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [filterType, setFilterType] = useState("all");
-  const [currentSemester] = useState("Semestre 2");
+  const [gradeStatusFilter, setGradeStatusFilter] = useState<string>("all");
 
   // États pour les données
   const [studentGrades, setStudentGrades] = useState<GradeWithDetails[]>([]);
+  const [publishedGrades, setPublishedGrades] = useState<GradeWithDetails[]>(
+    []
+  );
   const [studentCourses, setStudentCourses] = useState<Course[]>([]);
   const [studentSchedule, setStudentSchedule] = useState<Schedule[]>([]);
   const [filteredAnnouncements, setFilteredAnnouncements] = useState<
@@ -418,14 +432,15 @@ const StudentDashboard = () => {
 
   // Fonction pour obtenir la note maximale
   const getMaxGrade = useCallback((grade: GradeWithDetails): number => {
-    return grade.subject?.maxGrade;
+    return grade.subject?.maxGrade || 20; // Par défaut 20
   }, []);
 
-  // Fonction pour obtenir la note de passage (50% de maxGrade)
+  // Fonction pour obtenir la note de passage
   const getPassingGrade = useCallback(
     (grade: GradeWithDetails): number => {
-      if (grade.passingGrade !== undefined) return grade.passingGrade;
-      return getMaxGrade(grade) * 0.5;
+      if (grade.subject?.passingGrade !== undefined)
+        return grade.subject.passingGrade / 100;
+      return getMaxGrade(grade) * 0.5; // 50% par défaut
     },
     [getMaxGrade]
   );
@@ -460,6 +475,48 @@ const StudentDashboard = () => {
     [getPassingGrade]
   );
 
+  // Fonction pour filtrer les notes selon le statut
+  const filterGradesByStatus = useCallback(
+    (grades: GradeWithDetails[], statusFilter: string) => {
+      const visibleGrades = grades.filter((grade) => {
+        const status = grade.status?.toLowerCase();
+        return status === "approved" || status === "published";
+      });
+
+      if (statusFilter === "all") {
+        return visibleGrades;
+      }
+
+      return visibleGrades.filter((grade) => {
+        const status = grade.status?.toLowerCase();
+
+        if (statusFilter === "approved") {
+          return status === "approved";
+        }
+        if (statusFilter === "published") {
+          // Notes publiées ET validées (note >= passingGrade)
+          return status === "published" && isGradeValidated(grade);
+        }
+        if (statusFilter === "validated") {
+          // Notes (approved ou published) ET validées
+          return (
+            (status === "approved" || status === "published") &&
+            isGradeValidated(grade)
+          );
+        }
+        if (statusFilter === "failed") {
+          // Notes (approved ou published) mais non validées
+          return (
+            (status === "approved" || status === "published") &&
+            !isGradeValidated(grade)
+          );
+        }
+        return false;
+      });
+    },
+    [isGradeValidated]
+  );
+
   // Fonction pour obtenir le nom de la matière
   const getSubjectName = (grade: GradeWithDetails): string => {
     if (grade.subject?.name) return grade.subject.name;
@@ -488,25 +545,89 @@ const StudentDashboard = () => {
   // Fonction pour le badge de statut
   const getGradeStatusBadge = (grade: GradeWithDetails) => {
     const isValid = isGradeValidated(grade);
+    const status = grade.status?.toLowerCase();
 
-    if (isValid) {
+    // Badge de statut de publication
+    if (status === "published") {
+      if (isValid) {
+        return (
+          <Badge
+            variant="default"
+            className="gap-1 bg-green-100 text-green-800 hover:bg-green-100 text-xs"
+          >
+            <CheckCheck className="h-3 w-3" />
+            Publié & Validé
+          </Badge>
+        );
+      } else {
+        return (
+          <Badge variant="destructive" className="gap-1 text-xs">
+            <AlertTriangle className="h-3 w-3" />
+            Publié (Échec)
+          </Badge>
+        );
+      }
+    } else if (status === "approved") {
+      if (isValid) {
+        return (
+          <Badge
+            variant="secondary"
+            className="gap-1 bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs"
+          >
+            <CheckCircle className="h-3 w-3" />
+            Approuvé & Validé
+          </Badge>
+        );
+      } else {
+        return (
+          <Badge
+            variant="outline"
+            className="gap-1 text-xs border-amber-300 text-amber-700"
+          >
+            <AlertTriangle className="h-3 w-3" />
+            Approuvé (Échec)
+          </Badge>
+        );
+      }
+    } else if (status === "submitted") {
       return (
-        <Badge
-          variant="default"
-          className="gap-1 bg-green-100 text-green-800 hover:bg-green-100 text-xs"
-        >
-          <CheckCircle className="h-3 w-3" />
-          Validé
+        <Badge variant="outline" className="gap-1 text-xs">
+          <FileText className="h-3 w-3" />
+          En validation
+        </Badge>
+      );
+    } else if (status === "draft") {
+      return (
+        <Badge variant="outline" className="gap-1 text-xs">
+          <EyeOff className="h-3 w-3" />
+          Brouillon
+        </Badge>
+      );
+    } else if (status === "rejected") {
+      return (
+        <Badge variant="destructive" className="gap-1 text-xs">
+          <XCircle className="h-3 w-3" />
+          Rejeté
         </Badge>
       );
     }
 
     return (
-      <Badge variant="destructive" className="gap-1 text-xs">
-        <XCircle className="h-3 w-3" />
-        Échec
+      <Badge variant="outline" className="gap-1 text-xs">
+        <EyeOff className="h-3 w-3" />
+        Non publié
       </Badge>
     );
+  };
+  // Fonction pour obtenir la date de publication
+  const getPublicationDate = (grade: GradeWithDetails): string => {
+    if (grade.publishedAt) {
+      return new Date(grade.createdAt).toLocaleDateString("fr-FR", {
+        day: "2-digit",
+        month: "short",
+      });
+    }
+    return "Non publié";
   };
 
   // Fonction pour charger toutes les données
@@ -522,7 +643,7 @@ const StudentDashboard = () => {
       let studentId: string | null = null;
       let classId: string | null = null;
 
-      // Étape 1: Identifier l'étudiant
+      // Identifier l'étudiant
       if (user?.studentRecord?.id) {
         studentId = user.studentRecord.id;
         classId = user.studentRecord.classId || null;
@@ -538,30 +659,33 @@ const StudentDashboard = () => {
         return;
       }
 
-      // Étape 2: Charger les données de l'étudiant
+      // Charger les notes PUBLIÉES de l'étudiant
       try {
-        await fetchStudentById(studentId);
-      } catch (error) {
-        console.error(
-          " Erreur lors du chargement des données de l'étudiant:",
-          error
-        );
-      }
+        console.log(" Chargement des notes publiées pour le dashboard...");
 
-      // Étape 3: Charger les notes
-      try {
-        const gradesData = await fetchStudentGrades(studentId);
+        // Utiliser la fonction du store (qui utilise maintenant le bon endpoint)
+        const gradesData = await fetchStudentDashboardGrades(studentId);
+
+        console.log(
+          " Détails des notes:",
+          gradesData.map((g: any) => ({
+            id: g.id,
+            status: g.status,
+            grade: g.grade,
+            subject: g.subject?.name,
+          }))
+        );
 
         if (gradesData && Array.isArray(gradesData) && gradesData.length > 0) {
-          // Formater les notes avec les détails complets
+          // Formater les notes
           const formattedGrades = gradesData.map((g: any) => ({
             id: g.id,
             studentId: g.studentId,
             subjectId: g.subjectId,
             grade: g.grade || 0,
-            maxGrade: g.maxGrade || g.subject?.defaultMaxGrade || 20,
-            passingGrade: g.passingGrade || (g.maxGrade || 20) * 0.5,
-            status: g.status || null,
+            maxGrade: g.subject?.maxGrade || g.maxGrade || 20,
+            passingGrade: g.subject?.passingGrade || g.passingGrade || 50,
+            status: g.status || GradeStatus.APPROVED,
             session: g.session || null,
             controlType: g.controlType || null,
             subject: g.subject || {
@@ -569,65 +693,43 @@ const StudentDashboard = () => {
               name: "Matière",
               code: "N/A",
               coefficient: g.subject?.coefficient || 1,
-              defaultMaxGrade: g.subject?.defaultMaxGrade || 20,
+              maxGrade: g.subject?.maxGrade || 50,
+              passingGrade: g.subject?.passingGrade || 25,
             },
             academicYearId: g.academicYearId,
             classLevel: g.classLevel,
+            publishedAt: g.publishedAt ? new Date(g.publishedAt) : null,
             createdAt: new Date(g.createdAt || new Date()),
           })) as GradeWithDetails[];
 
           setStudentGrades(formattedGrades);
+          setPublishedGrades(formattedGrades);
+
+          console.log(" Notes formatées:", formattedGrades.length);
         } else {
+          console.log(" Aucune note publiée trouvée");
           setStudentGrades([]);
+          setPublishedGrades([]);
         }
       } catch (error) {
-        // Fallback: Essayer d'autres méthodes si fetchStudentGrades échoue
-        try {
-          const response = await api.get(`/grades/student/${studentId}`);
-
-          if (response.data?.success && response.data.data?.grades) {
-            const gradesData = response.data.data.grades;
-
-            const formattedGrades = gradesData.map((g: any) => ({
-              id: g.id,
-              studentId: g.studentId,
-              subjectId: g.subjectId,
-              grade: g.grade || 0,
-              maxGrade: g.maxGrade || g.subject?.defaultMaxGrade || 20,
-              passingGrade: g.passingGrade || (g.maxGrade || 20) * 0.5,
-              status: g.status || null,
-              session: g.session || null,
-              controlType: g.controlType || null,
-              subject: g.subject || {
-                id: g.subjectId,
-                name: "Matière",
-                code: "N/A",
-                coefficient: g.subject?.coefficient || 1,
-                defaultMaxGrade: g.subject?.defaultMaxGrade || 20,
-              },
-              academicYearId: g.academicYearId,
-              classLevel: g.classLevel,
-              createdAt: new Date(g.createdAt || new Date()),
-            })) as GradeWithDetails[];
-
-            setStudentGrades(formattedGrades);
-          } else {
-            setStudentGrades([]);
-          }
-        } catch (fallbackError) {
-          setStudentGrades([]);
-        }
+        console.error("Erreur lors du chargement des notes:", error);
+        setStudentGrades([]);
+        setPublishedGrades([]);
       }
 
       // Étape 4: Charger les annonces
       try {
         await fetchAnnouncements();
-      } catch (error) {}
+      } catch (error) {
+        console.error("Erreur lors du chargement des annonces:", error);
+      }
 
       // Étape 5: Charger les événements
       try {
         await fetchUpcomingEvents();
-      } catch (error) {}
+      } catch (error) {
+        console.error("Erreur lors du chargement des événements:", error);
+      }
 
       // Étape 6: Charger les cours si classId existe
       if (classId) {
@@ -644,7 +746,7 @@ const StudentDashboard = () => {
               subject: assignment.subject || {
                 name: assignment.subject?.name || "Matière",
                 coefficient: assignment.subject?.coefficient || 1,
-                defaultMaxGrade: assignment.subject?.defaultMaxGrade || 20,
+                maxGrade: assignment.subject?.maxGrade || 20,
               },
               professeur: assignment.professeur || {
                 firstName: "Professeur",
@@ -658,7 +760,7 @@ const StudentDashboard = () => {
             setStudentCourses([]);
           }
         } catch (error) {
-          console.error(" Erreur lors du chargement des cours:", error);
+          console.error("Erreur lors du chargement des cours:", error);
           setStudentCourses([]);
         }
       } else {
@@ -716,6 +818,10 @@ const StudentDashboard = () => {
             setStudentSchedule([]);
           }
         } catch (error) {
+          console.error(
+            "Erreur lors du chargement de l'emploi du temps:",
+            error
+          );
           setStudentSchedule([]);
         }
       }
@@ -736,7 +842,6 @@ const StudentDashboard = () => {
   }, [
     user,
     fetchStudentById,
-    fetchStudentGrades,
     fetchAnnouncements,
     fetchUpcomingEvents,
     fetchAssignmentsByClass,
@@ -809,23 +914,32 @@ const StudentDashboard = () => {
     }
   }, [upcomingEvents]);
 
+  // Filtrer les notes selon le statut sélectionné
+  const displayedGrades = useMemo(() => {
+    return filterGradesByStatus(studentGrades, gradeStatusFilter);
+  }, [studentGrades, gradeStatusFilter, filterGradesByStatus]);
+
   // ==================== CALCULS DES STATISTIQUES ====================
 
-  // Calculer la moyenne générale (sur 20)
+  // Calculer la moyenne générale (sur 20) basée sur les notes PUBLIÉES
   const calculateAverage = useMemo(() => {
-    if (!studentGrades || studentGrades.length === 0) {
+    const publishedGrades = studentGrades.filter(
+      (grade) => grade.status === GradeStatus.PUBLISHED
+    );
+
+    if (!publishedGrades || publishedGrades.length === 0) {
       return {
         average: "0.00",
         averageOn20: "0.00",
         hasData: false,
-        message: "Aucune note disponible",
+        message: "Aucune note publiée disponible",
       };
     }
 
     let totalWeighted = 0;
     let totalCoefficient = 0;
 
-    studentGrades.forEach((grade: GradeWithDetails) => {
+    publishedGrades.forEach((grade: GradeWithDetails) => {
       const coefficient = grade.subject?.coefficient || 1;
       const gradeOn20 = getGradeOn20(grade); // Convertir en note sur 20
 
@@ -841,22 +955,28 @@ const StudentDashboard = () => {
       averageOn20: averageOn20.toFixed(2),
       hasData: true,
       totalCoefficient,
-      totalGrades: studentGrades.length,
+      totalGrades: publishedGrades.length,
     };
   }, [studentGrades, getGradeOn20]);
 
-  // Calculer les statistiques des notes
+  // Calculer les statistiques des notes PUBLIÉES
   const calculateGradeStats = useMemo(() => {
     return (grades: GradeWithDetails[]) => {
-      if (!grades || grades.length === 0) {
+      // Inclure APPROVED et PUBLISHED
+      const visibleGrades = grades.filter((grade) => {
+        const status = grade.status?.toLowerCase();
+        return status === "approved" || status === "published";
+      });
+
+      if (!visibleGrades || visibleGrades.length === 0) {
         return {
           total: 0,
           average: 0,
           averageOn20: 0,
           validatedCount: 0,
           failedCount: 0,
-          retakeCount: 0,
           successRate: 0,
+          publishedCount: 0,
           credits: {
             total: 0,
             obtained: 0,
@@ -865,14 +985,14 @@ const StudentDashboard = () => {
         };
       }
 
-      const validatedGrades = grades.filter(isGradeValidated);
-      const failedGrades = grades.filter((g) => !isGradeValidated(g));
+      const validatedGrades = visibleGrades.filter(isGradeValidated);
+      const failedGrades = visibleGrades.filter((g) => !isGradeValidated(g));
 
       // Calcul de la moyenne sur 20
       let totalWeighted = 0;
       let totalCoefficient = 0;
 
-      grades.forEach((grade) => {
+      visibleGrades.forEach((grade) => {
         const coefficient = grade.subject?.coefficient || 1;
         const gradeOn20 = getGradeOn20(grade);
         totalWeighted += gradeOn20 * coefficient;
@@ -882,9 +1002,11 @@ const StudentDashboard = () => {
       const averageOn20 =
         totalCoefficient > 0 ? totalWeighted / totalCoefficient : 0;
       const successRate =
-        grades.length > 0 ? (validatedGrades.length / grades.length) * 100 : 0;
+        visibleGrades.length > 0
+          ? (validatedGrades.length / visibleGrades.length) * 100
+          : 0;
 
-      const totalCredits = grades.reduce(
+      const totalCredits = visibleGrades.reduce(
         (sum, grade) => sum + (grade.subject?.coefficient || 0),
         0
       );
@@ -894,12 +1016,13 @@ const StudentDashboard = () => {
       );
 
       return {
-        total: grades.length,
+        total: visibleGrades.length,
         average: Math.round(averageOn20 * 100) / 100,
         averageOn20: Math.round(averageOn20 * 100) / 100,
         validatedCount: validatedGrades.length,
         failedCount: failedGrades.length,
         successRate: Math.round(successRate * 100) / 100,
+        publishedCount: visibleGrades.length,
         credits: {
           total: totalCredits,
           obtained: obtainedCredits,
@@ -909,7 +1032,6 @@ const StudentDashboard = () => {
       };
     };
   }, [isGradeValidated, getGradeOn20]);
-
   // Obtenir le prochain cours
   const getNextClass = useMemo(() => {
     if (!studentSchedule || studentSchedule.length === 0) return null;
@@ -939,14 +1061,20 @@ const StudentDashboard = () => {
     return null;
   }, [studentSchedule]);
 
-  // Données pour le graphique de progression
+  // Données pour le graphique de progression (basé sur les notes publiées)
   const getProgressData = useMemo(() => {
-    if (studentGrades.length > 0) {
+    const publishedGrades = studentGrades.filter(
+      (grade) => grade.status === GradeStatus.PUBLISHED
+    );
+
+    if (publishedGrades.length > 0) {
       const monthlyGrades: Record<string, { total: number; count: number }> =
         {};
 
-      studentGrades.forEach((grade) => {
-        const date = new Date(grade.createdAt || new Date());
+      publishedGrades.forEach((grade) => {
+        const date = new Date(
+          grade.publishedAt || grade.createdAt || new Date()
+        );
         const month = date.toLocaleString("fr-FR", { month: "short" });
 
         if (!monthlyGrades[month]) {
@@ -963,23 +1091,31 @@ const StudentDashboard = () => {
       }));
     }
 
+    // Données fictives si pas de notes
     return [
-      { month: "Sept", average: 13.5 },
-      { month: "Oct", average: 14.5 },
-      { month: "Nov", average: 15.5 },
-      { month: "Déc", average: 15.5 },
-      { month: "Jan", average: 16 },
-      { month: "Fév", average: 17 },
+      { month: "Sept", average: 0 },
+      { month: "Oct", average: 0 },
+      { month: "Nov", average: 0 },
+      { month: "Déc", average: 0 },
+      { month: "Jan", average: 0 },
+      { month: "Fév", average: 0 },
     ];
   }, [studentGrades, getGradeOn20]);
 
-  // Fonction pour grouper les notes par type de contrôle
+  // Fonction pour grouper les notes PUBLIÉES par type de contrôle
   const groupGradesByControlType = useMemo(() => {
-    if (!studentGrades.length) return {};
+    const visibleGrades = studentGrades.filter((grade) => {
+      const status = grade.status?.toLowerCase();
+      return status === "approved" || status === "published";
+    });
+
+    console.log("Notes visibles:", visibleGrades);
+
+    if (!visibleGrades.length) return {};
 
     const grouped: Record<string, GradeWithDetails[]> = {};
 
-    studentGrades.forEach((grade) => {
+    visibleGrades.forEach((grade) => {
       const controlType = grade.controlType || "Autre";
 
       if (!grouped[controlType]) {
@@ -992,7 +1128,7 @@ const StudentDashboard = () => {
     return grouped;
   }, [studentGrades]);
 
-  // Fonction pour obtenir les statistiques par contrôle
+  // Fonction pour obtenir les statistiques par contrôle (notes publiées seulement)
   const getControlTypeStats = useMemo(() => {
     const grouped = groupGradesByControlType;
     const stats: Record<string, any> = {};
@@ -1033,15 +1169,19 @@ const StudentDashboard = () => {
     return map[controlType] || controlType.replace("CONTROLE_", "Contrôle ");
   };
 
-  // Données pour le radar des compétences (basé sur le pourcentage)
+  // Données pour le radar des compétences (basé sur le pourcentage des notes publiées)
   const getSkillData = useMemo(() => {
-    if (studentGrades.length > 0) {
+    const publishedGrades = studentGrades.filter(
+      (grade) => grade.status === GradeStatus.PUBLISHED
+    );
+
+    if (publishedGrades.length > 0) {
       const subjectMap = new Map<
         string,
         { totalPercentage: number; count: number; coefficient: number }
       >();
 
-      studentGrades.forEach((grade: GradeWithDetails) => {
+      publishedGrades.forEach((grade: GradeWithDetails) => {
         const subjectName = getSubjectName(grade);
         const coefficient = getSubjectCoefficient(grade);
         const percentage = getGradePercentage(grade);
@@ -1072,50 +1212,8 @@ const StudentDashboard = () => {
       }));
     }
 
-    return [
-      {
-        subject: "Maths",
-        score: 75,
-        fullMark: 100,
-        coefficient: 4,
-        average: "75.0",
-      },
-      {
-        subject: "Physique",
-        score: 85,
-        fullMark: 100,
-        coefficient: 3,
-        average: "85.0",
-      },
-      {
-        subject: "SVT",
-        score: 65,
-        fullMark: 100,
-        coefficient: 2,
-        average: "65.0",
-      },
-      {
-        subject: "Français",
-        score: 90,
-        fullMark: 100,
-        coefficient: 2,
-        average: "90.0",
-      },
-      {
-        subject: "Anglais",
-        score: 80,
-        fullMark: 100,
-        coefficient: 2,
-        average: "80.0",
-      },
-      {
-        subject: "Hist-Géo",
-        score: 70,
-        fullMark: 100,
-        coefficient: 1,
-        average: "70.0",
-      },
-    ];
+    // Données par défaut
+    return [];
   }, [studentGrades, getGradePercentage]);
 
   // Obtenir l'emploi du temps d'aujourd'hui
@@ -1158,6 +1256,7 @@ const StudentDashboard = () => {
     setLoading(true);
 
     setStudentGrades([]);
+    setPublishedGrades([]);
     setStudentCourses([]);
     setStudentSchedule([]);
     setFilteredAnnouncements([]);
@@ -1174,20 +1273,33 @@ const StudentDashboard = () => {
     const percentage = getGradePercentage(grade);
     const coefficient = getSubjectCoefficient(grade);
     const isValidated = isGradeValidated(grade);
+    const isApprove = grade.status === GradeStatus.APPROVED;
 
     return (
-      <Card className="hover:shadow-md transition-shadow hover:border-primary/50">
+      <Card
+        className={`hover:shadow-md transition-shadow hover:border-primary/50 ${
+          !isApprove ? "opacity-75" : ""
+        }`}
+      >
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div
                 className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                  isValidated ? "bg-green-100" : "bg-red-100"
+                  isApprove
+                    ? isValidated
+                      ? "bg-green-100"
+                      : "bg-red-100"
+                    : "bg-gray-100"
                 }`}
               >
                 <BookOpen
                   className={`h-5 w-5 ${
-                    isValidated ? "text-green-600" : "text-red-600"
+                    isApprove
+                      ? isValidated
+                        ? "text-green-600"
+                        : "text-red-600"
+                      : "text-gray-400"
                   }`}
                 />
               </div>
@@ -1212,33 +1324,46 @@ const StudentDashboard = () => {
               </div>
             </div>
             <div className="text-right">
-              <div
-                className={`text-xl sm:text-2xl font-bold ${getGradeColor(
-                  grade
-                )}`}
-              >
-                {gradeValue.toFixed(0)}/{maxGrade}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {percentage.toFixed(0)}% • {coefficient} crédits
-              </div>
-              {grade.passingGrade !== undefined && (
-                <div className="text-xs text-amber-600 mt-1">
-                  Passage: {grade.passingGrade}/{maxGrade}
-                </div>
+              {isApprove ? (
+                <>
+                  <div
+                    className={`text-xl sm:text-2xl font-bold ${getGradeColor(
+                      grade
+                    )}`}
+                  >
+                    {gradeValue.toFixed(0)}/{maxGrade}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {percentage.toFixed(0)}% • {coefficient} crédits
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-xl sm:text-2xl font-bold text-gray-400">
+                    Non Approuve
+                  </div>
+                </>
               )}
             </div>
           </div>
-          <div className="mt-3">
-            <div className="flex justify-between text-xs text-muted-foreground mb-1">
-              <span>Progression</span>
-              <span>{percentage.toFixed(0)}%</span>
+          {isApprove && (
+            <div className="mt-3">
+              <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                <span>Progression</span>
+                <span>{percentage.toFixed(0)}%</span>
+              </div>
+              <Progress
+                value={percentage}
+                className={`h-2 ${
+                  isApprove
+                    ? isValidated
+                      ? "bg-green-500"
+                      : "bg-red-500"
+                    : "bg-gray-300"
+                }`}
+              />
             </div>
-            <Progress
-              value={percentage}
-              className={`h-2 ${isValidated ? "bg-green-500" : "bg-red-500"}`}
-            />
-          </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -1360,6 +1485,127 @@ const StudentDashboard = () => {
     </Card>
   );
 
+  // Composant de statistiques de notes
+  const GradeStatsSummary = () => {
+    const stats = calculateGradeStats(studentGrades);
+    const visibleGrades = studentGrades.filter((grade) => {
+      const status = grade.status?.toLowerCase();
+      return status === "approved" || status === "published";
+    });
+    const visibleCount = visibleGrades.length;
+
+    return (
+      <Card className="mb-6">
+        <CardContent className="p-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-3 rounded-lg bg-primary/5">
+              <div className="text-2xl font-bold text-primary">
+                {stats.averageOn20}/20
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Moyenne générale
+              </div>
+              <div className="text-xs text-primary mt-1">
+                {visibleCount} note{visibleCount > 1 ? "s" : ""} visible
+                {visibleCount > 1 ? "s" : ""}
+              </div>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-green-50">
+              <div className="text-2xl font-bold text-green-600">
+                {stats.validatedCount}
+              </div>
+              <div className="text-sm text-muted-foreground">Validés</div>
+              <div className="text-xs text-green-600 mt-1">
+                {visibleCount > 0
+                  ? Math.round((stats.validatedCount / visibleCount) * 100)
+                  : 0}
+                % de réussite
+              </div>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-blue-50">
+              <div className="text-2xl font-bold text-blue-600">
+                {visibleCount}
+              </div>
+              <div className="text-sm text-muted-foreground">Visibles</div>
+              <div className="text-xs text-blue-600 mt-1">
+                {studentGrades.length - visibleCount} en attente
+              </div>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-amber-50">
+              <div className="text-2xl font-bold text-amber-600">
+                {studentGrades.length}
+              </div>
+              <div className="text-sm text-muted-foreground">Total notes</div>
+              <div className="text-xs text-amber-600 mt-1">
+                {stats.credits.obtained}/{stats.credits.total} crédits
+              </div>
+            </div>
+          </div>
+
+          {visibleCount === 0 && studentGrades.length > 0 && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center gap-2 text-yellow-800">
+                <AlertTriangle className="h-4 w-4" />
+                <p className="text-sm">
+                  Vous avez {studentGrades.length} note
+                  {studentGrades.length > 1 ? "s" : ""} en attente de
+                  publication par l'administration.
+                </p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // Composant de filtre de statut pour les notes
+  const GradeStatusFilter = () => {
+    const visibleGrades = studentGrades.filter((grade) => {
+      const status = grade.status?.toLowerCase();
+      return status === "approved" || status === "published";
+    });
+
+    const publishedCount = visibleGrades.length;
+    const validatedCount = visibleGrades.filter(isGradeValidated).length;
+    const failedCount = visibleGrades.filter(
+      (g) => !isGradeValidated(g)
+    ).length;
+
+    return (
+      <div className="flex flex-wrap gap-2 mb-6">
+        <Button
+          variant={gradeStatusFilter === "all" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setGradeStatusFilter("all")}
+        >
+          Toutes ({publishedCount})
+        </Button>
+        <Button
+          variant={gradeStatusFilter === "approved" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setGradeStatusFilter("approved")}
+        >
+          Approuvées ({publishedCount})
+        </Button>
+        <Button
+          variant={gradeStatusFilter === "validated" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setGradeStatusFilter("validated")}
+        >
+          Validées ({validatedCount})
+        </Button>
+        <Button
+          variant={gradeStatusFilter === "failed" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setGradeStatusFilter("failed")}
+        >
+          Échecs ({failedCount})
+        </Button>
+      </div>
+    );
+  };
+
   // Composant d'état de chargement
   const LoadingSkeleton = () => (
     <div className="space-y-6 p-6">
@@ -1436,6 +1682,69 @@ const StudentDashboard = () => {
     );
   };
 
+  // Message quand aucune note n'est disponible
+  const NoGradesMessage = () => {
+    const totalGrades = studentGrades.length;
+    const publishedCount = publishedGrades.length;
+
+    if (totalGrades === 0) {
+      return (
+        <div className="text-center py-12">
+          <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-lg font-medium">Aucune note disponible</h3>
+          <p className="text-muted-foreground mb-4">
+            Aucune note n'a été saisie pour le moment.
+          </p>
+          <div className="mt-4 space-y-2 max-w-md mx-auto">
+            <p className="text-sm text-muted-foreground">
+              Les notes apparaîtront ici une fois que vos professeurs les auront
+              saisies et que l'administration les aura publiées.
+            </p>
+            <Button variant="outline" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Vérifier les nouvelles notes
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    if (publishedCount === 0 && totalGrades > 0) {
+      return (
+        <div className="text-center py-12">
+          <EyeOff className="h-12 w-12 mx-auto mb-4 text-blue-500" />
+          <h3 className="text-lg font-medium">
+            Notes en attente de publication
+          </h3>
+          <p className="text-muted-foreground mb-4">
+            Vous avez {totalGrades} note{totalGrades > 1 ? "s" : ""} qui doivent
+            être publiées par l'administration.
+          </p>
+          <div className="mt-4 space-y-2 max-w-md mx-auto">
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="p-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Processus de publication :</strong>
+                </p>
+                <ul className="text-sm text-blue-700 mt-2 space-y-1">
+                  <li>1. Le professeur saisit les notes</li>
+                  <li>2. L'administration vérifie et approuve</li>
+                  <li>3. Les notes sont publiées aux étudiants</li>
+                </ul>
+              </CardContent>
+            </Card>
+            <Button variant="outline" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Vérifier la publication
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   // Gestion des états de chargement
   if (loading || studentLoading) {
     return <LoadingSkeleton />;
@@ -1454,6 +1763,7 @@ const StudentDashboard = () => {
   const skillData = getSkillData;
   const todaySchedule = getTodaySchedule;
   const gradeStats = calculateGradeStats(studentGrades);
+  const publishedCount = publishedGrades.length;
 
   return (
     <div className="space-y-6 p-6">
@@ -1480,13 +1790,18 @@ const StudentDashboard = () => {
               <GraduationCap className="h-3 w-3 mr-1" />
               {displayStudent?.schoolClass?.name || "Étudiant"}
             </Badge>
-            <Badge variant="outline">{currentSemester}</Badge>
             <div className="flex items-center text-sm text-muted-foreground">
               <Star className="h-3 w-3 mr-1 text-yellow-500" />
               Moyenne: {average}/20
-              {!hasData && (
+              {!hasData && publishedCount === 0 && (
                 <span className="text-xs text-muted-foreground ml-2">
-                  (pas de notes)
+                  (pas de notes publiées)
+                </span>
+              )}
+              {hasData && (
+                <span className="text-xs text-green-600 ml-2">
+                  ({publishedCount} note{publishedCount > 1 ? "s" : ""} publiée
+                  {publishedCount > 1 ? "s" : ""})
                 </span>
               )}
             </div>
@@ -1524,8 +1839,7 @@ const StudentDashboard = () => {
                         <p className="text-2xl font-bold">{average}/20</p>
                         <div className="flex items-center text-sm mt-1 text-green-600">
                           <TrendingUp className="h-3 w-3 mr-1" />
-                          {gradeStats.validatedCount}/{studentGrades.length}{" "}
-                          validés
+                          {gradeStats.validatedCount}/{publishedCount} validés
                         </div>
                       </div>
                       <div className="p-3 rounded-full bg-primary/10">
@@ -1546,7 +1860,7 @@ const StudentDashboard = () => {
                           {studentCourses.length}
                         </p>
                         <div className="text-sm text-muted-foreground mt-1">
-                          {studentGrades.length} notes saisies
+                          {publishedCount} notes publiées
                         </div>
                       </div>
                       <div className="p-3 rounded-full bg-blue-100">
@@ -1583,96 +1897,112 @@ const StudentDashboard = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-muted-foreground">
-                          Annonces récentes
+                          Notes publiées
                         </p>
                         <p className="text-2xl font-bold">
-                          {filteredAnnouncements.length}
+                          {publishedCount}/{studentGrades.length}
                         </p>
                         <div className="text-sm text-muted-foreground mt-1">
-                          {
-                            filteredAnnouncements.filter(
-                              (a) => a.priority === "High"
-                            ).length
-                          }{" "}
-                          importantes
+                          {studentGrades.length - publishedCount} en attente
                         </div>
                       </div>
                       <div className="p-3 rounded-full bg-yellow-100">
-                        <Bell className="h-6 w-6 text-yellow-600" />
+                        <CheckCheck className="h-6 w-6 text-yellow-600" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Graphiques */}
-              <div className="grid gap-6 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Progression des notes</CardTitle>
-                    <CardDescription>
-                      Évolution sur l'année (sur 20)
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={progressData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" />
-                          <YAxis domain={[0, 20]} />
-                          <Tooltip
-                            formatter={(value) => [`${value}/20`, "Moyenne"]}
-                            labelFormatter={(label) => `Mois: ${label}`}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="average"
-                            stroke="#8884d8"
-                            strokeWidth={2}
-                            name="Moyenne générale"
-                            dot={{ r: 4 }}
-                            activeDot={{ r: 6 }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardContent>
-                </Card>
+              {/* Graphiques (uniquement si des notes publiées existent) */}
+              {publishedCount > 0 ? (
+                <div className="grid gap-6 md:grid-cols-2">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Progression des notes</CardTitle>
+                      <CardDescription>
+                        Évolution sur l'année (sur 20)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={progressData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="month" />
+                            <YAxis domain={[0, 20]} />
+                            <Tooltip
+                              formatter={(value) => [`${value}/20`, "Moyenne"]}
+                              labelFormatter={(label) => `Mois: ${label}`}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="average"
+                              stroke="#8884d8"
+                              strokeWidth={2}
+                              name="Moyenne générale"
+                              dot={{ r: 4 }}
+                              activeDot={{ r: 6 }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
 
+                  {skillData.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Compétences par matière</CardTitle>
+                        <CardDescription>
+                          Profil académique (en %)
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RadarChart
+                              cx="50%"
+                              cy="50%"
+                              outerRadius="80%"
+                              data={skillData}
+                            >
+                              <PolarGrid />
+                              <PolarAngleAxis dataKey="subject" />
+                              <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                              <Radar
+                                name="Score (%)"
+                                dataKey="score"
+                                stroke="#8884d8"
+                                fill="#8884d8"
+                                fillOpacity={0.6}
+                              />
+                              <Tooltip
+                                formatter={(value) => [`${value}%`, "Score"]}
+                              />
+                            </RadarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              ) : (
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Compétences par matière</CardTitle>
-                    <CardDescription>Profil académique (en %)</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart
-                          cx="50%"
-                          cy="50%"
-                          outerRadius="80%"
-                          data={skillData}
-                        >
-                          <PolarGrid />
-                          <PolarAngleAxis dataKey="subject" />
-                          <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                          <Radar
-                            name="Score (%)"
-                            dataKey="score"
-                            stroke="#8884d8"
-                            fill="#8884d8"
-                            fillOpacity={0.6}
-                          />
-                          <Tooltip
-                            formatter={(value) => [`${value}%`, "Score"]}
-                          />
-                        </RadarChart>
-                      </ResponsiveContainer>
+                  <CardContent className="p-8">
+                    <div className="text-center">
+                      <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                      <h3 className="text-lg font-medium mb-2">
+                        Aucune note publiée
+                      </h3>
+                      <p className="text-muted-foreground mb-4">
+                        Les graphiques s'afficheront ici une fois que des notes
+                        auront été publiées.
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
-              </div>
+              )}
 
               {/* Cours d'aujourd'hui */}
               <Card>
@@ -1922,19 +2252,39 @@ const StudentDashboard = () => {
         <TabsContent value="grades" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Mes Notes</CardTitle>
-              <CardDescription>
-                Résultats académiques par contrôle
-              </CardDescription>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <CardTitle>Mes Notes</CardTitle>
+                  <CardDescription>
+                    Notes publiées et approuvées
+                    {publishedCount > 0 && (
+                      <span className="ml-2 text-green-600">
+                        ({publishedCount} publiée{publishedCount > 1 ? "s" : ""}
+                        )
+                      </span>
+                    )}
+                  </CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleRefresh}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Actualiser
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {studentGrades.length > 0 ? (
+              {publishedCount > 0 ? (
                 <>
+                  {/* Résumé statistique */}
+                  <GradeStatsSummary />
+
+                  {/* Filtres de statut */}
+                  <GradeStatusFilter />
+
                   {/* Tabs pour les types de contrôle */}
                   <Tabs defaultValue="tous" className="mb-6">
                     <TabsList className="flex-wrap h-auto">
                       <TabsTrigger value="tous" className="text-xs">
-                        Toutes les notes ({studentGrades.length})
+                        Toutes les notes ({publishedCount})
                       </TabsTrigger>
 
                       {Object.keys(groupGradesByControlType).map(
@@ -1953,110 +2303,85 @@ const StudentDashboard = () => {
 
                     {/* Onglet "Toutes les notes" */}
                     <TabsContent value="tous" className="mt-4">
-                      {/* Statistiques générales */}
-                      <Card className="mb-6">
-                        <CardContent className="p-6">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="text-center p-3 rounded-lg bg-primary/5">
-                              <div className="text-2xl font-bold text-primary">
-                                {gradeStats.averageOn20}/20
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                Moyenne générale
-                              </div>
-                            </div>
-                            <div className="text-center p-3 rounded-lg bg-green-50">
-                              <div className="text-2xl font-bold text-green-600">
-                                {gradeStats.validatedCount}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                Validés
-                              </div>
-                            </div>
-                            <div className="text-center p-3 rounded-lg bg-blue-50">
-                              <div className="text-2xl font-bold text-blue-600">
-                                {gradeStats.successRate}%
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                Taux réussite
-                              </div>
-                            </div>
-                            <div className="text-center p-3 rounded-lg bg-amber-50">
-                              <div className="text-2xl font-bold text-amber-600">
-                                {studentGrades.length}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                Total notes
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-
                       {/* Statistiques par contrôle */}
-                      <Card className="mb-6">
-                        <CardHeader>
-                          <CardTitle>Résumé par contrôle</CardTitle>
-                          <CardDescription>
-                            Performance par type d'évaluation (sur 20)
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {Object.entries(getControlTypeStats).map(
-                              ([controlType, stats]) => (
-                                <Card
-                                  key={controlType}
-                                  className="hover:shadow-md transition-shadow"
-                                >
-                                  <CardContent className="p-4">
-                                    <div className="flex items-center justify-between mb-3">
-                                      <h4 className="font-semibold">
-                                        {formatControlType(controlType)}
-                                      </h4>
-                                      <Badge variant="outline">
-                                        {stats.total} notes
-                                      </Badge>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-muted-foreground">
-                                          Moyenne
-                                        </span>
-                                        <span className="font-semibold">
-                                          {stats.average}/20
-                                        </span>
+                      {Object.keys(getControlTypeStats).length > 0 && (
+                        <Card className="mb-6">
+                          <CardHeader>
+                            <CardTitle>Résumé par contrôle</CardTitle>
+                            <CardDescription>
+                              Performance par type d'évaluation (sur 20)
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {Object.entries(getControlTypeStats).map(
+                                ([controlType, stats]) => (
+                                  <Card
+                                    key={controlType}
+                                    className="hover:shadow-md transition-shadow"
+                                  >
+                                    <CardContent className="p-4">
+                                      <div className="flex items-center justify-between mb-3">
+                                        <h4 className="font-semibold">
+                                          {formatControlType(controlType)}
+                                        </h4>
+                                        <Badge variant="outline">
+                                          {stats.total} notes
+                                        </Badge>
                                       </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-muted-foreground">
-                                          Taux réussite
-                                        </span>
-                                        <span className="font-semibold">
-                                          {stats.successRate}%
-                                        </span>
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between">
+                                          <span className="text-sm text-muted-foreground">
+                                            Moyenne
+                                          </span>
+                                          <span className="font-semibold">
+                                            {stats.average}/20
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-sm text-muted-foreground">
+                                            Taux réussite
+                                          </span>
+                                          <span className="font-semibold">
+                                            {stats.successRate}%
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-sm text-muted-foreground">
+                                            Validés
+                                          </span>
+                                          <span className="font-semibold text-green-600">
+                                            {stats.validated}/{stats.total}
+                                          </span>
+                                        </div>
                                       </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-muted-foreground">
-                                          Validés
-                                        </span>
-                                        <span className="font-semibold text-green-600">
-                                          {stats.validated}/{stats.total}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              )
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
+                                    </CardContent>
+                                  </Card>
+                                )
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
 
-                      {/* Liste de toutes les notes */}
+                      {/* Liste de toutes les notes PUBLIÉES (filtrées) */}
                       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {studentGrades.map((grade, index) => (
-                          <SubjectCard key={index} grade={grade} />
-                        ))}
+                        {displayedGrades.length > 0 ? (
+                          displayedGrades.map((grade, index) => (
+                            <SubjectCard key={index} grade={grade} />
+                          ))
+                        ) : (
+                          <div className="text-center py-8">
+                            <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                            <h3 className="text-lg font-medium">
+                              Aucune note à afficher
+                            </h3>
+                            <p className="text-muted-foreground">
+                              Ajustez les filtres ou attendez que des notes
+                              soient publiées.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </TabsContent>
 
@@ -2142,25 +2467,7 @@ const StudentDashboard = () => {
                   </Tabs>
                 </>
               ) : (
-                <div className="text-center py-12">
-                  <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-lg font-medium">
-                    Aucune note disponible
-                  </h3>
-                  <p className="text-muted-foreground mb-4">
-                    Aucune note n'a été saisie pour le moment.
-                  </p>
-                  <div className="mt-4 space-y-2 max-w-md mx-auto">
-                    <p className="text-sm text-muted-foreground">
-                      Les notes apparaîtront ici une fois que vos professeurs
-                      les auront saisies.
-                    </p>
-                    <Button variant="outline" onClick={handleRefresh}>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Vérifier les nouvelles notes
-                    </Button>
-                  </div>
-                </div>
+                <NoGradesMessage />
               )}
             </CardContent>
           </Card>

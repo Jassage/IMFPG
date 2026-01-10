@@ -45,9 +45,7 @@ export const createAuditLog = async (
         description: truncatedDescription,
         metadata: data.metadata,
         status: data.status,
-        errorMessage: truncatedErrorMessage,
-      },
-    });
+        errorMessage: truncatedErrorMessage}});
   } catch (error) {
     console.error("❌ Erreur création audit log:", error);
 
@@ -59,8 +57,7 @@ export const createAuditLog = async (
       userId: data.userId,
       ipAddress: data.ipAddress,
       status: data.status,
-      error: data.errorMessage,
-    });
+      error: data.errorMessage});
   }
 };
 
@@ -81,8 +78,7 @@ export const getAuditLogs = asyncErrorHandler(
         userId,
         startDate,
         endDate,
-        status,
-      } = req.query;
+        status} = req.query;
 
       const pageNum = parseInt(page as string, 10);
       const limitNum = parseInt(limit as string, 10);
@@ -92,9 +88,9 @@ export const getAuditLogs = asyncErrorHandler(
       const where: any = {};
 
       if (action)
-        where.action = { contains: action as string, mode: "insensitive" };
+        where.action = { contains: action as string};
       if (entity)
-        where.entity = { contains: entity as string, mode: "insensitive" };
+        where.entity = { contains: entity as string};
       if (userId) where.userId = userId as string;
       if (status) where.status = status as string;
 
@@ -132,16 +128,11 @@ export const getAuditLogs = asyncErrorHandler(
                 firstName: true,
                 lastName: true,
                 email: true,
-                role: true,
-              },
-            },
-          },
+                role: true}}},
           orderBy: {
-            createdAt: "desc",
-          },
+            createdAt: "desc"},
           skip,
-          take: limitNum,
-        }),
+          take: limitNum}),
         prisma.auditLog.count({ where }),
       ]);
 
@@ -156,9 +147,7 @@ export const getAuditLogs = asyncErrorHandler(
           totalCount,
           totalPages,
           hasNext: pageNum < totalPages,
-          hasPrev: pageNum > 1,
-        },
-      });
+          hasPrev: pageNum > 1}});
     } catch (error) {
       console.error("❌ Erreur récupération logs audit:", error);
       throw error;
@@ -187,24 +176,18 @@ export const getAuditLogById = asyncErrorHandler(
               firstName: true,
               lastName: true,
               email: true,
-              role: true,
-            },
-          },
-        },
-      });
+              role: true}}}});
 
       if (!auditLog) {
         return res.status(404).json({
           success: false,
           message: "Log d'audit non trouvé",
-          code: "AUDIT_LOG_NOT_FOUND",
-        });
+          code: "AUDIT_LOG_NOT_FOUND"});
       }
 
       res.json({
         success: true,
-        data: auditLog,
-      });
+        data: auditLog});
     } catch (error) {
       console.error("❌ Erreur récupération log audit:", error);
       throw error;
@@ -228,8 +211,7 @@ export const getUserAuditLogs = asyncErrorHandler(
         action,
         entity,
         startDate,
-        endDate,
-      } = req.query;
+        endDate} = req.query;
 
       const pageNum = parseInt(page as string, 10);
       const limitNum = parseInt(limit as string, 10);
@@ -239,9 +221,9 @@ export const getUserAuditLogs = asyncErrorHandler(
       const where: any = { userId };
 
       if (action)
-        where.action = { contains: action as string, mode: "insensitive" };
+        where.action = { contains: action as string};
       if (entity)
-        where.entity = { contains: entity as string, mode: "insensitive" };
+        where.entity = { contains: entity as string};
 
       // Filtre par date
       if (startDate || endDate) {
@@ -261,16 +243,11 @@ export const getUserAuditLogs = asyncErrorHandler(
                 firstName: true,
                 lastName: true,
                 email: true,
-                role: true,
-              },
-            },
-          },
+                role: true}}},
           orderBy: {
-            createdAt: "desc",
-          },
+            createdAt: "desc"},
           skip,
-          take: limitNum,
-        }),
+          take: limitNum}),
         prisma.auditLog.count({ where }),
       ]);
 
@@ -285,9 +262,7 @@ export const getUserAuditLogs = asyncErrorHandler(
           totalCount,
           totalPages,
           hasNext: pageNum < totalPages,
-          hasPrev: pageNum > 1,
-        },
-      });
+          hasPrev: pageNum > 1}});
     } catch (error) {
       console.error("❌ Erreur récupération logs audit utilisateur:", error);
       throw error;
@@ -328,43 +303,33 @@ export const getAuditStats = asyncErrorHandler(
 
         // Logs de succès
         prisma.auditLog.count({
-          where: { ...where, status: "SUCCESS" },
-        }),
+          where: { ...where, status: "SUCCESS" }}),
 
         // Logs d'erreur
         prisma.auditLog.count({
-          where: { ...where, status: "ERROR" },
-        }),
+          where: { ...where, status: "ERROR" }}),
 
         // Actions les plus fréquentes
         prisma.auditLog.groupBy({
           by: ["action"],
           where,
           _count: {
-            action: true,
-          },
+            action: true},
           orderBy: {
             _count: {
-              action: "desc",
-            },
-          },
-          take: 10,
-        }),
+              action: "desc"}},
+          take: 10}),
 
         // Entités les plus actives
         prisma.auditLog.groupBy({
           by: ["entity"],
           where,
           _count: {
-            entity: true,
-          },
+            entity: true},
           orderBy: {
             _count: {
-              entity: "desc",
-            },
-          },
-          take: 10,
-        }),
+              entity: "desc"}},
+          take: 10}),
 
         // Activité récente (7 derniers jours)
         prisma.auditLog.groupBy({
@@ -372,15 +337,11 @@ export const getAuditStats = asyncErrorHandler(
           where: {
             createdAt: {
               gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 derniers jours
-            },
-          },
+            }},
           _count: {
-            createdAt: true,
-          },
+            createdAt: true},
           orderBy: {
-            createdAt: "asc",
-          },
-        }),
+            createdAt: "asc"}}),
       ]);
 
       res.json({
@@ -392,9 +353,7 @@ export const getAuditStats = asyncErrorHandler(
           successRate: totalLogs > 0 ? (successLogs / totalLogs) * 100 : 0,
           topActions,
           topEntities,
-          recentActivity,
-        },
-      });
+          recentActivity}});
     } catch (error) {
       console.error("❌ Erreur récupération statistiques audit:", error);
       throw error;
@@ -437,12 +396,8 @@ export const exportAuditLogs = asyncErrorHandler(
               firstName: true,
               lastName: true,
               email: true,
-              role: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      });
+              role: true}}},
+        orderBy: { createdAt: "desc" }});
 
       // Reste du code d'export inchangé...
     } catch (error) {
@@ -450,8 +405,7 @@ export const exportAuditLogs = asyncErrorHandler(
       res.status(500).json({
         success: false,
         message: "Erreur lors de l'export",
-        code: "EXPORT_ERROR",
-      });
+        code: "EXPORT_ERROR"});
     }
   }
 );
@@ -462,5 +416,4 @@ export default {
   getAuditLogs,
   getAuditLogById,
   getUserAuditLogs,
-  getAuditStats,
-};
+  getAuditStats};

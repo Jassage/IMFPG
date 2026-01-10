@@ -54,6 +54,7 @@ export class SubjectService {
   /**
    * Récupère la liste des matières avec pagination et filtres
    */
+  // Dans getSubjects(), modifiez la clause where :
   async getSubjects(filters: SubjectFilters, auditData: AuditData) {
     try {
       const {
@@ -62,8 +63,7 @@ export class SubjectService {
         search,
         type,
         sortBy = "name",
-        sortOrder = "asc",
-      } = filters;
+        sortOrder = "asc"} = filters;
 
       const pageNum = parseInt(page.toString());
       const limitNum = parseInt(limit.toString());
@@ -73,10 +73,11 @@ export class SubjectService {
       const where: any = {};
 
       if (search) {
+        // SUPPRIMEZ  - utilisez simplement contains
         where.OR = [
-          { name: { contains: search, mode: "insensitive" } },
-          { code: { contains: search, mode: "insensitive" } },
-          { description: { contains: search, mode: "insensitive" } },
+          { name: { contains: search } }, // ← Retirez 
+          { code: { contains: search } }, // ← Retirez 
+          { description: { contains: search } }, // ← Retirez 
         ];
       }
 
@@ -94,23 +95,16 @@ export class SubjectService {
                 id: true,
                 firstName: true,
                 lastName: true,
-                email: true,
-              },
-            },
+                email: true}},
             _count: {
               select: {
                 assignments: true,
-                grades: true,
-              },
-            },
-          },
+                grades: true}}},
           orderBy: {
-            [sortBy as string]: sortOrder === "desc" ? "desc" : "asc",
-          },
+            [sortBy as string]: sortOrder === "desc" ? "desc" : "asc"},
           skip,
-          take: limitNum,
-        }),
-        prisma.subject.count({ where }),
+          take: limitNum}),
+        prisma.subject.count({ where }), // Même where sans mode
       ]);
 
       return {
@@ -122,16 +116,12 @@ export class SubjectService {
             page: pageNum,
             limit: limitNum,
             total,
-            totalPages: Math.ceil(total / limitNum),
-          },
-        },
-      };
+            totalPages: Math.ceil(total / limitNum)}}};
     } catch (error: any) {
       console.error("❌ SubjectService - getSubjects error:", error);
       throw error;
     }
   }
-
   /**
    * Récupère une matière par ID
    */
@@ -145,9 +135,7 @@ export class SubjectService {
               id: true,
               firstName: true,
               lastName: true,
-              email: true,
-            },
-          },
+              email: true}},
           assignments: {
             include: {
               professeur: {
@@ -155,28 +143,20 @@ export class SubjectService {
                   id: true,
                   firstName: true,
                   lastName: true,
-                  email: true,
-                },
-              },
-              academicYear: true,
-            },
-          },
-        },
-      });
+                  email: true}},
+              academicYear: true}}}});
 
       if (!subject) {
         return {
           success: false,
           message: "Matière non trouvée",
-          code: "SUBJECT_NOT_FOUND",
-        };
+          code: "SUBJECT_NOT_FOUND"};
       }
 
       return {
         success: true,
         message: "Matière récupérée avec succès",
-        data: { subject },
-      };
+        data: { subject }};
     } catch (error: any) {
       console.error("❌ SubjectService - getSubjectById error:", error);
       throw error;
@@ -199,42 +179,35 @@ export class SubjectService {
         type,
         passingGrade,
         maxGrade,
-        description,
-      } = data;
+        description} = data;
 
       // Vérifier si le code existe déjà
       const existingSubject = await prisma.subject.findUnique({
-        where: { code },
-      });
+        where: { code }});
 
       if (existingSubject) {
         return {
           success: false,
           message: "Une matière avec ce code existe déjà",
-          code: "SUBJECT_CODE_EXISTS",
-        };
+          code: "SUBJECT_CODE_EXISTS"};
       }
 
       const existsubj = await prisma.subject.findFirst({
         where: {
-          name,
-        },
-      });
+          name}});
 
       if (existsubj) {
         return {
           success: false,
           message: "Une matière avec ce nom existe déjà",
-          code: "SUBJECT_NAME_EXISTS",
-        };
+          code: "SUBJECT_NAME_EXISTS"};
       }
 
       if (!userId) {
         return {
           success: false,
           message: "Utilisateur non identifié",
-          code: "UNAUTHORIZED",
-        };
+          code: "UNAUTHORIZED"};
       }
 
       // Créer la matière
@@ -247,18 +220,13 @@ export class SubjectService {
           passingGrade: passingGrade || 50,
           description,
           maxGrade: maxGrade,
-          createdById: userId,
-        },
+          createdById: userId},
         include: {
           createdBy: {
             select: {
               id: true,
               firstName: true,
-              lastName: true,
-            },
-          },
-        },
-      });
+              lastName: true}}}});
 
       return {
         success: true,
@@ -268,9 +236,7 @@ export class SubjectService {
           code,
           type,
           coefficient,
-          passingGrade,
-        },
-      };
+          passingGrade}};
     } catch (error: any) {
       throw error;
     }
@@ -293,20 +259,17 @@ export class SubjectService {
         passingGrade,
         description,
         maxGrade,
-        coefficient,
-      } = data;
+        coefficient} = data;
 
       // Vérifier si la matière existe
       const existingSubject = await prisma.subject.findUnique({
-        where: { id },
-      });
+        where: { id }});
 
       if (!existingSubject) {
         return {
           success: false,
           message: "Matière non trouvée",
-          code: "SUBJECT_NOT_FOUND",
-        };
+          code: "SUBJECT_NOT_FOUND"};
       }
 
       // Vérifier si le type est valide (si fourni)
@@ -318,22 +281,19 @@ export class SubjectService {
         return {
           success: false,
           message: "Type invalide. Valeurs acceptées: Obligatoire, Optionnelle",
-          code: "INVALID_SUBJECT_TYPE",
-        };
+          code: "INVALID_SUBJECT_TYPE"};
       }
 
       // Vérifier si le nouveau code existe déjà (seulement si le code change)
       if (code && code !== existingSubject.code) {
         const subjectWithCode = await prisma.subject.findUnique({
-          where: { code },
-        });
+          where: { code }});
 
         if (subjectWithCode) {
           return {
             success: false,
             message: "Une autre matière utilise déjà ce code",
-            code: "SUBJECT_CODE_EXISTS",
-          };
+            code: "SUBJECT_CODE_EXISTS"};
         }
       }
 
@@ -358,11 +318,7 @@ export class SubjectService {
             select: {
               id: true,
               firstName: true,
-              lastName: true,
-            },
-          },
-        },
-      });
+              lastName: true}}}});
 
       return {
         success: true,
@@ -371,9 +327,7 @@ export class SubjectService {
         metadata: {
           oldCode: existingSubject.code,
           newCode: code || existingSubject.code,
-          changes: Object.keys(updateData),
-        },
-      };
+          changes: Object.keys(updateData)}};
     } catch (error: any) {
       console.error("❌ SubjectService - updateSubject error:", error);
 
@@ -382,16 +336,14 @@ export class SubjectService {
         return {
           success: false,
           message: "Une autre matière utilise déjà ce code",
-          code: "SUBJECT_CODE_EXISTS",
-        };
+          code: "SUBJECT_CODE_EXISTS"};
       }
 
       if (error.code === "P2025") {
         return {
           success: false,
           message: "Matière non trouvée",
-          code: "SUBJECT_NOT_FOUND",
-        };
+          code: "SUBJECT_NOT_FOUND"};
       }
 
       throw error;
@@ -410,18 +362,13 @@ export class SubjectService {
           _count: {
             select: {
               assignments: true,
-              grades: true,
-            },
-          },
-        },
-      });
+              grades: true}}}});
 
       if (!subject) {
         return {
           success: false,
           message: "Matière non trouvée",
-          code: "SUBJECT_NOT_FOUND",
-        };
+          code: "SUBJECT_NOT_FOUND"};
       }
 
       // Vérifier les dépendances
@@ -433,21 +380,17 @@ export class SubjectService {
           code: "SUBJECT_HAS_DEPENDENCIES",
           data: {
             assignments: subject._count.assignments,
-            grades: subject._count.grades,
-          },
-        };
+            grades: subject._count.grades}};
       }
 
       // Supprimer la matière
       await prisma.subject.delete({
-        where: { id },
-      });
+        where: { id }});
 
       return {
         success: true,
         message: "Matière supprimée avec succès",
-        subjectName: subject.name,
-      };
+        subjectName: subject.name};
     } catch (error: any) {
       console.error("❌ SubjectService - deleteSubject error:", error);
       throw error;

@@ -13,6 +13,8 @@ import {
   validateContentType,
   sanitizeInput,
   handleValidationErrors,
+  requireSecretary,
+  requireDirector,
 } from "../middleware";
 
 import {
@@ -141,7 +143,7 @@ router.post(
 router.post(
   "/reenroll",
   requireAuth,
-  requireAdmin,
+  requireSecretary,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -158,7 +160,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireAdmin,
+  requireSecretary,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -175,7 +177,7 @@ router.put(
 router.post(
   "/:id/unenroll",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -205,7 +207,7 @@ router.get(
 router.delete(
   "/:id/delete",
   requireAuth,
-  requireAdmin,
+  requireDirector,
   sanitizeInput,
   deleteEnrollment
 );
