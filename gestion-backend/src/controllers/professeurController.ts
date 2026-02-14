@@ -32,8 +32,6 @@ const handleError = async (
   entity: string = "Professeur",
   entityId?: string
 ): Promise<void> => {
-  console.error(`❌ ProfesseurController - ${action} error:`, error);
-
   // Log d'audit
   await createAuditLog({
     ...auditData,
@@ -231,29 +229,11 @@ export const createProfesseur = async (
   try {
     const data = req.body;
 
-    console.log(`[${requestId}] 📥 Requête création professeur:`, {
-      firstName: data.firstName,
-      lastName: data.lastName,
-      email: data.email,
-      createUserAccount: data.createUserAccount,
-      sendInvitation: data.sendInvitation,
-    });
-
     // Appeler le service
     const result = await professeurService.createProfesseurService({
       ...data,
       createUserAccount: data.createUserAccount !== false,
       sendInvitation: data.sendInvitation !== false,
-    });
-
-    console.log(`[${requestId}] ✅ Service retourné:`, {
-      success: result.success,
-      code: result.code,
-      data: {
-        professeurId: result.data?.professeur?.id,
-        userAccountCreated: result.data?.userAccountCreated,
-        emailSent: result.data?.emailSent,
-      },
     });
 
     // Log d'audit
@@ -273,15 +253,9 @@ export const createProfesseur = async (
       },
     });
 
-    console.log(`[${requestId}] 📤 Réponse envoyée:`, {
-      status: 201,
-      professeurId: result.data?.professeur?.id,
-    });
-
     // Retourner directement le résultat du service avec le bon status
     res.status(201).json(result);
   } catch (error: any) {
-    console.error(`[${requestId}] ❌ Erreur contrôleur:`, error);
     await handleError(error, req, res, auditData, "PROFESSEUR_CREATION");
   }
 };

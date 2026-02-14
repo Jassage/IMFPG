@@ -143,7 +143,7 @@ router.post(
 router.post(
   "/reenroll",
   requireAuth,
-  requireSecretary,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -160,7 +160,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireSecretary,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,

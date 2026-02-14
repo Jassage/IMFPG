@@ -589,24 +589,6 @@ export const ClassesManager = () => {
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Élèves total
-                </p>
-                <p className="text-2xl font-bold">
-                  {classes.reduce(
-                    (total, cls) => total + (cls._count?.students || 0),
-                    0
-                  )}
-                </p>
-              </div>
-              <BookOpen className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Tableau des classes */}

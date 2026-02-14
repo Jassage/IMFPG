@@ -395,8 +395,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       expiresIn: "24h",
     });
   } catch (error: any) {
-    console.error(" Erreur login:", error);
-
     // Message d'erreur court pour éviter les problèmes de longueur
     const shortError = error.message
       ? error.message.substring(0, 100)
@@ -484,8 +482,6 @@ export const verifyPassword = async (
       }
       decoded = jwt.verify(token, JWT_SECRET);
     } catch (jwtError) {
-      console.error(" Erreur JWT:", jwtError);
-
       const errorMessage =
         jwtError instanceof Error ? jwtError.message : "Erreur JWT inconnue";
       const errorName =
@@ -568,8 +564,6 @@ export const verifyPassword = async (
       valid: true,
     });
   } catch (error: any) {
-    console.error(" Erreur vérification mot de passe:", error);
-
     await createAuditLog({
       ...auditData,
       action: "PASSWORD_VERIFICATION_ERROR",
@@ -597,8 +591,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
   try {
     const { email, password, role, firstName, lastName, phone } = req.body;
-
-    console.log("📨 Données reçues:", { email, role, firstName, lastName });
 
     // Validation des données requises
     if (!email || !password || !role || !firstName || !lastName) {
@@ -635,7 +627,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     // Valider que le rôle est acceptable
     const validatedRole = validateUserRole(role);
-    console.log("✅ Rôle validé:", validatedRole);
 
     // Vérifier si l'utilisateur existe déjà
     const existingUser = await prisma.user.findUnique({
@@ -684,8 +675,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       },
     });
 
-    console.log("✅ Utilisateur créé:", user.id);
-
     await createAuditLog({
       ...auditData,
       action: "REGISTER_SUCCESS",
@@ -705,8 +694,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       user,
     });
   } catch (error: any) {
-    console.error(" Registration error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "REGISTER_ERROR",
@@ -765,8 +752,6 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
 
     res.json(userProfile);
   } catch (error: any) {
-    console.error("Get me error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GET_PROFILE_ERROR",
@@ -929,8 +914,6 @@ export const forgotPassword = async (
         metadata: { emailSent: true },
       });
     } catch (emailError) {
-      console.error("Erreur envoi email:", emailError);
-
       const errorMessage =
         emailError instanceof Error
           ? emailError.message
@@ -953,8 +936,6 @@ export const forgotPassword = async (
       message: "Si l'email existe, un lien de réinitialisation a été envoyé",
     });
   } catch (error: any) {
-    console.error("Forgot password error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FORGOT_PASSWORD_ERROR",
@@ -1072,8 +1053,6 @@ export const resetPassword = async (
       message: "Mot de passe réinitialisé avec succès",
     });
   } catch (error: any) {
-    console.error("Reset password error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "RESET_PASSWORD_ERROR",
@@ -1163,8 +1142,6 @@ export const verifyResetToken = async (
       message: "Token valide",
     });
   } catch (error: any) {
-    console.error("Verify reset token error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "VERIFY_RESET_TOKEN_ERROR",
@@ -1261,8 +1238,6 @@ export const getResetPasswordPage = async (
       token: token,
     });
   } catch (error: any) {
-    console.error("Get reset password page error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GET_RESET_PAGE_ERROR",
@@ -1348,8 +1323,6 @@ export const updateProfile = async (
       user,
     });
   } catch (error: any) {
-    console.error("Update profile error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "UPDATE_PROFILE_ERROR",
@@ -1503,8 +1476,6 @@ export const changePassword = async (
       message: "Mot de passe modifié avec succès",
     });
   } catch (error: any) {
-    console.error("Change password error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "CHANGE_PASSWORD_ERROR",

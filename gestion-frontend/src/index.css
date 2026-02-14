@@ -377,3 +377,25 @@
     @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
   }
 }
+
+/* styles/globals.css */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .printable-schedule {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .schedule-grid {
+    page-break-inside: avoid;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+}

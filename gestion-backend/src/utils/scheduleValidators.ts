@@ -51,36 +51,74 @@ export const validateCreateSchedule = [
     }),
 
   body("classroom")
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .withMessage("La salle doit être une chaîne de caractères")
     .isLength({ max: 50 })
-    .withMessage("La salle ne peut pas dépasser 50 caractères"),
+    .withMessage("La salle ne peut pas dépasser 50 caractères")
+    .trim(),
 
   body("recurrence")
     .optional()
+    .default("NONE")
     .isIn(recurrenceTypes)
-    .withMessage("Type de récurrence invalide"),
+    .withMessage("Type de récurrence invalide")
+    .trim(),
 
   body("untilDate")
-    .optional()
-    .isISO8601()
-    .withMessage("Format de date invalide (ISO8601)")
+    .optional({ nullable: true, checkFalsy: true })
+    // Vérifier si c'est une chaîne vide ou null
     .custom((untilDate, { req }) => {
-      if (req.body.recurrence && !untilDate) {
-        throw new Error("La date de fin est requise pour une récurrence");
+      // Si jusqu'à présent est fourni (pas null/undefined/vide)
+      if (untilDate !== undefined && untilDate !== null && untilDate !== "") {
+        // Vérifier le format ISO
+        const isoRegex =
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
+        const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+        if (!isoRegex.test(untilDate) && !dateOnlyRegex.test(untilDate)) {
+          throw new Error("Format de date invalide (ISO8601 ou YYYY-MM-DD)");
+        }
       }
+      return true;
+    })
+    .custom((untilDate, { req }) => {
+      const recurrence = req.body.recurrence || "NONE";
+
+      // Si récurrence n'est pas "NONE", untilDate est requis
+      if (recurrence !== "NONE" && recurrence !== "") {
+        if (!untilDate || untilDate.trim() === "") {
+          throw new Error("La date de fin est requise pour une récurrence");
+        }
+
+        // Vérifier que la date n'est pas dans le passé
+        const untilDateObj = new Date(untilDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (untilDateObj < today) {
+          throw new Error(
+            "La date de fin de récurrence ne peut pas être dans le passé"
+          );
+        }
+      }
+
       return true;
     }),
 
   body("notes")
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .withMessage("Les notes doivent être une chaîne de caractères")
     .isLength({ max: 1000 })
-    .withMessage("Les notes ne peuvent pas dépasser 1000 caractères"),
+    .withMessage("Les notes ne peuvent pas dépasser 1000 caractères")
+    .trim(),
 
-  body("status").optional().isIn(scheduleStatus).withMessage("Statut invalide"),
+  body("status")
+    .optional()
+    .default("ACTIVE")
+    .isIn(scheduleStatus)
+    .withMessage("Statut invalide"),
 ];
 
 export const validateUpdateSchedule = [
@@ -107,28 +145,65 @@ export const validateUpdateSchedule = [
     }),
 
   body("classroom")
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .withMessage("La salle doit être une chaîne de caractères")
     .isLength({ max: 50 })
-    .withMessage("La salle ne peut pas dépasser 50 caractères"),
+    .withMessage("La salle ne peut pas dépasser 50 caractères")
+    .trim(),
 
   body("recurrence")
     .optional()
     .isIn(recurrenceTypes)
-    .withMessage("Type de récurrence invalide"),
+    .withMessage("Type de récurrence invalide")
+    .trim(),
 
   body("untilDate")
-    .optional()
-    .isISO8601()
-    .withMessage("Format de date invalide (ISO8601)"),
+    .optional({ nullable: true, checkFalsy: true })
+    .custom((untilDate, { req }) => {
+      // Si untilDate est fourni (pas null/undefined/vide)
+      if (untilDate !== undefined && untilDate !== null && untilDate !== "") {
+        // Vérifier le format
+        const isoRegex =
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
+        const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+        if (!isoRegex.test(untilDate) && !dateOnlyRegex.test(untilDate)) {
+          throw new Error("Format de date invalide (ISO8601 ou YYYY-MM-DD)");
+        }
+
+        // Vérifier que la date n'est pas dans le passé
+        const untilDateObj = new Date(untilDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (untilDateObj < today) {
+          throw new Error(
+            "La date de fin de récurrence ne peut pas être dans le passé"
+          );
+        }
+      }
+      return true;
+    })
+    .custom((untilDate, { req }) => {
+      const recurrence = req.body.recurrence;
+
+      // Si recurrence est définie (mise à jour) et n'est pas "NONE"
+      if (recurrence && recurrence !== "NONE" && recurrence !== "") {
+        if (!untilDate || untilDate.trim() === "") {
+          throw new Error("La date de fin est requise pour une récurrence");
+        }
+      }
+      return true;
+    }),
 
   body("notes")
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .withMessage("Les notes doivent être une chaîne de caractères")
     .isLength({ max: 1000 })
-    .withMessage("Les notes ne peuvent pas dépasser 1000 caractères"),
+    .withMessage("Les notes ne peuvent pas dépasser 1000 caractères")
+    .trim(),
 
   body("status").optional().isIn(scheduleStatus).withMessage("Statut invalide"),
 ];

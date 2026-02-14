@@ -1510,29 +1510,6 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                     </div>
                   ))}
                 </div>
-
-                {/* Légende */}
-                <div className="mt-4 p-3 border rounded-lg bg-muted/5">
-                  <div className="text-sm font-medium mb-2">Légende :</div>
-                  <div className="flex flex-wrap gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded bg-blue-100 border border-blue-200"></div>
-                      <span className="text-xs">Cours actif</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded bg-amber-100 border border-amber-200"></div>
-                      <span className="text-xs">Cours inactif</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded bg-red-100 border border-red-200"></div>
-                      <span className="text-xs">Cours annulé</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded bg-muted border"></div>
-                      <span className="text-xs">Créneau disponible</span>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </CardContent>
@@ -1615,44 +1592,10 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                 <Plus className="h-4 w-4 mr-2" />
                 Nouveau cours
               </Button>
-              {selectedClassId && selectedClassId !== "all" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleGenerateTimetable}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Générer automatiquement
-                </Button>
-              )}
             </>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem>
-                <Printer className="h-4 w-4 mr-2" />
-                Imprimer
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Download className="h-4 w-4 mr-2" />
-                Exporter
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Share2 className="h-4 w-4 mr-2" />
-                Partager
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <Eye className="h-4 w-4 mr-2" />
-                Vue professeur
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+
+       
         </div>
       </div>
 
@@ -1821,42 +1764,6 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
               </div>
               <div className="p-2 rounded-full bg-amber-500/10">
                 <CalendarDays className="h-5 w-5 text-amber-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-700">
-                  Cours inactifs
-                </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {stats.inactive}
-                </p>
-              </div>
-              <div className="p-2 rounded-full bg-gray-500/10">
-                <Clock className="h-5 w-5 text-gray-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-red-700">
-                  Cours annulés
-                </p>
-                <p className="text-2xl font-bold text-red-900 mt-1">
-                  {stats.cancelled}
-                </p>
-              </div>
-              <div className="p-2 rounded-full bg-red-500/10">
-                <AlertTriangle className="h-5 w-5 text-red-600" />
               </div>
             </div>
           </CardContent>

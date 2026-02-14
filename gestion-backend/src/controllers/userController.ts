@@ -133,8 +133,6 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - getUsers error:", error);
-
     await createAuditLog({
       ...auditData,
       action: AuthActionTypes.USERS_LIST_ERROR,
@@ -228,7 +226,7 @@ export const getUserById = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - getUserById error:", error);
+    console.error(" UserController - getUserById error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -361,7 +359,7 @@ export const updateUser = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - updateUser error:", error);
+    console.error(" UserController - updateUser error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -469,7 +467,7 @@ export const deactivateUser = async (
       });
     } catch (emailError) {
       console.error(
-        "❌ Erreur lors de l'envoi de l'email de désactivation:",
+        " Erreur lors de l'envoi de l'email de désactivation:",
         emailError
       );
     }
@@ -497,7 +495,7 @@ export const deactivateUser = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - deactivateUser error:", error);
+    console.error(" UserController - deactivateUser error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -631,7 +629,7 @@ export const updateUserStatus = async (
         });
       } catch (emailError) {
         console.error(
-          "❌ Erreur lors de l'envoi de l'email de notification:",
+          " Erreur lors de l'envoi de l'email de notification:",
           emailError
         );
       }
@@ -667,7 +665,7 @@ export const updateUserStatus = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - updateUserStatus error:", error);
+    console.error(" UserController - updateUserStatus error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -781,7 +779,7 @@ export const updateUserRole = async (
       });
     } catch (emailError) {
       console.error(
-        "❌ Erreur lors de l'envoi de l'email de notification:",
+        " Erreur lors de l'envoi de l'email de notification:",
         emailError
       );
     }
@@ -815,7 +813,7 @@ export const updateUserRole = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - updateUserRole error:", error);
+    console.error(" UserController - updateUserRole error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -910,7 +908,7 @@ export const activateUser = async (
       });
     } catch (emailError) {
       console.error(
-        "❌ Erreur lors de l'envoi de l'email de réactivation:",
+        " Erreur lors de l'envoi de l'email de réactivation:",
         emailError
       );
     }
@@ -934,7 +932,7 @@ export const activateUser = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - activateUser error:", error);
+    console.error(" UserController - activateUser error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -1021,7 +1019,7 @@ export const adminResetPassword = async (
         metadata: { emailSent: true, resetToken },
       });
     } catch (emailError) {
-      console.error("❌ Erreur envoi email de réinitialisation:", emailError);
+      console.error(" Erreur envoi email de réinitialisation:", emailError);
 
       await createAuditLog({
         ...auditData,
@@ -1051,7 +1049,7 @@ export const adminResetPassword = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - adminResetPassword error:", error);
+    console.error(" UserController - adminResetPassword error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -1153,7 +1151,7 @@ export const createUserByAdmin = async (
 
     res.status(201).json(response);
   } catch (error: any) {
-    console.error("❌ UserController - createUserByAdmin error:", error);
+    console.error(" UserController - createUserByAdmin error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -1280,7 +1278,7 @@ export const searchUsers = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - searchUsers error:", error);
+    console.error(" UserController - searchUsers error:", error);
 
     await createAuditLog({
       ...auditData,
@@ -1331,10 +1329,6 @@ export const hardDeleteUser = async (
       where: { id },
       include: {
         loginAttempts: true,
-        // Ajouter d'autres relations selon votre schéma
-        // parent: true,
-        // staff: true,
-        // etc.
       },
     });
 
@@ -1433,7 +1427,7 @@ export const hardDeleteUser = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - hardDeleteUser error:", error);
+    console.error(" UserController - hardDeleteUser error:", error);
 
     // Limiter la longueur du message d'erreur
     const shortErrorMessage = error.message
@@ -1513,7 +1507,7 @@ export const getUserDependencies = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error("❌ UserController - getUserDependencies error:", error);
+    console.error(" UserController - getUserDependencies error:", error);
 
     await createAuditLog({
       ...auditData,

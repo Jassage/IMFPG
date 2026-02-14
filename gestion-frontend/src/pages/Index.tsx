@@ -82,10 +82,8 @@ import { usePermissions } from "@/hooks/usePermissions";
 import BulletinPage from "./BulletinPage";
 import ProfessorGradeManager from "@/components/ProfessorGradesManager";
 import AnnouncementManager from "@/components/AnnouncementManager";
-import TranscriptsPage from "./transcriptPages";
-import { AutoLockNotification } from "@/components/AutoLockNotification";
-import { useAutoLock } from "@/hooks/useAutoLock";
-import { NotificationBell } from "@/components/notifications/NotificationBell";
+
+import { NotificationBell } from "@/components/NotificationBell";
 
 // Types pour les rôles
 type UserRole =
@@ -123,10 +121,10 @@ const MobileSidebar = ({
       icon: any;
       permission: string;
     }[],
-    title: string
+    title: string,
   ) => {
     const filteredItems = items.filter((item) =>
-      hasPermission(item.permission)
+      hasPermission(item.permission),
     );
     if (filteredItems.length === 0) return null;
 
@@ -262,7 +260,7 @@ const Index = () => {
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
     const prefersDark = window.matchMedia(
-      "(prefers-color-scheme: dark)"
+      "(prefers-color-scheme: dark)",
     ).matches;
 
     if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
@@ -379,7 +377,6 @@ const Index = () => {
     if (!user) {
       return <UnauthorizedView />;
     }
-
     const tabComponents: Partial<Record<ActiveTab, React.ReactNode>> = {
       dashboard: <RoleBasedDashboard role={user.role as UserRole} />,
       students: <StudentsManager />,
@@ -602,30 +599,7 @@ const Index = () => {
             </p>
           </div>
 
-          {activeTab !== "settings" && hasPermission("use_search") && (
-            <div className="hidden sm:flex items-center gap-2 flex-1 max-w-md">
-              <div className="relative flex-1" ref={searchRef}>
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher des Eleves, cours..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  onFocus={() =>
-                    searchQuery.trim() && setShowSearchResults(true)
-                  }
-                  className="pl-9 bg-background border-input"
-                />
-                {showSearchResults && (
-                  <SearchResults
-                    query={searchQuery}
-                    onClose={() => setShowSearchResults(false)}
-                    onSelectStudent={handleSelectStudent}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-
+          {user.role === "Admin" && <NotificationBell />}
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-2">
             <Button
@@ -639,9 +613,6 @@ const Index = () => {
                 <Moon className="h-4 w-4" />
               )}
             </Button>
-
-            {/* notifications */}
-            {user && <NotificationBell />}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -699,16 +670,6 @@ const Index = () => {
                   </>
                 )}
 
-                <DropdownMenuItem onClick={handleProfileClick}>
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Mon Profil</span>
-                </DropdownMenuItem>
-
-                <DropdownMenuItem onClick={handleSettingsClick}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Paramètres</span>
-                </DropdownMenuItem>
-
                 <DropdownMenuItem onClick={() => setIsDarkMode(!isDarkMode)}>
                   {isDarkMode ? (
                     <Sun className="mr-2 h-4 w-4" />
@@ -716,6 +677,13 @@ const Index = () => {
                     <Moon className="mr-2 h-4 w-4" />
                   )}
                   <span>{isDarkMode ? "Mode clair" : "Mode sombre"}</span>
+                </DropdownMenuItem>
+
+                {/* Paramètres */}
+
+                <DropdownMenuItem onClick={handleSettingsClick}>
+                  <Settings className="h-4 w-4" />
+                  <span className="ml-2">Paramètres</span>
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
@@ -794,6 +762,7 @@ const Index = () => {
 
         <main className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 w-full bg-background">
           {renderContent()}
+          {/* <PendingGradesAlert /> */}
         </main>
       </div>
     </div>

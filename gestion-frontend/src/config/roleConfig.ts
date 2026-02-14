@@ -77,7 +77,7 @@ const createNavItem = (
   label: string,
   iconName: string,
   permission: string,
-  description?: string
+  description?: string,
 ) => ({
   id,
   label,
@@ -95,28 +95,28 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Tableau de bord",
         "Home",
         PERMISSIONS.VIEW_DASHBOARD,
-        "Vue d'ensemble du système"
+        "Vue d'ensemble du système",
       ),
       createNavItem(
         "students",
         "Élèves",
         "Users",
         PERMISSIONS.VIEW_STUDENTS,
-        "Gestion des élèves"
+        "Gestion des élèves",
       ),
       createNavItem(
         "enrollments",
         "Réinscriptions",
         "UserPlus",
         PERMISSIONS.MANAGE_ENROLLMENTS,
-        "Inscriptions et réinscriptions"
+        "Inscriptions et réinscriptions",
       ),
       createNavItem(
         "professeurs",
         "Professeurs",
         "Award",
         PERMISSIONS.VIEW_PROFESSEURS,
-        "Gestion du corps professoral"
+        "Gestion du corps professoral",
       ),
     ],
     academicItems: [
@@ -125,14 +125,14 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Matières",
         "BookOpen",
         PERMISSIONS.VIEW_SUBJECTS,
-        "Gestion des matières"
+        "Gestion des matières",
       ),
       createNavItem(
         "grades",
         "Notes",
         "FileText",
         PERMISSIONS.MANAGE_GRADES,
-        "Saisie et gestion des notes"
+        "Saisie et gestion des notes",
       ),
 
       createNavItem(
@@ -140,14 +140,14 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Emploi du temps",
         "CalendarDays",
         PERMISSIONS.VIEW_SCHEDULE,
-        "Planning des cours"
+        "Planning des cours",
       ),
       createNavItem(
         "class_assignment",
         "Catalogue des Cours",
         "RotateCcw",
         PERMISSIONS.MANAGE_SUBJECTS,
-        "Catalogue de cours par classe"
+        "Catalogue de cours par classe",
       ),
     ],
     documentItems: [
@@ -156,7 +156,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Bulletins",
         "ScrollText",
         PERMISSIONS.GENERATE_TRANSCRIPTS,
-        "Édition des bulletins de notes"
+        "Édition des bulletins de notes",
       ),
     ],
     adminItems: [
@@ -165,28 +165,28 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Utilisateurs",
         "UserCog",
         PERMISSIONS.VIEW_USERS,
-        "Gestion des comptes utilisateurs"
+        "Gestion des comptes utilisateurs",
       ),
       createNavItem(
         "classes",
         "Classes/Niveaux",
         "Building",
         PERMISSIONS.VIEW_SETTINGS,
-        "Gestion des classes et niveaux"
+        "Gestion des classes et niveaux",
       ),
       createNavItem(
         "fees",
         "Frais scolaires",
         "Wallet",
         PERMISSIONS.MANAGE_FEES,
-        "Gestion des frais de scolarité"
+        "Gestion des frais de scolarité",
       ),
       createNavItem(
         "payments",
         "Paiements",
         "DollarSign",
         PERMISSIONS.VIEW_PAYMENTS,
-        "Gestion des paiements"
+        "Gestion des paiements",
       ),
 
       createNavItem(
@@ -194,14 +194,14 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Événements",
         "CalendarDays",
         PERMISSIONS.VIEW_EXPENSES,
-        "Gestion des événements"
+        "Gestion des événements",
       ),
       createNavItem(
         "announcements",
         "Annonces",
         "Megaphone",
         PERMISSIONS.SEND_ANNOUNCEMENTS,
-        "Gestion des annonces"
+        "Gestion des annonces",
       ),
 
       createNavItem(
@@ -209,7 +209,14 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Journal d'audit",
         "ShieldAlert",
         PERMISSIONS.VIEW_AUDIT_LOGS,
-        "Traçabilité des actions"
+        "Traçabilité des actions",
+      ),
+      createNavItem(
+        "settings",
+        "Paramètres",
+        "Settings",
+        PERMISSIONS.MANAGE_SETTINGS,
+        "Configuration du système",
       ),
     ],
   },
@@ -221,28 +228,28 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Tableau de bord",
         "Home",
         PERMISSIONS.VIEW_DASHBOARD,
-        "Vue d'ensemble du système"
+        "Vue d'ensemble du système",
       ),
       createNavItem(
         "students",
         "Élèves",
         "Users",
         PERMISSIONS.VIEW_STUDENTS,
-        "Gestion des élèves"
+        "Gestion des élèves",
       ),
       createNavItem(
         "enrollments",
         "Réinscriptions",
         "UserPlus",
         PERMISSIONS.MANAGE_ENROLLMENTS,
-        "Inscriptions et réinscriptions"
+        "Inscriptions et réinscriptions",
       ),
       createNavItem(
         "professeurs",
         "Professeurs",
         "Award",
         PERMISSIONS.VIEW_PROFESSEURS,
-        "Gestion du corps professoral"
+        "Gestion du corps professoral",
       ),
     ],
     academicItems: [
@@ -251,21 +258,21 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Matières",
         "BookOpen",
         PERMISSIONS.MANAGE_SUBJECTS,
-        "Gestion des matières"
+        "Gestion des matières",
       ),
       createNavItem(
         "schedule",
         "Emploi du temps",
         "CalendarDays",
         PERMISSIONS.VIEW_SCHEDULE,
-        "Planning des cours"
+        "Planning des cours",
       ),
       createNavItem(
         "class_assignment",
         "Catalogue des Cours",
         "RotateCcw",
         PERMISSIONS.MANAGE_SUBJECTS,
-        "Catalogue de cours par classe"
+        "Catalogue de cours par classe",
       ),
     ],
     documentItems: [
@@ -274,14 +281,14 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Bulletins",
         "ScrollText",
         PERMISSIONS.GENERATE_REPORTS,
-        "Génération de rapports scolaires"
+        "Génération de rapports scolaires",
       ),
       createNavItem(
         "transcripts",
         "Bulletins",
         "ScrollText",
         PERMISSIONS.GENERATE_TRANSCRIPTS,
-        "Édition des bulletins de notes"
+        "Édition des bulletins de notes",
       ),
     ],
     adminItems: [
@@ -290,23 +297,22 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Classes/Niveaux",
         "Building",
         PERMISSIONS.VIEW_SETTINGS,
-        "Gestion des classes et niveaux"
+        "Gestion des classes et niveaux",
       ),
-          
 
       createNavItem(
         "events",
         "Événements",
         "CalendarDays",
         PERMISSIONS.VIEW_EXPENSES,
-        "Gestion des événements"
+        "Gestion des événements",
       ),
       createNavItem(
         "announcements",
         "Annonces",
         "Megaphone",
         PERMISSIONS.SEND_ANNOUNCEMENTS,
-        "Gestion des annonces"
+        "Gestion des annonces",
       ),
     ],
   },
@@ -318,21 +324,21 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Tableau de bord",
         "Home",
         PERMISSIONS.VIEW_DASHBOARD,
-        "Vue d'ensemble administrative"
+        "Vue d'ensemble administrative",
       ),
       createNavItem(
         "students",
         "Élèves",
         "Users",
         PERMISSIONS.VIEW_STUDENTS,
-        "Consultation fiches élèves"
+        "Consultation fiches élèves",
       ),
       createNavItem(
         "enrollments",
         "Inscriptions",
         "UserPlus",
         PERMISSIONS.PROCESS_ENROLLMENTS,
-        "Traitement des inscriptions"
+        "Traitement des inscriptions",
       ),
     ],
     academicItems: [],
@@ -347,35 +353,35 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Tableau de bord",
         "Home",
         PERMISSIONS.VIEW_DASHBOARD,
-        "Suivi de mes enfants"
+        "Suivi de mes enfants",
       ),
       createNavItem(
         "grades",
         "Notes enfants",
         "FileText",
         PERMISSIONS.VIEW_CHILDREN_GRADES,
-        "Résultats scolaires"
+        "Résultats scolaires",
       ),
       createNavItem(
         "attendance",
         "Présences",
         "ClipboardCheck",
         PERMISSIONS.VIEW_CHILDREN_ATTENDANCE,
-        "Absences et retards"
+        "Absences et retards",
       ),
       createNavItem(
         "payments",
         "Paiements",
         "DollarSign",
         PERMISSIONS.VIEW_OWN_PAYMENTS,
-        "Historique des frais"
+        "Historique des frais",
       ),
       createNavItem(
         "schedule",
         "Emploi du temps",
         "CalendarDays",
         PERMISSIONS.VIEW_SCHEDULE,
-        "Planning scolaire"
+        "Planning scolaire",
       ),
     ],
     academicItems: [],
@@ -385,7 +391,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Bulletins",
         "ScrollText",
         PERMISSIONS.VIEW_OWN_GRADES,
-        "Télécharger les bulletins"
+        "Télécharger les bulletins",
       ),
     ],
     adminItems: [
@@ -394,7 +400,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Mon compte",
         "Settings",
         PERMISSIONS.VIEW_SETTINGS,
-        "Informations personnelles"
+        "Informations personnelles",
       ),
     ],
   },
@@ -406,7 +412,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Tableau de bord",
         "Home",
         PERMISSIONS.VIEW_DASHBOARD,
-        "Vue d'ensemble personnelle"
+        "Vue d'ensemble personnelle",
       ),
     ],
     academicItems: [],
@@ -421,7 +427,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Tableau de bord",
         "Home",
         PERMISSIONS.VIEW_DASHBOARD,
-        "Vue professeur"
+        "Vue professeur",
       ),
 
       createNavItem(
@@ -429,7 +435,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Saisie des notes",
         "FileEdit",
         PERMISSIONS.MANAGE_OWN_GRADES,
-        "Évaluation des élèves"
+        "Évaluation des élèves",
       ),
     ],
     academicItems: [],
@@ -539,7 +545,7 @@ export const getRolePermissions = (role: UserRole): string[] => {
 // Helper pour vérifier si un rôle a une permission spécifique
 export const roleHasPermission = (
   role: UserRole,
-  permission: string
+  permission: string,
 ): boolean => {
   const permissions = getRolePermissions(role);
   return (

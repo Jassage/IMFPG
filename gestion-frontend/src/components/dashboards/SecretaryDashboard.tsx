@@ -319,10 +319,6 @@ const SecretaryDashboard = () => {
             />
             {loading ? "Chargement..." : "Actualiser"}
           </Button>
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Exporter
-          </Button>
         </div>
       </div>
 
@@ -359,69 +355,6 @@ const SecretaryDashboard = () => {
           subtitle={`${enrollmentStats.activeStudents} étudiants actifs`}
         />
       </div>
-
-      {/* Statistiques par statut */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Statut des inscriptions</CardTitle>
-          <CardDescription>Répartition par statut</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            <StatusCard
-              status="En attente"
-              count={enrollmentStats.pending}
-              icon={Clock}
-              color="warning"
-            />
-            <StatusCard
-              status="Approuvées"
-              count={enrollmentStats.approved}
-              icon={UserCheck}
-              color="success"
-            />
-            <StatusCard
-              status="Rejetées"
-              count={enrollmentStats.rejected}
-              icon={UserX}
-              color="destructive"
-            />
-          </div>
-
-          {/* Barre de progression */}
-          {enrollmentStats.total > 0 && (
-            <div className="mt-6 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Progression d'approbation</span>
-                <span>
-                  {(
-                    (enrollmentStats.approved / enrollmentStats.total) *
-                    100
-                  ).toFixed(1)}
-                  %
-                </span>
-              </div>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-green-500"
-                  style={{
-                    width: `${
-                      (enrollmentStats.approved / enrollmentStats.total) * 100
-                    }%`,
-                  }}
-                />
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{enrollmentStats.approved} approuvées</span>
-                <span>
-                  {enrollmentStats.pending} en attente •{" "}
-                  {enrollmentStats.rejected} rejetées
-                </span>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Répartition par classe */}
       <Card>

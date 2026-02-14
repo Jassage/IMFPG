@@ -29,8 +29,6 @@ export const getNextAcademicYear = (currentAcademicYear: string): string => {
 // Initialiser les années académiques de base (2020-2021 à 2025-2026)
 export const initializeBaseAcademicYears = async (): Promise<void> => {
   try {
-    console.log("🔄 Initialisation des années académiques de base...");
-
     const baseYears = [
       "2020-2021",
       "2021-2022",
@@ -54,19 +52,15 @@ export const initializeBaseAcademicYears = async (): Promise<void> => {
             year,
             startDate: start,
             endDate: end,
-            isCurrent: false, // Sera mis à jour après
+            isCurrent: false,
           },
         });
-        console.log(`✅ Année académique créée: ${year}`);
       } else {
-        console.log(`ℹ️  Année académique existante: ${year}`);
       }
     }
-
-    console.log("✅ Initialisation des années de base terminée");
   } catch (error) {
     console.error(
-      "❌ Erreur lors de l'initialisation des années de base:",
+      " Erreur lors de l'initialisation des années de base:",
       error
     );
   }
@@ -89,9 +83,6 @@ export const ensureAcademicYearsExist = async (): Promise<void> => {
     });
 
     if (!currentYearExists) {
-      console.log(
-        `🔄 Création de l'année courante manquante: ${currentAcademicYear}`
-      );
       const { start, end } = getAcademicYearDates(currentAcademicYear);
 
       await prisma.academicYear.create({
@@ -110,10 +101,10 @@ export const ensureAcademicYearsExist = async (): Promise<void> => {
     // Mettre à jour l'année courante
     await updateCurrentAcademicYear();
 
-    console.log("✅ Vérification des années académiques terminée");
+    console.log(" Vérification des années académiques terminée");
   } catch (error) {
     console.error(
-      "❌ Erreur lors de la vérification des années académiques:",
+      " Erreur lors de la vérification des années académiques:",
       error
     );
   }
@@ -147,13 +138,13 @@ export const ensureFutureAcademicYears = async (
             isCurrent: false,
           },
         });
-        console.log(`✅ Année future créée: ${nextYear}`);
+        console.log(` Année future créée: ${nextYear}`);
       }
 
       currentYear = nextYear;
     }
   } catch (error) {
-    console.error("❌ Erreur lors de la création des années futures:", error);
+    console.error(" Erreur lors de la création des années futures:", error);
   }
 };
 
@@ -173,23 +164,14 @@ export const updateCurrentAcademicYear = async (): Promise<void> => {
       where: { year: currentAcademicYear },
       data: { isCurrent: true },
     });
-
-    console.log(`🎯 Année courante mise à jour: ${currentAcademicYear}`);
   } catch (error) {
-    console.error(
-      "❌ Erreur lors de la mise à jour de l'année courante:",
-      error
-    );
+    console.error(" Erreur lors de la mise à jour de l'année courante:", error);
   }
 };
 
 // Fonction d'initialisation complète
 export const initializeAcademicYear = async (): Promise<void> => {
   try {
-    console.log(
-      "🚀 Initialisation complète du système d'années académiques..."
-    );
-
     // 1. Initialiser les années de base
     await initializeBaseAcademicYears();
 
@@ -202,13 +184,8 @@ export const initializeAcademicYear = async (): Promise<void> => {
     // 4. Afficher le statut final
     const allYears = await getAllAcademicYears();
     const currentYear = await getCurrentAcademicYear();
-
-    console.log("📊 Statut final des années académiques:");
-    console.log(`   - Total années: ${allYears.length}`);
-    console.log(`   - Année courante: ${currentYear?.year}`);
-    console.log("✅ Initialisation terminée avec succès");
   } catch (error) {
-    console.error("❌ Erreur lors de l'initialisation complète:", error);
+    console.error(" Erreur lors de l'initialisation complète:", error);
   }
 };
 
@@ -222,10 +199,6 @@ export const shouldCreateNewAcademicYear = (): boolean => {
 export const autoCreateNextAcademicYear = async (): Promise<void> => {
   try {
     if (shouldCreateNewAcademicYear()) {
-      console.log(
-        "📅 1er septembre détecté - création automatique de la prochaine année..."
-      );
-
       const today = new Date();
       const nextAcademicYear = getNextAcademicYear(
         getAcademicYearFromDate(today)
@@ -246,23 +219,10 @@ export const autoCreateNextAcademicYear = async (): Promise<void> => {
             isCurrent: false,
           },
         });
-
-        console.log(
-          `✅ Nouvelle année académique créée automatiquement: ${nextAcademicYear}`
-        );
-
-        // Audit log (si vous avez un système d'audit)
-        // await createAuditLog({
-        //   action: "AUTO_CREATE_ACADEMIC_YEAR",
-        //   entity: "AcademicYear",
-        //   description: `Création automatique de l'année ${nextAcademicYear}`,
-        //   status: "SUCCESS",
-        //   userId: "system",
-        // });
       }
     }
   } catch (error) {
-    console.error("❌ Erreur lors de la création automatique:", error);
+    console.error(" Erreur lors de la création automatique:", error);
   }
 };
 
@@ -288,7 +248,7 @@ export const getAvailableAcademicYears = async () => {
   return await prisma.academicYear.findMany({
     where: {
       year: {
-        gte: "2020-2021", // À partir de 2020-2021
+        gte: "2020-2021",
       },
     },
     orderBy: { year: "desc" },

@@ -1,4 +1,3 @@
-// components/students/StudentsManager.tsx - VERSION CORRIGÉE COMPLÈTE
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   Plus,
@@ -60,7 +59,6 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { useStudentStore } from "@/store/studentStore";
 import { Student } from "@/types/academic";
-import { toast } from "@/hooks/use-toast";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
 import * as XLSX from "xlsx";
 import {
@@ -79,6 +77,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
+import { toast } from "react-toastify";
 
 // Constantes pour les valeurs "vides"
 const EMPTY_VALUES = {
@@ -570,11 +569,7 @@ export const StudentsManager = () => {
         setIsInitialized(true);
       } catch (err) {
         console.error("Erreur d'initialisation:", err);
-        toast({
-          title: "Erreur d'initialisation",
-          description: "Impossible de charger les données initiales",
-          variant: "destructive",
-        });
+        toast.error("Impossible de charger les données initiales");
       }
     };
 
@@ -584,11 +579,7 @@ export const StudentsManager = () => {
   // Gestion des erreurs globales
   useEffect(() => {
     if (globalError) {
-      toast({
-        title: "Erreur",
-        description: globalError,
-        variant: "destructive",
-      });
+      toast.error(globalError);
       clearError();
     }
   }, [globalError, clearError]);
@@ -629,11 +620,7 @@ export const StudentsManager = () => {
         }
 
         console.error("Erreur chargement étudiants:", err);
-        toast({
-          title: "Erreur",
-          description: "Impossible de charger les étudiants",
-          variant: "destructive",
-        });
+        toast.error("Impossible de charger les étudiants");
       }
     };
 
@@ -745,16 +732,10 @@ export const StudentsManager = () => {
         const deletePromises = ids.map((id) => deleteStudent(id));
         await Promise.all(deletePromises);
 
-        toast({
-          title: "Suppression réussie",
-          description: `${ids.length} Éleves ont été supprimés avec succès`,
-        });
+        toast.success(`${ids.length} Éleves ont été supprimés avec succès`);
       } else {
         await deleteStudent(studentToDelete);
-        toast({
-          title: "Suppression réussie",
-          description: "L'étudiant a été supprimé avec succès",
-        });
+        toast.success("L'étudiant a été supprimé avec succès");
       }
 
       setStudentToDelete(null);
@@ -762,12 +743,9 @@ export const StudentsManager = () => {
       setIsSelecting(false);
     } catch (error: any) {
       console.error("Erreur suppression:", error);
-      toast({
-        title: "Erreur",
-        description:
-          error.message || "Une erreur s'est produite lors de la suppression",
-        variant: "destructive",
-      });
+      toast.error(
+        error.message || "Une erreur s'est produite lors de la suppression"
+      );
     }
   }, [studentToDelete, deleteStudent]);
 
@@ -808,21 +786,17 @@ export const StudentsManager = () => {
 
         await Promise.all(updatePromises);
 
-        toast({
-          title: "Statut mis à jour",
-          description: `Le statut de ${selectedStudents.length} Éleves a été modifié`,
-        });
+        toast.success(
+          `Le statut de ${selectedStudents.length} Éleves a été modifié`
+        );
 
         setSelectedStudents([]);
       } catch (error: any) {
         console.error("Erreur mise à jour statut:", error);
-        toast({
-          title: "Erreur",
-          description:
-            error.message ||
-            "Une erreur s'est produite lors de la mise à jour des statuts",
-          variant: "destructive",
-        });
+        toast.error(
+          error.message ||
+            "Une erreur s'est produite lors de la mise à jour des statuts"
+        );
       }
     },
     [selectedStudents, updateStudentStatus]
@@ -843,24 +817,20 @@ export const StudentsManager = () => {
 
       await Promise.all(updatePromises);
 
-      toast({
-        title: "Classe assignée",
-        description: `${selectedStudents.length} Éleves ont été affectés à la classe`,
-      });
+      toast.success(
+        `${selectedStudents.length} Éleves ont été affectés à la classe`
+      );
 
       setSelectedStudents([]);
       setShowAssignClassModal(false);
       setSelectedClassId("");
       setIsSelecting(false);
     } catch (error: any) {
-      console.error("❌ Erreur lors de l'affectation groupée:", error);
-      toast({
-        title: "Erreur",
-        description:
-          error.message ||
-          "Une erreur s'est produite lors de l'affectation à la classe",
-        variant: "destructive",
-      });
+      console.error(" Erreur lors de l'affectation groupée:", error);
+      toast.error(
+        error.message ||
+          "Une erreur s'est produite lors de l'affectation à la classe"
+      );
     }
   }, [selectedStudents, selectedClassId, assignStudentToClass]);
 
@@ -868,11 +838,7 @@ export const StudentsManager = () => {
   const exportToExcel = useCallback(
     (studentsToExport: Student[], filename: string) => {
       if (studentsToExport.length === 0) {
-        toast({
-          title: "Aucune donnée",
-          description: "Aucun étudiant à exporter",
-          variant: "destructive",
-        });
+        toast.error("Aucun étudiant à exporter");
         return;
       }
 
@@ -906,17 +872,11 @@ export const StudentsManager = () => {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Éleves");
         XLSX.writeFile(workbook, filename);
 
-        toast({
-          title: "Export réussi",
-          description: `Les données de ${studentsToExport.length} Éleves ont été exportées`,
-        });
+        toast.success(
+          `Les données de ${studentsToExport.length} Éleves ont été exportées`
+        );
       } catch (error) {
-        console.error("❌ Erreur lors de l'export:", error);
-        toast({
-          title: "Erreur d'export",
-          description: "Une erreur s'est produite lors de l'exportation",
-          variant: "destructive",
-        });
+        toast.error("Une erreur s'est produite lors de l'exportation");
       }
     },
     [classes]
@@ -955,20 +915,14 @@ export const StudentsManager = () => {
 
         if (formState.mode === "create") {
           await createStudent(dataToSend);
-          toast({
-            title: "Étudiant créé",
-            description: "L'étudiant a été créé avec succès",
-          });
+          toast.success("L'étudiant a été créé avec succès");
         } else {
           if (!formState.student?.id) {
             throw new Error("ID de l'étudiant manquant");
           }
 
           await updateStudent(formState.student.id, dataToSend);
-          toast({
-            title: "Étudiant mis à jour",
-            description: "L'étudiant a été modifié avec succès",
-          });
+          toast.success("L'étudiant a été modifié avec succès");
         }
 
         setFormState({
@@ -979,7 +933,7 @@ export const StudentsManager = () => {
           error: null,
         });
       } catch (error: any) {
-        console.error("❌ Erreur lors de la soumission:", error);
+        console.error(" Erreur lors de la soumission:", error);
 
         let errorMessage = "Une erreur s'est produite lors de l'opération";
         if (error.message) {
@@ -994,11 +948,7 @@ export const StudentsManager = () => {
           error: errorMessage,
         }));
 
-        toast({
-          title: "Erreur",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        toast.error(errorMessage);
       }
     },
     [formState.mode, formState.student?.id, createStudent, updateStudent]
@@ -1215,6 +1165,31 @@ export const StudentsManager = () => {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
+                        {/* bouton modifier doit disparaitre apres 24 h pour secretaire*/}
+                        {user?.role === "Secretaire" &&
+                          (() => {
+                            const createdAt = new Date(student.createdAt);
+                            const now = new Date();
+                            const diffInHours =
+                              (now.getTime() - createdAt.getTime()) /
+                              (1000 * 60 * 60);
+                            if (diffInHours <= 24) {
+                              return (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => handleEditStudent(student)}
+                                  title="Modifier"
+                                  aria-label="Modifier"
+                                  disabled={loading}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              );
+                            }
+                          })()}
+
                         {canManageStudents && (
                           <>
                             <Button
@@ -1315,16 +1290,15 @@ export const StudentsManager = () => {
           </Button>
 
           {/* Bouton Nouvel Étudiant */}
-          {canManageStudents && (
-            <Button
-              onClick={handleOpenCreateForm}
-              className="gap-2"
-              disabled={loading}
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Nouvel élève</span>
-            </Button>
-          )}
+
+          <Button
+            onClick={handleOpenCreateForm}
+            className="gap-2"
+            disabled={loading}
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Nouvel élève</span>
+          </Button>
         </div>
       </div>
 

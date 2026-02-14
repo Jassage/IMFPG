@@ -87,7 +87,7 @@ interface FinancialTransaction {
   studentName: string;
   amount: number;
   type: "payment" | "refund" | "adjustment";
-  status: "completed" | "pending" | "cancelled" | "overdue";
+  status: "completed" | "pending" | "partial" | "overdue";
   date: string;
   paymentMethod: string;
   description?: string;
@@ -127,13 +127,12 @@ const formatAmount = (amount: any): number => {
 // Fonction utilitaire pour obtenir le statut d'un paiement
 const getPaymentStatus = (
   status: string
-): "completed" | "pending" | "cancelled" | "overdue" => {
+): "completed" | "pending" | "partial" | "overdue" => {
   const statusLower = (status || "").toLowerCase();
   if (statusLower === "paid" || statusLower === "completed") return "completed";
   if (statusLower === "pending") return "pending";
   if (statusLower === "overdue") return "overdue";
-  if (statusLower === "cancelled" || statusLower === "refunded")
-    return "cancelled";
+  if (statusLower === "partial") return "partial";
   return "pending";
 };
 
@@ -924,15 +923,7 @@ const AccountantDashboard = () => {
                       />
                     </p>
                   </div>
-                  <div className="p-3 bg-red-50 rounded-lg">
-                    <p className="text-xs text-red-700">En retard</p>
-                    <p className="text-lg font-bold text-red-800">
-                      <SafeDisplay
-                        value={modalData[0].overdueAmount}
-                        type="currency"
-                      />
-                    </p>
-                  </div>
+
                   <div className="p-3 bg-purple-50 rounded-lg">
                     <p className="text-xs text-purple-700">Remboursés</p>
                     <p className="text-lg font-bold text-purple-800">
@@ -1059,23 +1050,6 @@ const AccountantDashboard = () => {
     toast.success("Génération du rapport financier...");
   };
 
-  // Données pour les graphiques (simplifié)
-  const chartData = [
-    { month: "Jan", revenue: 12000 },
-    { month: "Fév", revenue: 19000 },
-    { month: "Mar", revenue: 15000 },
-    { month: "Avr", revenue: 22000 },
-    { month: "Mai", revenue: 18000 },
-    { month: "Jun", revenue: 25000 },
-  ];
-
-  const paymentMethodsData = [
-    { method: "Espèces", amount: 45000, color: "#10b981" },
-    { method: "Virement", amount: 35000, color: "#3b82f6" },
-    { method: "Chèque", amount: 20000, color: "#8b5cf6" },
-    { method: "Carte", amount: 15000, color: "#ef4444" },
-  ];
-
   return (
     <div className="space-y-6 p-4 md:p-6">
       <FinancialModal />
@@ -1093,18 +1067,6 @@ const AccountantDashboard = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Période" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="week">Cette semaine</SelectItem>
-              <SelectItem value="month">Ce mois</SelectItem>
-              <SelectItem value="quarter">Ce trimestre</SelectItem>
-              <SelectItem value="year">Cette année</SelectItem>
-            </SelectContent>
-          </Select>
-
           <Button
             variant="outline"
             size="sm"
@@ -1116,57 +1078,6 @@ const AccountantDashboard = () => {
             {loading ? "Chargement..." : "Actualiser"}
           </Button>
         </div>
-      </div>
-
-      {/* Actions rapides */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Button
-          variant="outline"
-          className="justify-start gap-2 h-auto py-3"
-          onClick={() => toast.info("Ajout d'un paiement...")}
-        >
-          <Plus className="h-4 w-4" />
-          <div className="text-left">
-            <p className="text-sm font-medium">Nouveau paiement</p>
-            <p className="text-xs text-muted-foreground">Enregistrer</p>
-          </div>
-        </Button>
-
-        <Button
-          variant="outline"
-          className="justify-start gap-2 h-auto py-3"
-          onClick={generateReport}
-        >
-          <FileText className="h-4 w-4" />
-          <div className="text-left">
-            <p className="text-sm font-medium">Générer rapport</p>
-            <p className="text-xs text-muted-foreground">Mensuel</p>
-          </div>
-        </Button>
-
-        <Button
-          variant="outline"
-          className="justify-start gap-2 h-auto py-3"
-          onClick={sendReminders}
-        >
-          <Mail className="h-4 w-4" />
-          <div className="text-left">
-            <p className="text-sm font-medium">Envoyer rappels</p>
-            <p className="text-xs text-muted-foreground">Paiements en retard</p>
-          </div>
-        </Button>
-
-        <Button
-          variant="outline"
-          className="justify-start gap-2 h-auto py-3"
-          onClick={() => toast.success("Export des données...")}
-        >
-          <Download className="h-4 w-4" />
-          <div className="text-left">
-            <p className="text-sm font-medium">Exporter données</p>
-            <p className="text-xs text-muted-foreground">Excel/PDF</p>
-          </div>
-        </Button>
       </div>
 
       {/* Statistiques principales */}
@@ -1203,17 +1114,6 @@ const AccountantDashboard = () => {
           clickable={true}
           statKey="pendingAmount"
         />
-
-        <StatCard
-          title="En Retard"
-          value={financialSummary.overdueAmount}
-          icon={AlertCircle}
-          description={`${financialSummary.overdueStudents} étudiants`}
-          color="danger"
-          loading={loading || feesLoading}
-          clickable={true}
-          statKey="overdueAmount"
-        />
       </div>
 
       {/* Navigation par onglets */}
@@ -1225,129 +1125,12 @@ const AccountantDashboard = () => {
         <TabsList className="grid grid-cols-4 md:w-[600px]">
           <TabsTrigger value="overview">Vue d'ensemble</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
-          <TabsTrigger value="invoices">Factures</TabsTrigger>
           <TabsTrigger value="analytics">Analytique</TabsTrigger>
         </TabsList>
 
         {/* Vue d'ensemble */}
         <TabsContent value="overview" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {/* Graphique des revenus mensuels */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Revenus Mensuels</CardTitle>
-                <CardDescription>
-                  Évolution des revenus sur 6 mois
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis
-                        dataKey="month"
-                        stroke="#666"
-                        tick={{ fill: "#666" }}
-                      />
-                      <YAxis
-                        stroke="#666"
-                        tick={{ fill: "#666" }}
-                        tickFormatter={(value) =>
-                          `${(value / 1000).toFixed(0)}k`
-                        }
-                      />
-                      <Tooltip
-                        formatter={(value) => [
-                          `${Number(value).toLocaleString()} HTG`,
-                          "Revenu",
-                        ]}
-                        contentStyle={{
-                          backgroundColor: "white",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: "8px",
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke="#10b981"
-                        fill="#10b981"
-                        fillOpacity={0.2}
-                        strokeWidth={2}
-                        name="Revenus"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Distribution des paiements */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Méthodes de Paiement</CardTitle>
-                <CardDescription>Répartition par type</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-72">
-                  <>
-                    <div className="h-48">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={paymentMethodsData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ method, percent }) =>
-                              `${method}: ${(percent * 100).toFixed(0)}%`
-                            }
-                            outerRadius={70}
-                            innerRadius={30}
-                            paddingAngle={2}
-                            dataKey="amount"
-                          >
-                            {paymentMethodsData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            formatter={(value) => [
-                              `${Number(value).toLocaleString()} HTG`,
-                              "Montant",
-                            ]}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="space-y-2 mt-4 max-h-32 overflow-y-auto">
-                      {paymentMethodsData.map((method, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-2 hover:bg-muted rounded"
-                        >
-                          <div className="flex items-center">
-                            <div
-                              className="w-3 h-3 rounded-full mr-2"
-                              style={{ backgroundColor: method.color }}
-                            />
-                            <span className="text-sm">{method.method}</span>
-                          </div>
-                          <span className="font-medium">
-                            <SafeDisplay
-                              value={method.amount}
-                              type="currency"
-                            />
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                </div>
-              </CardContent>
-            </Card>
-
+          <div className="grid gap-1 md:grid-cols-1">
             {/* Transactions récentes */}
             <Card className="lg:col-span-2">
               <CardHeader>
@@ -1456,75 +1239,6 @@ const AccountantDashboard = () => {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Factures en attente */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Factures en Attente</CardTitle>
-                    <CardDescription>À traiter rapidement</CardDescription>
-                  </div>
-                  <Badge variant="destructive">{pendingInvoices.length}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {pendingInvoices.length > 0 ? (
-                    pendingInvoices.map((invoice, index) => (
-                      <div
-                        key={invoice.id || index}
-                        className="p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-medium text-sm truncate">
-                            {invoice.studentName}
-                          </p>
-                          <Badge
-                            variant={
-                              invoice.status === "overdue"
-                                ? "destructive"
-                                : "secondary"
-                            }
-                            className="text-xs"
-                          >
-                            {invoice.status === "overdue"
-                              ? "En retard"
-                              : "En attente"}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-xs text-muted-foreground">
-                              Échéance
-                            </p>
-                            <p className="text-sm">
-                              <SafeDisplay
-                                value={invoice.dueDate}
-                                type="date"
-                              />
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-amber-600">
-                              <SafeDisplay
-                                value={invoice.amount}
-                                type="currency"
-                              />
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <CheckCircle className="h-12 w-12 mx-auto mb-4 opacity-50 text-green-500" />
-                      <p>Toutes les factures sont réglées</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </TabsContent>
 
@@ -1578,7 +1292,6 @@ const AccountantDashboard = () => {
                       <TableHead>Statut</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Méthode</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1650,6 +1363,8 @@ const AccountantDashboard = () => {
                                 ? "Complété"
                                 : transaction.status === "pending"
                                 ? "En attente"
+                                : transaction.status === "partial"
+                                ? "partiel"
                                 : transaction.status === "overdue"
                                 ? "En retard"
                                 : "Annulé"}
@@ -1694,254 +1409,9 @@ const AccountantDashboard = () => {
           </Card>
         </TabsContent>
 
-        {/* Factures */}
-        <TabsContent value="invoices" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>Gestion des Factures</CardTitle>
-                  <CardDescription>
-                    Suivi et gestion des factures
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => toast.info("Génération des factures...")}
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Générer factures
-                  </Button>
-                  <Button onClick={() => toast.info("Envoi des factures...")}>
-                    <Mail className="h-4 w-4 mr-2" />
-                    Envoyer
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {/* Statut des factures */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Statut des Factures</CardTitle>
-                    <CardDescription>Répartition par statut</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-64">
-                      <div className="h-40">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={[
-                                {
-                                  status: "Payées",
-                                  count: financialSummary.paidStudents,
-                                  color: "#10b981",
-                                },
-                                {
-                                  status: "En attente",
-                                  count: financialSummary.pendingStudents,
-                                  color: "#f59e0b",
-                                },
-                                {
-                                  status: "En retard",
-                                  count: financialSummary.overdueStudents,
-                                  color: "#ef4444",
-                                },
-                              ]}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              label={({ status, percent }) =>
-                                `${(percent * 100).toFixed(0)}%`
-                              }
-                              outerRadius={60}
-                              innerRadius={20}
-                              paddingAngle={2}
-                              dataKey="count"
-                            >
-                              <Cell key="cell-0" fill="#10b981" />
-                              <Cell key="cell-1" fill="#f59e0b" />
-                              <Cell key="cell-2" fill="#ef4444" />
-                            </Pie>
-                            <Tooltip
-                              formatter={(value) => [
-                                `${value} étudiants`,
-                                "Nombre",
-                              ]}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="space-y-2 mt-4">
-                        {[
-                          {
-                            status: "Payées",
-                            count: financialSummary.paidStudents,
-                            color: "#10b981",
-                          },
-                          {
-                            status: "En attente",
-                            count: financialSummary.pendingStudents,
-                            color: "#f59e0b",
-                          },
-                          {
-                            status: "En retard",
-                            count: financialSummary.overdueStudents,
-                            color: "#ef4444",
-                          },
-                        ].map((status, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-2 hover:bg-muted rounded"
-                          >
-                            <div className="flex items-center">
-                              <div
-                                className="w-3 h-3 rounded-full mr-2"
-                                style={{ backgroundColor: status.color }}
-                              />
-                              <span className="text-sm">{status.status}</span>
-                            </div>
-                            <span className="font-medium">{status.count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Étudiants en retard */}
-                <Card className="md:col-span-2">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>Étudiants en Retard de Paiement</CardTitle>
-                        <CardDescription>Action requise</CardDescription>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setModalTitle("Étudiants en Retard");
-                          setModalData(overdueStudents);
-                          setModalType("students");
-                          setModalOpen(true);
-                        }}
-                      >
-                        Voir tout
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {overdueStudents.length > 0 ? (
-                        overdueStudents.map((student, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-red-50/50 transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
-                                <AlertCircle className="h-5 w-5 text-red-600" />
-                              </div>
-                              <div>
-                                <p className="font-medium">
-                                  {student.student?.name || "Étudiant inconnu"}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {student.overdueDays > 0
-                                    ? `${student.overdueDays} jours de retard`
-                                    : "En retard"}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-bold text-red-600">
-                                <SafeDisplay
-                                  value={student.totalDue}
-                                  type="currency"
-                                />
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {student.fees?.length || 0} facture(s)
-                              </p>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-center py-8">
-                          <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500 opacity-50" />
-                          <h3 className="text-lg font-medium mb-2">
-                            Aucun retard
-                          </h3>
-                          <p className="text-muted-foreground">
-                            Tous les étudiants sont à jour dans leurs paiements.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         {/* Analytique */}
         <TabsContent value="analytics" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Tendance de collecte */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Tendance de Collecte</CardTitle>
-                <CardDescription>Sur 6 mois</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis
-                        dataKey="month"
-                        stroke="#666"
-                        tick={{ fill: "#666" }}
-                      />
-                      <YAxis
-                        stroke="#666"
-                        tick={{ fill: "#666" }}
-                        tickFormatter={(value) =>
-                          `${(value / 1000).toFixed(0)}k`
-                        }
-                      />
-                      <Tooltip
-                        formatter={(value) => [
-                          `${Number(value).toLocaleString()} HTG`,
-                          "Montant",
-                        ]}
-                        contentStyle={{
-                          backgroundColor: "white",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: "8px",
-                        }}
-                      />
-                      <Legend />
-                      <Area
-                        type="monotone"
-                        dataKey="revenue"
-                        stackId="1"
-                        stroke="#10b981"
-                        fill="#10b981"
-                        fillOpacity={0.3}
-                        name="Collecté"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
+          <div className="grid gap-1 md:grid-cols-1">
             {/* Indicateurs de performance */}
             <Card>
               <CardHeader>

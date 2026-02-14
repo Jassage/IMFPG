@@ -40,12 +40,12 @@ const validateAndParseTime = (
 
   try {
     // Utiliser le service pour parser
-    const parsed = scheduleService["parseTime"](time); // Accès à la méthode privée via bracket notation
+    const parsed = scheduleService["parseTime"](time);
 
     return {
       valid: true,
-      time: parsed.time, // HH:MM:SS formaté
-      isoTime: `2000-01-01T${parsed.time}Z`, // ISO pour l'API
+      time: parsed.time,
+      isoTime: `2000-01-01T${parsed.time}Z`,
       displayTime: scheduleService["formatTimeForDisplay"](time),
     };
   } catch (error: any) {
@@ -95,7 +95,7 @@ const validateDuration = (
 };
 
 /**
- * Gère les erreurs du contrôleur
+ * Gère les erreurs du contrôleur - VERSION CORRIGÉE
  */
 const handleControllerError = (
   error: any,
@@ -109,7 +109,13 @@ const handleControllerError = (
     requestBody?: any;
   }
 ): void => {
-  console.error("ScheduleController error:", error);
+  console.error("Controller error details:", {
+    code: error.code,
+    message: error.message,
+    status: error.status,
+    details: error.details,
+    stack: error.stack,
+  });
 
   // Créer log d'audit si nécessaire
   if (auditData && auditContext) {
@@ -125,23 +131,65 @@ const handleControllerError = (
         errorCode: error.code,
         userId: auditData.userId,
         requestBody: auditContext.requestBody,
+        conflicts: error.details?.conflicts,
       },
-    }).catch(console.error);
+    }).catch((err) => console.error("Error creating audit log:", err));
   }
 
-  const response: ApiResponse = {
+  // Construction de la réponse d'erreur détaillée
+  const response: any = {
     success: false,
     message: error.message || "Erreur interne du serveur",
     code: error.code || "INTERNAL_ERROR",
-    data: error.data,
-    metadata: error.metadata,
+    timestamp: new Date().toISOString(),
   };
 
+  // Ajouter les détails spécifiques aux conflits
+  if (error.code === "SCHEDULE_CONFLICT") {
+    // Extraire les conflits de error.details si disponible
+    if (error.details?.conflicts) {
+      response.conflicts = error.details.conflicts;
+      response.message = error.details.message || error.message;
+
+      // Formater un message utilisateur plus lisible
+      const conflictTypes = new Set(
+        error.details.conflicts.map((c: any) => c.type)
+      );
+      const conflictMessages: string[] = [];
+
+      if (conflictTypes.has("PROFESSEUR_CONFLICT")) {
+        conflictMessages.push("Le professeur a déjà un cours à cet horaire");
+      }
+      if (conflictTypes.has("CLASS_CONFLICT")) {
+        conflictMessages.push("La classe a déjà un cours à cet horaire");
+      }
+      if (conflictTypes.has("ROOM_CONFLICT")) {
+        conflictMessages.push("La salle est déjà occupée");
+      }
+      if (conflictTypes.has("PROFESSEUR_INACTIVE")) {
+        conflictMessages.push("Le professeur n'est pas actif");
+      }
+      if (conflictTypes.has("CLASS_INACTIVE")) {
+        conflictMessages.push("La classe n'est pas active");
+      }
+
+      if (conflictMessages.length > 0) {
+        response.userMessage = conflictMessages.join("; ");
+      }
+    }
+  }
+
+  // Ajouter les autres détails
+  if (error.details) {
+    response.data = error.details;
+  }
+
+  console.log("Sending error response to client:", response);
   res.status(error.status || 500).json(response);
 };
 
 /**
- * @desc Crée un nouvel horaire
+ * @desc Crée un nouvel horaire - VERSION CORRIGÉE
  */
 export const createSchedule = async (
   req: Request,
@@ -162,6 +210,16 @@ export const createSchedule = async (
       untilDate,
       notes,
     } = req.body as CreateScheduleData;
+
+    console.log("Received schedule creation request:", {
+      assignmentId,
+      classId,
+      dayOfWeek,
+      startTime,
+      endTime,
+      classroom,
+      userId,
+    });
 
     // Validation des champs requis
     const requiredFields = {
@@ -238,6 +296,7 @@ export const createSchedule = async (
       notes: notes?.trim(),
     };
 
+    console.log("Calling scheduleService.createSchedule with:", scheduleData);
     const result = await scheduleService.createSchedule(scheduleData);
 
     // Créer le log d'audit
@@ -266,6 +325,7 @@ export const createSchedule = async (
 
     res.status(201).json(response);
   } catch (error: any) {
+    console.error("Error in createSchedule controller:", error);
     handleControllerError(error, res, auditData, {
       action: "SCHEDULE_CREATION_ERROR",
       entity: "Schedule",
@@ -404,121 +464,12 @@ export const getClassTimetable = async (
 };
 
 /**
- * @desc Génère un emploi du temps automatiquement
+ * @desc Vérifie les conflits d'horaire - VERSION CORRIGÉE
  */
-export const generateTimetable = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  const auditData = extractAuditData(req);
-  const userId = auditData.userId || "system";
-
-  try {
-    const { classId, academicYearId, constraints } =
-      req.body as GenerateTimetableData;
-
-    if (!classId || !academicYearId) {
-      const response: ApiResponse = {
-        success: false,
-        message: "classId et academicYearId sont requis",
-        code: "MISSING_REQUIRED_FIELDS",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    const result = await scheduleService.generateTimetable({
-      classId,
-      academicYearId,
-      constraints,
-    });
-
-    await createAuditLog({
-      ...auditData,
-      action: "TIMETABLE_GENERATED",
-      entity: "Schedule",
-      description: `Emploi du temps généré pour la classe ${classId}`,
-      status: "SUCCESS",
-      metadata: {
-        ...result.metadata,
-        userId,
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent"),
-      },
-    });
-
-    const response: ApiResponse = {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-      code: result.code,
-      metadata: result.metadata,
-    };
-
-    res.status(201).json(response);
-  } catch (error: any) {
-    handleControllerError(error, res, auditData, {
-      action: "TIMETABLE_GENERATION_ERROR",
-      entity: "Schedule",
-      description: "Erreur lors de la génération de l'emploi du temps",
-      requestBody: req.body,
-    });
-  }
-};
-
-/**
- * @desc Récupère l'emploi du temps d'un professeur
- */
-export const getProfessorSchedule = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  try {
-    const { professeurId } = req.params;
-    const { startDate, endDate, status } = req.query;
-
-    if (!professeurId) {
-      const response: ApiResponse = {
-        success: false,
-        message: "professeurId est requis",
-        code: "MISSING_PROFESSEUR_ID",
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    const result = await scheduleService.getAllSchedules({
-      professeurId: professeurId,
-      startDate: startDate as string,
-      endDate: endDate as string,
-      status: status as string,
-    });
-
-    const response: ApiResponse = {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-      code: result.code,
-      metadata: result.metadata,
-    };
-
-    res.json(response);
-  } catch (error: any) {
-    handleControllerError(error, res);
-  }
-};
-
-/**
- * @desc Vérifie les conflits d'horaire
- */
-// Dans scheduleController.ts - ligne ~250
-// Dans scheduleController.ts - corriger checkConflicts
 export const checkConflicts = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  console.log("🔍 Check conflicts called with params:", req.query);
-
   try {
     const {
       professeurId,
@@ -530,81 +481,131 @@ export const checkConflicts = async (
       excludeScheduleId,
     } = req.query;
 
+    console.log("Received conflict check request:", {
+      professeurId,
+      classId,
+      dayOfWeek,
+      startTime,
+      endTime,
+      classroom,
+      excludeScheduleId,
+    });
+
     // Validation des paramètres
     if (!professeurId || !classId || !dayOfWeek || !startTime || !endTime) {
       const response: ApiResponse = {
-        success: true, // Toujours retourner success: true pour cette route
+        success: false,
         message: "Paramètres insuffisants pour vérifier les conflits",
-        data: { hasConflict: false, conflicts: [] },
-        code: "CHECK_COMPLETED",
+        data: {
+          hasConflict: false,
+          conflicts: [],
+          message: "Données de vérification incomplètes",
+        },
+        code: "MISSING_PARAMETERS",
       };
-      res.status(200).json(response);
+      res.status(400).json(response);
       return;
     }
 
-    // CORRECTION : Appeler la méthode avec les bonnes valeurs
+    // Préparer les temps pour le service
+    let parsedStartTime = startTime as string;
+    let parsedEndTime = endTime as string;
+
+    // Si ce ne sont pas des formats ISO, les convertir
+    if (!startTime.toString().includes("T")) {
+      const startValidation = validateAndParseTime(startTime as string);
+      if (!startValidation.valid) {
+        const response: ApiResponse = {
+          success: false,
+          message: `Format de startTime invalide: ${startValidation.message}`,
+          data: { hasConflict: false, conflicts: [] },
+          code: "INVALID_START_TIME_FORMAT",
+        };
+        res.status(400).json(response);
+        return;
+      }
+      parsedStartTime = startValidation.isoTime!;
+    }
+
+    if (!endTime.toString().includes("T")) {
+      const endValidation = validateAndParseTime(endTime as string);
+      if (!endValidation.valid) {
+        const response: ApiResponse = {
+          success: false,
+          message: `Format de endTime invalide: ${endValidation.message}`,
+          data: { hasConflict: false, conflicts: [] },
+          code: "INVALID_END_TIME_FORMAT",
+        };
+        res.status(400).json(response);
+        return;
+      }
+      parsedEndTime = endValidation.isoTime!;
+    }
+
+    console.log("Calling scheduleService.checkScheduleConflicts with:", {
+      professeurId,
+      classId,
+      dayOfWeek,
+      startTime: parsedStartTime,
+      endTime: parsedEndTime,
+      classroom,
+      excludeScheduleId,
+    });
+
+    // Appeler le service
     const result = await scheduleService.checkScheduleConflicts(
       professeurId as string,
       classId as string,
       dayOfWeek as string,
-      startTime as string, // Le service doit gérer le format ISO
-      endTime as string, // Le service doit gérer le format ISO
+      parsedStartTime,
+      parsedEndTime,
       classroom as string,
       excludeScheduleId as string
     );
 
-    console.log("✅ Check conflicts result:", result);
+    console.log("Conflict check result:", result);
 
     const response: ApiResponse = {
       success: true,
-      message: "Vérification des conflits terminée",
-      data: result, // Retourner directement le résultat du service
+      message: result.hasConflict
+        ? "Conflits détectés"
+        : "Aucun conflit détecté",
+      data: result,
       code: "CHECK_COMPLETED",
+      metadata: {
+        checkedAt: new Date().toISOString(),
+        conflictCount: result.conflicts.length,
+      },
     };
 
     res.status(200).json(response);
   } catch (error: any) {
-    console.error("❌ Check conflicts error:", error);
+    console.error("Error in checkConflicts controller:", error);
 
-    // IMPORTANT: Toujours retourner 200 avec success: false
+    // Construire une réponse d'erreur informative
     const response: ApiResponse = {
       success: false,
       message: error.message || "Erreur lors de la vérification des conflits",
       data: {
-        hasConflict: false,
+        hasConflict: true,
         conflicts: [],
+        errorDetails: {
+          code: error.code,
+          message: error.message,
+        },
       },
-      code: "CHECK_ERROR",
+      code: error.code || "CHECK_ERROR",
+      metadata: {
+        errorOccurredAt: new Date().toISOString(),
+      },
     };
 
-    res.status(200).json(response); // Toujours 200, jamais 404
+    res.status(error.status || 500).json(response);
   }
 };
 
 /**
- * @desc Récupère les créneaux disponibles
- * @todo Implement getAvailableTimeSlots method in ScheduleService
- */
-export const getAvailableTimeSlots = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  try {
-    const response: ApiResponse = {
-      success: false,
-      message: "Fonctionnalité non implémentée",
-      code: "NOT_IMPLEMENTED",
-      data: null,
-    };
-
-    res.status(501).json(response);
-  } catch (error: any) {
-    handleControllerError(error, res);
-  }
-};
-
-/**
- * @desc Met à jour un horaire
+ * @desc Met à jour un horaire - VERSION CORRIGÉE
  */
 export const updateSchedule = async (
   req: Request,
@@ -625,6 +626,15 @@ export const updateSchedule = async (
       notes,
       status,
     } = req.body as UpdateScheduleData;
+
+    console.log("Received schedule update request:", {
+      id,
+      dayOfWeek,
+      startTime,
+      endTime,
+      classroom,
+      userId,
+    });
 
     if (!id) {
       const response: ApiResponse = {
@@ -699,6 +709,11 @@ export const updateSchedule = async (
     if (notes !== undefined) updateData.notes = notes?.trim();
     if (status !== undefined) updateData.status = status;
 
+    console.log("Calling scheduleService.updateSchedule with:", {
+      id,
+      updateData,
+    });
+
     const result = await scheduleService.updateSchedule(id, updateData);
 
     await createAuditLog({
@@ -727,6 +742,7 @@ export const updateSchedule = async (
 
     res.json(response);
   } catch (error: any) {
+    console.error("Error in updateSchedule controller:", error);
     handleControllerError(error, res, auditData, {
       action: "SCHEDULE_UPDATE_ERROR",
       entity: "Schedule",
@@ -793,5 +809,68 @@ export const deleteSchedule = async (
       entityId: req.params.id,
       description: "Erreur lors de la suppression de l'horaire",
     });
+  }
+};
+
+/**
+ * @desc Récupère l'emploi du temps d'un professeur
+ */
+export const getProfessorSchedule = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { professeurId } = req.params;
+    const { startDate, endDate, status } = req.query;
+
+    if (!professeurId) {
+      const response: ApiResponse = {
+        success: false,
+        message: "professeurId est requis",
+        code: "MISSING_PROFESSEUR_ID",
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    const result = await scheduleService.getAllSchedules({
+      professeurId: professeurId,
+      startDate: startDate as string,
+      endDate: endDate as string,
+      status: status as string,
+    });
+
+    const response: ApiResponse = {
+      success: result.success,
+      message: result.message,
+      data: result.data,
+      code: result.code,
+      metadata: result.metadata,
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    handleControllerError(error, res);
+  }
+};
+
+/**
+ * @desc Récupère les créneaux disponibles
+ */
+export const getAvailableTimeSlots = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const response: ApiResponse = {
+      success: false,
+      message: "Fonctionnalité non implémentée",
+      code: "NOT_IMPLEMENTED",
+      data: null,
+    };
+
+    res.status(501).json(response);
+  } catch (error: any) {
+    handleControllerError(error, res);
   }
 };

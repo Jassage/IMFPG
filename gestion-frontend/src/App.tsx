@@ -38,53 +38,7 @@ import { useAutoLock } from "./hooks/useAutoLock";
 import { DataInitializer } from "./components/DataInitializer";
 
 const queryClient = new QueryClient();
-// Ajoutez ceci à votre App.tsx pour le mode capture
-// Cela masque les données sensibles pendant les captures
-const isScreenshotMode = window.location.search.includes("screenshot-mode");
-// Dans ton App.tsx ou un composant utilitaire
-export const enableScreenshotMode = () => {
-  // Mode pour faciliter les captures
-  if (typeof window !== "undefined") {
-    // Ajouter des data-testid aux éléments importants
-    document
-      .querySelectorAll("nav button, aside button")
-      .forEach((btn, index) => {
-        const text = btn.textContent?.toLowerCase() || "";
-        if (text.includes("dashboard"))
-          btn.setAttribute("data-testid", "dashboard");
-        if (text.includes("élève") || text.includes("student"))
-          btn.setAttribute("data-testid", "students");
-        if (text.includes("professeur"))
-          btn.setAttribute("data-testid", "professeurs");
-        if (text.includes("note") || text.includes("grade"))
-          btn.setAttribute("data-testid", "grades");
-        if (text.includes("classe")) btn.setAttribute("data-testid", "classes");
-        // etc...
-      });
 
-    // Désactiver les animations
-    document.body.style.setProperty("--animate-duration", "0s");
-
-    // Charger des données de démo si nécessaire
-    if (window.location.search.includes("demo")) {
-      // Charger des données fictives
-    }
-  }
-};
-
-// Appeler cette fonction au chargement en mode capture
-if (window.location.search.includes("screenshot")) {
-  enableScreenshotMode();
-}
-if (isScreenshotMode) {
-  // Masquer les données personnelles
-  document.querySelectorAll("[data-sensitive]").forEach((el) => {
-    el.textContent = "***";
-  });
-
-  // Charger des données de démo
-  localStorage.setItem("demo-mode", "true");
-}
 // Composant pour les routes protégées par rôle
 const ProtectedRoute = ({
   children,
@@ -146,13 +100,17 @@ const AppContent = () => {
   }
 
   return (
-    // AJOUT DU HELPPROVIDER ICI
+    //  HELPPROVIDER
     <HelpProvider defaultRole={user?.role || "Admin"}>
       <SidebarProvider forceOpen={true}>
         <div className="min-h-screen flex w-full">
-          {/* AJOUT DU HELP LAUNCHER ICI - accessible partout */}
-          <HelpLauncher />
-          <HelpDashboard />
+          {/* il doit s'afficher uniquement apresconnection */}
+          {isAuthenticated && (
+            <>
+              <HelpLauncher />
+              <HelpDashboard />
+            </>
+          )}
 
           <Routes>
             {/* Routes publiques */}

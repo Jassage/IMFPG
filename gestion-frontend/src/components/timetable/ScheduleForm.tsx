@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useEffect } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -79,38 +79,126 @@ interface ScheduleFormProps {
   checkScheduleConflicts?: (data: any) => Promise<any>;
 }
 
-// Schéma de validation
-const scheduleFormSchema = z.object({
-  assignmentId: z.string().min(1, { message: "L'assignation est requise" }),
-  classId: z.string().min(1, { message: "La classe est requise" }),
-  dayOfWeek: z.string().min(1, { message: "Le jour est requis" }),
-  startTime: z
-    .string()
-    .min(1, { message: "L'heure de début est requise" })
-    .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-      message: "Format d'heure invalide (HH:MM)",
-    }),
-  endTime: z
-    .string()
-    .min(1, { message: "L'heure de fin est requise" })
-    .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-      message: "Format d'heure invalide (HH:MM)",
-    }),
-  classroom: z
-    .string()
-    .max(100, {
-      message: "Le nom de la salle ne peut pas dépasser 100 caractères",
-    })
-    .optional()
-    .transform((val) => val?.trim() || ""),
-  recurrence: z.string().optional(),
-  untilDate: z.string().optional(),
-  notes: z
-    .string()
-    .max(500, { message: "Les notes ne peuvent pas dépasser 500 caractères" })
-    .optional()
-    .transform((val) => val?.trim() || ""),
-});
+// Schéma de validation corrigé
+const scheduleFormSchema = z
+  .object({
+    assignmentId: z.string().min(1, { message: "L'assignation est requise" }),
+    classId: z.string().min(1, { message: "La classe est requise" }),
+    dayOfWeek: z.string().min(1, { message: "Le jour est requis" }),
+    startTime: z
+      .string()
+      .min(1, { message: "L'heure de début est requise" })
+      .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+        message: "Format d'heure invalide (HH:MM)",
+      }),
+    endTime: z
+      .string()
+      .min(1, { message: "L'heure de fin est requise" })
+      .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+        message: "Format d'heure invalide (HH:MM)",
+      }),
+    classroom: z
+      .string()
+      .max(100, {
+        message: "Le nom de la salle ne peut pas dépasser 100 caractères",
+      })
+      .optional()
+      .transform((val) => val?.trim() || ""),
+    recurrence: z
+      .enum(["NONE", "WEEKLY", "BIWEEKLY", "MONTHLY"])
+      .default("NONE"),
+    untilDate: z.string().optional(), // Rendre optionnel car conditionnel
+    notes: z
+      .string()
+      .max(500, { message: "Les notes ne peuvent pas dépasser 500 caractères" })
+      .optional()
+      .transform((val) => val?.trim() || ""),
+  })
+  .refine(
+    (data) => {
+      // Validation des heures
+      if (data.startTime && data.endTime) {
+        const [startHour, startMinute] = data.startTime.split(":").map(Number);
+        const [endHour, endMinute] = data.endTime.split(":").map(Number);
+
+        const startTotal = startHour * 60 + startMinute;
+        const endTotal = endHour * 60 + endMinute;
+
+        return endTotal > startTotal;
+      }
+      return true;
+    },
+    {
+      message: "L'heure de fin doit être après l'heure de début",
+      path: ["endTime"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Validation de la durée minimale (30 minutes)
+      if (data.startTime && data.endTime) {
+        const [startHour, startMinute] = data.startTime.split(":").map(Number);
+        const [endHour, endMinute] = data.endTime.split(":").map(Number);
+
+        const startTotal = startHour * 60 + startMinute;
+        const endTotal = endHour * 60 + endMinute;
+        const duration = endTotal - startTotal;
+
+        return duration >= 30;
+      }
+      return true;
+    },
+    {
+      message: "Durée minimale: 30 minutes",
+      path: ["endTime"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Validation de la durée maximale (4 heures)
+      if (data.startTime && data.endTime) {
+        const [startHour, startMinute] = data.startTime.split(":").map(Number);
+        const [endHour, endMinute] = data.endTime.split(":").map(Number);
+
+        const startTotal = startHour * 60 + startMinute;
+        const endTotal = endHour * 60 + endMinute;
+        const duration = endTotal - startTotal;
+
+        return duration <= 240;
+      }
+      return true;
+    },
+    {
+      message: "Durée maximale: 4 heures",
+      path: ["endTime"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Si recurrence n'est pas NONE, untilDate est requis
+      if (data.recurrence !== "NONE" && !data.untilDate) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "La date de fin est requise pour une récurrence",
+      path: ["untilDate"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Si untilDate est fourni, doit être une date valide au format YYYY-MM-DD
+      if (data.untilDate && !/^\d{4}-\d{2}-\d{2}$/.test(data.untilDate)) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Format de date invalide (YYYY-MM-DD)",
+      path: ["untilDate"],
+    }
+  );
 
 type ScheduleFormValues = z.infer<typeof scheduleFormSchema>;
 
@@ -126,7 +214,30 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
   checkScheduleConflicts,
 }) => {
   const [serverError, setServerError] = React.useState<string | null>(null);
+  const [isValidating, setIsValidating] = React.useState(false);
   const isEdit = !!schedule;
+
+  // Initialiser le formulaire avec validation en temps réel
+  const form = useForm<ScheduleFormValues>({
+    resolver: zodResolver(scheduleFormSchema),
+    defaultValues: {
+      assignmentId: "",
+      classId: "",
+      dayOfWeek: "",
+      startTime: "08:00",
+      endTime: "09:30",
+      classroom: "",
+      recurrence: "NONE",
+      untilDate: "",
+      notes: "",
+    },
+    mode: "onChange", // Validation en temps réel
+    reValidateMode: "onChange", // Re-valider à chaque changement
+  });
+
+  // Observer tous les champs pour validation en temps réel
+  const formValues = form.watch();
+  const formErrors = form.formState.errors;
 
   // Fonction utilitaire pour formater l'heure pour l'API
   const formatTimeForAPI = (time: string): string => {
@@ -134,14 +245,32 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
 
     // Si c'est déjà au format HH:MM
     if (time.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
-      return time;
+      return time + ":00"; // Ajouter les secondes
     }
 
     try {
       const [hours, minutes] = time.split(":");
-      return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
+      return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}:00`;
     } catch {
-      return "00:00";
+      return "00:00:00";
+    }
+  };
+
+  // Fonction pour formater la date pour l'API
+  const formatDateForAPI = (dateString: string): string | null => {
+    if (!dateString || dateString.trim() === "") return null;
+
+    // Vérifier si c'est déjà au format YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString;
+    }
+
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return null;
+      return date.toISOString().split("T")[0];
+    } catch {
+      return null;
     }
   };
 
@@ -160,66 +289,68 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
     [classes, assignments]
   );
 
-  // Fonction pour valider l'ensemble du formulaire
-  const validateForm = useCallback(
-    (data: ScheduleFormValues) => {
-      const errors: Record<string, string> = {};
+  // Validation personnalisée en temps réel pour la correspondance des niveaux
+  React.useEffect(() => {
+    const validateLevelMatch = async () => {
+      const { classId, assignmentId } = form.getValues();
 
-      // Validation de base
-      if (!data.assignmentId) errors.assignmentId = "L'assignation est requise";
-      if (!data.classId) errors.classId = "La classe est requise";
-      if (!data.dayOfWeek) errors.dayOfWeek = "Le jour est requis";
+      if (classId && assignmentId && !checkLevelMatch(classId, assignmentId)) {
+        form.setError("assignmentId", {
+          type: "manual",
+          message:
+            "Cette assignation ne correspond pas au niveau de la classe sélectionnée",
+        });
+      } else if (formErrors.assignmentId?.type === "manual") {
+        // Effacer l'erreur manuelle si elle existe et que la correspondance est bonne
+        form.clearErrors("assignmentId");
+      }
+    };
 
-      // Validation des heures
-      if (data.startTime && data.endTime) {
-        const [startHour, startMinute] = data.startTime.split(":").map(Number);
-        const [endHour, endMinute] = data.endTime.split(":").map(Number);
+    validateLevelMatch();
+  }, [formValues.classId, formValues.assignmentId, form, checkLevelMatch]);
 
-        const startTotal = startHour * 60 + startMinute;
-        const endTotal = endHour * 60 + endMinute;
+  // Validation supplémentaire en temps réel pour les champs requis
+  React.useEffect(() => {
+    const validateRequiredFields = () => {
+      const values = form.getValues();
+      const errors: Partial<Record<keyof ScheduleFormValues, string>> = {};
 
-        if (endTotal <= startTotal) {
-          errors.endTime = "L'heure de fin doit être après l'heure de début";
-        }
-
-        const duration = endTotal - startTotal;
-        if (duration < 30) {
-          errors.endTime = "Durée minimale: 30 minutes";
-        }
-        if (duration > 240) {
-          errors.endTime = "Durée maximale: 4 heures";
-        }
+      // Validation de base des champs requis
+      if (!values.assignmentId) {
+        errors.assignmentId = "L'assignation est requise";
+      }
+      if (!values.classId) {
+        errors.classId = "La classe est requise";
+      }
+      if (!values.dayOfWeek) {
+        errors.dayOfWeek = "Le jour est requis";
       }
 
-      // Validation de la correspondance des niveaux
-      if (data.classId && data.assignmentId) {
-        if (!checkLevelMatch(data.classId, data.assignmentId)) {
-          errors.assignmentId =
-            "Cette assignation ne correspond pas au niveau de la classe sélectionnée";
+      // Appliquer les erreurs uniquement si elles ne sont pas déjà présentes
+      Object.entries(errors).forEach(([field, message]) => {
+        if (!formErrors[field as keyof typeof formErrors]) {
+          form.setError(field as any, {
+            type: "manual",
+            message,
+          });
         }
-      }
+      });
+    };
 
-      return errors;
-    },
-    [checkLevelMatch]
-  );
+    // Valider uniquement si certains champs ont des valeurs
+    if (formValues.assignmentId || formValues.classId || formValues.dayOfWeek) {
+      validateRequiredFields();
+    }
+  }, [
+    formValues.assignmentId,
+    formValues.classId,
+    formValues.dayOfWeek,
+    form,
+    formErrors,
+  ]);
 
-  // Initialiser le formulaire
-  const form = useForm<ScheduleFormValues>({
-    resolver: zodResolver(scheduleFormSchema),
-    defaultValues: {
-      assignmentId: "",
-      classId: "",
-      dayOfWeek: "",
-      startTime: "08:00",
-      endTime: "09:30",
-      classroom: "",
-      recurrence: "",
-      untilDate: "",
-      notes: "",
-    },
-    mode: "onChange",
-  });
+  // Observer le champ recurrence
+  const recurrenceValue = form.watch("recurrence");
 
   // Fonction pour extraire HH:MM d'un timestamp ISO
   const extractTimeFromISO = useCallback((isoString: string): string => {
@@ -230,17 +361,38 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
       return isoString;
     }
 
-    // Si c'est un timestamp ISO
+    // Si c'est un timestamp ISO avec secondes
+    if (isoString.includes(":")) {
+      try {
+        const [hours, minutes] = isoString.split(":");
+        return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
+      } catch {
+        return "08:00";
+      }
+    }
+
+    // Si c'est un timestamp ISO complet
     try {
       const date = new Date(isoString);
-      if (isNaN(date.getTime())) return "";
-
-      // Utiliser UTC pour éviter les décalages horaires
-      const hours = date.getUTCHours().toString().padStart(2, "0");
-      const minutes = date.getUTCMinutes().toString().padStart(2, "0");
+      if (isNaN(date.getTime())) return "08:00";
+      const hours = date.getHours().toString().padStart(2, "0");
+      const minutes = date.getMinutes().toString().padStart(2, "0");
       return `${hours}:${minutes}`;
     } catch (error) {
       console.error("Error extracting time from ISO:", error);
+      return "08:00";
+    }
+  }, []);
+
+  // Fonction pour extraire YYYY-MM-DD d'une date ISO
+  const extractDateFromISO = useCallback((isoString: string): string => {
+    if (!isoString) return "";
+
+    try {
+      const date = new Date(isoString);
+      if (isNaN(date.getTime())) return "";
+      return date.toISOString().split("T")[0];
+    } catch {
       return "";
     }
   }, []);
@@ -258,7 +410,7 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
         classroom: schedule.classroom || "",
         recurrence: schedule.recurrence || "NONE",
         untilDate: schedule.untilDate
-          ? new Date(schedule.untilDate).toISOString().split("T")[0]
+          ? extractDateFromISO(schedule.untilDate)
           : "",
         notes: schedule.notes || "",
       };
@@ -273,82 +425,55 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
         startTime: "08:00",
         endTime: "09:30",
         classroom: "",
-        recurrence: "",
+        recurrence: "NONE",
         untilDate: "",
         notes: "",
       });
       setServerError(null);
     }
-  }, [schedule, open, form, extractTimeFromISO]);
+  }, [schedule, open, form, extractTimeFromISO, extractDateFromISO]);
 
   // Fonction de soumission du formulaire
   const handleFormSubmit = useCallback(
     async (formData: ScheduleFormValues) => {
       try {
+        setIsValidating(true);
         setServerError(null);
 
-        // Validation manuelle
-        const errors = validateForm(formData);
-        if (Object.keys(errors).length > 0) {
-          Object.entries(errors).forEach(([field, message]) => {
-            form.setError(field as any, { type: "manual", message });
-          });
+        // Vérifier si le formulaire est valide
+        const isValid = await form.trigger();
+        if (!isValid) {
+          toast.error("Veuillez corriger les erreurs dans le formulaire");
+          setIsValidating(false);
           return;
         }
 
-        // Formater les heures
-        const formattedData = {
+        // Formater les données pour l'API
+        const formattedData: any = {
           ...formData,
           startTime: formatTimeForAPI(formData.startTime),
           endTime: formatTimeForAPI(formData.endTime),
+          classroom: formData.classroom?.trim() || null,
+          notes: formData.notes?.trim() || null,
         };
 
-        // Si une fonction de vérification des conflits est fournie, l'utiliser
-        // if (checkScheduleConflicts) {
-        //   try {
-        //     // Trouver l'assignation pour obtenir le professeurId
-        //     const assignment = assignments.find(
-        //       (a) => a.id === formData.assignmentId
-        //     );
+        // Gérer untilDate en fonction de recurrence
+        if (formData.recurrence !== "NONE" && formData.untilDate) {
+          formattedData.untilDate = formatDateForAPI(formData.untilDate);
+          if (!formattedData.untilDate) {
+            toast.error("Date de fin invalide");
+            setIsValidating(false);
+            return;
+          }
+        } else {
+          delete formattedData.untilDate;
+        }
 
-        //     if (assignment) {
-        //       const conflictData = {
-        //         professeurId: assignment.professeur.id,
-        //         classId: formData.classId,
-        //         dayOfWeek: formData.dayOfWeek,
-        //         startTime: formattedData.startTime,
-        //         endTime: formattedData.endTime,
-        //         classroom: formData.classroom,
-        //         excludeScheduleId: isEdit ? schedule?.id : undefined,
-        //       };
+        // Nettoyer les champs vides
+        if (!formattedData.classroom) delete formattedData.classroom;
+        if (!formattedData.notes) delete formattedData.notes;
 
-        //       const conflictCheck = await checkScheduleConflicts(conflictData);
-
-        //       if (conflictCheck.hasConflict) {
-        //         const conflictMessages = conflictCheck.conflicts
-        //           .map((conflict: any) => {
-        //             if (conflict.type === "PROFESSEUR_CONFLICT") {
-        //               return `• Le professeur a déjà un cours à ce créneau`;
-        //             } else if (conflict.type === "CLASS_CONFLICT") {
-        //               return `• La classe a déjà un cours à ce créneau`;
-        //             } else if (conflict.type === "CLASSROOM_CONFLICT") {
-        //               return `• La salle est déjà occupée à ce créneau`;
-        //             }
-        //             return `• ${conflict.message}`;
-        //           })
-        //           .join("\n");
-
-        //         toast.error(`Conflits détectés:\n${conflictMessages}`, {
-        //           duration: 8000,
-        //         });
-        //         return;
-        //       }
-        //     }
-        //   } catch (conflictError) {
-        //     console.warn("Could not check conflicts:", conflictError);
-        //     // Continuer même si la vérification échoue
-        //   }
-        // }
+        console.log("📤 Données formatées pour API:", formattedData);
 
         // Appeler la fonction de soumission fournie par le parent
         await onSubmit(formattedData, isEdit);
@@ -360,11 +485,12 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
             : "L'horaire a été ajouté avec succès"
         );
 
+        setIsValidating(false);
         onSuccess();
       } catch (error: any) {
         console.error("Error submitting schedule form:", error);
+        setIsValidating(false);
 
-        // Messages d'erreur spécifiques
         let errorMessage = "Erreur lors de l'opération";
 
         if (error.response?.data?.code === "PROFESSEUR_CONFLICT") {
@@ -373,22 +499,18 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
           errorMessage = "La classe a déjà un cours à ce créneau horaire";
         } else if (error.response?.data?.message) {
           errorMessage = error.response.data.message;
+        } else if (error.response?.data?.errors) {
+          const apiErrors = error.response.data.errors;
+          if (Array.isArray(apiErrors)) {
+            errorMessage = apiErrors.map((err) => err.message).join(", ");
+          }
         }
 
         setServerError(errorMessage);
         toast.error(errorMessage);
       }
     },
-    [
-      form,
-      assignments,
-      isEdit,
-      schedule,
-      onSubmit,
-      onSuccess,
-      checkScheduleConflicts,
-      validateForm,
-    ]
+    [form, isEdit, onSubmit, onSuccess]
   );
 
   const days = useMemo(
@@ -454,19 +576,10 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
     [selectedClassId, getFilteredAssignments]
   );
 
-  // Vérifier si le formulaire est valide
+  // Vérifier si le formulaire est valide pour désactiver le bouton
   const isFormValid = React.useMemo(() => {
-    const values = form.getValues();
-    const errors = validateForm(values);
-    return (
-      Object.keys(errors).length === 0 &&
-      values.assignmentId &&
-      values.classId &&
-      values.dayOfWeek &&
-      values.startTime &&
-      values.endTime
-    );
-  }, [form.watch(), validateForm]);
+    return form.formState.isValid && !isValidating;
+  }, [form.formState.isValid, isValidating]);
 
   // Rendu des options pour les assignations
   const renderAssignmentOptions = useMemo(() => {
@@ -589,9 +702,8 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                       <FormControl>
                         <SelectTrigger
                           className={cn(
-                            form.formState.errors.classId &&
-                              "border-destructive",
-                            !form.formState.errors.classId &&
+                            formErrors.classId && "border-destructive",
+                            !formErrors.classId &&
                               field.value &&
                               "border-green-500"
                           )}
@@ -623,9 +735,8 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                       <FormControl>
                         <SelectTrigger
                           className={cn(
-                            form.formState.errors.assignmentId &&
-                              "border-destructive",
-                            !form.formState.errors.assignmentId &&
+                            formErrors.assignmentId && "border-destructive",
+                            !formErrors.assignmentId &&
                               field.value &&
                               "border-green-500"
                           )}
@@ -673,9 +784,8 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                       <FormControl>
                         <SelectTrigger
                           className={cn(
-                            form.formState.errors.dayOfWeek &&
-                              "border-destructive",
-                            !form.formState.errors.dayOfWeek &&
+                            formErrors.dayOfWeek && "border-destructive",
+                            !formErrors.dayOfWeek &&
                               field.value &&
                               "border-green-500"
                           )}
@@ -707,9 +817,8 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                       <FormControl>
                         <SelectTrigger
                           className={cn(
-                            form.formState.errors.startTime &&
-                              "border-destructive",
-                            !form.formState.errors.startTime &&
+                            formErrors.startTime && "border-destructive",
+                            !formErrors.startTime &&
                               field.value &&
                               "border-green-500"
                           )}
@@ -743,9 +852,8 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                       <FormControl>
                         <SelectTrigger
                           className={cn(
-                            form.formState.errors.endTime &&
-                              "border-destructive",
-                            !form.formState.errors.endTime &&
+                            formErrors.endTime && "border-destructive",
+                            !formErrors.endTime &&
                               field.value &&
                               "border-green-500"
                           )}
@@ -762,6 +870,47 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                 )}
               />
             </div>
+            {/* Récurrence */}
+            <FormField
+              control={form.control}
+              name="recurrence"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Récurrence</FormLabel>
+                  <Select
+                    onValueChange={(value) => {
+                      field.onChange(value);
+                      // Si récurrence est NONE, réinitialiser untilDate
+                      if (value === "NONE") {
+                        form.setValue("untilDate", "");
+                      }
+                    }}
+                    value={field.value}
+                    disabled={loading}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner une récurrence" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="NONE">
+                        Aucune (cours unique)
+                      </SelectItem>
+                      <SelectItem value="WEEKLY">Hebdomadaire</SelectItem>
+                      <SelectItem value="BIWEEKLY">Bi-hebdomadaire</SelectItem>
+                      <SelectItem value="MONTHLY">Mensuel</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {field.value === "NONE"
+                      ? "Le cours n'aura lieu qu'une seule fois"
+                      : "Sélectionnez une date limite pour la récurrence ci-dessus"}
+                  </p>
+                </FormItem>
+              )}
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Salle */}
@@ -777,7 +926,10 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                         <Input
                           placeholder="Ex: Salle 101"
                           {...field}
-                          className="pl-10"
+                          className={cn(
+                            "pl-10",
+                            formErrors.classroom && "border-destructive"
+                          )}
                           disabled={loading}
                           maxLength={100}
                         />
@@ -804,14 +956,18 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                       <Input
                         type="date"
                         {...field}
-                        disabled={loading}
+                        className={cn(
+                          formErrors.untilDate && "border-destructive"
+                        )}
+                        disabled={loading || recurrenceValue === "NONE"}
                         min={new Date().toISOString().split("T")[0]}
                       />
                     </FormControl>
                     <FormMessage />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Date limite pour les cours récurrents. Laisser vide pour
-                      un cours permanent.
+                      {recurrenceValue === "NONE"
+                        ? "Désactivé pour les cours non récurrents"
+                        : "Date limite pour les cours récurrents"}
                     </p>
                   </FormItem>
                 )}
@@ -829,6 +985,7 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                     <Textarea
                       placeholder="Notes supplémentaires..."
                       {...field}
+                      className={cn(formErrors.notes && "border-destructive")}
                       rows={3}
                       disabled={loading}
                       maxLength={500}
@@ -846,25 +1003,37 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
 
             <Separator />
 
+            {/* Résumé de validation */}
+            {Object.keys(formErrors).length > 0 && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  Il y a {Object.keys(formErrors).length} erreur(s) dans le
+                  formulaire. Veuillez les corriger avant de soumettre.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <DialogFooter>
               <div className="flex justify-between w-full">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={onClose}
-                  disabled={loading}
+                  disabled={loading || isValidating}
                 >
                   <X className="h-4 w-4 mr-2" />
                   Annuler
                 </Button>
                 <Button
                   type="submit"
-                  disabled={loading || !isFormValid}
+                  disabled={loading || !isFormValid || isValidating}
                   className={cn(
-                    (loading || !isFormValid) && "opacity-50 cursor-not-allowed"
+                    (loading || !isFormValid || isValidating) &&
+                      "opacity-50 cursor-not-allowed"
                   )}
                 >
-                  {loading ? (
+                  {loading || isValidating ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Traitement...

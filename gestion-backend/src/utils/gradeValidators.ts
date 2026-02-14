@@ -307,8 +307,17 @@ export const validateBulkImportGrades = [
 
   body("grades.*.status")
     .optional()
-    .isIn(["Valid_", "Non_valid_", "Reprendre"])
-    .withMessage("Le statut doit être 'Valid_', 'Non_valid_' ou 'Reprendre'"),
+    .isIn([
+      "Draft",
+      "Submitted",
+      "Rejected",
+      "Published",
+      "Archived",
+      "Approved",
+    ])
+    .withMessage(
+      "Le statut doit être 'Draft', 'Submitted', 'Rejected','Approved', 'Published' ou 'Archived'"
+    ),
 
   body("grades.*.session")
     .optional()

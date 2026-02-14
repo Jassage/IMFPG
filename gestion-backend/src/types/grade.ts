@@ -111,6 +111,7 @@ export interface Subject {
   coefficient: number;
   type: string;
   passingGrade: number;
+  maxGrade: number;
 }
 
 export interface ClassAssignment {

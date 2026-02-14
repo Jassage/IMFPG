@@ -101,11 +101,9 @@ export const checkAcademicYear = async (req: Request, res: Response) => {
   }
 };
 
-// NOUVEAU : Initialiser les années de base (2020-2021 à 2025-2026)
+// Initialiser les années de base (2020-2021 à 2025-2026)
 export const initializeBaseYears = async (req: Request, res: Response) => {
   try {
-    console.log("🔄 Initialisation des années de base demandée...");
-
     await initializeBaseAcademicYears();
     const years = await getAllAcademicYears();
 
@@ -120,11 +118,9 @@ export const initializeBaseYears = async (req: Request, res: Response) => {
   }
 };
 
-// NOUVEAU : Synchronisation complète des années académiques
+//  Synchronisation complète des années académiques
 export const syncAcademicYears = async (req: Request, res: Response) => {
   try {
-    console.log("🔄 Synchronisation complète des années académiques...");
-
     await ensureAcademicYearsExist();
     await updateCurrentAcademicYear();
 
@@ -143,12 +139,10 @@ export const syncAcademicYears = async (req: Request, res: Response) => {
   }
 };
 
-// NOUVEAU : Forcer la création d'années futures
+//  Forcer la création d'années futures
 export const createFutureYears = async (req: Request, res: Response) => {
   try {
     const { yearsAhead = 2 } = req.body;
-
-    console.log(`🔮 Création des ${yearsAhead} prochaines années...`);
 
     await ensureFutureAcademicYears(yearsAhead);
     const years = await getAllAcademicYears();
@@ -164,7 +158,7 @@ export const createFutureYears = async (req: Request, res: Response) => {
   }
 };
 
-// NOUVEAU : Obtenir les années disponibles pour les inscriptions
+//  Obtenir les années disponibles pour les inscriptions
 export const getAvailableYears = async (req: Request, res: Response) => {
   try {
     const availableYears = await getAvailableAcademicYears();
@@ -179,7 +173,7 @@ export const getAvailableYears = async (req: Request, res: Response) => {
   }
 };
 
-// NOUVEAU : Vérifier si une année académique existe
+//  Vérifier si une année académique existe
 export const checkYearExists = async (req: Request, res: Response) => {
   try {
     const { year } = req.params;
@@ -210,7 +204,7 @@ export const checkYearExists = async (req: Request, res: Response) => {
   }
 };
 
-// NOUVEAU : Mettre à jour l'année courante manuellement
+//  Mettre à jour l'année courante manuellement
 export const setCurrentYear = async (req: Request, res: Response) => {
   try {
     const { year } = req.body;
@@ -250,7 +244,7 @@ export const setCurrentYear = async (req: Request, res: Response) => {
   }
 };
 
-// NOUVEAU : Statut du système d'années académiques
+//  Statut du système d'années académiques
 export const getAcademicYearStatus = async (req: Request, res: Response) => {
   try {
     const currentYear = await getCurrentAcademicYear();
@@ -308,7 +302,7 @@ export const getAcademicYearById = async (req: Request, res: Response) => {
 
     res.json(academicYear);
   } catch (error) {
-    console.error("❌ Erreur récupération année académique:", error);
+    console.error(" Erreur récupération année académique:", error);
     res.status(500).json({ error: "Erreur serveur" });
   }
 };

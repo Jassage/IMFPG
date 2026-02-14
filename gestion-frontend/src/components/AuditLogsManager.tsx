@@ -542,25 +542,6 @@ export const AuditLogsManager = () => {
               </TooltipTrigger>
               <TooltipContent>Actualiser les logs</TooltipContent>
             </Tooltip>
-
-            <Button
-              onClick={() => exportLogs("csv")}
-              size="sm"
-              className="gap-2"
-            >
-              <DownloadCloud className="h-4 w-4" />
-              <span className="hidden sm:inline">Exporter CSV</span>
-            </Button>
-
-            <Button
-              onClick={() => exportLogs("json")}
-              variant="outline"
-              size="sm"
-              className="gap-2"
-            >
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">JSON</span>
-            </Button>
           </div>
         </div>
 
@@ -606,25 +587,6 @@ export const AuditLogsManager = () => {
                   />
                 </div>
               </div>
-
-              <Select
-                value={filters.action}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, action: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Action" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les actions</SelectItem>
-                  <SelectItem value="CREATE">Création</SelectItem>
-                  <SelectItem value="UPDATE">Modification</SelectItem>
-                  <SelectItem value="DELETE">Suppression</SelectItem>
-                  <SelectItem value="LOGIN">Connexion</SelectItem>
-                  <SelectItem value="LOGOUT">Déconnexion</SelectItem>
-                </SelectContent>
-              </Select>
 
               <Select
                 value={filters.entity}

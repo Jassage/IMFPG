@@ -78,7 +78,7 @@ interface Enrollment {
   academicYearId: string;
   status: "Active" | "Suspended" | "Completed";
   enrollmentDate: string | Date;
-  student: Student; // Ajouté
+  student: Student;
 }
 
 interface FeeStructure {
@@ -124,7 +124,6 @@ interface ValidationResult {
     endDate: string;
   };
   academicEvaluation?: {
-    // Changé de details.academic à academicEvaluation
     status: string;
     averageGrade: number;
     hasGrades: boolean;
@@ -132,13 +131,12 @@ interface ValidationResult {
     grades?: any[];
   };
   financialStatus?: {
-    // Changé de details.financial à financialStatus
     eligible: boolean;
     balance: number;
     overdueAmount: number;
     hasOverdueFees: boolean;
   };
-  recommendations?: any[]; // Changé de details.recommendations à recommendations
+  recommendations?: any[];
   levelRecommendation?: {
     recommendedLevel: string;
     reason: string;
@@ -146,7 +144,6 @@ interface ValidationResult {
     allowedTransitions: string[];
   };
   details?: {
-    // Garder l'ancienne structure pour compatibilité
     academic?: any;
     financial?: any;
     recommendations?: any[];
@@ -154,15 +151,12 @@ interface ValidationResult {
   };
 }
 
-// Composant pour afficher les détails d'inéligibilité
 const IneligibilityDetails = ({
   validation,
 }: {
   validation: ValidationResult;
 }) => {
-  // Fonction helper pour gérer la compatibilité avec l'ancienne et nouvelle structure
   const getValidationData = () => {
-    // Si l'API retourne la nouvelle structure (sans details)
     if (validation.academicEvaluation || validation.financialStatus) {
       return {
         academic: validation.academicEvaluation,
@@ -171,7 +165,6 @@ const IneligibilityDetails = ({
         eligibility: validation.details?.eligibility,
       };
     }
-    // Si l'API retourne l'ancienne structure (avec details)
     return {
       academic: validation.details?.academic,
       financial: validation.details?.financial,
@@ -210,7 +203,7 @@ const IneligibilityDetails = ({
                 <div className="space-y-2">
                   <p className="text-sm text-red-700">
                     <span className="font-medium">Moyenne:</span>{" "}
-                    {data.academic.averageGrade?.toFixed(2) || "N/A"} / 100
+                    {data.academic.averageGrade?.toFixed(2) || "N/A"} / 20
                   </p>
                   <p className="text-sm text-red-700">
                     <span className="font-medium">Seuil minimum:</span> 50/100
@@ -226,7 +219,7 @@ const IneligibilityDetails = ({
                             key={index}
                             className="text-xs bg-red-100 p-1 rounded"
                           >
-                            {grade.subject}: {grade.grade}/100
+                            {grade.subject}: {grade.grade}/20
                           </div>
                         ))}
                       </div>

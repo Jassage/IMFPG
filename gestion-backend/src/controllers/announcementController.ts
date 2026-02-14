@@ -50,13 +50,11 @@ export const announcementController = {
 
       res.status(201).json(result);
     } catch (error: any) {
-      console.error("❌ Erreur création annonce:", error);
+      console.error(" Erreur création annonce:", error);
 
-      // Journalisation de l'erreur
       try {
-        // Vous pouvez ajouter ici la journalisation d'erreur si nécessaire
       } catch (logError) {
-        console.error("❌ Erreur de journalisation:", logError);
+        console.error(" Erreur de journalisation:", logError);
       }
 
       res.status(error.status || 500).json({
@@ -101,7 +99,7 @@ export const announcementController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur récupération annonces:", error);
+      console.error(" Erreur récupération annonces:", error);
 
       res.status(error.status || 500).json({
         success: false,
@@ -126,7 +124,7 @@ export const announcementController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur récupération annonces actives:", error);
+      console.error(" Erreur récupération annonces actives:", error);
 
       res.status(error.status || 500).json({
         success: false,
@@ -153,7 +151,7 @@ export const announcementController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur récupération annonce:", error);
+      console.error(" Erreur récupération annonce:", error);
 
       res.status(error.status || 500).json({
         success: false,
@@ -180,13 +178,11 @@ export const announcementController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur mise à jour annonce:", error);
+      console.error(" Erreur mise à jour annonce:", error);
 
-      // Journalisation de l'erreur
       try {
-        // Vous pouvez ajouter ici la journalisation d'erreur si nécessaire
       } catch (logError) {
-        console.error("❌ Erreur de journalisation:", logError);
+        console.error(" Erreur de journalisation:", logError);
       }
 
       res.status(error.status || 500).json({
@@ -213,13 +209,11 @@ export const announcementController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur suppression annonce:", error);
+      console.error(" Erreur suppression annonce:", error);
 
-      // Journalisation de l'erreur
       try {
-        // Vous pouvez ajouter ici la journalisation d'erreur si nécessaire
       } catch (logError) {
-        console.error("❌ Erreur de journalisation:", logError);
+        console.error(" Erreur de journalisation:", logError);
       }
 
       res.status(error.status || 500).json({
@@ -246,13 +240,11 @@ export const announcementController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur désactivation annonce:", error);
+      console.error(" Erreur désactivation annonce:", error);
 
-      // Journalisation de l'erreur
       try {
-        // Vous pouvez ajouter ici la journalisation d'erreur si nécessaire
       } catch (logError) {
-        console.error("❌ Erreur de journalisation:", logError);
+        console.error(" Erreur de journalisation:", logError);
       }
 
       res.status(error.status || 500).json({
@@ -280,13 +272,11 @@ export const announcementController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur activation annonce:", error);
+      console.error(" Erreur activation annonce:", error);
 
-      // Journalisation de l'erreur
       try {
-        // Vous pouvez ajouter ici la journalisation d'erreur si nécessaire
       } catch (logError) {
-        console.error("❌ Erreur de journalisation:", logError);
+        console.error(" Erreur de journalisation:", logError);
       }
 
       res.status(error.status || 500).json({
@@ -309,7 +299,7 @@ export const announcementController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur récupération statistiques annonces:", error);
+      console.error(" Erreur récupération statistiques annonces:", error);
 
       res.status(error.status || 500).json({
         success: false,

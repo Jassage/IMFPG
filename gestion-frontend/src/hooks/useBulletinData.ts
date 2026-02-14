@@ -214,7 +214,6 @@ export const useBulletinData = ({
         }
       }
 
-      // Option 2: Utiliser directement l'API comme dans le store
       const response = await api.get("/students", {
         params: { limit: 100 },
       });
@@ -250,9 +249,7 @@ export const useBulletinData = ({
       }));
 
       setStudents(formattedStudents);
-      console.log(`✅ ${formattedStudents.length} étudiants chargés`);
     } catch (error) {
-      console.error("❌ Erreur lors du chargement des étudiants:", error);
       setStudents([]);
     }
   }, []);
@@ -260,7 +257,6 @@ export const useBulletinData = ({
   // Charger les années académiques
   const loadAcademicYears = useCallback(async () => {
     try {
-      console.log("🔄 Loading academic years...");
       const response = await api.get("/academic-years");
 
       const extractAcademicYears = (data: any): AcademicYear[] => {

@@ -24,14 +24,14 @@ export interface Enrollment {
 
 export interface CreateEnrollmentData {
   studentId: string;
-  classId: string; // CORRECT: classId au lieu de faculty
+  classId: string;
   academicYearId: string;
   status?: "Active" | "Suspended" | "Completed";
   enrollmentDate?: string;
 }
 
 export interface UpdateEnrollmentData {
-  classId?: string; // CORRECT: classId au lieu de faculty
+  classId?: string;
   academicYearId?: string;
   status?: "Active" | "Suspended" | "Completed";
   enrollmentDate?: string;

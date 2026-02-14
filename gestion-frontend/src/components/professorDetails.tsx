@@ -362,15 +362,6 @@ export const ProfesseurDetails = ({
         {/* En-tête avec navigation et actions */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onClose}
-              className="hidden sm:flex"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Retour
-            </Button>
             <div className="flex items-center gap-4">
               <Avatar className="h-16 w-16 border-4 border-background shadow-lg">
                 <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-xl font-bold">
@@ -432,41 +423,6 @@ export const ProfesseurDetails = ({
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onEdit(currentProfesseur)}
-            >
-              <Edit className="h-4 w-4 mr-2" />
-              Modifier
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <MoreVertical className="h-4 w-4 mr-2" />
-                  Plus
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => setShowAddSubjectDialog(true)}>
-                  <BookOpen className="h-4 w-4 mr-2" />
-                  Ajouter une matière
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {currentUser?.role === "Admin" && (
-                  <DropdownMenuItem
-                    onClick={() => setShowDeleteDialog(true)}
-                    className="text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Supprimer
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </div>
 
@@ -685,17 +641,6 @@ export const ProfesseurDetails = ({
                                   {subjectItem.subject?.code}
                                 </p>
                               </div>
-                              <div className="text-right">
-                                <div className="text-sm font-medium">
-                                  {subjectItem.yearsOfExperience || 0} an
-                                  {subjectItem.yearsOfExperience > 1 ? "s" : ""}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {getExperienceStars(
-                                    subjectItem.yearsOfExperience || 0
-                                  )}
-                                </div>
-                              </div>
                             </div>
                           </div>
                         ))}
@@ -812,10 +757,6 @@ export const ProfesseurDetails = ({
                   Gestion des matières que ce professeur peut enseigner
                 </p>
               </div>
-              <Button onClick={() => setShowAddSubjectDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Ajouter une matière
-              </Button>
             </div>
 
             {subjectsTaught.length > 0 ? (
@@ -841,95 +782,8 @@ export const ProfesseurDetails = ({
                             Code: {subjectItem.subject?.code}
                           </CardDescription>
                         </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                // Logique pour définir comme matière principale
-                              }}
-                            >
-                              {subjectItem.isPrimary ? (
-                                <>
-                                  <StarHalf className="h-4 w-4 mr-2" />
-                                  Retirer principal
-                                </>
-                              ) : (
-                                <>
-                                  <Star className="h-4 w-4 mr-2" />
-                                  Définir comme principal
-                                </>
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() =>
-                                handleRemoveSubject(subjectItem.subjectId)
-                              }
-                              className="text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Retirer
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                       </div>
                     </CardHeader>
-                    <CardContent className="pt-4">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Clock3 className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">Expérience</span>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-semibold">
-                              {subjectItem.yearsOfExperience || 0} an
-                              {subjectItem.yearsOfExperience > 1 ? "s" : ""}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {getExperienceStars(
-                                subjectItem.yearsOfExperience || 0
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {subjectItem.notes && (
-                          <div className="pt-2 border-t">
-                            <h4 className="text-sm font-medium mb-1">Notes</h4>
-                            <p className="text-sm text-muted-foreground">
-                              {subjectItem.notes}
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="pt-2 border-t">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">
-                              Matière
-                            </span>
-                            <Badge variant="outline" className="text-xs">
-                              {subjectItem.subject?.type || "Obligatoire"}
-                            </Badge>
-                          </div>
-                          <div className="flex justify-between text-sm mt-1">
-                            <span className="text-muted-foreground">
-                              Coefficient
-                            </span>
-                            <span>{subjectItem.subject?.coefficient || 1}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
                   </Card>
                 ))}
               </div>
@@ -1399,19 +1253,6 @@ export const ProfesseurDetails = ({
                                 </p>
                                 <p className="text-sm text-muted-foreground">
                                   Dernière connexion
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                              <Key className="h-4 w-4" />
-                              <div>
-                                <p className="font-medium">
-                                  {currentProfesseur.user.emailVerified
-                                    ? "Vérifié"
-                                    : "Non vérifié"}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  Statut email
                                 </p>
                               </div>
                             </div>

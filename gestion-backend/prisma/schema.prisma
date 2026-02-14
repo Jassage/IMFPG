@@ -693,5 +693,75 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model SystemSettings {
+  id              String   @id @default(cuid())
+  schoolName      String   @default("Institution Mixte Faustin 1er")
+  schoolSlogan    String   @default("L'excellence pour tous")
+  schoolLogo      String   @default("/logo.png")
+  schoolFavicon   String   @default("/favicon.ico")
+  
+  // Contact
+  phone           String   @default("+229 01 23 45 67")
+  secondaryPhone  String?
+  email           String   @default("contact@imfp.bj")
+  secondaryEmail  String?
+  website         String?  @default("https://www.imfp.bj")
+  address         String?  @default("123 Rue de l'École")
+  city            String?  @default("Cotonou")
+  country         String?  @default("Bénin")
+  postalCode      String?
+  
+  // Réseaux sociaux
+  facebook        String?
+  twitter         String?
+  linkedin        String?
+  instagram       String?
+  youtube         String?
+  
+  // Paramètres académiques (sans relation)
+  currentAcademicYearId String? // juste l'ID, pas de relation
+  gradingSystem   String   @default("percentage")
+  passingGrade    Int      @default(50)
+  maxGrade        Int      @default(100)
+  
+  // Paramètres financiers
+  currency        String   @default("XOF")
+  currencySymbol  String   @default("FCFA")
+  taxRate         Float    @default(18)
+  latePaymentFee  Float    @default(5000)
+  paymentMethods  Json     @default("[\"Espèces\", \"Carte bancaire\", \"Mobile Money\", \"Virement\"]")
+  
+  // Paramètres de notification
+  enableEmailNotifications Boolean @default(true)
+  enableSmsNotifications   Boolean @default(true)
+  enablePushNotifications  Boolean @default(false)
+  
+  // Sécurité
+  sessionTimeout  Int      @default(30)
+  maxLoginAttempts Int     @default(5)
+  twoFactorAuth   Boolean  @default(false)
+  passwordPolicy  Json     @default("{\"minLength\":8,\"requireUppercase\":true,\"requireLowercase\":true,\"requireNumbers\":true,\"requireSpecialChars\":false}")
+  
+  // Apparence
+  primaryColor    String   @default("#2563eb")
+  secondaryColor  String   @default("#4f46e5")
+  accentColor     String   @default("#f59e0b")
+  fontFamily      String   @default("Inter")
+  
+  // Modules activés
+  enabledModules  Json     @default("{\"attendance\":true,\"library\":false,\"transport\":false,\"hostel\":false,\"payroll\":true,\"inventory\":false}")
+  
+  // Backup
+  autoBackup      Boolean  @default(true)
+  backupFrequency String   @default("daily")
+  backupRetention Int      @default(30)
+  lastBackup      DateTime?
+  
+  // Métadonnées
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  updatedBy       String?
 
+  @@map("system_settings")
+}
 

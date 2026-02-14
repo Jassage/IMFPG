@@ -71,10 +71,10 @@ const getAllowedNextLevels = (
       NSIV: [],
     };
 
-    nextLevels.push(...(normalTransitions[currentLevel] || []));
+    nextLevels.push(...normalTransitions[currentLevel]);
   }
 
-  return Array.from(new Set(nextLevels)); // Éliminer les doublons
+  return Array.from(new Set(nextLevels));
 };
 
 export const ReenrollmentForm: React.FC<ReenrollmentFormProps> = ({
@@ -563,7 +563,7 @@ export const ReenrollmentForm: React.FC<ReenrollmentFormProps> = ({
         toast.error(result.message || "Erreur lors de la réinscription");
       }
     } catch (error: any) {
-      console.error("❌ Erreur réinscription:", error);
+      console.error("Erreur réinscription:", error);
       toast.error(error.message || "Erreur lors de la réinscription");
     } finally {
       setSubmitting(false);
@@ -727,14 +727,14 @@ export const ReenrollmentForm: React.FC<ReenrollmentFormProps> = ({
                             validationResult.academicEvaluation.averageGrade?.toFixed(
                               2
                             ) || "0.00"
-                          }/100`
+                          }/20`
                         : validationResult.academicEvaluation.status ===
                           "Passed"
                         ? `Moyenne: ${
                             validationResult.academicEvaluation.averageGrade?.toFixed(
                               2
                             ) || "0.00"
-                          }/100`
+                          }/20`
                         : "Aucune note disponible"}
                     </p>
                     <p className="text-sm mt-1 opacity-90">

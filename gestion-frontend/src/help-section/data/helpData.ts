@@ -4488,55 +4488,260 @@ export const secretaireHelpSections: HelpSection[] = [
   },
   {
     id: "enrollments",
-    title: "Réinscriptions",
-    description: "Gestion des inscriptions et réinscriptions",
+    title: "Inscriptions et Réinscriptions",
+    description: "Gestion des inscriptions académiques des élèves",
     icon: "UserPlus",
-    color: "bg-purple-100 text-purple-800",
-    permissions: [PERMISSIONS.MANAGE_ENROLLMENTS],
+    color: "bg-indigo-100 text-indigo-800",
+    permissions: [PERMISSIONS.VIEW_ENROLLMENTS, PERMISSIONS.MANAGE_ENROLLMENTS],
     content: [
       {
-        id: "process-enrollment",
-        title: "Traiter une réinscription",
+        id: "enrollment-overview",
+        title: "Vue d'ensemble des inscriptions",
         type: "steps",
         content: [
           {
             step: 1,
-            title: "Vérifier les documents",
-            description:
-              "Assurez-vous que tous les documents sont fournis : bulletin, certificat médical...",
-            image: "/help-screenshots/enrollments/docs.png",
+            title: "Accéder aux inscriptions",
+            description: "Menu principal → 'Élèves' → 'Inscriptions'",
+            action: "Naviguer vers Élèves > Inscriptions",
           },
           {
             step: 2,
-            title: "Calculer les frais",
+            title: "Statistiques en temps réel",
             description:
-              "Le système calcule automatiquement les frais en fonction du niveau",
-            action: "Vérifier les montants dans la section 'Frais'",
+              "Cartes montrant les totaux, actifs, suspendus, terminés",
+            image: "/help-screenshots/enrollments/stats.jpg",
           },
           {
             step: 3,
-            title: "Générer la facture",
-            description: "Cliquez sur 'Générer facture' pour créer le document",
-            action: "Cliquer sur 'Facture' > 'Générer'",
+            title: "Navigation par onglets",
+            description: "Tous, Inscrits, Non-inscrits",
+            action: "Utiliser les onglets pour filtrer",
+          },
+        ],
+        targetRole: ["Admin", "Directeur", "Secretaire"],
+        importance: "high",
+      },
+      {
+        id: "enroll-student",
+        title: "Inscrire un nouvel élève",
+        type: "steps",
+        content: [
+          {
+            step: 1,
+            title: "Trouver l'élève",
+            description: "Rechercher par nom ou code étudiant",
+            action: "Utiliser la barre de recherche",
+          },
+          {
+            step: 2,
+            title: "Cliquer sur 'Inscrire'",
+            description: "Bouton bleu dans la ligne de l'élève",
+            image: "/help-screenshots/enrollments/enroll-button.jpg",
+          },
+          {
+            step: 3,
+            title: "Remplir le formulaire",
+            description: "Classe, année académique, statut, date",
+            action: "Sélectionner dans les listes déroulantes",
           },
           {
             step: 4,
-            title: "Valider la réinscription",
-            description: "Une fois le paiement confirmé, cliquez sur 'Valider'",
-            action: "Cocher 'Réinscription validée'",
+            title: "Attribuer des frais",
+            description: "Optionnel : sélectionner les structures de frais",
+            action: "Cocher 'Attribuer des frais' et sélectionner",
+          },
+          {
+            step: 5,
+            title: "Sauvegarder",
+            description: "Cliquez sur 'Créer l'inscription'",
+            action: "Cliquer sur le bouton vert",
           },
         ],
         targetRole: ["Admin", "Secretaire"],
         importance: "high",
       },
+      {
+        id: "reenroll-student",
+        title: "Réinscrire un élève",
+        type: "steps",
+        content: [
+          {
+            step: 1,
+            title: "Validation automatique",
+            description: "Le système vérifie l'éligibilité avant réinscription",
+            image: "/help-screenshots/enrollments/reenroll-validation.jpg",
+          },
+          {
+            step: 2,
+            title: "Cliquer sur 'Réinscrire'",
+            description: "Bouton violet dans la ligne de l'élève",
+            action: "Cliquer sur 'Réinscrire'",
+          },
+          {
+            step: 3,
+            title: "Sélectionner l'année précédente",
+            description: "Choisir l'année académique de référence",
+            action: "Sélectionner dans la liste",
+          },
+          {
+            step: 4,
+            title: "Choisir la nouvelle classe",
+            description: "Classes disponibles selon le parcours académique",
+            action: "Sélectionner la nouvelle classe",
+          },
+          {
+            step: 5,
+            title: "Confirmer",
+            description: "Cliquez sur 'Confirmer la réinscription'",
+            action: "Cliquer sur le bouton violet",
+          },
+        ],
+        targetRole: ["Admin", "Secretaire"],
+        importance: "high",
+      },
+      {
+        id: "edit-enrollment",
+        title: "Modifier une inscription",
+        type: "steps",
+        content: [
+          {
+            step: 1,
+            title: "Limite temporelle",
+            description: "Seulement 24h après création pour les secrétaires",
+            image: "/help-screenshots/enrollments/edit-time-limit.jpg",
+          },
+          {
+            step: 2,
+            title: "Développer l'élève",
+            description: "Cliquer sur 'Voir les inscriptions'",
+            action: "Cliquer sur la flèche",
+          },
+          {
+            step: 3,
+            title: "Modifier l'inscription",
+            description: "Bouton 'Modifier' disponible selon permissions",
+            action: "Cliquer sur 'Modifier'",
+          },
+          {
+            step: 4,
+            title: "Sauvegarder les modifications",
+            description: "Apporter les changements nécessaires",
+            action: "Cliquer sur 'Enregistrer'",
+          },
+        ],
+        targetRole: ["Admin", "Secretaire"],
+        importance: "medium",
+      },
+      {
+        id: "enrollment-status",
+        title: "Gérer les statuts d'inscription",
+        type: "text",
+        content: `**Actif**
+      Élève actuellement inscrit et fréquentant les cours
+      
+      **Suspendu**
+      Inscription temporairement interrompue
+      
+      **Terminé**
+      Année académique achevée
+      
+      **Transitions autorisées**
+      Actif ↔ Suspendu, Actif → Terminé`,
+        targetRole: ["Admin", "Directeur", "Secretaire"],
+        importance: "medium",
+      },
+      {
+        id: "enrollment-validation",
+        title: "Validation des réinscriptions",
+        type: "text",
+        content: `**Critères académiques**
+      Moyenne minimum 50/100 pour le passage
+      
+      **Critères financiers**
+      Pas de dette supérieure à 5,000 HTG
+      
+      **Parcours académique**
+      Respect des transitions autorisées entre niveaux
+      
+      **Statut actuel**
+      L'élève ne doit pas être actuellement inscrit
+      
+      **Disciplinaire**
+      Pas de sanction majeure en cours`,
+        targetRole: ["Admin", "Directeur", "Secretaire"],
+        importance: "high",
+      },
     ],
     quickActions: [
       {
-        id: "batch-enrollment",
-        label: "Réinscriptions groupées",
-        description: "Traiter plusieurs élèves",
-        icon: "Users",
-        path: "/enrollments/batch",
+        id: "quick-enroll",
+        label: "Nouvelle inscription",
+        description: "Inscrire un nouvel élève",
+        icon: "UserPlus",
+        path: "/enrollments/add",
+      },
+      {
+        id: "view-not-enrolled",
+        label: "Non-inscrits",
+        description: "Afficher les élèves non inscrits",
+        icon: "UserX",
+        path: "#",
+      },
+      {
+        id: "export-enrollments",
+        label: "Exporter",
+        description: "Exporter la liste des inscriptions",
+        icon: "Download",
+        path: "/enrollments/export",
+        shortcut: "Ctrl+I",
+      },
+    ],
+    commonIssues: [
+      {
+        id: "issue-enrollment-001",
+        problem: "Élève non éligible à la réinscription",
+        solution:
+          "Vérifier les critères académiques, financiers et disciplinaires",
+        fixSteps: [
+          "Consulter les détails d'inéligibilité",
+          "Régulariser la situation financière",
+          "Contacter la direction pour dérogation",
+        ],
+        preventTips: [
+          "Suivre régulièrement les résultats académiques",
+          "Anticiper les paiements des frais",
+          "Maintenir la discipline",
+        ],
+      },
+      {
+        id: "issue-enrollment-002",
+        problem: "Classe complète",
+        solution: "La capacité maximale est atteinte",
+        fixSteps: [
+          "Vérifier la capacité de la classe",
+          "Choisir une autre classe du même niveau",
+          "Contacter l'administration pour augmentation de capacité",
+        ],
+        preventTips: [
+          "Planifier les capacités avant la rentrée",
+          "Maintenir des listes d'attente",
+        ],
+      },
+      {
+        id: "issue-enrollment-003",
+        problem: "Période d'inscription fermée",
+        solution:
+          "Les inscriptions ne sont ouvertes que pendant certaines périodes",
+        fixSteps: [
+          "Vérifier le calendrier académique",
+          "Demander une dérogation exceptionnelle",
+          "Inscrire pour l'année suivante",
+        ],
+        preventTips: [
+          "Respecter les délais d'inscription",
+          "Configurer les périodes d'inscription dans le système",
+        ],
       },
     ],
   },
@@ -4561,7 +4766,7 @@ export const parentHelpSections: HelpSection[] = [
             title: "Vue d'ensemble",
             description:
               "4 cartes statistiques : Total, Montant total, Montant payé, Solde restant",
-            image: "/help-screenshots/payments/dashboard.jpg",
+            image: "/help-screenshots/payments/page.jpg",
           },
           {
             step: 2,
@@ -4596,7 +4801,7 @@ export const parentHelpSections: HelpSection[] = [
             step: 2,
             title: "Sélectionner l'étudiant",
             description: "Recherchez ou sélectionnez dans la liste déroulante",
-            image: "/help-screenshots/payments/select-student.jpg",
+            image: "/help-screenshots/payments/forms/add-form.jpg",
           },
           {
             step: 3,
@@ -4881,15 +5086,15 @@ export const professeurHelpSections: HelpSection[] = [
           {
             step: 1,
             title: "Accéder au module notes",
-            description: "Menu principal → 'Bulletins' → 'Gestion des Notes'",
-            action: "Naviguer vers Bulletins > Gestion des Notes",
+            description: "'Gestion des Notes'",
+            action: "Naviguer vers Gestion des Notes",
           },
           {
             step: 2,
             title: "Comprendre l'interface",
             description:
               "Deux modes disponibles : Professeur (soumission) et Administrateur (validation)",
-            image: "/help-screenshots/grades/interface-overview.jpg",
+            image: "/help-screenshots/grades/page.jpg",
           },
           {
             step: 3,
@@ -4949,7 +5154,7 @@ export const professeurHelpSections: HelpSection[] = [
             title: "Configuration initiale",
             description:
               "Sélectionnez année, niveau et matière que vous enseignez",
-            image: "/help-screenshots/grades/teacher-setup.jpg",
+            image: "/help-screenshots/grades/page.jpg",
           },
           {
             step: 2,
@@ -4969,7 +5174,7 @@ export const professeurHelpSections: HelpSection[] = [
             title: "Remplir le formulaire",
             description:
               "Note (max selon matière), type contrôle, remarques optionnelles",
-            image: "/help-screenshots/grades/grade-form.jpg",
+            image: "/help-screenshots/grades/forms/add-form.jpg",
           },
           {
             step: 5,

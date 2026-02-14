@@ -857,7 +857,6 @@ export const useGradeStore = create<GradeStore>()(
         }
       },
 
-      // Ancienne fonction (maintenant obsolète mais gardée pour compatibilité)
       fetchStudentGrades: async (studentId: string, filters = {}) => {
         // Utiliser la nouvelle fonction par défaut
         return get().fetchPublishedStudentGrades(studentId, filters);

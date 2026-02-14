@@ -106,8 +106,6 @@ export const getSubjectById = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error(" SubjectController - getSubjectById error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "SUBJECT_DETAILS_ERROR",
@@ -139,8 +137,6 @@ export const createSubject = async (
   try {
     const data: CreateSubjectData = req.body;
     const userId = auditData.userId || req.user?.id;
-
-    console.log("body:", req.body);
 
     if (!userId) {
       await createAuditLog({
@@ -180,7 +176,6 @@ export const createSubject = async (
 
     res.status(201).json(result);
   } catch (error: any) {
-    console.error(" SubjectController - createSubject error:", error);
     const errorMessage = error.message;
     const truncatedErrorMessage = errorMessage.substring(0, 500);
     await createAuditLog({
@@ -215,9 +210,6 @@ export const updateSubject = async (
     const { id } = req.params;
     const data: UpdateSubjectData = req.body;
 
-    console.log("📝 Update Subject - Body:", req.body);
-    console.log("🔍 ID à mettre à jour:", id);
-
     const result = await subjectService.updateSubject(id, data, auditData);
 
     if (!result.success) {
@@ -236,14 +228,8 @@ export const updateSubject = async (
       metadata: result.metadata,
     });
 
-    console.log("✅ Matière mise à jour:", id);
     res.json(result);
   } catch (error: any) {
-    console.error(" SubjectController - updateSubject error:", error);
-    console.error(" Error name:", error.name);
-    console.error(" Error message:", error.message);
-    console.error(" Error code:", error.code);
-
     await createAuditLog({
       ...auditData,
       action: "SUBJECT_UPDATE_ERROR",

@@ -525,7 +525,7 @@ const ClassAssignmentManager = () => {
                 <span className="hidden sm:inline">Actualiser</span>
               </Button>
 
-              {!isMobile && (
+              {/* {!isMobile && (
                 <Button
                   variant="outline"
                   onClick={() =>
@@ -552,7 +552,7 @@ const ClassAssignmentManager = () => {
                     </>
                   )}
                 </Button>
-              )}
+              )} */}
             </div>
           </div>
 

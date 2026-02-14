@@ -305,7 +305,7 @@ export const normalizeGrade = (
   maxGrade: number = 20
 ): number => {
   if (maxGrade === 20) return grade;
-  if (maxGrade === 30) return (grade * 20) / 30;
+  if (maxGrade >= 30) return (grade * 20) / maxGrade;
   if (maxGrade === 10) return grade * 2;
   return grade;
 };

@@ -24,6 +24,7 @@ import studentFeeRoutes from "./routes/studentFeeRoutes";
 import auditRoutes from "./routes/auditRoutes";
 import backupRoutes from "./routes/backupRoutes";
 import transcriptRoutes from "./routes/transcriptRoutes";
+import settingsRoutes from "./routes/settingsRoutes";
 
 import {
   ensureAcademicYearsExist,
@@ -65,7 +66,7 @@ const corsOptions = {
       callback(new Error("Not allowed by CORS"));
     }
   },
-  credentials: true, // Important pour les cookies et auth
+  credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
@@ -75,7 +76,7 @@ const corsOptions = {
     "Origin",
   ],
   exposedHeaders: ["Set-Cookie", "Date", "ETag"],
-  maxAge: 86400, // 24 heures
+  maxAge: 86400,
 };
 
 // Appliquer CORS
@@ -87,11 +88,11 @@ app.use(express.json());
 
 app.use(
   "/uploads/profiles",
-  express.static(path.join(process.cwd(), "uploads", "profiles"))
+  express.static(path.join(process.cwd(), "uploads", "profiles")),
 );
 app.use(
   "/uploads/imports",
-  express.static(path.join(process.cwd(), "uploads", "imports"))
+  express.static(path.join(process.cwd(), "uploads", "imports")),
 );
 
 const PORT = process.env.PORT || 5000;
@@ -120,6 +121,7 @@ app.use("/api/fee-payments", feePaymentRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/backup", backupRoutes);
 app.use("/api/transcripts", transcriptRoutes);
+app.use("/api/settings", settingsRoutes);
 app.use((req, res, next) => {
   // Vérifie si aucune route n'a matché
   if (!req.route) {
@@ -135,34 +137,32 @@ app.use((req, res, next) => {
 // Fonction d'initialisation asynchrone
 const initializeApp = async () => {
   try {
-    console.log("🚀 Démarrage de l'application...");
+    console.log("Démarrage de l'application...");
 
     // Vérifier la connexion à la base de données
     await prisma.$connect();
-    console.log("✅ Connecté à la base de données");
+    console.log("Connecté à la base de données");
 
     // Initialiser les années académiques
-    console.log("📅 Initialisation des années académiques...");
+    console.log("Initialisation des années académiques...");
     await ensureAcademicYearsExist();
     await updateCurrentAcademicYear();
 
     // Démarrer les tâches cron pour la maintenance automatique
-    console.log("🕒 Initialisation des tâches automatiques...");
+    console.log(" Initialisation des tâches automatiques...");
     initializeAcademicYearCron();
 
-    console.log("✅ Initialisation de l'application terminée");
+    console.log("Initialisation de l'application terminée");
   } catch (error) {
-    console.error("❌ Erreur lors de l'initialisation:", error);
+    console.error(" Erreur lors de l'initialisation:", error);
     process.exit(1);
   }
 };
 
 // Lancer le serveur
 app.listen(PORT, async () => {
-  console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);
-
   // Initialiser l'application de manière asynchrone
   await initializeApp();
 
-  console.log(`🎯 API prête à recevoir des requêtes sur le port ${PORT}`);
+  console.log(` API prête à recevoir des requêtes sur le port ${PORT}`);
 });

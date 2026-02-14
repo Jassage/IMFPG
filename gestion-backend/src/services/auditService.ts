@@ -50,7 +50,6 @@ export class AuditService {
     try {
       // Vérifier que prisma.auditLog existe
       if (!prisma.auditLog) {
-        console.error("❌ AuditLog model not available in Prisma client");
         return;
       }
 
@@ -72,8 +71,8 @@ export class AuditService {
         },
       });
     } catch (error) {
-      console.error("❌ Échec de la journalisation d'audit:", error);
-      // Ne pas throw l'erreur pour ne pas interrompre le flux principal
+      console.error(" Échec de la journalisation d'audit:", error);
+     
     }
   }
 }

@@ -429,8 +429,6 @@ export const StudentDetails = ({
   // Fonction pour fermer la modal
   const handleCloseGradesModal = () => {
     setShowGradesModal(false);
-    // On ne reset pas selectedEnrollmentForGrades pour garder le contexte
-    // quand la modal se ferme avec animation
   };
 
   // Fonction pour obtenir les notes d'une inscription spécifique
@@ -698,103 +696,6 @@ export const StudentDetails = ({
               </Button>
             </div>
 
-            {/* Statistiques académiques */}
-            {enrollmentGrades.length > 0 && (
-              <div className="mt-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-white p-3 rounded-lg border border-slate-200">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-md bg-emerald-100 text-emerald-600">
-                        <TrendingUp className="h-3.5 w-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-500">Moyenne</p>
-                        <p className="text-lg font-bold text-slate-900">
-                          {stats.weightedAverage.toFixed(2)}
-                          <span className="text-sm font-normal text-slate-500">
-                            /20
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-3 rounded-lg border border-slate-200">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-md bg-blue-100 text-blue-600">
-                        <CheckCircle className="h-3.5 w-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-500">Validés</p>
-                        <p className="text-lg font-bold text-slate-900">
-                          {stats.validatedCount}
-                          <span className="text-sm font-normal text-slate-500">
-                            /{enrollmentGrades.length}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-3 rounded-lg border border-slate-200">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-md bg-amber-100 text-amber-600">
-                        <Award className="h-3.5 w-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-500">Crédits</p>
-                        <p className="text-lg font-bold text-slate-900">
-                          {stats.obtainedCredits}
-                          <span className="text-sm font-normal text-slate-500">
-                            /{stats.totalCredits}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-3 rounded-lg border border-slate-200">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-md bg-slate-100 text-slate-600">
-                        <Percent className="h-3.5 w-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-500">Réussite</p>
-                        <p className="text-lg font-bold text-slate-900">
-                          {enrollmentGrades.length > 0
-                            ? Math.round(
-                                (stats.validatedCount /
-                                  enrollmentGrades.length) *
-                                  100
-                              )
-                            : 0}
-                          %
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Progression des crédits */}
-                {stats.totalCredits > 0 && (
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-slate-700">
-                        Progression des crédits
-                      </span>
-                      <span className="text-sm text-slate-500">
-                        {stats.obtainedCredits}/{stats.totalCredits}
-                      </span>
-                    </div>
-                    <Progress
-                      value={(stats.obtainedCredits / stats.totalCredits) * 100}
-                      className="h-2"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
             {enrollmentGrades.length === 0 && (
               <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="flex items-center gap-2 text-slate-600">
@@ -1010,9 +911,7 @@ export const StudentDetails = ({
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
                   <div className="text-center">
-                    <p className="text-sm text-emerald-700 mb-1">
-                      Moyenne pondérée
-                    </p>
+                    <p className="text-sm text-emerald-700 mb-1">Moyenne</p>
                     <p className="text-2xl font-bold text-emerald-900">
                       {stats.weightedAverage.toFixed(2)}
                       <span className="text-sm font-normal text-emerald-700">
@@ -1040,25 +939,6 @@ export const StudentDetails = ({
                     </p>
                     {selectedControlType !== "all" && (
                       <p className="text-xs text-blue-600 mt-1">
-                        Pour: {selectedControlType}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
-                  <div className="text-center">
-                    <p className="text-sm text-amber-700 mb-1">
-                      Crédits obtenus
-                    </p>
-                    <p className="text-2xl font-bold text-amber-900">
-                      {stats.obtainedCredits}
-                      <span className="text-sm font-normal text-amber-700">
-                        /{stats.totalCredits}
-                      </span>
-                    </p>
-                    {selectedControlType !== "all" && (
-                      <p className="text-xs text-amber-600 mt-1">
                         Pour: {selectedControlType}
                       </p>
                     )}
@@ -1673,287 +1553,299 @@ export const StudentDetails = ({
           </div>
         </TabsContent>
 
-        {/* Onglet Notes (conservé inchangé) */}
-        <TabsContent value="academic" className="mt-6 space-y-6">
-          <Card className="border-slate-200">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <BarChart3 className="h-5 w-5" />
-                Performance Académique
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* Filtres */}
-              <div className="bg-slate-50 p-4 rounded-xl mb-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      Année académique
-                    </label>
-                    <Select
-                      value={selectedAcademicYear}
-                      onValueChange={setSelectedAcademicYear}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Toutes les années" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Toutes les années</SelectItem>
-                        {groupedGrades.map((group) => (
-                          <SelectItem
-                            key={group.academicYearId}
-                            value={group.academicYearId}
-                          >
-                            {group.academicYear}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      Recherche
-                    </label>
-                    <Input
-                      placeholder="Nom de la matière..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div className="flex items-center space-x-2 pt-6">
-                    <Checkbox
-                      id="show-retakes"
-                      checked={showOnlyRetakes}
-                      onCheckedChange={(checked) =>
-                        setShowOnlyRetakes(checked as boolean)
-                      }
-                    />
-                    <label
-                      htmlFor="show-retakes"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                      Rattrapages seulement
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Liste des années académiques */}
-              {loadingGrades ? (
-                <div className="text-center py-12">
-                  <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-                  <p className="text-slate-500">Chargement des notes...</p>
-                </div>
-              ) : filteredGroupedGrades.length > 0 ? (
-                <div className="space-y-4">
-                  {filteredGroupedGrades.map((group) => {
-                    const filteredGrades = group.grades.filter((grade) => {
-                      const matchesSearch =
-                        searchTerm === "" ||
-                        getSubjectName(grade)
-                          .toLowerCase()
-                          .includes(searchTerm.toLowerCase());
-                      const matchesRetakeFilter =
-                        !showOnlyRetakes ||
-                        grade.session === "Reprise" ||
-                        grade.status === "Reprise";
-                      return matchesSearch && matchesRetakeFilter;
-                    });
-
-                    const isExpanded = expandedYears.has(group.academicYearId);
-                    const className = getClassName(group.enrollment.classId);
-                    const level = getClassLevel(group.enrollment.classId);
-
-                    function toggleYearExpansion(academicYearId: string): void {
-                      setExpandedYears((prev) => {
-                        const newSet = new Set(prev);
-                        if (newSet.has(academicYearId)) {
-                          newSet.delete(academicYearId);
-                        } else {
-                          newSet.add(academicYearId);
-                        }
-                        return newSet;
-                      });
-                    }
-
-                    return (
-                      <Card
-                        key={group.academicYearId}
-                        className="overflow-hidden border-slate-200"
+        {/* Onglet Notes visible par les directeur et admin */}
+        {user?.role === "Admin" || user?.role === "Directeur" ? (
+          <TabsContent value="academic" className="mt-6 space-y-6">
+            <Card className="border-slate-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <BarChart3 className="h-5 w-5" />
+                  Performance Académique
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Filtres */}
+                <div className="bg-slate-50 p-4 rounded-xl mb-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">
+                        Année académique
+                      </label>
+                      <Select
+                        value={selectedAcademicYear}
+                        onValueChange={setSelectedAcademicYear}
                       >
-                        <CardHeader className="pb-3 bg-slate-50">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  toggleYearExpansion(group.academicYearId)
-                                }
-                                className="p-1 h-8 w-8"
-                              >
-                                {isExpanded ? (
-                                  <ChevronUp className="h-4 w-4" />
-                                ) : (
-                                  <ChevronDown className="h-4 w-4" />
-                                )}
-                              </Button>
-                              <div>
-                                <h3 className="font-semibold text-slate-900">
-                                  {group.academicYear}
-                                </h3>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <Badge variant="outline" className="text-xs">
-                                    {className}
-                                  </Badge>
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-xs"
-                                  >
-                                    {getLevelText(level)}
-                                  </Badge>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Toutes les années" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Toutes les années</SelectItem>
+                          {groupedGrades.map((group) => (
+                            <SelectItem
+                              key={group.academicYearId}
+                              value={group.academicYearId}
+                            >
+                              {group.academicYear}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">
+                        Recherche
+                      </label>
+                      <Input
+                        placeholder="Nom de la matière..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="flex items-center space-x-2 pt-6">
+                      <Checkbox
+                        id="show-retakes"
+                        checked={showOnlyRetakes}
+                        onCheckedChange={(checked) =>
+                          setShowOnlyRetakes(checked as boolean)
+                        }
+                      />
+                      <label
+                        htmlFor="show-retakes"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        Rattrapages seulement
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Liste des années académiques */}
+                {loadingGrades ? (
+                  <div className="text-center py-12">
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+                    <p className="text-slate-500">Chargement des notes...</p>
+                  </div>
+                ) : filteredGroupedGrades.length > 0 ? (
+                  <div className="space-y-4">
+                    {filteredGroupedGrades.map((group) => {
+                      const filteredGrades = group.grades.filter((grade) => {
+                        const matchesSearch =
+                          searchTerm === "" ||
+                          getSubjectName(grade)
+                            .toLowerCase()
+                            .includes(searchTerm.toLowerCase());
+                        const matchesRetakeFilter =
+                          !showOnlyRetakes ||
+                          grade.session === "Reprise" ||
+                          grade.status === "Reprise";
+                        return matchesSearch && matchesRetakeFilter;
+                      });
+
+                      const isExpanded = expandedYears.has(
+                        group.academicYearId
+                      );
+                      const className = getClassName(group.enrollment.classId);
+                      const level = getClassLevel(group.enrollment.classId);
+
+                      function toggleYearExpansion(
+                        academicYearId: string
+                      ): void {
+                        setExpandedYears((prev) => {
+                          const newSet = new Set(prev);
+                          if (newSet.has(academicYearId)) {
+                            newSet.delete(academicYearId);
+                          } else {
+                            newSet.add(academicYearId);
+                          }
+                          return newSet;
+                        });
+                      }
+
+                      return (
+                        <Card
+                          key={group.academicYearId}
+                          className="overflow-hidden border-slate-200"
+                        >
+                          <CardHeader className="pb-3 bg-slate-50">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    toggleYearExpansion(group.academicYearId)
+                                  }
+                                  className="p-1 h-8 w-8"
+                                >
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <div>
+                                  <h3 className="font-semibold text-slate-900">
+                                    {group.academicYear}
+                                  </h3>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs"
+                                    >
+                                      {className}
+                                    </Badge>
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs"
+                                    >
+                                      {getLevelText(level)}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-lg font-bold text-primary">
+                                  {group.weightedAverage.toFixed(2)}/20
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Moyenne pondérée
                                 </div>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <div className="text-lg font-bold text-primary">
-                                {group.weightedAverage.toFixed(2)}/20
-                              </div>
-                              <div className="text-xs text-slate-500">
-                                Moyenne pondérée
-                              </div>
-                            </div>
-                          </div>
-                        </CardHeader>
+                          </CardHeader>
 
-                        {isExpanded && (
-                          <CardContent className="pt-4">
-                            {filteredGrades.length > 0 ? (
-                              <div className="space-y-3">
-                                {filteredGrades.map((grade) => {
-                                  const normalizedGrade =
-                                    getNormalizedGrade(grade);
-                                  const coefficient =
-                                    getSubjectCoefficient(grade);
-                                  const maxGrade = getSubjectMaxGrade(grade);
+                          {isExpanded && (
+                            <CardContent className="pt-4">
+                              {filteredGrades.length > 0 ? (
+                                <div className="space-y-3">
+                                  {filteredGrades.map((grade) => {
+                                    const normalizedGrade =
+                                      getNormalizedGrade(grade);
+                                    const coefficient =
+                                      getSubjectCoefficient(grade);
+                                    const maxGrade = getSubjectMaxGrade(grade);
 
-                                  return (
-                                    <div
-                                      key={grade.id}
-                                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 transition-colors"
-                                    >
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <h4 className="font-medium text-slate-900">
-                                            {getSubjectName(grade)}
-                                            <span className="text-xs text-slate-500 ml-2">
-                                              (Coef: {coefficient})
-                                            </span>
-                                          </h4>
-                                          {getGradeStatusBadge(grade)}
+                                    return (
+                                      <div
+                                        key={grade.id}
+                                        className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 transition-colors"
+                                      >
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <h4 className="font-medium text-slate-900">
+                                              {getSubjectName(grade)}
+                                              <span className="text-xs text-slate-500 ml-2">
+                                                (Coef: {coefficient})
+                                              </span>
+                                            </h4>
+                                            {getGradeStatusBadge(grade)}
+                                          </div>
+                                          <div className="text-xs text-slate-500">
+                                            {grade.controlType ||
+                                              "Contrôle non spécifié"}
+                                            {maxGrade !== 20 && (
+                                              <span className="ml-2">
+                                                (Sur {maxGrade})
+                                              </span>
+                                            )}
+                                          </div>
                                         </div>
-                                        <div className="text-xs text-slate-500">
-                                          {grade.controlType ||
-                                            "Contrôle non spécifié"}
-                                          {maxGrade !== 20 && (
-                                            <span className="ml-2">
-                                              (Sur {maxGrade})
-                                            </span>
-                                          )}
+                                        <div className="text-right">
+                                          <div
+                                            className={`text-lg font-bold ${getGradeColor(
+                                              normalizedGrade
+                                            )}`}
+                                          >
+                                            {grade.grade?.toFixed(2) || "0.00"}/
+                                            {maxGrade}
+                                          </div>
+                                          <div className="text-xs text-slate-500">
+                                            ({normalizedGrade.toFixed(2)}/20 ×{" "}
+                                            {coefficient})
+                                          </div>
                                         </div>
                                       </div>
-                                      <div className="text-right">
-                                        <div
-                                          className={`text-lg font-bold ${getGradeColor(
-                                            normalizedGrade
-                                          )}`}
-                                        >
-                                          {grade.grade?.toFixed(2) || "0.00"}/
-                                          {maxGrade}
-                                        </div>
-                                        <div className="text-xs text-slate-500">
-                                          ({normalizedGrade.toFixed(2)}/20 ×{" "}
-                                          {coefficient})
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="text-center py-6 text-slate-500">
-                                Aucune note trouvée
-                              </div>
-                            )}
-                          </CardContent>
-                        )}
-                      </Card>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <BookOpen className="h-12 w-12 mx-auto text-slate-300 mb-4" />
-                  <p className="text-slate-500">Aucune note enregistrée</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="text-center py-6 text-slate-500">
+                                  Aucune note trouvée
+                                </div>
+                              )}
+                            </CardContent>
+                          )}
+                        </Card>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <BookOpen className="h-12 w-12 mx-auto text-slate-300 mb-4" />
+                    <p className="text-slate-500">Aucune note enregistrée</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        ) : null}
 
-        {/* Onglet Frais */}
-        <TabsContent value="fees" className="mt-6">
-          <div className="space-y-6">
-            {currentEnrollment ? (
-              <>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-lg font-medium">Frais de scolarité</h3>
-                    <p className="text-muted-foreground">
-                      {student.firstName} {student.lastName} -{" "}
-                      {getAcademicYear(currentEnrollment.academicYearId)}
-                    </p>
+        {/* Onglet Frais visible uniquement pour les admin*/}
+        {user?.role === "Admin" && (
+          <TabsContent value="fees" className="mt-6">
+            <div className="space-y-6">
+              {currentEnrollment ? (
+                <>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-lg font-medium">
+                        Frais de scolarité
+                      </h3>
+                      <p className="text-muted-foreground">
+                        {student.firstName} {student.lastName} -{" "}
+                        {getAcademicYear(currentEnrollment.academicYearId)}
+                      </p>
+                    </div>
+
+                    <AssignFeesButton
+                      studentId={student.id}
+                      studentCode={student.studentCode}
+                      academicYearId={currentEnrollment.academicYearId}
+                      onSuccess={() => {}}
+                    />
                   </div>
 
-                  <AssignFeesButton
-                    studentId={student.id}
-                    studentCode={student.studentCode}
-                    academicYearId={currentEnrollment.academicYearId}
-                    onSuccess={() => {}}
+                  <StudentFeesSection
+                    student={student}
+                    currentEnrollment={{
+                      ...currentEnrollment,
+                      academicYear: getAcademicYear(
+                        currentEnrollment.academicYearId
+                      ),
+                      academicYearId: currentEnrollment.academicYearId,
+                    }}
                   />
-                </div>
-
-                <StudentFeesSection
-                  student={student}
-                  currentEnrollment={{
-                    ...currentEnrollment,
-                    academicYear: getAcademicYear(
-                      currentEnrollment.academicYearId
-                    ),
-                    academicYearId: currentEnrollment.academicYearId,
-                  }}
-                />
-              </>
-            ) : (
-              <Card className="border-slate-200">
-                <CardContent className="p-8 text-center">
-                  <CreditCard className="h-12 w-12 mx-auto text-slate-300 mb-4" />
-                  <h3 className="text-lg font-medium text-slate-700 mb-2">
-                    Aucune inscription active
-                  </h3>
-                  <p className="text-slate-500">
-                    L'étudiant doit avoir une inscription active pour gérer les
-                    frais.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
-
+                </>
+              ) : (
+                <Card className="border-slate-200">
+                  <CardContent className="p-8 text-center">
+                    <CreditCard className="h-12 w-12 mx-auto text-slate-300 mb-4" />
+                    <h3 className="text-lg font-medium text-slate-700 mb-2">
+                      Aucune inscription active
+                    </h3>
+                    <p className="text-slate-500">
+                      L'étudiant doit avoir une inscription active pour gérer
+                      les frais.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+        )}
         {/* Onglet Inscriptions  */}
         <TabsContent value="enrollments" className="mt-6">
           <Card className="border-slate-200 overflow-hidden">

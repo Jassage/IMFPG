@@ -23,9 +23,9 @@ const transporter = nodemailer.createTransport({
 // Vérifier la configuration SMTP
 transporter.verify(function (error, success) {
   if (error) {
-    console.error("❌ Erreur configuration SMTP:", error);
+    console.error(" Erreur configuration SMTP:", error);
   } else {
-    console.log("✅ Serveur SMTP prêt à envoyer des emails");
+    console.log("Serveur SMTP prêt à envoyer des emails");
   }
 });
 

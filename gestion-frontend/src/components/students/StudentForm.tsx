@@ -638,7 +638,7 @@ export const StudentForm = ({
         lastName: data.lastName.trim(),
         email: data.email.trim().toLowerCase(),
         phone: data.phone ? data.phone.trim() : "",
-        dateOfBirth: data.dateOfBirth, // ← Maintenant toujours présent
+        dateOfBirth: data.dateOfBirth,
         placeOfBirth: data.placeOfBirth ? data.placeOfBirth.trim() : "",
         address: data.address ? data.address.trim() : "",
         allergies: data.allergies ? data.allergies.trim() : "",
@@ -1005,17 +1005,6 @@ export const StudentForm = ({
                             </div>
                           </FormControl>
                           <FormMessage />
-                          {emailAvailability.available === false &&
-                            !student && (
-                              <p className="text-sm text-red-500 mt-1">
-                                Cet email est déjà utilisé
-                              </p>
-                            )}
-                          {emailAvailability.available === true && !student && (
-                            <p className="text-sm text-green-500 mt-1">
-                              Email disponible
-                            </p>
-                          )}
                         </FormItem>
                       )}
                     />

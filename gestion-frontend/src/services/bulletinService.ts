@@ -1,3 +1,4 @@
+import { log } from "console";
 import api from "./api";
 import {
   Bulletin,
@@ -520,6 +521,7 @@ class BulletinService {
   }> {
     try {
       const response = await api.post("/bulletins/generate", request);
+      console.log("📄 Bulletin generation response:", response.data);
       return response.data;
     } catch (error) {
       throw this.handleError(error);

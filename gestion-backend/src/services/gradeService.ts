@@ -1130,18 +1130,6 @@ export class GradeService {
         };
       }
 
-      // Vérifier les permissions
-      // if (
-      //   auditData.userRole === UserRole.Student &&
-      //   auditData.userId !== student
-      // ) {
-      //   return {
-      //     success: false,
-      //     message: "Vous ne pouvez voir que vos propres notes",
-      //     code: "UNAUTHORIZED_VIEW",
-      //   };
-      // }
-
       // Construction des filtres
       const where: any = { studentId, isActive: true };
 
@@ -1172,6 +1160,7 @@ export class GradeService {
               coefficient: true,
               type: true,
               passingGrade: true,
+              maxGrade: true,
             },
           },
           classAssignment: {

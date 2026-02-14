@@ -3,6 +3,8 @@ import { create } from "zustand";
 import api from "../services/api";
 
 export interface AcademicYear {
+  name: any;
+  academicYear: any;
   id: string;
   year: string;
   startDate: string;

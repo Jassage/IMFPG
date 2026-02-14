@@ -909,7 +909,7 @@ export const HelpDashboard: React.FC = () => {
             {/* Footer */}
             <div className="border-t px-6 py-3 bg-gradient-to-r from-gray-50 to-white flex flex-col sm:flex-row justify-between items-center gap-4">
               <div className="text-sm text-gray-500">
-                © {new Date().getFullYear()} SYSG-IMFP v2.0 • Centre d'Aide
+                © {new Date().getFullYear()} SYSG-IMFP v1.0 • Centre d'Aide
               </div>
             </div>
           </div>

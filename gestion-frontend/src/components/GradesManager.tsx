@@ -2369,16 +2369,6 @@ export const GradeManager = () => {
                 <Download className="h-4 w-4 mr-2" />
                 Exporter
               </Button>
-
-              <Button
-                onClick={handleImportClick}
-                variant="outline"
-                className="border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-950"
-                disabled={loading}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Importer
-              </Button>
             </>
           )}
 

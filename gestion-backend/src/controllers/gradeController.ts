@@ -114,8 +114,6 @@ export const getGrades = async (req: Request, res: Response): Promise<void> => {
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - getGrades error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_LIST_ERROR",
@@ -162,8 +160,6 @@ export const getGradeById = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - getGradeById error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADE_DETAILS_ERROR",
@@ -229,8 +225,6 @@ export const createGrade = async (
 
     formatResponse(res, result, 201);
   } catch (error: any) {
-    console.error("GradeController - createGrade error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADE_CREATION_ERROR",
@@ -295,8 +289,6 @@ export const createAndPublishGrade = async (
 
     formatResponse(res, result, 201);
   } catch (error: any) {
-    console.error("GradeController - createAndPublishGrade error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADE_CREATE_PUBLISH_ERROR",
@@ -358,8 +350,6 @@ export const updateGrade = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - updateGrade error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADE_UPDATE_ERROR",
@@ -422,8 +412,6 @@ export const updateAndPublishGrade = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - updateAndPublishGrade error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADE_UPDATE_PUBLISH_ERROR",
@@ -475,8 +463,6 @@ export const deleteGrade = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - deleteGrade error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADE_DELETION_ERROR",
@@ -542,8 +528,6 @@ export const getStudentGrades = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - getStudentGrades error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "STUDENT_GRADES_ERROR",
@@ -599,8 +583,6 @@ export const submitGradesForApproval = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - submitGradesForApproval error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_SUBMISSION_ERROR",
@@ -664,8 +646,6 @@ export const getPendingApproval = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - getPendingApproval error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "PENDING_APPROVAL_ERROR",
@@ -741,8 +721,6 @@ export const approveGrades = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - approveGrades error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_APPROVAL_ERROR",
@@ -807,8 +785,6 @@ export const approveAndPublishGrades = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - approveAndPublishGrades error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_APPROVE_PUBLISH_ERROR",
@@ -881,8 +857,6 @@ export const rejectGrades = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - rejectGrades error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_REJECTION_ERROR",
@@ -947,8 +921,6 @@ export const publishGradesToStudents = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - publishGradesToStudents error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_PUBLICATION_ERROR",
@@ -1040,8 +1012,6 @@ export const bulkImportGrades = async (
 
     formatResponse(res, result, 201);
   } catch (error: any) {
-    console.error("GradeController - bulkImportGrades error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_BULK_IMPORT_ERROR",
@@ -1103,8 +1073,6 @@ export const getGradeStatistics = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - getGradeStatistics error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADE_STATISTICS_ERROR",
@@ -1169,8 +1137,6 @@ export const getAdminGradeStatistics = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - getAdminGradeStatistics error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "ADMIN_GRADE_STATISTICS_ERROR",
@@ -1245,8 +1211,6 @@ export const getGradesByClass = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - getGradesByClass error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_BY_CLASS_ERROR",
@@ -1320,8 +1284,6 @@ export const getGradesBySubject = async (
 
     formatResponse(res, result);
   } catch (error: any) {
-    console.error("GradeController - getGradesBySubject error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_BY_SUBJECT_ERROR",
@@ -1435,8 +1397,6 @@ export const exportGradesToExcel = async (
     // Envoyer le fichier
     res.send(csvContent);
   } catch (error: any) {
-    console.error("GradeController - exportGradesToExcel error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "GRADES_EXPORT_ERROR",

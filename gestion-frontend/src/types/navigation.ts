@@ -43,6 +43,7 @@ export type ActiveTab =
   | "settings"
   | "audit-logs"
   | "backup"
+  | "settings"
 
   // Analytics
   | "analytics"
@@ -184,7 +185,7 @@ export const createNavigationItem = (
   permission: string,
   options?: Partial<
     Omit<NavigationItem, "id" | "label" | "icon" | "permission">
-  >
+  >,
 ): NavigationItem => ({
   id,
   label,
@@ -283,25 +284,25 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "dashboard",
         "Accueil",
         "Home",
-        PERMISSIONS.VIEW_DASHBOARD
+        PERMISSIONS.VIEW_DASHBOARD,
       ),
       createNavigationItem(
         "students",
         "Élèves",
         "Users",
-        PERMISSIONS.VIEW_STUDENTS
+        PERMISSIONS.VIEW_STUDENTS,
       ),
       createNavigationItem(
         "enrollments",
         "Inscriptions",
         "UserPlus",
-        PERMISSIONS.MANAGE_ENROLLMENTS
+        PERMISSIONS.MANAGE_ENROLLMENTS,
       ),
       createNavigationItem(
         "professeurs",
         "Professeurs",
         "Award",
-        PERMISSIONS.VIEW_PROFESSEURS
+        PERMISSIONS.VIEW_PROFESSEURS,
       ),
     ],
     academicItems: [
@@ -309,31 +310,31 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "subject",
         "Matières",
         "BookOpen",
-        PERMISSIONS.VIEW_SUBJECTS
+        PERMISSIONS.VIEW_SUBJECTS,
       ),
       createNavigationItem(
         "grades",
         "Notes",
         "FileText",
-        PERMISSIONS.MANAGE_GRADES
+        PERMISSIONS.MANAGE_GRADES,
       ),
       createNavigationItem(
         "attendance",
         "Présences",
         "ClipboardCheck",
-        PERMISSIONS.VIEW_ATTENDANCE
+        PERMISSIONS.VIEW_ATTENDANCE,
       ),
       createNavigationItem(
         "schedule",
         "Emploi du temps",
         "CalendarDays",
-        PERMISSIONS.VIEW_SCHEDULE
+        PERMISSIONS.VIEW_SCHEDULE,
       ),
       createNavigationItem(
         "class_assignment",
         "Catalogue Cours",
         "RotateCcw",
-        PERMISSIONS.MANAGE_SUBJECTS
+        PERMISSIONS.MANAGE_SUBJECTS,
       ),
     ],
     documentItems: [
@@ -341,19 +342,19 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "student-cards",
         "Cartes Élèves",
         "CreditCard",
-        PERMISSIONS.GENERATE_CARDS
+        PERMISSIONS.GENERATE_CARDS,
       ),
       createNavigationItem(
         "transcripts",
         "Bulletins",
         "ScrollText",
-        PERMISSIONS.GENERATE_TRANSCRIPTS
+        PERMISSIONS.GENERATE_TRANSCRIPTS,
       ),
       createNavigationItem(
         "reports",
         "Rapports",
         "FileBarChart",
-        PERMISSIONS.GENERATE_REPORTS
+        PERMISSIONS.GENERATE_REPORTS,
       ),
     ],
     adminItems: [
@@ -361,32 +362,38 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "users",
         "Utilisateurs",
         "UserCog",
-        PERMISSIONS.VIEW_USERS
+        PERMISSIONS.VIEW_USERS,
       ),
       createNavigationItem(
         "classes",
         "Classes",
         "Building",
-        PERMISSIONS.VIEW_SETTINGS
+        PERMISSIONS.VIEW_SETTINGS,
       ),
       createNavigationItem(
         "fees",
         "Frais scolaires",
         "Wallet",
-        PERMISSIONS.MANAGE_FEES
+        PERMISSIONS.MANAGE_FEES,
       ),
       createNavigationItem(
         "expenses",
         "Dépenses",
         "Receipt",
-        PERMISSIONS.VIEW_EXPENSES
+        PERMISSIONS.VIEW_EXPENSES,
       ),
 
       createNavigationItem(
         "audit-logs",
         "Journal d'audit",
         "ShieldAlert",
-        PERMISSIONS.VIEW_AUDIT_LOGS
+        PERMISSIONS.VIEW_AUDIT_LOGS,
+      ),
+      createNavigationItem(
+        "settings",
+        "Paramètres",
+        "Settings",
+        PERMISSIONS.MANAGE_SETTINGS,
       ),
     ],
   },
@@ -397,19 +404,19 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "dashboard",
         "Accueil",
         "Home",
-        PERMISSIONS.VIEW_DASHBOARD
+        PERMISSIONS.VIEW_DASHBOARD,
       ),
       createNavigationItem(
         "students",
         "Élèves",
         "Users",
-        PERMISSIONS.VIEW_STUDENTS
+        PERMISSIONS.VIEW_STUDENTS,
       ),
       createNavigationItem(
         "enrollments",
         "ReInscriptions",
         "UserPlus",
-        PERMISSIONS.PROCESS_ENROLLMENTS
+        PERMISSIONS.PROCESS_ENROLLMENTS,
       ),
     ],
     academicItems: [],
@@ -423,19 +430,19 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "dashboard",
         "Tableau de bord",
         "Home",
-        PERMISSIONS.VIEW_DASHBOARD
+        PERMISSIONS.VIEW_DASHBOARD,
       ),
       createNavigationItem(
         "fees",
         "Frais scolaires",
         "Wallet",
-        PERMISSIONS.VIEW_FEES
+        PERMISSIONS.VIEW_FEES,
       ),
       createNavigationItem(
         "payments",
         "Paiements",
         "DollarSign",
-        PERMISSIONS.VIEW_OWN_PAYMENTS
+        PERMISSIONS.VIEW_OWN_PAYMENTS,
       ),
     ],
     academicItems: [],
@@ -449,7 +456,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "dashboard",
         "Mon tableau de bord",
         "Home",
-        PERMISSIONS.VIEW_DASHBOARD
+        PERMISSIONS.VIEW_DASHBOARD,
       ),
     ],
     academicItems: [],
@@ -463,14 +470,14 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "dashboard",
         "Tableau de bord",
         "Home",
-        PERMISSIONS.VIEW_DASHBOARD
+        PERMISSIONS.VIEW_DASHBOARD,
       ),
 
       createNavigationItem(
         "grades",
         "Saisie des notes",
         "FileEdit",
-        PERMISSIONS.MANAGE_OWN_GRADES
+        PERMISSIONS.MANAGE_OWN_GRADES,
       ),
     ],
     academicItems: [],
@@ -484,25 +491,25 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "dashboard",
         "Accueil",
         "Home",
-        PERMISSIONS.VIEW_DASHBOARD
+        PERMISSIONS.VIEW_DASHBOARD,
       ),
       createNavigationItem(
         "students",
         "Élèves",
         "Users",
-        PERMISSIONS.VIEW_STUDENTS
+        PERMISSIONS.VIEW_STUDENTS,
       ),
       createNavigationItem(
         "enrollments",
         "Inscriptions",
         "UserPlus",
-        PERMISSIONS.MANAGE_ENROLLMENTS
+        PERMISSIONS.MANAGE_ENROLLMENTS,
       ),
       createNavigationItem(
         "professeurs",
         "Professeurs",
         "Award",
-        PERMISSIONS.VIEW_PROFESSEURS
+        PERMISSIONS.VIEW_PROFESSEURS,
       ),
     ],
     academicItems: [
@@ -510,20 +517,20 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "subject",
         "Matières",
         "BookOpen",
-        PERMISSIONS.VIEW_SUBJECTS
+        PERMISSIONS.VIEW_SUBJECTS,
       ),
 
       createNavigationItem(
         "schedule",
         "Emploi du temps",
         "CalendarDays",
-        PERMISSIONS.VIEW_SCHEDULE
+        PERMISSIONS.VIEW_SCHEDULE,
       ),
       createNavigationItem(
         "class_assignment",
         "Catalogue Cours",
         "RotateCcw",
-        PERMISSIONS.MANAGE_SUBJECTS
+        PERMISSIONS.MANAGE_SUBJECTS,
       ),
     ],
     documentItems: [
@@ -531,7 +538,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "transcripts",
         "Bulletins",
         "ScrollText",
-        PERMISSIONS.GENERATE_TRANSCRIPTS
+        PERMISSIONS.GENERATE_TRANSCRIPTS,
       ),
     ],
     adminItems: [
@@ -539,13 +546,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "classes",
         "Classes",
         "Building",
-        PERMISSIONS.VIEW_SETTINGS
+        PERMISSIONS.VIEW_SETTINGS,
       ),
       createNavigationItem(
         "fees",
         "Frais scolaires",
         "Wallet",
-        PERMISSIONS.MANAGE_FEES
+        PERMISSIONS.MANAGE_FEES,
       ),
     ],
   },

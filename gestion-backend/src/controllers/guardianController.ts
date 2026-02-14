@@ -12,15 +12,14 @@ export const getAllGuardians = async (
   res: Response
 ): Promise<void> => {
   try {
-    console.log("📥 GET /api/guardians - Début de la requête");
-
     const {
       page = 1,
       limit = 50,
       studentId,
       search,
       hasParentAccount,
-      isPrimary} = req.query;
+      isPrimary,
+    } = req.query;
 
     const pageNum = parseInt(page as string);
     const limitNum = Math.min(parseInt(limit as string), 100);
@@ -48,15 +47,13 @@ export const getAllGuardians = async (
     if (search) {
       const searchStr = search as string;
       where.OR = [
-        { firstName: { contains: searchStr} },
-        { lastName: { contains: searchStr} },
-        { email: { contains: searchStr} },
-        { phone: { contains: searchStr} },
-        { relationship: { contains: searchStr} },
+        { firstName: { contains: searchStr } },
+        { lastName: { contains: searchStr } },
+        { email: { contains: searchStr } },
+        { phone: { contains: searchStr } },
+        { relationship: { contains: searchStr } },
       ];
     }
-
-    console.log(`🔍 Filtres Guardians:`, where);
 
     // Récupérer les guardians avec leurs relations
     const [guardians, total] = await Promise.all([
@@ -90,7 +87,11 @@ export const getAllGuardians = async (
                 select: {
                   id: true,
                   name: true,
-                  level: true}}}},
+                  level: true,
+                },
+              },
+            },
+          },
 
           // Inclure le parent si existe
           parent: {
@@ -102,16 +103,18 @@ export const getAllGuardians = async (
                   firstName: true,
                   lastName: true,
                   email: true,
-                  phone: true}}}}},
+                  phone: true,
+                },
+              },
+            },
+          },
+        },
         orderBy: { createdAt: "desc" },
         skip,
-        take: limitNum}),
+        take: limitNum,
+      }),
       prisma.guardian.count({ where }),
     ]);
-
-    console.log(
-      `✅ ${guardians.length} guardians récupérés sur ${total} total`
-    );
 
     // Formater la réponse
     const response = {
@@ -124,7 +127,9 @@ export const getAllGuardians = async (
         total,
         totalPages: Math.ceil(total / limitNum),
         hasNextPage: pageNum < Math.ceil(total / limitNum),
-        hasPrevPage: pageNum > 1}};
+        hasPrevPage: pageNum > 1,
+      },
+    };
 
     res.json(response);
   } catch (error: any) {
@@ -133,7 +138,8 @@ export const getAllGuardians = async (
     res.status(500).json({
       success: false,
       message: "Erreur lors de la récupération des guardians",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined});
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
 
@@ -168,7 +174,11 @@ export const getGuardianById = async (
               select: {
                 id: true,
                 name: true,
-                level: true}}}},
+                level: true,
+              },
+            },
+          },
+        },
         parent: {
           include: {
             user: {
@@ -179,7 +189,9 @@ export const getGuardianById = async (
                 email: true,
                 phone: true,
                 role: true,
-                status: true}},
+                status: true,
+              },
+            },
             guardians: {
               select: {
                 id: true,
@@ -191,24 +203,35 @@ export const getGuardianById = async (
                     id: true,
                     firstName: true,
                     lastName: true,
-                    studentCode: true}}}}}}}});
+                    studentCode: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
 
     if (!guardian) {
       res.status(404).json({
         success: false,
-        message: "Guardian non trouvé"});
+        message: "Guardian non trouvé",
+      });
       return;
     }
 
     res.json({
       success: true,
       message: "Guardian récupéré avec succès",
-      data: guardian});
+      data: guardian,
+    });
   } catch (error: any) {
     console.error(`❌ Erreur getGuardianById ${req.params.id}:`, error);
     res.status(500).json({
       success: false,
-      message: "Erreur lors de la récupération du guardian"});
+      message: "Erreur lors de la récupération du guardian",
+    });
   }
 };
 
@@ -232,29 +255,34 @@ export const createGuardian = async (
       isPrimary = false,
       studentId,
       parentId,
-      notes} = req.body;
+      notes,
+    } = req.body;
 
     console.log("📥 POST /api/guardians - Création:", {
       firstName,
       lastName,
-      studentId});
+      studentId,
+    });
 
     // Validation des données requises
     if (!firstName || !lastName || !phone || !studentId) {
       res.status(400).json({
         success: false,
-        message: "Prénom, nom, téléphone et étudiant sont requis"});
+        message: "Prénom, nom, téléphone et étudiant sont requis",
+      });
       return;
     }
 
     // Vérifier que l'étudiant existe
     const student = await prisma.student.findUnique({
-      where: { id: studentId }});
+      where: { id: studentId },
+    });
 
     if (!student) {
       res.status(404).json({
         success: false,
-        message: "Étudiant non trouvé"});
+        message: "Étudiant non trouvé",
+      });
       return;
     }
 
@@ -262,25 +290,30 @@ export const createGuardian = async (
     const existingGuardian = await prisma.guardian.findFirst({
       where: {
         phone,
-        studentId}});
+        studentId,
+      },
+    });
 
     if (existingGuardian) {
       res.status(400).json({
         success: false,
         message:
-          "Un guardian avec ce numéro de téléphone existe déjà pour cet étudiant"});
+          "Un guardian avec ce numéro de téléphone existe déjà pour cet étudiant",
+      });
       return;
     }
 
     // Vérifier le parent si parentId est fourni
     if (parentId) {
       const parent = await prisma.parent.findUnique({
-        where: { id: parentId }});
+        where: { id: parentId },
+      });
 
       if (!parent) {
         res.status(404).json({
           success: false,
-          message: "Parent non trouvé"});
+          message: "Parent non trouvé",
+        });
         return;
       }
 
@@ -288,19 +321,23 @@ export const createGuardian = async (
       const existingParentGuardian = await prisma.guardian.findFirst({
         where: {
           parentId,
-          studentId}});
+          studentId,
+        },
+      });
 
       if (existingParentGuardian) {
         res.status(400).json({
           success: false,
-          message: "Ce parent est déjà tuteur de cet étudiant"});
+          message: "Ce parent est déjà tuteur de cet étudiant",
+        });
         return;
       }
     }
 
     // Si c'est le premier guardian pour cet étudiant, le définir comme principal
     const studentGuardians = await prisma.guardian.findMany({
-      where: { studentId }});
+      where: { studentId },
+    });
 
     const shouldBePrimary = studentGuardians.length === 0 || isPrimary;
 
@@ -308,7 +345,8 @@ export const createGuardian = async (
     if (shouldBePrimary && studentGuardians.length > 0) {
       await prisma.guardian.updateMany({
         where: { studentId },
-        data: { isPrimary: false }});
+        data: { isPrimary: false },
+      });
     }
 
     // Créer le guardian
@@ -322,27 +360,37 @@ export const createGuardian = async (
         relationship: relationship || "Parent",
         isPrimary: shouldBePrimary,
         studentId,
-        parentId: parentId || null},
+        parentId: parentId || null,
+      },
       include: {
         student: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            studentCode: true}},
+            studentCode: true,
+          },
+        },
         parent: {
           include: {
             user: {
               select: {
                 firstName: true,
-                lastName: true}}}}}});
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
     console.log(`✅ Guardian créé: ${guardian.id}`);
 
     res.status(201).json({
       success: true,
       message: "Guardian créé avec succès",
-      data: guardian});
+      data: guardian,
+    });
   } catch (error: any) {
     console.error("❌ Erreur createGuardian:", error);
 
@@ -350,13 +398,15 @@ export const createGuardian = async (
     if (error.code === "P2003") {
       res.status(400).json({
         success: false,
-        message: "Référence invalide (étudiant ou parent inexistant)"});
+        message: "Référence invalide (étudiant ou parent inexistant)",
+      });
       return;
     }
 
     res.status(500).json({
       success: false,
-      message: "Erreur lors de la création du guardian"});
+      message: "Erreur lors de la création du guardian",
+    });
   }
 };
 
@@ -377,12 +427,14 @@ export const updateGuardian = async (
 
     // Vérifier si le guardian existe
     const existingGuardian = await prisma.guardian.findUnique({
-      where: { id }});
+      where: { id },
+    });
 
     if (!existingGuardian) {
       res.status(404).json({
         success: false,
-        message: "Guardian non trouvé"});
+        message: "Guardian non trouvé",
+      });
       return;
     }
 
@@ -392,12 +444,15 @@ export const updateGuardian = async (
         where: {
           phone: updateData.phone,
           studentId: existingGuardian.studentId,
-          id: { not: id }}});
+          id: { not: id },
+        },
+      });
 
       if (existingPhone) {
         res.status(400).json({
           success: false,
-          message: "Ce numéro de téléphone est déjà utilisé pour cet étudiant"});
+          message: "Ce numéro de téléphone est déjà utilisé pour cet étudiant",
+        });
         return;
       }
     }
@@ -407,8 +462,10 @@ export const updateGuardian = async (
       await prisma.guardian.updateMany({
         where: {
           studentId: existingGuardian.studentId,
-          id: { not: id }},
-        data: { isPrimary: false }});
+          id: { not: id },
+        },
+        data: { isPrimary: false },
+      });
     }
 
     // Mettre à jour le guardian
@@ -422,34 +479,42 @@ export const updateGuardian = async (
         address: updateData.address,
         relationship: updateData.relationship,
         isPrimary: updateData.isPrimary,
-        parentId: updateData.parentId},
+        parentId: updateData.parentId,
+      },
       include: {
         student: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            studentCode: true}}}});
+            studentCode: true,
+          },
+        },
+      },
+    });
 
     console.log(`✅ Guardian mis à jour: ${guardian.id}`);
 
     res.json({
       success: true,
       message: "Guardian mis à jour avec succès",
-      data: guardian});
+      data: guardian,
+    });
   } catch (error: any) {
     console.error(`❌ Erreur updateGuardian ${req.params.id}:`, error);
 
     if (error.code === "P2025") {
       res.status(404).json({
         success: false,
-        message: "Guardian non trouvé"});
+        message: "Guardian non trouvé",
+      });
       return;
     }
 
     res.status(500).json({
       success: false,
-      message: "Erreur lors de la mise à jour du guardian"});
+      message: "Erreur lors de la mise à jour du guardian",
+    });
   }
 };
 
@@ -474,12 +539,17 @@ export const deleteGuardian = async (
           select: {
             id: true,
             firstName: true,
-            lastName: true}}}});
+            lastName: true,
+          },
+        },
+      },
+    });
 
     if (!guardian) {
       res.status(404).json({
         success: false,
-        message: "Guardian non trouvé"});
+        message: "Guardian non trouvé",
+      });
       return;
     }
 
@@ -488,19 +558,23 @@ export const deleteGuardian = async (
       const otherGuardians = await prisma.guardian.findMany({
         where: {
           studentId: guardian.studentId,
-          id: { not: id }},
-        take: 1});
+          id: { not: id },
+        },
+        take: 1,
+      });
 
       if (otherGuardians.length > 0) {
         await prisma.guardian.update({
           where: { id: otherGuardians[0].id },
-          data: { isPrimary: true }});
+          data: { isPrimary: true },
+        });
       }
     }
 
     // Supprimer le guardian
     await prisma.guardian.delete({
-      where: { id }});
+      where: { id },
+    });
 
     console.log(`✅ Guardian supprimé: ${id}`);
 
@@ -511,20 +585,24 @@ export const deleteGuardian = async (
         id,
         studentName: guardian.student
           ? `${guardian.student.firstName} ${guardian.student.lastName}`
-          : "Étudiant inconnu"}});
+          : "Étudiant inconnu",
+      },
+    });
   } catch (error: any) {
     console.error(`❌ Erreur deleteGuardian ${req.params.id}:`, error);
 
     if (error.code === "P2025") {
       res.status(404).json({
         success: false,
-        message: "Guardian non trouvé"});
+        message: "Guardian non trouvé",
+      });
       return;
     }
 
     res.status(500).json({
       success: false,
-      message: "Erreur lors de la suppression du guardian"});
+      message: "Erreur lors de la suppression du guardian",
+    });
   }
 };
 
@@ -546,17 +624,19 @@ export const searchGuardians = async (
     if (!q || typeof q !== "string") {
       res.status(400).json({
         success: false,
-        message: "Terme de recherche requis"});
+        message: "Terme de recherche requis",
+      });
       return;
     }
 
     const where: any = {
       OR: [
-        { firstName: { contains: q} },
-        { lastName: { contains: q} },
-        { email: { contains: q} },
-        { phone: { contains: q} },
-      ]};
+        { firstName: { contains: q } },
+        { lastName: { contains: q } },
+        { email: { contains: q } },
+        { phone: { contains: q } },
+      ],
+    };
 
     if (studentId && typeof studentId === "string") {
       where.studentId = studentId;
@@ -577,19 +657,25 @@ export const searchGuardians = async (
             id: true,
             firstName: true,
             lastName: true,
-            studentCode: true}}},
-      take: 20});
+            studentCode: true,
+          },
+        },
+      },
+      take: 20,
+    });
 
     res.json({
       success: true,
       message: "Recherche terminée",
       data: guardians,
-      count: guardians.length});
+      count: guardians.length,
+    });
   } catch (error: any) {
     console.error("❌ Erreur searchGuardians:", error);
     res.status(500).json({
       success: false,
-      message: "Erreur lors de la recherche"});
+      message: "Erreur lors de la recherche",
+    });
   }
 };
 
@@ -613,7 +699,8 @@ export const setPrimaryGuardian = async (
     if (!studentId) {
       res.status(400).json({
         success: false,
-        message: "ID de l'étudiant requis"});
+        message: "ID de l'étudiant requis",
+      });
       return;
     }
 
@@ -621,24 +708,29 @@ export const setPrimaryGuardian = async (
     const guardian = await prisma.guardian.findFirst({
       where: {
         id,
-        studentId}});
+        studentId,
+      },
+    });
 
     if (!guardian) {
       res.status(404).json({
         success: false,
-        message: "Guardian non trouvé pour cet étudiant"});
+        message: "Guardian non trouvé pour cet étudiant",
+      });
       return;
     }
 
     // Mettre tous les guardians de cet étudiant comme non principaux
     await prisma.guardian.updateMany({
       where: { studentId },
-      data: { isPrimary: false }});
+      data: { isPrimary: false },
+    });
 
     // Définir ce guardian comme principal
     await prisma.guardian.update({
       where: { id },
-      data: { isPrimary: true }});
+      data: { isPrimary: true },
+    });
 
     // Récupérer le guardian mis à jour
     const updatedGuardian = await prisma.guardian.findUnique({
@@ -648,17 +740,23 @@ export const setPrimaryGuardian = async (
           select: {
             id: true,
             firstName: true,
-            lastName: true}}}});
+            lastName: true,
+          },
+        },
+      },
+    });
 
     res.json({
       success: true,
       message: "Guardian défini comme principal avec succès",
-      data: updatedGuardian});
+      data: updatedGuardian,
+    });
   } catch (error: any) {
     console.error(`❌ Erreur setPrimaryGuardian ${req.params.id}:`, error);
     res.status(500).json({
       success: false,
-      message: "Erreur lors de la définition du guardian principal"});
+      message: "Erreur lors de la définition du guardian principal",
+    });
   }
 };
 
@@ -678,22 +776,30 @@ export const getGuardianStatistics = async (
     const relationshipStats = await prisma.guardian.groupBy({
       by: ["relationship"],
       _count: {
-        id: true},
+        id: true,
+      },
       orderBy: {
         _count: {
-          id: "desc"}}});
+          id: "desc",
+        },
+      },
+    });
 
     // Compter les guardians avec/sans compte parent
     const parentAccountStats = await prisma.guardian.groupBy({
       by: ["parentId"],
       _count: {
-        id: true}});
+        id: true,
+      },
+    });
 
     // Compter par statut principal
     const primaryStats = await prisma.guardian.groupBy({
       by: ["isPrimary"],
       _count: {
-        id: true}});
+        id: true,
+      },
+    });
 
     // Nombre total
     const totalGuardians = await prisma.guardian.count();
@@ -705,24 +811,35 @@ export const getGuardianStatistics = async (
     const recentAdditions = await prisma.guardian.count({
       where: {
         createdAt: {
-          gte: weekAgo}}});
+          gte: weekAgo,
+        },
+      },
+    });
 
     // Statistiques par étudiant
     const studentsWithGuardians = await prisma.student.findMany({
       where: {
         guardians: {
-          some: {}}},
+          some: {},
+        },
+      },
       select: {
         id: true,
         firstName: true,
         lastName: true,
         _count: {
           select: {
-            guardians: true}}},
+            guardians: true,
+          },
+        },
+      },
       orderBy: {
         guardians: {
-          _count: "desc"}},
-      take: 5});
+          _count: "desc",
+        },
+      },
+      take: 5,
+    });
 
     const statistics = {
       total: totalGuardians,
@@ -743,16 +860,20 @@ export const getGuardianStatistics = async (
       topStudentsWithGuardians: studentsWithGuardians.map((student) => ({
         id: student.id,
         name: `${student.firstName} ${student.lastName}`,
-        guardianCount: student._count.guardians}))};
+        guardianCount: student._count.guardians,
+      })),
+    };
 
     res.json({
       success: true,
       message: "Statistiques récupérées avec succès",
-      data: { statistics }});
+      data: { statistics },
+    });
   } catch (error: any) {
     console.error("❌ Erreur getGuardianStatistics:", error);
     res.status(500).json({
       success: false,
-      message: "Erreur lors de la récupération des statistiques"});
+      message: "Erreur lors de la récupération des statistiques",
+    });
   }
 };

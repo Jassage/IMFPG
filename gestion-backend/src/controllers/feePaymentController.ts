@@ -19,7 +19,7 @@ import { createAuditLog } from "./auditController";
  * @function getAllFeePayments
  * @description Récupère tous les paiements avec filtres optionnels
  * @route GET /api/fee-payments
- * @access Staff/Admin
+ * @access Comptable/Admin
  * @query {string} [studentFeeId] - ID des frais étudiants pour filtrer
  * @returns {Promise<void>}
  */
@@ -49,8 +49,6 @@ export const getAllFeePayments = async (req: Request, res: Response) => {
 
     res.json(result.data);
   } catch (error: any) {
-    console.error("❌ Erreur récupération paiements:", error);
-
     const errorMessage = error.message || "Erreur inconnue";
 
     // Log d'erreur
@@ -106,8 +104,6 @@ export const getFeePaymentById = async (req: Request, res: Response) => {
 
     res.json(result.data);
   } catch (error: any) {
-    console.error("❌ Erreur récupération paiement:", error);
-
     // Log d'erreur
     await createAuditLog({
       ...auditData,
@@ -157,8 +153,6 @@ export const createFeePayment = async (req: Request, res: Response) => {
     const { studentFeeId, amount, paymentMethod, reference, paymentDate } =
       req.body;
 
-    console.log("📥 Création paiement - Données:", req.body);
-
     // Log de tentative de création
     await createAuditLog({
       ...auditData,
@@ -196,8 +190,6 @@ export const createFeePayment = async (req: Request, res: Response) => {
 
     res.status(201).json(result.data);
   } catch (error: any) {
-    console.error("❌ Erreur création paiement:", error);
-
     // Log d'erreur
     await createAuditLog({
       ...auditData,
@@ -260,8 +252,6 @@ export const getFeePayments = async (req: Request, res: Response) => {
 
     res.json(result.data);
   } catch (error: any) {
-    console.error("❌ Erreur récupération paiements:", error);
-
     // Log d'erreur
     await createAuditLog({
       ...auditData,
@@ -306,8 +296,6 @@ export const updateFeePayment = async (req: Request, res: Response) => {
     const { id } = req.params;
     const data = req.body;
 
-    console.log("📥 Mise à jour paiement - ID:", id, "Données:", data);
-
     const result = await FeePaymentService.updateFeePayment(id, data);
 
     // Log de succès
@@ -323,8 +311,6 @@ export const updateFeePayment = async (req: Request, res: Response) => {
 
     res.json(result.data);
   } catch (error: any) {
-    console.error("❌ Erreur mise à jour paiement:", error);
-
     await createAuditLog({
       ...auditData,
       action: "UPDATE_FEE_PAYMENT_ERROR",
@@ -370,8 +356,6 @@ export const deleteFeePayment = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    console.log("🗑️ Suppression paiement - ID:", id);
-
     // Log de tentative de suppression
     await createAuditLog({
       ...auditData,
@@ -397,8 +381,6 @@ export const deleteFeePayment = async (req: Request, res: Response) => {
 
     res.json({ message: result.message });
   } catch (error: any) {
-    console.error("❌ Erreur suppression paiement:", error);
-
     // Log d'erreur de suppression
     await createAuditLog({
       ...auditData,
@@ -456,8 +438,6 @@ export const getPaymentHistory = async (req: Request, res: Response) => {
 
     res.json(result.data);
   } catch (error: any) {
-    console.error("❌ Erreur récupération historique paiements:", error);
-
     // Log d'erreur
     await createAuditLog({
       ...auditData,

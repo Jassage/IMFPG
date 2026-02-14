@@ -15,10 +15,8 @@ export const getStudentsByAcademicYearAndLevel = (
   const activeEnrollments = enrollments.filter(
     (enrollment) =>
       enrollment.academicYearId === academicYearId &&
-      enrollment.status === "Active" // ou "Enrolled"
+      enrollment.status === "Active"
   );
-
-  console.log("📋 Inscriptions actives:", activeEnrollments.length);
 
   // 2. Extraire les IDs d'étudiants inscrits
   const enrolledStudentIds = activeEnrollments.map((e) => e.studentId);

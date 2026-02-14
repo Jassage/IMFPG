@@ -21,7 +21,6 @@ import {
   getScheduleById,
   getAllSchedules,
   getClassTimetable,
-  generateTimetable,
   updateSchedule,
   getProfessorSchedule,
   checkConflicts,
@@ -147,30 +146,6 @@ router.post(
   validateCreateSchedule,
   handleValidationErrors,
   createSchedule
-);
-
-/**
- * @route POST /api/schedules/generate
- * @description Génère un emploi du temps automatiquement
- * @access Admin
- * @body {string} classId - ID de la classe
- * @body {string} academicYearId - ID de l'année académique
- * @body {Object} [constraints] - Contraintes de génération
- * @body {number} [constraints.maxHoursPerDay=6] - Heures max par jour
- * @body {Object} [constraints.breakTime] - Pause déjeuner
- * @body {string} [constraints.breakTime.start] - Début pause
- * @body {string} [constraints.breakTime.end] - Fin pause
- */
-router.post(
-  "/generate",
-  requireAuth,
-  requireAdmin,
-  validateContentType(),
-  validateRequestBody,
-  sanitizeInput,
-  validateGenerateTimetable,
-  handleValidationErrors,
-  generateTimetable
 );
 
 /**

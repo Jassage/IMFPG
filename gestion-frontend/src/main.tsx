@@ -4,7 +4,7 @@ import App from "./App.tsx";
 import "./index.css";
 import { LanguageProvider } from "./contexts/LanguageContext.tsx";
 import { DataProvider } from "./contexts/DataContext.tsx";
-import { ThemeProvider } from "./pages/SettingsPage.tsx";
+import { ThemeProvider } from "./providers/ThemeProvider.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <LanguageProvider>
@@ -13,5 +13,5 @@ createRoot(document.getElementById("root")!).render(
         <App />
       </DataProvider>
     </ThemeProvider>
-  </LanguageProvider>
+  </LanguageProvider>,
 );

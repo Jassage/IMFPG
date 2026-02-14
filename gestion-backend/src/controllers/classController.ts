@@ -56,8 +56,6 @@ export const getClasses = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - getClasses error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "CLASSES_LIST_ERROR",
@@ -106,8 +104,6 @@ export const getClassById = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - getClassById error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "CLASS_DETAILS_ERROR",
@@ -157,8 +153,6 @@ export const createClass = async (
 
     res.status(201).json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - createClass error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "CLASS_CREATION_ERROR",
@@ -210,8 +204,6 @@ export const updateClass = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - updateClass error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "CLASS_UPDATE_ERROR",
@@ -262,8 +254,6 @@ export const deleteClass = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - deleteClass error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "CLASS_DELETION_ERROR",
@@ -312,8 +302,6 @@ export const getClassStats = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - getClassStats error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "CLASS_STATS_ERROR",
@@ -357,8 +345,6 @@ export const getClassStudents = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - getClassStudents error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "CLASS_STUDENTS_ERROR",
@@ -402,8 +388,6 @@ export const getClassSchedule = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - getClassSchedule error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "CLASS_SCHEDULE_ERROR",
@@ -437,8 +421,6 @@ export const getAllClasses = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - getAllClasses error:", error);
-
     const response: ApiResponse = {
       success: false,
       message: "Erreur interne du serveur",
@@ -463,8 +445,6 @@ export const getClassLevels = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - getClassLevels error:", error);
-
     const response: ApiResponse = {
       success: false,
       message: "Erreur interne du serveur",
@@ -497,8 +477,6 @@ export const getOverallClassStats = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ ClassController - getOverallClassStats error:", error);
-
     await createAuditLog({
       ...auditData,
       action: "OVERALL_CLASS_STATS_ERROR",

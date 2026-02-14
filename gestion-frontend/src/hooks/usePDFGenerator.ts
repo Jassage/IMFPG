@@ -565,24 +565,12 @@ export const usePDFGenerator = () => {
       startY = margins.top;
     }
 
-    // Signature professeur principal
-    const teacherX = 60;
-    doc.setFontSize(10);
-    doc.text("Le Professeur Principal", teacherX, startY + 15, {
-      align: "center",
-    });
-    doc.setLineWidth(0.5);
-    doc
-      .moveTo(teacherX - 40, startY + 10)
-      .lineTo(teacherX + 40, startY + 10)
-      .stroke();
-
     // Signature directeur
-    const directorX = 140;
-    doc.text("Le Directeur", directorX, startY + 15, { align: "center" });
+    const directorX = 170;
+    doc.text("Le Directeur", directorX, startY + 75, { align: "center" });
     doc
-      .moveTo(directorX - 40, startY + 10)
-      .lineTo(directorX + 40, startY + 10)
+      .moveTo(directorX - 20, startY + 70)
+      .lineTo(directorX + 20, startY + 70)
       .stroke();
 
     return startY + 20;

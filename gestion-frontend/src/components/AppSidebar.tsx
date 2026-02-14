@@ -90,7 +90,7 @@ export function AppSidebar({
       permission: string;
       description?: string;
     }[],
-    title: string
+    title: string,
   ) => {
     const filteredItems = items.filter((item) => {
       // Pour admin, toujours montrer les items (a toutes les permissions)
@@ -133,7 +133,7 @@ export function AppSidebar({
                     }
                     className={cn(
                       "w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                      !hasAccess && "opacity-50 cursor-not-allowed"
+                      !hasAccess && "opacity-50 cursor-not-allowed",
                     )}
                     disabled={!hasAccess}
                   >
@@ -205,7 +205,7 @@ export function AppSidebar({
         return <Award className="h-3 w-3 text-blue-500" />;
       case "Secretaire":
         return <Briefcase className="h-3 w-3 text-green-500" />;
-      case "Parent":
+      case "Comptable":
         return <UsersRound className="h-3 w-3 text-orange-500" />;
       case "Student":
         return <GraduationCap className="h-3 w-3 text-indigo-500" />;
@@ -236,7 +236,7 @@ export function AppSidebar({
       className={cn(
         "border-r bg-sidebar",
         isMobile && "border-r-0",
-        "transition-all duration-300"
+        "transition-all duration-300",
       )}
     >
       <SidebarHeader className={cn("p-4 ujeph-header", isMobile && "border-b")}>
@@ -320,7 +320,7 @@ export function AppSidebar({
                 className={cn(
                   "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 text-xs",
                   !currentAcademicYear &&
-                    "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100"
+                    "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100",
                 )}
               >
                 {currentAcademicYear ? currentAcademicYear.year : "Non définie"}

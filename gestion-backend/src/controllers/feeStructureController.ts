@@ -58,8 +58,6 @@ export const getAllFeeStructures = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur récupération structures de frais:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURES_LIST_ERROR",
@@ -108,8 +106,6 @@ export const getFeeStructureById = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur récupération structure de frais:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURE_DETAILS_ERROR",
@@ -146,8 +142,6 @@ export const createFeeStructure = async (req: Request, res: Response) => {
       isActive: req.body.isActive,
     };
 
-    console.log("📥 Données reçues pour création:", req.body);
-
     const result = await feeStructureService.createFeeStructure(data);
 
     if (!result.success) {
@@ -177,8 +171,6 @@ export const createFeeStructure = async (req: Request, res: Response) => {
 
     res.status(201).json(result);
   } catch (error: any) {
-    console.error("❌ Erreur création structure de frais:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURE_CREATION_ERROR",
@@ -216,8 +208,6 @@ export const updateFeeStructure = async (req: Request, res: Response) => {
       isActive: req.body.isActive,
     };
 
-    console.log("📥 Mise à jour structure:", { id, data: req.body });
-
     const result = await feeStructureService.updateFeeStructure(id, data);
 
     if (!result.success) {
@@ -249,8 +239,6 @@ export const updateFeeStructure = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur mise à jour structure:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURE_UPDATE_ERROR",
@@ -280,7 +268,6 @@ export const deleteFeeStructure = async (req: Request, res: Response) => {
 
   try {
     const { id } = req.params;
-    console.log("🗑️ Tentative suppression structure frais:", id);
 
     const result = await feeStructureService.deleteFeeStructure(id);
 
@@ -306,8 +293,6 @@ export const deleteFeeStructure = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur suppression structure:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURE_DELETION_ERROR",
@@ -337,8 +322,6 @@ export const forceDeleteFeeStructure = async (req: Request, res: Response) => {
 
   try {
     const { id } = req.params;
-    console.log("💥 Suppression forcée structure frais:", id);
-
     const result = await feeStructureService.forceDeleteFeeStructure(id);
 
     if (!result.success) {
@@ -367,8 +350,6 @@ export const forceDeleteFeeStructure = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur suppression forcée:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURE_FORCE_DELETION_ERROR",
@@ -419,8 +400,6 @@ export const getFeeStructureByAcademicYear = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur récupération frais par année:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURE_BY_YEAR_ERROR",
@@ -474,8 +453,6 @@ export const getFeeStructuresByAcademicYearId = async (
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur récupération frais par ID année:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURES_BY_YEAR_ID_ERROR",
@@ -516,8 +493,6 @@ export const getAcademicYearsWithFees = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur récupération années avec frais:", error);
-
     await createAuditLog({
       ...auditData,
       action: "ACADEMIC_YEARS_WITH_FEES_ERROR",
@@ -569,8 +544,6 @@ export const toggleFeeStructureStatus = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur changement statut structure:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURE_STATUS_TOGGLE_ERROR",
@@ -622,8 +595,6 @@ export const searchFeeStructures = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur recherche structures:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURES_SEARCH_ERROR",
@@ -664,8 +635,6 @@ export const getFeeStructureStats = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("❌ Erreur récupération statistiques:", error);
-
     await createAuditLog({
       ...auditData,
       action: "FEE_STRUCTURES_STATS_ERROR",

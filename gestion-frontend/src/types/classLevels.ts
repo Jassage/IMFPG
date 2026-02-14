@@ -1,4 +1,4 @@
-// @/types/classLevels.ts
+
 export const ClassLevel = {
   Sixieme: "Sixieme",
   Cinquieme: "Cinquieme",

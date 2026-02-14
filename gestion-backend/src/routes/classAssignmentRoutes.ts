@@ -7,13 +7,11 @@
 import { Router } from "express";
 import {
   requireAuth,
-  requireAdmin,
   requireStaff,
   validateRequestBody,
   validateContentType,
   sanitizeInput,
   handleValidationErrors,
-  requireTeacher,
   requireTeacherOrStaff,
   requireDirector,
 } from "../middleware";

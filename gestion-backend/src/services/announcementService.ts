@@ -20,8 +20,8 @@ const getUserAudience = (userRole: string | undefined): string => {
       return "Teachers";
     case "Student":
       return "Students";
-    case "Parent":
-      return "Parents";
+    case "Comptable":
+      return "Comptable";
     case "Secretaire":
       return "Staff";
     default:
@@ -113,13 +113,15 @@ export class AnnouncementService {
       attachments = [],
       userId,
       userRole,
-      userEmail} = data;
+      userEmail,
+    } = data;
 
     // Vérification que l'utilisateur est authentifié
     if (!userId || !userRole) {
       throw {
         status: 401,
-        message: "Authentification requise"};
+        message: "Authentification requise",
+      };
     }
 
     // Vérification des permissions
@@ -128,7 +130,8 @@ export class AnnouncementService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Seuls les administrateurs, directeurs, secrétaires et professeurs peuvent créer des annonces."};
+          "Permission refusée. Seuls les administrateurs, directeurs, secrétaires et professeurs peuvent créer des annonces.",
+      };
     }
 
     // Validation des dates
@@ -139,7 +142,8 @@ export class AnnouncementService {
       throw {
         status: 400,
         message:
-          "La date d'expiration doit être postérieure à la date de publication"};
+          "La date d'expiration doit être postérieure à la date de publication",
+      };
     }
 
     // Création de l'annonce
@@ -155,7 +159,8 @@ export class AnnouncementService {
         isActive: true,
         attachments: attachments || [],
         createdAt: new Date(),
-        updatedAt: new Date()},
+        updatedAt: new Date(),
+      },
       include: {
         author: {
           select: {
@@ -163,7 +168,11 @@ export class AnnouncementService {
             firstName: true,
             lastName: true,
             email: true,
-            role: true}}}});
+            role: true,
+          },
+        },
+      },
+    });
 
     // Journalisation dans l'audit log
     await prisma.auditLog.create({
@@ -178,7 +187,10 @@ export class AnnouncementService {
           announcementId: announcement.id,
           title: announcement.title,
           targetAudience: announcement.targetAudience,
-          priority: announcement.priority}}});
+          priority: announcement.priority,
+        },
+      },
+    });
 
     return {
       success: true,
@@ -187,7 +199,9 @@ export class AnnouncementService {
       metadata: {
         announcementId: announcement.id,
         action: "CREATE",
-        userEmail}};
+        userEmail,
+      },
+    };
   }
 
   /**
@@ -219,7 +233,8 @@ export class AnnouncementService {
       sortOrder = "desc",
       search,
       authorId,
-      userRole} = filters;
+      userRole,
+    } = filters;
 
     // Construction des conditions de filtrage
     const where: any = {};
@@ -228,7 +243,8 @@ export class AnnouncementService {
     if (userRole && !["Admin", "Directeur"].includes(userRole)) {
       const userAudience = getUserAudience(userRole);
       where.targetAudience = {
-        in: ["All", userAudience]};
+        in: ["All", userAudience],
+      };
       where.isActive = true;
 
       // Exclure les annonces expirées pour les non-admins
@@ -268,8 +284,8 @@ export class AnnouncementService {
     // Filtre de recherche
     if (search) {
       where.OR = [
-        { title: { contains: search} },
-        { content: { contains: search} },
+        { title: { contains: search } },
+        { content: { contains: search } },
       ];
     }
 
@@ -298,7 +314,11 @@ export class AnnouncementService {
               firstName: true,
               lastName: true,
               email: true,
-              role: true}}}}),
+              role: true,
+            },
+          },
+        },
+      }),
       prisma.announcement.count({ where }),
     ]);
 
@@ -316,14 +336,18 @@ export class AnnouncementService {
           total,
           totalPages,
           hasNextPage: pageNum < totalPages,
-          hasPrevPage: pageNum > 1},
+          hasPrevPage: pageNum > 1,
+        },
         filters: {
           targetAudience: targetAudience || "all",
           priority: priority || "all",
           isActive: isActive || "all",
           startDate,
           endDate,
-          search}}};
+          search,
+        },
+      },
+    };
   }
 
   /**
@@ -342,12 +366,14 @@ export class AnnouncementService {
     const where: any = {
       isActive: true,
       targetAudience: {
-        in: ["All", userAudience]},
+        in: ["All", userAudience],
+      },
       publishDate: { lte: new Date() }, // Publiées
       OR: [
         { expiryDate: null }, // Sans expiration
         { expiryDate: { gt: new Date() } }, // Non expirées
-      ]};
+      ],
+    };
 
     // Récupération des annonces actives
     const announcements = await prisma.announcement.findMany({
@@ -363,7 +389,11 @@ export class AnnouncementService {
             id: true,
             firstName: true,
             lastName: true,
-            email: true}}}});
+            email: true,
+          },
+        },
+      },
+    });
 
     return {
       success: true,
@@ -372,7 +402,9 @@ export class AnnouncementService {
       meta: {
         count: announcements.length,
         limit: parseInt(limit),
-        userAudience}};
+        userAudience,
+      },
+    };
   }
 
   /**
@@ -389,13 +421,18 @@ export class AnnouncementService {
             firstName: true,
             lastName: true,
             email: true,
-            role: true}}}});
+            role: true,
+          },
+        },
+      },
+    });
 
     // Vérification si l'annonce existe
     if (!announcement) {
       throw {
         status: 404,
-        message: "Annonce non trouvée"};
+        message: "Annonce non trouvée",
+      };
     }
 
     // Vérification des permissions d'accès
@@ -403,13 +440,15 @@ export class AnnouncementService {
       throw {
         status: 403,
         message:
-          "Accès refusé. Vous n'avez pas les permissions nécessaires pour voir cette annonce."};
+          "Accès refusé. Vous n'avez pas les permissions nécessaires pour voir cette annonce.",
+      };
     }
 
     return {
       success: true,
       message: "Annonce récupérée avec succès",
-      data: announcement};
+      data: announcement,
+    };
   }
 
   /**
@@ -430,17 +469,20 @@ export class AnnouncementService {
     if (!userId || !userRole) {
       throw {
         status: 401,
-        message: "Authentification requise"};
+        message: "Authentification requise",
+      };
     }
 
     // Vérification de l'existence de l'annonce
     const existingAnnouncement = await prisma.announcement.findUnique({
-      where: { id }});
+      where: { id },
+    });
 
     if (!existingAnnouncement) {
       throw {
         status: 404,
-        message: "Annonce non trouvée"};
+        message: "Annonce non trouvée",
+      };
     }
 
     // Vérification des permissions de modification
@@ -448,7 +490,8 @@ export class AnnouncementService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Vous ne pouvez pas modifier cette annonce."};
+          "Permission refusée. Vous ne pouvez pas modifier cette annonce.",
+      };
     }
 
     // Validation des dates si présentes
@@ -464,7 +507,8 @@ export class AnnouncementService {
         throw {
           status: 400,
           message:
-            "La date d'expiration doit être postérieure à la date de publication"};
+            "La date d'expiration doit être postérieure à la date de publication",
+        };
       }
     }
 
@@ -475,17 +519,24 @@ export class AnnouncementService {
         ...updates,
         // Conversion des dates si présentes
         ...(updates.publishDate && {
-          publishDate: new Date(updates.publishDate)}),
+          publishDate: new Date(updates.publishDate),
+        }),
         ...(updates.expiryDate && {
-          expiryDate: new Date(updates.expiryDate)}),
-        updatedAt: new Date()},
+          expiryDate: new Date(updates.expiryDate),
+        }),
+        updatedAt: new Date(),
+      },
       include: {
         author: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            email: true}}}});
+            email: true,
+          },
+        },
+      },
+    });
 
     // Journalisation dans l'audit log
     await prisma.auditLog.create({
@@ -499,7 +550,10 @@ export class AnnouncementService {
         oldData: existingAnnouncement,
         newData: updatedAnnouncement,
         metadata: {
-          changes: Object.keys(updates)}}});
+          changes: Object.keys(updates),
+        },
+      },
+    });
 
     return {
       success: true,
@@ -509,7 +563,9 @@ export class AnnouncementService {
         announcementId: id,
         action: "UPDATE",
         userEmail,
-        changes: Object.keys(updates)}};
+        changes: Object.keys(updates),
+      },
+    };
   }
 
   /**
@@ -529,7 +585,8 @@ export class AnnouncementService {
     if (!userId || !userRole) {
       throw {
         status: 401,
-        message: "Authentification requise"};
+        message: "Authentification requise",
+      };
     }
 
     // Vérification des permissions
@@ -538,22 +595,26 @@ export class AnnouncementService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Seuls les administrateurs et directeurs peuvent supprimer des annonces."};
+          "Permission refusée. Seuls les administrateurs et directeurs peuvent supprimer des annonces.",
+      };
     }
 
     // Vérification de l'existence de l'annonce
     const existingAnnouncement = await prisma.announcement.findUnique({
-      where: { id }});
+      where: { id },
+    });
 
     if (!existingAnnouncement) {
       throw {
         status: 404,
-        message: "Annonce non trouvée"};
+        message: "Annonce non trouvée",
+      };
     }
 
     // Suppression de l'annonce
     await prisma.announcement.delete({
-      where: { id }});
+      where: { id },
+    });
 
     // Journalisation dans l'audit log
     await prisma.auditLog.create({
@@ -567,7 +628,10 @@ export class AnnouncementService {
         oldData: existingAnnouncement,
         metadata: {
           title: existingAnnouncement.title,
-          targetAudience: existingAnnouncement.targetAudience}}});
+          targetAudience: existingAnnouncement.targetAudience,
+        },
+      },
+    });
 
     return {
       success: true,
@@ -576,7 +640,9 @@ export class AnnouncementService {
         announcementId: id,
         title: existingAnnouncement.title,
         action: "DELETE",
-        userEmail}};
+        userEmail,
+      },
+    };
   }
 
   /**
@@ -596,17 +662,20 @@ export class AnnouncementService {
     if (!userId || !userRole) {
       throw {
         status: 401,
-        message: "Authentification requise"};
+        message: "Authentification requise",
+      };
     }
 
     // Vérification de l'existence de l'annonce
     const existingAnnouncement = await prisma.announcement.findUnique({
-      where: { id }});
+      where: { id },
+    });
 
     if (!existingAnnouncement) {
       throw {
         status: 404,
-        message: "Annonce non trouvée"};
+        message: "Annonce non trouvée",
+      };
     }
 
     // Vérification des permissions
@@ -614,7 +683,8 @@ export class AnnouncementService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Vous ne pouvez pas désactiver cette annonce."};
+          "Permission refusée. Vous ne pouvez pas désactiver cette annonce.",
+      };
     }
 
     // Désactivation de l'annonce
@@ -622,7 +692,9 @@ export class AnnouncementService {
       where: { id },
       data: {
         isActive: false,
-        updatedAt: new Date()}});
+        updatedAt: new Date(),
+      },
+    });
 
     // Journalisation dans l'audit log
     await prisma.auditLog.create({
@@ -635,7 +707,10 @@ export class AnnouncementService {
         status: "SUCCESS",
         metadata: {
           previousStatus: existingAnnouncement.isActive,
-          newStatus: false}}});
+          newStatus: false,
+        },
+      },
+    });
 
     return {
       success: true,
@@ -646,7 +721,9 @@ export class AnnouncementService {
         action: "DEACTIVATE",
         userEmail,
         previousStatus: existingAnnouncement.isActive,
-        newStatus: false}};
+        newStatus: false,
+      },
+    };
   }
 
   /**
@@ -666,17 +743,20 @@ export class AnnouncementService {
     if (!userId || !userRole) {
       throw {
         status: 401,
-        message: "Authentification requise"};
+        message: "Authentification requise",
+      };
     }
 
     // Vérification de l'existence de l'annonce
     const existingAnnouncement = await prisma.announcement.findUnique({
-      where: { id }});
+      where: { id },
+    });
 
     if (!existingAnnouncement) {
       throw {
         status: 404,
-        message: "Annonce non trouvée"};
+        message: "Annonce non trouvée",
+      };
     }
 
     // Vérification des permissions
@@ -684,7 +764,8 @@ export class AnnouncementService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Vous ne pouvez pas activer cette annonce."};
+          "Permission refusée. Vous ne pouvez pas activer cette annonce.",
+      };
     }
 
     // Activation de l'annonce
@@ -692,7 +773,9 @@ export class AnnouncementService {
       where: { id },
       data: {
         isActive: true,
-        updatedAt: new Date()}});
+        updatedAt: new Date(),
+      },
+    });
 
     // Journalisation dans l'audit log
     await prisma.auditLog.create({
@@ -705,7 +788,10 @@ export class AnnouncementService {
         status: "SUCCESS",
         metadata: {
           previousStatus: existingAnnouncement.isActive,
-          newStatus: true}}});
+          newStatus: true,
+        },
+      },
+    });
 
     return {
       success: true,
@@ -716,7 +802,9 @@ export class AnnouncementService {
         action: "ACTIVATE",
         userEmail,
         previousStatus: existingAnnouncement.isActive,
-        newStatus: true}};
+        newStatus: true,
+      },
+    };
   }
 
   /**
@@ -728,7 +816,8 @@ export class AnnouncementService {
       throw {
         status: 403,
         message:
-          "Permission refusée. Seuls les administrateurs et directeurs peuvent voir les statistiques."};
+          "Permission refusée. Seuls les administrateurs et directeurs peuvent voir les statistiques.",
+      };
     }
 
     // Récupération des statistiques en parallèle
@@ -746,23 +835,28 @@ export class AnnouncementService {
 
       // Annonces actives
       prisma.announcement.count({
-        where: { isActive: true }}),
+        where: { isActive: true },
+      }),
 
       // Annonces expirées
       prisma.announcement.count({
         where: {
           expiryDate: { lt: new Date() },
-          isActive: true}}),
+          isActive: true,
+        },
+      }),
 
       // Annonces par public cible
       prisma.announcement.groupBy({
         by: ["targetAudience"],
-        _count: true}),
+        _count: true,
+      }),
 
       // Annonces par priorité
       prisma.announcement.groupBy({
         by: ["priority"],
-        _count: true}),
+        _count: true,
+      }),
 
       // Annonces par auteur
       prisma.announcement.groupBy({
@@ -770,14 +864,20 @@ export class AnnouncementService {
         _count: true,
         orderBy: {
           _count: {
-            authorId: "desc"}},
-        take: 10}),
+            authorId: "desc",
+          },
+        },
+        take: 10,
+      }),
 
       // Annonces récentes (7 derniers jours)
       prisma.announcement.count({
         where: {
           publishDate: {
-            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)}}}),
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          },
+        },
+      }),
     ]);
 
     // Transformation des données
@@ -806,10 +906,13 @@ export class AnnouncementService {
           active: activeAnnouncements,
           inactive: totalAnnouncements - activeAnnouncements,
           expired: expiredAnnouncements,
-          recent: recentAnnouncements},
+          recent: recentAnnouncements,
+        },
         byAudience: statsByAudience,
         byPriority: statsByPriority,
         topAuthors: announcementsByAuthor,
-        generatedAt: new Date().toISOString()}};
+        generatedAt: new Date().toISOString(),
+      },
+    };
   }
 }

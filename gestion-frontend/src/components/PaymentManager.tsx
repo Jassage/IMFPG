@@ -1203,47 +1203,6 @@ export const PaymentManager = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            <div className="md:col-span-2">
-              <Label>Période</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    id="date"
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !dateRange && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateRange?.from ? (
-                      dateRange.to ? (
-                        <>
-                          {format(dateRange.from, "dd/MM/yyyy")} -{" "}
-                          {format(dateRange.to, "dd/MM/yyyy")}
-                        </>
-                      ) : (
-                        format(dateRange.from, "dd/MM/yyyy")
-                      )
-                    ) : (
-                      <span>Sélectionner une période</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    initialFocus
-                    mode="range"
-                    defaultMonth={dateRange?.from}
-                    selected={dateRange}
-                    onSelect={setDateRange}
-                    numberOfMonths={2}
-                    disabled={(date) => date > new Date()}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
             <Select
               value={itemsPerPage.toString()}
               onValueChange={handleItemsPerPageChange}

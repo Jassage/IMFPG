@@ -118,7 +118,7 @@ router.post(
 router.post(
   "/import",
   requireAuth,
-  requireAdmin,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
@@ -134,7 +134,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireDirector,
+  requireStaff,
   validateContentType(),
   validateRequestBody,
   sanitizeInput,

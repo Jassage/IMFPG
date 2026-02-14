@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -153,6 +153,19 @@ interface Statistics {
   draftCount: number;
   submittedCount: number;
   approvedCount: number;
+  rejectedCount: number;
+}
+
+// Types pour les notifications
+interface Notification {
+  id: string;
+  type: "rejected" | "approved" | "submitted";
+  message: string;
+  gradeId: string;
+  studentName: string;
+  subjectName: string;
+  timestamp: Date;
+  read: boolean;
 }
 
 // Composants réutilisables
@@ -359,6 +372,145 @@ const ConfirmationModal = ({
   );
 };
 
+// Composant NotificationsPanel
+const NotificationsPanel = ({
+  notifications,
+  onMarkAsRead,
+  onMarkAllAsRead,
+}: {
+  notifications: Notification[];
+  onMarkAsRead: (id: string) => void;
+  onMarkAllAsRead: () => void;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const unread = notifications.filter((n) => !n.read).length;
+    setUnreadCount(unread);
+  }, [notifications]);
+
+  // Filtrer les notifications de rejet non lues
+  const rejectedNotifications = notifications.filter(
+    (n) => n.type === "rejected" && !n.read
+  );
+
+  return (
+    <>
+      <div className="relative">
+        {isOpen && (
+          <div className="absolute right-0 top-12 w-96 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                  Notifications
+                </h3>
+                {unreadCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      onMarkAllAsRead();
+                      setIsOpen(false);
+                    }}
+                    className="text-sm"
+                  >
+                    Tout marquer comme lu
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto">
+              {rejectedNotifications.length > 0 ? (
+                <div className="p-2">
+                  <div className="mb-2 px-2">
+                    <h4 className="text-sm font-medium text-red-700 dark:text-red-400">
+                      Notes rejetées ({rejectedNotifications.length})
+                    </h4>
+                  </div>
+                  {rejectedNotifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 border-l-4 border-red-500"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 p-1 bg-red-100 dark:bg-red-900/30 rounded">
+                          <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {notification.studentName}
+                          </p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                            {notification.subjectName}
+                          </p>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
+                            {notification.message}
+                          </p>
+                          <div className="flex items-center justify-between mt-2">
+                            <span className="text-xs text-gray-500">
+                              {new Date(
+                                notification.timestamp
+                              ).toLocaleDateString("fr-FR")}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                onMarkAsRead(notification.id);
+                                setIsOpen(false);
+                              }}
+                              className="text-xs h-6"
+                            >
+                              Marquer comme lu
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center">
+                  {/* <Bell className="h-12 w-12 mx-auto text-gray-300 mb-3" /> */}
+                  <p className="text-gray-500 dark:text-gray-400">
+                    Aucune notification
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Notification toast pour les nouveaux rejets */}
+      {rejectedNotifications.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-4">
+          <Alert className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 shadow-lg">
+            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            <AlertDescription>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">
+                  {rejectedNotifications.length} note(s) rejetée(s)
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-4 h-7 text-xs border-red-300 dark:border-red-700"
+                  onClick={() => setIsOpen(true)}
+                >
+                  Voir
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+    </>
+  );
+};
+
 // Composant de saisie de note inline avec workflow DRAFT/SUBMITTED
 const GradeInputInline = ({
   student,
@@ -366,7 +518,6 @@ const GradeInputInline = ({
   existingGrade,
   onSave,
   onDelete,
-  onStatusChange,
   isLoading = false,
   controlType,
   isSubmitting = false,
@@ -381,46 +532,65 @@ const GradeInputInline = ({
     notes?: string;
   }) => Promise<void>;
   onDelete?: (gradeId: string) => Promise<void>;
-  onStatusChange?: (gradeId: string, newStatus: GradeStatus) => Promise<void>;
   isLoading?: boolean;
   controlType: ControlType;
   isSubmitting?: boolean;
 }) => {
-  const [grade, setGrade] = useState(existingGrade?.grade?.toString() || "");
+  const [grade, setGrade] = useState(() => {
+    return existingGrade?.grade?.toString() || "";
+  });
+
   const [notes, setNotes] = useState(existingGrade?.notes || "");
   const [currentControlType, setCurrentControlType] = useState<ControlType>(
     (existingGrade?.controlType as ControlType) || controlType
   );
-  const [currentStatus, setCurrentStatus] = useState<GradeStatus>(
-    existingGrade?.status || GradeStatus.DRAFT
-  );
+
+  const [currentStatus, setCurrentStatus] = useState<GradeStatus>(() => {
+    if (existingGrade?.status === GradeStatus.REJECTED) {
+      return GradeStatus.DRAFT;
+    }
+    return existingGrade?.status || GradeStatus.DRAFT;
+  });
+
   const [errors, setErrors] = useState<{ grade?: string }>({});
   const [isExpanded, setIsExpanded] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const { user } = useAuthStore();
   const { notifyAdminAboutSubmittedGrade } = useGradeStore();
 
-  const isRejected = currentStatus === GradeStatus.REJECTED;
+  const isRejected = existingGrade?.status === GradeStatus.REJECTED;
 
   // Calcul du statut basé sur le pourcentage de la note max
   const calculateStatus = (gradeValue: number): GradeStatus => {
-    if (isRejected) {
+    if (isRejected && gradeValue !== existingGrade?.grade) {
       return GradeStatus.DRAFT;
     }
+
+    if (isRejected) {
+      return GradeStatus.REJECTED;
+    }
+
     const percentage = (gradeValue / subject.maxGrade) * 100;
     const passingPercentage = subject.passingGrade;
 
-    if (percentage >= passingPercentage) return GradeStatus.APPROVED;
-    if (percentage >= passingPercentage * 0.7) return GradeStatus.SUBMITTED;
+    if (gradeValue > 0 && percentage >= passingPercentage * 0.7) {
+      return GradeStatus.SUBMITTED;
+    }
     return GradeStatus.DRAFT;
   };
 
   useEffect(() => {
     if (existingGrade) {
-      setGrade(existingGrade.grade.toString());
+      const newGrade = existingGrade.grade.toString();
+      const newStatus =
+        existingGrade.status === GradeStatus.REJECTED
+          ? GradeStatus.DRAFT
+          : existingGrade.status;
+
+      setGrade(newGrade);
       setNotes(existingGrade.notes || "");
       setCurrentControlType(existingGrade.controlType as ControlType);
-      setCurrentStatus(existingGrade.status);
+      setCurrentStatus(newStatus);
     } else {
       setGrade("");
       setNotes("");
@@ -445,13 +615,10 @@ const GradeInputInline = ({
     const error = validateGrade(value);
     setErrors((prev) => ({ ...prev, grade: error || undefined }));
 
-    // Si c'est une nouvelle note ou draft, calculer le statut automatiquement
-    if (!existingGrade || currentStatus === GradeStatus.DRAFT) {
-      if (value.trim() !== "" && !error) {
-        const numericGrade = parseFloat(value);
-        const newStatus = calculateStatus(numericGrade);
-        setCurrentStatus(newStatus);
-      }
+    if (value.trim() !== "" && !error) {
+      const numericGrade = parseFloat(value);
+      const newStatus = calculateStatus(numericGrade);
+      setCurrentStatus(newStatus);
     }
   };
 
@@ -479,23 +646,35 @@ const GradeInputInline = ({
         controlType: currentControlType,
         notes: notes.trim(),
       });
-      notifyAdminAboutSubmittedGrade({
-        studentName: `${student.firstName} ${student.lastName}`,
-        subjectName: subject.name,
-        gradeValue: numericGrade,
-        controlType: controlType,
-        teacherId: user?.id || "",
-        teacherName: `${user?.firstName} ${user?.lastName}`,
-        studentId: student.id,
-        subjectId: subject.id,
-      });
+
+      // Notifier l'admin seulement si on soumet
+      if (finalStatus === GradeStatus.SUBMITTED) {
+        notifyAdminAboutSubmittedGrade({
+          studentName: `${student.firstName} ${student.lastName}`,
+          subjectName: subject.name,
+          gradeValue: numericGrade,
+          controlType: controlType,
+          teacherId: user?.id || "",
+          teacherName: `${user?.firstName} ${user?.lastName}`,
+          studentId: student.id,
+          subjectId: subject.id,
+        });
+      }
+
+      toast.success(
+        finalStatus === GradeStatus.DRAFT
+          ? "Note enregistrée en brouillon"
+          : "Note soumise pour validation"
+      );
+    } catch (error) {
+      toast.error("Erreur lors de la sauvegarde");
     } finally {
       setLocalLoading(false);
     }
   };
 
   const handleSubmitForApproval = async () => {
-    if (currentStatus === GradeStatus.DRAFT) {
+    if (currentStatus === GradeStatus.DRAFT || isRejected) {
       setCurrentStatus(GradeStatus.SUBMITTED);
       await handleSave(GradeStatus.SUBMITTED);
     }
@@ -511,23 +690,6 @@ const GradeInputInline = ({
     return ((numericGrade / subject.maxGrade) * 20).toFixed(1);
   };
 
-  const getStatusColor = (status: GradeStatus) => {
-    switch (status) {
-      case GradeStatus.DRAFT:
-        return "text-gray-600 bg-gray-100 dark:bg-gray-900";
-      case GradeStatus.SUBMITTED:
-        return "text-blue-600 bg-blue-100 dark:bg-blue-900/30";
-      case GradeStatus.APPROVED:
-        return "text-green-600 bg-green-100 dark:bg-green-900/30";
-      case GradeStatus.PUBLISHED:
-        return "text-purple-600 bg-purple-100 dark:bg-purple-900/30";
-      case GradeStatus.REJECTED:
-        return "text-red-600 bg-red-100 dark:bg-red-900/30";
-      default:
-        return "text-gray-600 bg-gray-100";
-    }
-  };
-
   const isReadOnly =
     existingGrade &&
     (existingGrade.status === GradeStatus.APPROVED ||
@@ -538,6 +700,8 @@ const GradeInputInline = ({
       className={`p-4 md:p-6 border rounded-xl transition-all duration-200 ${
         isReadOnly
           ? "bg-gray-50/50 dark:bg-gray-900/30"
+          : isRejected
+          ? "bg-red-50/50 dark:bg-red-900/10"
           : "bg-white dark:bg-gray-800"
       } ${
         currentStatus === GradeStatus.DRAFT
@@ -546,6 +710,8 @@ const GradeInputInline = ({
           ? "border-blue-300 dark:border-blue-700"
           : currentStatus === GradeStatus.APPROVED
           ? "border-green-300 dark:border-green-700"
+          : currentStatus === GradeStatus.REJECTED
+          ? "border-red-300 dark:border-red-700"
           : "border-gray-300 dark:border-gray-700"
       }`}
     >
@@ -562,6 +728,8 @@ const GradeInputInline = ({
                   ? "bg-blue-100 dark:bg-blue-900/30"
                   : currentStatus === GradeStatus.APPROVED
                   ? "bg-green-100 dark:bg-green-900/30"
+                  : currentStatus === GradeStatus.REJECTED
+                  ? "bg-red-100 dark:bg-red-900/30"
                   : "bg-gray-100 dark:bg-gray-800"
               }`}
             >
@@ -573,6 +741,8 @@ const GradeInputInline = ({
                     ? "text-blue-600 dark:text-blue-400"
                     : currentStatus === GradeStatus.APPROVED
                     ? "text-green-600 dark:text-green-400"
+                    : currentStatus === GradeStatus.REJECTED
+                    ? "text-red-600 dark:text-red-400"
                     : "text-gray-600 dark:text-gray-400"
                 }`}
               />
@@ -609,29 +779,69 @@ const GradeInputInline = ({
               </div>
             </div>
           </div>
-          {/* motif du rejet */}
+
+          {/* Section rejetée améliorée */}
           {isRejected && (
-            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+            <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 mt-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                  <ShieldAlert className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-red-800 dark:text-red-300">
-                    Cette note a été rejetée par l'administrateur
+                  <div className="flex items-center gap-2 mb-2">
+                    <h4 className="font-semibold text-red-800 dark:text-red-300">
+                      Note rejetée par l'administration
+                    </h4>
+                    <Badge className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-300">
+                      <XCircle className="h-3 w-3 mr-1" />À corriger
+                    </Badge>
+                  </div>
+
+                  <p className="text-sm text-red-700 dark:text-red-400 mb-3">
+                    Cette note a été rejetée par l'administrateur. Veuillez la
+                    modifier et la soumettre à nouveau pour validation.
                   </p>
-                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                    Vous pouvez modifier la note et la soumettre à nouveau pour
-                    validation.
-                  </p>
+
                   {existingGrade?.rejectionReason && (
-                    <div className="mt-2 p-2 bg-red-100/50 dark:bg-red-900/10 rounded">
-                      <p className="text-xs font-medium text-red-700 dark:text-red-300">
-                        Motif du rejet :
-                      </p>
-                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                    <div className="mt-3 p-3 bg-red-100/50 dark:bg-red-900/10 rounded-lg border border-red-200 dark:border-red-800">
+                      <div className="flex items-center gap-2 mb-1">
+                        <FileWarning className="h-4 w-4 text-red-600 dark:text-red-400" />
+                        <span className="text-sm font-medium text-red-800 dark:text-red-300">
+                          Motif du rejet :
+                        </span>
+                      </div>
+                      <p className="text-sm text-red-700 dark:text-red-400 whitespace-pre-wrap">
                         {existingGrade.rejectionReason}
                       </p>
+                      <div className="mt-2 text-xs text-red-600 dark:text-red-500">
+                        <Clock className="h-3 w-3 inline mr-1" />
+                        Rejeté le{" "}
+                        {new Date(
+                          existingGrade.updatedAt || existingGrade.createdAt
+                        ).toLocaleDateString("fr-FR")}
+                      </div>
                     </div>
                   )}
+
+                  <div className="mt-4 pt-3 border-t border-red-200 dark:border-red-800">
+                    <p className="text-sm font-medium text-red-800 dark:text-red-300 mb-2">
+                      Actions requises :
+                    </p>
+                    <ul className="text-sm text-red-700 dark:text-red-400 space-y-1">
+                      <li className="flex items-center gap-2">
+                        <Check className="h-4 w-4" />
+                        Vérifiez le motif de rejet ci-dessus
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Edit className="h-4 w-4" />
+                        Modifiez la note si nécessaire
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <SendHorizonal className="h-4 w-4" />
+                        Soumettez à nouveau pour validation
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
@@ -654,7 +864,7 @@ const GradeInputInline = ({
                 ) : (
                   <>
                     <Save className="h-4 w-4 mr-2" />
-                    Brouillon
+                    {isRejected ? "Sauvegarder" : "Brouillon"}
                   </>
                 )}
               </Button>
@@ -670,7 +880,7 @@ const GradeInputInline = ({
                 ) : (
                   <>
                     <SendHorizonal className="h-4 w-4 mr-2" />
-                    Soumettre
+                    {isRejected ? "Resoumettre" : "Soumettre"}
                   </>
                 )}
               </Button>
@@ -716,7 +926,7 @@ const GradeInputInline = ({
                     Note maximale
                   </span>
                   <Badge className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
-                    {subject.maxGrade}/100
+                    {subject.maxGrade}
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center">
@@ -748,6 +958,8 @@ const GradeInputInline = ({
                     className={`h-11 ${
                       errors.grade
                         ? "border-destructive"
+                        : isRejected
+                        ? "border-red-300 dark:border-red-700"
                         : "border-gray-300 dark:border-gray-600"
                     } ${
                       isReadOnly
@@ -791,7 +1003,13 @@ const GradeInputInline = ({
                   }
                   disabled={isReadOnly || localLoading || isLoading}
                 >
-                  <SelectTrigger className="h-11 border-gray-300 dark:border-gray-600">
+                  <SelectTrigger
+                    className={`h-11 ${
+                      isRejected
+                        ? "border-red-300 dark:border-red-700"
+                        : "border-gray-300 dark:border-gray-600"
+                    }`}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -799,8 +1017,6 @@ const GradeInputInline = ({
                     <SelectItem value="CONTROLE_2">Contrôle 2</SelectItem>
                     <SelectItem value="CONTROLE_3">Contrôle 3</SelectItem>
                     <SelectItem value="CONTROLE_4">Contrôle 4</SelectItem>
-                    <SelectItem value="EXAMEN">Examen</SelectItem>
-                    <SelectItem value="DEVOIR">Devoir</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -839,7 +1055,11 @@ const GradeInputInline = ({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="resize-none border-gray-300 dark:border-gray-600"
+              className={`resize-none ${
+                isRejected
+                  ? "border-red-300 dark:border-red-700"
+                  : "border-gray-300 dark:border-gray-600"
+              }`}
               disabled={isReadOnly || localLoading || isLoading}
             />
           </div>
@@ -848,10 +1068,16 @@ const GradeInputInline = ({
           {!isReadOnly && (
             <div className="flex items-center gap-2 pt-2">
               <div className="text-xs text-gray-500 dark:text-gray-400 flex-1">
-                {currentStatus === GradeStatus.DRAFT && (
+                {currentStatus === GradeStatus.DRAFT && !isRejected && (
                   <span className="flex items-center gap-1">
                     <FileClock className="h-3 w-3" />
                     La note est enregistrée localement en brouillon
+                  </span>
+                )}
+                {isRejected && (
+                  <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
+                    <ShieldAlert className="h-3 w-3" />
+                    Note rejetée - Modifiez et resoumettez pour validation
                   </span>
                 )}
                 {currentStatus === GradeStatus.SUBMITTED && (
@@ -1035,6 +1261,7 @@ export const ProfessorGradeManager = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Filtres
   const [filters, setFilters] = useState({
@@ -1067,7 +1294,6 @@ export const ProfessorGradeManager = ({
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
 
   // Chargement initial des données
-
   useEffect(() => {
     const loadInitialData = async () => {
       if (!currentProfessorId) return;
@@ -1101,15 +1327,85 @@ export const ProfessorGradeManager = ({
     };
 
     loadInitialData();
-  }, [
-    currentProfessorId,
-    fetchAcademicYears,
-    fetchAssignments,
-    fetchClasses,
-    fetchSubjects,
-    fetchStudents,
-    academicYears,
-  ]);
+  }, [currentProfessorId]);
+
+  // Détecter les nouvelles notes rejetées
+  useEffect(() => {
+    const rejectedGrades = (grades as unknown as Grade[]).filter(
+      (g) => g.status === GradeStatus.REJECTED
+    );
+
+    rejectedGrades.forEach((grade) => {
+      const student = students.find((s) => s.id === grade.studentId);
+      const subject = subjects.find((s) => s.id === grade.subjectId);
+
+      if (student && subject) {
+        const notificationExists = notifications.some(
+          (n) => n.gradeId === grade.id && n.type === "rejected"
+        );
+
+        if (!notificationExists) {
+          const newNotification: Notification = {
+            id: `rejected-${grade.id}-${Date.now()}`,
+            type: "rejected",
+            message: grade.rejectionReason
+              ? `Note rejetée: ${grade.rejectionReason}`
+              : "Note rejetée par l'administration",
+            gradeId: grade.id,
+            studentName: `${student.firstName} ${student.lastName}`,
+            subjectName: subject.name,
+            timestamp: new Date(grade.updatedAt || grade.createdAt),
+            read: false,
+          };
+
+          setNotifications((prev) => [newNotification, ...prev]);
+
+          // Afficher une notification toast
+          toast.error(
+            `Note rejetée pour ${student.firstName} ${student.lastName}`,
+            {
+              description:
+                grade.rejectionReason ||
+                "Veuillez la modifier et la resoumettre",
+              duration: 5000,
+              action: {
+                label: "Voir",
+                onClick: () => {
+                  const element = document.getElementById(`grade-${grade.id}`);
+                  if (element) {
+                    element.scrollIntoView({ behavior: "smooth" });
+                    element.classList.add(
+                      "animate-pulse",
+                      "bg-red-50",
+                      "dark:bg-red-900/20"
+                    );
+                    setTimeout(() => {
+                      element.classList.remove(
+                        "animate-pulse",
+                        "bg-red-50",
+                        "dark:bg-red-900/20"
+                      );
+                    }, 3000);
+                  }
+                },
+              },
+            }
+          );
+        }
+      }
+    });
+  }, [grades, students, subjects]);
+
+  // Gestion des notifications
+  const markNotificationAsRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((notif) => (notif.id === id ? { ...notif, read: true } : notif))
+    );
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((notif) => ({ ...notif, read: true })));
+  };
 
   // Obtenir les affectations du professeur pour l'année sélectionnée
   const professorAssignments = useMemo(() => {
@@ -1129,12 +1425,10 @@ export const ProfessorGradeManager = ({
       return [];
     }
 
-    // Récupérer tous les classLevel uniques des assignments
     const assignedClassLevels = professorAssignments
       .map((assignment) => assignment.classLevel)
       .filter((level, index, self) => level && self.indexOf(level) === index);
 
-    // Récupérer les classes qui correspondent à ces classLevels
     return classes.filter((cls) => assignedClassLevels.includes(cls.level));
   }, [professorAssignments, classes, filters.academicYearId]);
 
@@ -1158,7 +1452,6 @@ export const ProfessorGradeManager = ({
       (assignment) => assignment.classLevel === classLevel
     );
 
-    // Récupérer les matières de ces assignments
     const subjectIds = assignmentsForClass
       .map((assignment) => assignment.subject.id)
       .filter((id, index, self) => id && self.indexOf(id) === index);
@@ -1276,22 +1569,13 @@ export const ProfessorGradeManager = ({
     return filteredGrades;
   }, [grades, filters]);
 
-  // Obtenir les étudiants sans note pour la matière sélectionnée
-  const studentsWithoutGrade = useMemo(() => {
-    const studentsWithGrade = new Set(existingGrades.map((g) => g.studentId));
-    return classStudents.filter(
-      (student) => !studentsWithGrade.has(student.id)
-    );
-  }, [classStudents, existingGrades]);
-
   // Calculer les statistiques
-  const statistics = useMemo(() => {
+  const statistics = useMemo((): Statistics | null => {
     if (existingGrades.length === 0 || !selectedSubject) return null;
 
     const total = existingGrades.length;
     const average = existingGrades.reduce((sum, g) => sum + g.grade, 0) / total;
 
-    // Utiliser le passingGrade comme pourcentage
     const passed = existingGrades.filter((g) => {
       const percentage = (g.grade / selectedSubject.maxGrade) * 100;
       return percentage >= selectedSubject.passingGrade;
@@ -1299,7 +1583,6 @@ export const ProfessorGradeManager = ({
 
     const successRate = total > 0 ? (passed / total) * 100 : 0;
 
-    // Compter par statut
     const draftCount = existingGrades.filter(
       (g) => g.status === GradeStatus.DRAFT
     ).length;
@@ -1309,8 +1592,10 @@ export const ProfessorGradeManager = ({
     const approvedCount = existingGrades.filter(
       (g) => g.status === GradeStatus.APPROVED
     ).length;
+    const rejectedCount = existingGrades.filter(
+      (g) => g.status === GradeStatus.REJECTED
+    ).length;
 
-    // Trouver les meilleures et pires notes
     const sortedGrades = [...existingGrades].sort((a, b) => b.grade - a.grade);
     const bestGrade = sortedGrades[0];
     const worstGrade = sortedGrades[sortedGrades.length - 1];
@@ -1333,6 +1618,7 @@ export const ProfessorGradeManager = ({
       draftCount,
       submittedCount,
       approvedCount,
+      rejectedCount,
     };
   }, [existingGrades, selectedSubject, classStudents]);
 
@@ -1408,21 +1694,35 @@ export const ProfessorGradeManager = ({
         classLevel: selectedClass.level as ClassLevel,
         isActive: true,
         notes: gradeData.notes || "",
+        wasRejected: existingGrade?.status === GradeStatus.REJECTED,
+        rejectionReason:
+          existingGrade?.status === GradeStatus.REJECTED
+            ? null
+            : existingGrade?.rejectionReason,
       };
 
       if (existingGrade) {
-        await updateGrade(existingGrade.id, {
+        // Pour les notes rejetées, on réinitialise le motif de rejet
+        const updateData: any = {
           grade: gradeData.grade,
           status: gradeData.status,
           controlType: gradeData.controlType,
           notes: gradeData.notes,
-        });
+        };
+
+        if (existingGrade.status === GradeStatus.REJECTED) {
+          updateData.rejectionReason = null;
+          updateData.wasRejected = true;
+        }
+
+        await updateGrade(existingGrade.id, updateData);
 
         const statusMessages = {
           [GradeStatus.DRAFT]: "Note enregistrée en brouillon",
           [GradeStatus.SUBMITTED]: "Note soumise pour validation",
           [GradeStatus.APPROVED]: "Note approuvée",
           [GradeStatus.PUBLISHED]: "Note publiée",
+          [GradeStatus.REJECTED]: "Note rejetée",
         };
 
         toast.success(statusMessages[gradeData.status] || "Note mise à jour");
@@ -1437,16 +1737,17 @@ export const ProfessorGradeManager = ({
         toast.success(statusMessages[gradeData.status] || "Note ajoutée");
       }
 
-      // Recharger les notes
-      await fetchGrades({
-        academicYearId: filters.academicYearId,
-        subjectId: filters.subjectId,
-        controlType: filters.controlType as ControlType | undefined,
-      });
+      // Recharger les notes avec un léger délai
+      setTimeout(async () => {
+        await fetchGrades({
+          academicYearId: filters.academicYearId,
+          subjectId: filters.subjectId,
+          controlType: filters.controlType as ControlType | undefined,
+        });
+      }, 300);
     } catch (error: any) {
       console.error(" Erreur sauvegarde note:", error);
 
-      // Messages d'erreur plus précis
       if (error.response?.status === 400) {
         toast.error("Données invalides. Vérifiez les valeurs saisies.");
       } else if (error.response?.status === 404) {
@@ -1545,6 +1846,7 @@ export const ProfessorGradeManager = ({
           Statut: grade.status,
           "Type contrôle": grade.controlType,
           "Date saisie": new Date(grade.createdAt).toLocaleDateString(),
+          "Motif rejet": grade.rejectionReason || "",
           Remarques: grade.notes || "",
         };
       });
@@ -1574,7 +1876,6 @@ export const ProfessorGradeManager = ({
 
   // Filtrer les étudiants par terme de recherche
   const filteredStudents = useMemo(() => {
-    // Combiner étudiants avec et sans notes
     const allStudents = [...classStudents];
 
     if (!searchTerm) return allStudents;
@@ -1698,12 +1999,13 @@ export const ProfessorGradeManager = ({
       .filter(
         (grade) =>
           selectedStudents.includes(grade.studentId) &&
-          grade.status === GradeStatus.DRAFT
+          (grade.status === GradeStatus.DRAFT ||
+            grade.status === GradeStatus.REJECTED)
       )
       .map((grade) => grade.id);
 
     if (gradeIds.length === 0) {
-      toast.error("Aucune note en brouillon à soumettre");
+      toast.error("Aucune note en brouillon ou rejetée à soumettre");
       return;
     }
 
@@ -1738,7 +2040,6 @@ export const ProfessorGradeManager = ({
       return;
     }
 
-    // Pour cet exemple, on va juste changer le statut des notes existantes
     const gradeIds = existingGrades
       .filter((grade) => selectedStudents.includes(grade.studentId))
       .map((grade) => grade.id);
@@ -1750,8 +2051,6 @@ export const ProfessorGradeManager = ({
 
     setIsSaving(true);
     try {
-      // Ici, vous devriez appeler une API pour mettre à jour le statut
-      // Pour l'exemple, on utilise updateGrade
       for (const gradeId of gradeIds) {
         const grade = existingGrades.find((g) => g.id === gradeId);
         if (grade && grade.status !== GradeStatus.DRAFT) {
@@ -1812,6 +2111,33 @@ export const ProfessorGradeManager = ({
               Workflow de validation
             </Badge>
           </div>
+
+          {/* Alert pour notes rejetées */}
+          {statistics && statistics.rejectedCount > 0 && (
+            <div className="mt-4">
+              <Alert variant="destructive" className="animate-pulse">
+                <ShieldAlert className="h-4 w-4" />
+                <AlertDescription className="flex items-center gap-2">
+                  <span>
+                    {statistics.rejectedCount} note(s) rejetée(s) - À corriger
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-xs border-red-300 dark:border-red-700"
+                    onClick={() =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        statusFilter: GradeStatus.REJECTED,
+                      }))
+                    }
+                  >
+                    Voir les notes rejetées
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 flex-wrap">
@@ -2011,7 +2337,14 @@ export const ProfessorGradeManager = ({
                     <SelectValue placeholder="Tous statuts" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="all">
+                      Tous les statuts
+                      {statistics && statistics.rejectedCount > 0 && (
+                        <Badge className="ml-2 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-300">
+                          {statistics.rejectedCount}
+                        </Badge>
+                      )}
+                    </SelectItem>
                     <SelectItem value={GradeStatus.DRAFT}>Brouillon</SelectItem>
                     <SelectItem value={GradeStatus.SUBMITTED}>
                       Soumis
@@ -2019,7 +2352,14 @@ export const ProfessorGradeManager = ({
                     <SelectItem value={GradeStatus.APPROVED}>
                       Approuvé
                     </SelectItem>
-                    <SelectItem value={GradeStatus.REJECTED}>Rejeté</SelectItem>
+                    <SelectItem value={GradeStatus.REJECTED}>
+                      Rejeté
+                      {statistics && statistics.rejectedCount > 0 && (
+                        <Badge className="ml-2 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-300">
+                          {statistics.rejectedCount}
+                        </Badge>
+                      )}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2201,13 +2541,12 @@ export const ProfessorGradeManager = ({
             darkGradient="from-emerald-900/50 to-emerald-800/50"
           />
           <StatCard
-            icon={Percent}
-            value={`${statistics.successRate}%`}
-            label="Taux réussite"
-            gradient="from-indigo-100 to-indigo-200"
-            iconBg="bg-indigo-600"
-            darkGradient="from-indigo-900/50 to-indigo-800/50"
-            trend={statistics.successRate > 50 ? "up" : "down"}
+            icon={XCircle}
+            value={statistics.rejectedCount}
+            label="Rejetés"
+            gradient="from-red-100 to-red-200"
+            iconBg="bg-red-600"
+            darkGradient="from-red-900/50 to-red-800/50"
           />
         </div>
       )}
@@ -2350,6 +2689,9 @@ export const ProfessorGradeManager = ({
                         g.controlType === filters.controlType
                     );
 
+                    const isGradeRejected =
+                      existingGrade?.status === GradeStatus.REJECTED;
+
                     const handleDeleteGrade = async (gradeId: string) => {
                       if (!existingGrade) return;
                       handleDeleteGradeWithConfirmation(
@@ -2360,7 +2702,28 @@ export const ProfessorGradeManager = ({
                     };
 
                     return (
-                      <div key={student.id} className="relative">
+                      <div
+                        key={student.id}
+                        id={`grade-${existingGrade?.id || student.id}`}
+                        className="relative"
+                      >
+                        {isGradeRejected && (
+                          <div className="absolute -left-2 top-4 z-20">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <div className="animate-pulse">
+                                    <div className="h-3 w-3 rounded-full bg-red-500 ring-2 ring-white dark:ring-gray-800" />
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Note rejetée - À corriger</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        )}
+
                         {bulkEditMode && (
                           <div className="absolute left-4 top-4 z-10">
                             <input
@@ -2374,7 +2737,15 @@ export const ProfessorGradeManager = ({
                           </div>
                         )}
 
-                        <div className={bulkEditMode ? "ml-10" : ""}>
+                        <div
+                          className={
+                            bulkEditMode
+                              ? "ml-10"
+                              : isGradeRejected
+                              ? "ml-6"
+                              : ""
+                          }
+                        >
                           <GradeInputInline
                             student={student}
                             subject={selectedSubject}
@@ -2406,14 +2777,32 @@ export const ProfessorGradeManager = ({
                     );
                     if (!student) return null;
 
+                    const isRejected = grade.status === GradeStatus.REJECTED;
+
                     return (
                       <div
                         key={grade.id}
-                        className="flex items-center justify-between p-4 border rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                        className={`flex items-center justify-between p-4 border rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 ${
+                          isRejected
+                            ? "border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10"
+                            : ""
+                        }`}
                       >
                         <div className="flex items-center gap-4 flex-1">
-                          <div className="flex-shrink-0 h-10 w-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-                            <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                          <div
+                            className={`flex-shrink-0 h-10 w-10 rounded-lg flex items-center justify-center ${
+                              isRejected
+                                ? "bg-red-100 dark:bg-red-900/30"
+                                : "bg-blue-100 dark:bg-blue-900/30"
+                            }`}
+                          >
+                            <User
+                              className={`h-5 w-5 ${
+                                isRejected
+                                  ? "text-red-600 dark:text-red-400"
+                                  : "text-blue-600 dark:text-blue-400"
+                              }`}
+                            />
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
@@ -2426,6 +2815,12 @@ export const ProfessorGradeManager = ({
                               >
                                 {student.studentCode}
                               </Badge>
+                              {isRejected && (
+                                <Badge className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-300">
+                                  <XCircle className="h-3 w-3 mr-1" />
+                                  Rejeté
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               <StatusBadge status={grade.status} />
@@ -2436,12 +2831,23 @@ export const ProfessorGradeManager = ({
                                 )}
                               </span>
                             </div>
+                            {grade.rejectionReason && (
+                              <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+                                {grade.rejectionReason}
+                              </p>
+                            )}
                           </div>
                         </div>
 
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <Badge className="text-lg font-semibold bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 text-green-800 dark:text-green-200">
+                            <Badge
+                              className={`text-lg font-semibold ${
+                                isRejected
+                                  ? "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200"
+                                  : "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200"
+                              }`}
+                            >
                               {grade.grade}/100
                             </Badge>
                             <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -2467,28 +2873,49 @@ export const ProfessorGradeManager = ({
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
                                   onClick={() => {
-                                    // Pour éditer, on pourrait ouvrir un modal
-                                    toast.info(
-                                      "Édition directe depuis la liste à venir"
+                                    const element = document.getElementById(
+                                      `grade-${grade.id}`
                                     );
+                                    if (element) {
+                                      element.scrollIntoView({
+                                        behavior: "smooth",
+                                      });
+                                      if (isRejected) {
+                                        element.classList.add(
+                                          "animate-pulse",
+                                          "bg-red-50",
+                                          "dark:bg-red-900/20"
+                                        );
+                                        setTimeout(() => {
+                                          element.classList.remove(
+                                            "animate-pulse",
+                                            "bg-red-50",
+                                            "dark:bg-red-900/20"
+                                          );
+                                        }, 3000);
+                                      }
+                                    }
                                   }}
                                 >
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Modifier
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Voir les détails
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-red-600"
-                                  onClick={() => {
-                                    handleDeleteGradeWithConfirmation(
-                                      grade.id,
-                                      student,
-                                      grade
-                                    );
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Supprimer
-                                </DropdownMenuItem>
+                                {grade.status !== GradeStatus.APPROVED &&
+                                  grade.status !== GradeStatus.PUBLISHED && (
+                                    <DropdownMenuItem
+                                      className="text-red-600"
+                                      onClick={() => {
+                                        handleDeleteGradeWithConfirmation(
+                                          grade.id,
+                                          student,
+                                          grade
+                                        );
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Supprimer
+                                    </DropdownMenuItem>
+                                  )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
@@ -2594,8 +3021,8 @@ export const ProfessorGradeManager = ({
                   validation définitive
                 </li>
                 <li>
-                  • <strong>Édition en masse</strong> : Appliquez une note à
-                  plusieurs étudiants d'un coup
+                  • <strong>Notes rejetées</strong> : Vérifiez le motif,
+                  modifiez et resoumettez
                 </li>
                 <li>
                   • Les notes <strong>approuvées</strong> ne peuvent plus être

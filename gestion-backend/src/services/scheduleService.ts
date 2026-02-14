@@ -113,7 +113,7 @@ export class ScheduleService {
       throw this.createError(
         400,
         `${fieldName}_TOO_LONG`,
-        `${fieldName} cannot exceed ${maxLength} characters`
+        `${fieldName} ne peut pas dépasser ${maxLength} caractères`
       );
     }
 
@@ -126,7 +126,7 @@ export class ScheduleService {
     return this.validateStringLength(
       classroom,
       this.config.MAX_CLASSROOM_LENGTH,
-      "Classroom"
+      "Salle"
     );
   }
 
@@ -144,7 +144,7 @@ export class ScheduleService {
     return this.validateStringLength(
       recurrence,
       this.config.MAX_RECURRENCE_LENGTH,
-      "Recurrence"
+      "Récurrence"
     );
   }
 
@@ -177,12 +177,12 @@ export class ScheduleService {
       else if (trimmedInput.includes("T")) {
         date = new Date(trimmedInput);
         if (isNaN(date.getTime())) {
-          throw new Error("Invalid ISO timestamp");
+          throw new Error("Format de timestamp ISO invalide");
         }
       }
       // Format inconnu
       else {
-        throw new Error(`Unsupported time format: ${trimmedInput}`);
+        throw new Error(`Format de temps non supporté: ${trimmedInput}`);
       }
 
       const hours = date.getUTCHours().toString().padStart(2, "0");
@@ -197,7 +197,7 @@ export class ScheduleService {
       throw this.createError(
         400,
         "INVALID_TIME_FORMAT",
-        error.message || "Invalid time format",
+        error.message || "Format de temps invalide",
         { timeInput }
       );
     }
@@ -210,11 +210,12 @@ export class ScheduleService {
   ): void {
     const errors: string[] = [];
 
-    if (hours < 0 || hours > 23) errors.push("Hours must be between 00 and 23");
+    if (hours < 0 || hours > 23)
+      errors.push("Les heures doivent être entre 00 et 23");
     if (minutes < 0 || minutes > 59)
-      errors.push("Minutes must be between 00 and 59");
+      errors.push("Les minutes doivent être entre 00 et 59");
     if (seconds < 0 || seconds > 59)
-      errors.push("Seconds must be between 00 and 59");
+      errors.push("Les secondes doivent être entre 00 et 59");
 
     if (errors.length > 0) {
       throw this.createError(400, "INVALID_TIME_COMPONENTS", errors.join("; "));
@@ -228,25 +229,6 @@ export class ScheduleService {
     } catch {
       return time.includes(":") ? time.substring(0, 5) : "00:00";
     }
-  }
-
-  private checkTimeOverlap(
-    start1: string,
-    end1: string,
-    start2: string,
-    end2: string
-  ): boolean {
-    const toMinutes = (time: string): number => {
-      const [hours = 0, minutes = 0, seconds = 0] = time.split(":").map(Number);
-      return hours * 60 + minutes + seconds / 60;
-    };
-
-    const s1 = toMinutes(start1);
-    const e1 = toMinutes(end1);
-    const s2 = toMinutes(start2);
-    const e2 = toMinutes(end2);
-
-    return s1 < e2 && e1 > s2;
   }
 
   // ==================== DURATION CALCULATION METHODS ====================
@@ -285,7 +267,7 @@ export class ScheduleService {
       throw this.createError(
         400,
         "MIN_DURATION_NOT_MET",
-        `Minimum duration: ${this.config.MIN_SCHEDULE_DURATION_MINUTES} minutes`,
+        `Durée minimale: ${this.config.MIN_SCHEDULE_DURATION_MINUTES} minutes`,
         { duration: duration.minutes }
       );
     }
@@ -294,7 +276,7 @@ export class ScheduleService {
       throw this.createError(
         400,
         "MAX_DURATION_EXCEEDED",
-        `Maximum duration: ${this.config.MAX_SCHEDULE_DURATION_MINUTES} minutes`,
+        `Durée maximale: ${this.config.MAX_SCHEDULE_DURATION_MINUTES} minutes`,
         { duration: duration.minutes }
       );
     }
@@ -348,10 +330,43 @@ export class ScheduleService {
 
     console.error(`Error in ${method}:`, error);
 
+    // Gestion des erreurs spécifiques Prisma
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      switch (error.code) {
+        case "P2002":
+          throw this.createError(
+            409,
+            "DUPLICATE_ENTRY",
+            "Une entrée similaire existe déjà",
+            { field: error.meta?.target }
+          );
+        case "P2003":
+          throw this.createError(
+            400,
+            "FOREIGN_KEY_VIOLATION",
+            "Violation de contrainte de clé étrangère",
+            { field: error.meta?.field_name }
+          );
+        case "P2025":
+          throw this.createError(
+            404,
+            "RECORD_NOT_FOUND",
+            "Enregistrement non trouvé"
+          );
+        default:
+          throw this.createError(
+            500,
+            "DATABASE_ERROR",
+            "Erreur de base de données",
+            { code: error.code, message: error.message }
+          );
+      }
+    }
+
     throw this.createError(
       error?.status || 500,
       error?.code || "INTERNAL_ERROR",
-      error?.message || `An error occurred in ${method}`,
+      error?.message || `Une erreur est survenue dans ${method}`,
       error?.details || error
     );
   }
@@ -375,19 +390,19 @@ export class ScheduleService {
         throw this.createError(
           400,
           "INVALID_PROFESSEUR_ID",
-          "Invalid professor ID"
+          "ID professeur invalide"
         );
       }
 
       if (!this.isValidId(classId)) {
-        throw this.createError(400, "INVALID_CLASS_ID", "Invalid class ID");
+        throw this.createError(400, "INVALID_CLASS_ID", "ID classe invalide");
       }
 
       if (!this.isValidDayOfWeek(dayOfWeek)) {
         throw this.createError(
           400,
           "INVALID_DAY_OF_WEEK",
-          "Invalid day of week"
+          "Jour de la semaine invalide"
         );
       }
 
@@ -397,12 +412,11 @@ export class ScheduleService {
 
       // Vérifier l'ordre des temps
       if (endDate <= startDate) {
-        conflicts.push({
-          type: "INVALID_TIME_RANGE",
-          message: "End time must be after start time",
-          details: [],
-        });
-        return { hasConflict: true, conflicts };
+        throw this.createError(
+          400,
+          "INVALID_TIME_RANGE",
+          "L'heure de fin doit être après l'heure de début"
+        );
       }
 
       // Vérifier la durée
@@ -432,7 +446,7 @@ export class ScheduleService {
       ] = await Promise.all([
         this.checkProfessorConflicts(professeurId, baseWhere),
         this.checkClassConflicts(classId, baseWhere),
-        classroom
+        classroom && classroom.trim()
           ? this.checkRoomConflicts(classroom.trim(), baseWhere)
           : Promise.resolve([]),
         this.prismaClient.professeur.findUnique({
@@ -449,7 +463,7 @@ export class ScheduleService {
       if (professorConflicts.length > 0) {
         conflicts.push({
           type: "PROFESSEUR_CONFLICT",
-          message: "Professor already has a class scheduled at this time",
+          message: "Le professeur a déjà un cours à cet horaire",
           details: professorConflicts,
         });
       }
@@ -457,7 +471,7 @@ export class ScheduleService {
       if (classConflicts.length > 0) {
         conflicts.push({
           type: "CLASS_CONFLICT",
-          message: "Class already has a class scheduled at this time",
+          message: "La classe a déjà un cours à cet horaire",
           details: classConflicts,
         });
       }
@@ -465,7 +479,7 @@ export class ScheduleService {
       if (roomConflicts.length > 0) {
         conflicts.push({
           type: "ROOM_CONFLICT",
-          message: `Classroom ${classroom} is already occupied`,
+          message: `La salle ${classroom} est déjà occupée`,
           details: roomConflicts,
         });
       }
@@ -474,13 +488,13 @@ export class ScheduleService {
       if (!professorInfo) {
         conflicts.push({
           type: "PROFESSEUR_NOT_FOUND",
-          message: "Professor not found",
+          message: "Professeur non trouvé",
           details: [],
         });
       } else if (professorInfo.status !== "Actif") {
         conflicts.push({
           type: "PROFESSEUR_INACTIVE",
-          message: "Professor is not active",
+          message: "Le professeur n'est pas actif",
           details: [{ status: professorInfo.status }],
         });
       }
@@ -488,13 +502,13 @@ export class ScheduleService {
       if (!classInfo) {
         conflicts.push({
           type: "CLASS_NOT_FOUND",
-          message: "Class not found",
+          message: "Classe non trouvée",
           details: [],
         });
       } else if (classInfo.status !== "Active") {
         conflicts.push({
           type: "CLASS_INACTIVE",
-          message: "Class is not active",
+          message: "La classe n'est pas active",
           details: [{ status: classInfo.status }],
         });
       }
@@ -504,12 +518,18 @@ export class ScheduleService {
         conflicts,
       };
     } catch (error: any) {
-      conflicts.push({
-        type: "VALIDATION_ERROR",
-        message: error.message || "Error checking for conflicts",
-        details: [error],
-      });
-      return { hasConflict: true, conflicts };
+      // Si c'est une erreur de validation, la transformer en conflit
+      if (error.code && error.code.includes("INVALID")) {
+        conflicts.push({
+          type: "VALIDATION_ERROR",
+          message: error.message,
+          details: [error],
+        });
+        return { hasConflict: true, conflicts };
+      }
+
+      // Pour les autres erreurs, les propager
+      throw error;
     }
   }
 
@@ -527,11 +547,12 @@ export class ScheduleService {
 
     return conflicts.map((c) => ({
       id: c.id,
-      subject: c.classAssignment?.subject?.name || "Unknown",
-      class: c.schoolClass?.name || "Unknown",
+      subject: c.classAssignment?.subject?.name || "Inconnu",
+      class: c.schoolClass?.name || "Inconnu",
       startTime: this.formatTimeForDisplay(c.startTime),
       endTime: this.formatTimeForDisplay(c.endTime),
       classroom: c.classroom,
+      dayOfWeek: c.dayOfWeek,
     }));
   }
 
@@ -549,13 +570,14 @@ export class ScheduleService {
 
     return conflicts.map((c) => ({
       id: c.id,
-      subject: c.classAssignment?.subject?.name || "Unknown",
+      subject: c.classAssignment?.subject?.name || "Inconnu",
       professor: c.professeur
         ? `${c.professeur.firstName} ${c.professeur.lastName}`
-        : "Unknown",
+        : "Inconnu",
       startTime: this.formatTimeForDisplay(c.startTime),
       endTime: this.formatTimeForDisplay(c.endTime),
       classroom: c.classroom,
+      dayOfWeek: c.dayOfWeek,
     }));
   }
 
@@ -573,12 +595,13 @@ export class ScheduleService {
 
     return conflicts.map((c) => ({
       id: c.id,
-      class: c.schoolClass?.name || "Unknown",
+      class: c.schoolClass?.name || "Inconnu",
       professor: c.professeur
         ? `${c.professeur.firstName} ${c.professeur.lastName}`
-        : "Unknown",
+        : "Inconnu",
       startTime: this.formatTimeForDisplay(c.startTime),
       endTime: this.formatTimeForDisplay(c.endTime),
+      dayOfWeek: c.dayOfWeek,
     }));
   }
 
@@ -612,12 +635,12 @@ export class ScheduleService {
           throw this.createError(
             404,
             "ASSIGNMENT_NOT_FOUND",
-            "Assignment not found"
+            "Assignation non trouvée"
           );
         }
 
         if (!schoolClass) {
-          throw this.createError(404, "CLASS_NOT_FOUND", "Class not found");
+          throw this.createError(404, "CLASS_NOT_FOUND", "Classe non trouvée");
         }
 
         // Vérifier la correspondance des niveaux
@@ -625,11 +648,11 @@ export class ScheduleService {
           throw this.createError(
             400,
             "CLASS_LEVEL_MISMATCH",
-            "Class level does not match assignment level"
+            "Le niveau de la classe ne correspond pas à l'assignation"
           );
         }
 
-        // Vérifier les conflits
+        // Vérifier les conflits AVANT de créer
         const conflictCheck = await this.checkScheduleConflicts(
           assignment.professeurId,
           validatedData.classId,
@@ -643,9 +666,26 @@ export class ScheduleService {
           throw this.createError(
             409,
             "SCHEDULE_CONFLICT",
-            "Schedule conflict detected",
-            conflictCheck
+            "Conflit d'horaire détecté",
+            {
+              conflicts: conflictCheck.conflicts,
+              message: this.formatConflictMessage(conflictCheck.conflicts),
+            }
           );
+        }
+
+        // Gérer la date de fin de récurrence
+        let untilDateValue = null;
+        if (validatedData.untilDate) {
+          const untilDate = new Date(validatedData.untilDate);
+          if (untilDate < new Date()) {
+            throw this.createError(
+              400,
+              "INVALID_UNTIL_DATE",
+              "La date de fin de récurrence est dans le passé"
+            );
+          }
+          untilDateValue = untilDate;
         }
 
         // Créer l'horaire
@@ -659,9 +699,7 @@ export class ScheduleService {
             endTime: endTimeStr,
             classroom: validatedData.classroom,
             recurrence: validatedData.recurrence,
-            untilDate: validatedData.untilDate
-              ? new Date(validatedData.untilDate)
-              : null,
+            untilDate: untilDateValue,
             notes: validatedData.notes,
             status: "ACTIVE",
           },
@@ -673,20 +711,44 @@ export class ScheduleService {
 
         return {
           success: true,
-          message: "Schedule created successfully",
+          message: "Horaire créé avec succès",
           data: { schedule },
           metadata: {
             duration: duration.display,
             professor: `${assignment.professeur.firstName} ${assignment.professeur.lastName}`,
             subject: assignment.subject.name,
             class: schoolClass.name,
+            dayOfWeek: validatedData.dayOfWeek,
+            timeRange: `${this.formatTimeForDisplay(startTimeStr)} - ${this.formatTimeForDisplay(endTimeStr)}`,
             createdAt: new Date().toISOString(),
           },
         };
       } catch (error: any) {
-        return this.handleError("createSchedule", error);
+        throw this.handleError("createSchedule", error);
       }
     });
+  }
+
+  private formatConflictMessage(conflicts: ScheduleConflict[]): string {
+    const messages: string[] = [];
+
+    conflicts.forEach((conflict) => {
+      if (conflict.type === "PROFESSEUR_CONFLICT") {
+        messages.push("Le professeur a déjà un cours à cet horaire");
+      } else if (conflict.type === "CLASS_CONFLICT") {
+        messages.push("La classe a déjà un cours à cet horaire");
+      } else if (conflict.type === "ROOM_CONFLICT") {
+        messages.push("La salle est déjà occupée");
+      } else if (conflict.type === "PROFESSEUR_INACTIVE") {
+        messages.push("Le professeur n'est pas actif");
+      } else if (conflict.type === "CLASS_INACTIVE") {
+        messages.push("La classe n'est pas active");
+      } else {
+        messages.push(conflict.message);
+      }
+    });
+
+    return messages.join("; ");
   }
 
   private validateCreateData(data: CreateScheduleData): CreateScheduleData {
@@ -703,13 +765,17 @@ export class ScheduleService {
         throw this.createError(
           400,
           "MISSING_DATA",
-          `Missing required field: ${field}`
+          `Champ requis manquant: ${field}`
         );
       }
     }
 
     if (!this.isValidDayOfWeek(data.dayOfWeek)) {
-      throw this.createError(400, "INVALID_DAY_OF_WEEK", "Invalid day of week");
+      throw this.createError(
+        400,
+        "INVALID_DAY_OF_WEEK",
+        "Jour de la semaine invalide"
+      );
     }
 
     return {
@@ -727,7 +793,11 @@ export class ScheduleService {
     return await this.prismaClient.$transaction(async (tx) => {
       try {
         if (!this.isValidId(id)) {
-          throw this.createError(400, "INVALID_ID_FORMAT", "Invalid ID format");
+          throw this.createError(
+            400,
+            "INVALID_ID_FORMAT",
+            "Format d'ID invalide"
+          );
         }
 
         // Récupérer l'horaire existant
@@ -743,7 +813,7 @@ export class ScheduleService {
           throw this.createError(
             404,
             "SCHEDULE_NOT_FOUND",
-            "Schedule not found"
+            "Horaire non trouvé"
           );
         }
 
@@ -753,6 +823,7 @@ export class ScheduleService {
         // Préparer les temps
         let startTimeStr = existingSchedule.startTime;
         let endTimeStr = existingSchedule.endTime;
+        let dayOfWeek = existingSchedule.dayOfWeek;
 
         if (validatedData.startTime) {
           startTimeStr = this.parseTime(validatedData.startTime).time;
@@ -762,66 +833,66 @@ export class ScheduleService {
           endTimeStr = this.parseTime(validatedData.endTime).time;
         }
 
+        if (validatedData.dayOfWeek) {
+          dayOfWeek = validatedData.dayOfWeek;
+        }
+
         // Vérifier la durée
         this.validateDuration(startTimeStr, endTimeStr);
 
         // Vérifier les conflits (sauf avec lui-même)
-        if (
-          validatedData.dayOfWeek ||
-          validatedData.startTime ||
-          validatedData.endTime
-        ) {
-          const conflictCheck = await this.checkScheduleConflicts(
-            existingSchedule.professeurId,
-            existingSchedule.classId,
-            validatedData.dayOfWeek || existingSchedule.dayOfWeek,
-            validatedData.startTime ||
-              `2000-01-01T${existingSchedule.startTime}Z`,
-            validatedData.endTime || `2000-01-01T${existingSchedule.endTime}Z`,
-            validatedData.classroom !== undefined
-              ? validatedData.classroom
-              : existingSchedule.classroom,
-            id
-          );
+        const classroom =
+          validatedData.classroom !== undefined
+            ? validatedData.classroom
+            : existingSchedule.classroom;
 
-          if (conflictCheck.hasConflict) {
-            throw this.createError(
-              409,
-              "SCHEDULE_CONFLICT",
-              "Schedule conflict detected",
-              { conflicts: conflictCheck.conflicts }
-            );
-          }
+        const conflictCheck = await this.checkScheduleConflicts(
+          existingSchedule.professeurId,
+          existingSchedule.classId,
+          dayOfWeek,
+          startTimeStr,
+          endTimeStr,
+          classroom,
+          id
+        );
+
+        if (conflictCheck.hasConflict) {
+          throw this.createError(
+            409,
+            "SCHEDULE_CONFLICT",
+            "Conflit d'horaire détecté lors de la mise à jour",
+            {
+              conflicts: conflictCheck.conflicts,
+              message: this.formatConflictMessage(conflictCheck.conflicts),
+            }
+          );
         }
 
         // Vérifier la date de fin de récurrence
-        if (
-          validatedData.untilDate &&
-          new Date(validatedData.untilDate) < new Date()
-        ) {
-          throw this.createError(
-            400,
-            "INVALID_UNTIL_DATE",
-            "Recurrence end date is in the past"
-          );
+        let untilDateValue = existingSchedule.untilDate;
+        if (validatedData.untilDate) {
+          const untilDate = new Date(validatedData.untilDate);
+          if (untilDate < new Date()) {
+            throw this.createError(
+              400,
+              "INVALID_UNTIL_DATE",
+              "La date de fin de récurrence est dans le passé"
+            );
+          }
+          untilDateValue = untilDate;
         }
 
         // Préparer les données de mise à jour
         const updateData: Prisma.ScheduleUpdateInput = {
-          dayOfWeek: validatedData.dayOfWeek || existingSchedule.dayOfWeek,
+          dayOfWeek: dayOfWeek,
           startTime: startTimeStr,
           endTime: endTimeStr,
-          classroom:
-            validatedData.classroom !== undefined
-              ? this.validateClassroom(validatedData.classroom)
-              : existingSchedule.classroom,
+          classroom: classroom ? this.validateClassroom(classroom) : null,
           recurrence:
             validatedData.recurrence !== undefined
               ? this.validateRecurrence(validatedData.recurrence)
               : existingSchedule.recurrence,
-          untilDate: validatedData.untilDate
-            ? new Date(validatedData.untilDate)
-            : existingSchedule.untilDate,
+          untilDate: untilDateValue,
           notes:
             validatedData.notes !== undefined
               ? this.validateNotes(validatedData.notes)
@@ -848,8 +919,8 @@ export class ScheduleService {
           success: true,
           message:
             changes.length > 0
-              ? "Schedule updated successfully"
-              : "No changes made",
+              ? "Horaire mis à jour avec succès"
+              : "Aucun changement effectué",
           data: { schedule },
           metadata: {
             changes,
@@ -860,7 +931,7 @@ export class ScheduleService {
           },
         };
       } catch (error: any) {
-        return this.handleError("updateSchedule", error);
+        throw this.handleError("updateSchedule", error);
       }
     });
   }
@@ -873,7 +944,7 @@ export class ScheduleService {
         throw this.createError(
           400,
           "INVALID_DAY_OF_WEEK",
-          "Invalid day of week"
+          "Jour de la semaine invalide"
         );
       }
       validated.dayOfWeek = data.dayOfWeek;
@@ -881,7 +952,7 @@ export class ScheduleService {
 
     if (data.status !== undefined) {
       if (!this.isValidStatus(data.status)) {
-        throw this.createError(400, "INVALID_STATUS", "Invalid status");
+        throw this.createError(400, "INVALID_STATUS", "Statut invalide");
       }
       validated.status = data.status;
     }
@@ -955,7 +1026,7 @@ export class ScheduleService {
 
       return {
         success: true,
-        message: "Schedules retrieved successfully",
+        message: "Horaires récupérés avec succès",
         data: {
           schedules: formattedSchedules,
           pagination: {
@@ -973,7 +1044,7 @@ export class ScheduleService {
         },
       };
     } catch (error: any) {
-      return this.handleError("getAllSchedules", error);
+      throw this.handleError("getAllSchedules", error);
     }
   }
 
@@ -983,7 +1054,11 @@ export class ScheduleService {
     if (filters.status && this.isValidStatus(filters.status)) {
       where.status = filters.status;
     } else if (filters.status) {
-      throw this.createError(400, "INVALID_STATUS", "Invalid status value");
+      throw this.createError(
+        400,
+        "INVALID_STATUS",
+        "Valeur de statut invalide"
+      );
     }
 
     if (filters.classId && this.isValidId(filters.classId)) {
@@ -997,7 +1072,11 @@ export class ScheduleService {
     if (filters.dayOfWeek && this.isValidDayOfWeek(filters.dayOfWeek)) {
       where.dayOfWeek = filters.dayOfWeek;
     } else if (filters.dayOfWeek) {
-      throw this.createError(400, "INVALID_DAY_OF_WEEK", "Invalid day of week");
+      throw this.createError(
+        400,
+        "INVALID_DAY_OF_WEEK",
+        "Jour de la semaine invalide"
+      );
     }
 
     if (filters.classroom) {
@@ -1053,7 +1132,11 @@ export class ScheduleService {
   async getScheduleById(id: string): Promise<ApiResponse> {
     try {
       if (!this.isValidId(id)) {
-        throw this.createError(400, "INVALID_ID_FORMAT", "Invalid ID format");
+        throw this.createError(
+          400,
+          "INVALID_ID_FORMAT",
+          "Format d'ID invalide"
+        );
       }
 
       const schedule = await this.prismaClient.schedule.findUnique({
@@ -1062,7 +1145,7 @@ export class ScheduleService {
       });
 
       if (!schedule) {
-        throw this.createError(404, "SCHEDULE_NOT_FOUND", "Schedule not found");
+        throw this.createError(404, "SCHEDULE_NOT_FOUND", "Horaire non trouvé");
       }
 
       const formattedSchedule = {
@@ -1074,23 +1157,71 @@ export class ScheduleService {
 
       return {
         success: true,
-        message: "Schedule retrieved successfully",
+        message: "Horaire récupéré avec succès",
         data: { schedule: formattedSchedule },
         metadata: {
           duration: formattedSchedule.duration.display,
-          subject: schedule.classAssignment?.subject?.name || "Unknown",
+          subject: schedule.classAssignment?.subject?.name || "Inconnu",
           professor: schedule.professeur
             ? `${schedule.professeur.firstName} ${schedule.professeur.lastName}`
-            : "Unknown",
-          class: schedule.schoolClass?.name || "Unknown",
+            : "Inconnu",
+          class: schedule.schoolClass?.name || "Inconnu",
         },
       };
     } catch (error: any) {
-      return this.handleError("getScheduleById", error);
+      throw this.handleError("getScheduleById", error);
     }
   }
 
-  // ==================== TIMETABLE METHODS ====================
+  // ==================== DELETE METHOD ====================
+
+  async deleteSchedule(id: string): Promise<ApiResponse> {
+    return await this.prismaClient.$transaction(async (tx) => {
+      try {
+        if (!this.isValidId(id)) {
+          throw this.createError(
+            400,
+            "INVALID_ID_FORMAT",
+            "Format d'ID invalide"
+          );
+        }
+
+        const schedule = await tx.schedule.findUnique({
+          where: { id },
+          include: {
+            classAssignment: { include: { subject: true } },
+            schoolClass: true,
+          },
+        });
+
+        if (!schedule) {
+          throw this.createError(
+            404,
+            "SCHEDULE_NOT_FOUND",
+            "Horaire non trouvé"
+          );
+        }
+
+        await tx.schedule.delete({ where: { id } });
+
+        return {
+          success: true,
+          message: "Horaire supprimé avec succès",
+          metadata: {
+            subject: schedule.classAssignment?.subject?.name || "Inconnu",
+            class: schedule.schoolClass?.name || "Inconnu",
+            dayOfWeek: schedule.dayOfWeek,
+            time: `${this.formatTimeForDisplay(schedule.startTime)} - ${this.formatTimeForDisplay(schedule.endTime)}`,
+            deletedAt: new Date().toISOString(),
+          },
+        };
+      } catch (error: any) {
+        throw this.handleError("deleteSchedule", error);
+      }
+    });
+  }
+
+  // ==================== OTHER METHODS (abrégées pour la clarté) ====================
 
   async getClassTimetable(
     classId: string,
@@ -1098,7 +1229,7 @@ export class ScheduleService {
   ): Promise<ApiResponse> {
     try {
       if (!this.isValidId(classId)) {
-        throw this.createError(400, "INVALID_CLASS_ID", "Invalid class ID");
+        throw this.createError(400, "INVALID_CLASS_ID", "ID classe invalide");
       }
 
       // Construire la clause WHERE
@@ -1143,7 +1274,7 @@ export class ScheduleService {
 
       return {
         success: true,
-        message: "Timetable retrieved successfully",
+        message: "Emploi du temps récupéré avec succès",
         data: {
           classId,
           timetable: timetableByDay,
@@ -1157,7 +1288,7 @@ export class ScheduleService {
         },
       };
     } catch (error: any) {
-      return this.handleError("getClassTimetable", error);
+      throw this.handleError("getClassTimetable", error);
     }
   }
 
@@ -1227,486 +1358,5 @@ export class ScheduleService {
         0
       ),
     };
-  }
-
-  // ==================== GENERATION METHODS ====================
-
-  async generateTimetable(data: GenerateTimetableData): Promise<ApiResponse> {
-    return await this.prismaClient.$transaction(async (tx) => {
-      try {
-        const { classId, academicYearId, constraints } = data;
-
-        // Validation des paramètres
-        if (!this.isValidId(classId)) {
-          throw this.createError(400, "INVALID_CLASS_ID", "Invalid class ID");
-        }
-
-        if (!this.isValidId(academicYearId)) {
-          throw this.createError(
-            400,
-            "INVALID_ACADEMIC_YEAR_ID",
-            "Invalid academic year ID"
-          );
-        }
-
-        // Récupérer la classe et les assignations
-        const [schoolClass, assignments] = await Promise.all([
-          tx.schoolClass.findUnique({ where: { id: classId } }),
-          this.getAssignmentsForGeneration(tx, classId, academicYearId),
-        ]);
-
-        if (!schoolClass) {
-          throw this.createError(404, "CLASS_NOT_FOUND", "Class not found");
-        }
-
-        if (schoolClass.status !== "Active") {
-          throw this.createError(400, "CLASS_INACTIVE", "Class is not active");
-        }
-
-        if (assignments.length === 0) {
-          throw this.createError(
-            404,
-            "NO_ASSIGNMENTS",
-            "No assignments found for this class"
-          );
-        }
-
-        // Générer l'emploi du temps
-        const { schedules, errors } =
-          await this.generateTimetableForAssignments(
-            tx,
-            assignments,
-            classId,
-            schoolClass.level,
-            constraints || {}
-          );
-
-        // Calculer les statistiques
-        const statistics = this.calculateGenerationStatistics(
-          schedules,
-          assignments.length,
-          errors.length
-        );
-
-        return {
-          success: true,
-          message: `Timetable generated with ${schedules.length} schedules out of ${assignments.length} assignments`,
-          data: {
-            schedules,
-            errors,
-            statistics,
-          },
-          metadata: {
-            classId,
-            className: schoolClass.name,
-            level: schoolClass.level,
-            academicYearId,
-            generationDate: new Date().toISOString(),
-          },
-        };
-      } catch (error: any) {
-        return this.handleError("generateTimetable", error);
-      }
-    });
-  }
-
-  private async getAssignmentsForGeneration(
-    tx: Prisma.TransactionClient,
-    classId: string,
-    academicYearId: string
-  ) {
-    const schoolClass = await tx.schoolClass.findUnique({
-      where: { id: classId },
-    });
-
-    if (!schoolClass) {
-      throw this.createError(404, "CLASS_NOT_FOUND", "Class not found");
-    }
-
-    return tx.classAssignment.findMany({
-      where: {
-        classLevel: schoolClass.level,
-        academicYearId,
-        status: "Active",
-        professeur: { status: "Actif" },
-      },
-      include: {
-        subject: true,
-        professeur: true,
-      },
-    });
-  }
-
-  private async generateTimetableForAssignments(
-    tx: Prisma.TransactionClient,
-    assignments: any[],
-    classId: string,
-    classLevel: string,
-    constraints: GenerationConstraints
-  ) {
-    const schedules = [];
-    const errors = [];
-    const tracking: AssignmentTracking = {
-      professorCounts: new Map(),
-      classCounts: new Map(),
-      subjectCounts: new Map(),
-      roomAssignments: new Map(),
-    };
-
-    // Trier par importance (coefficient)
-    const sortedAssignments = [...assignments].sort(
-      (a, b) => (b.subject?.coefficient || 0) - (a.subject?.coefficient || 0)
-    );
-
-    const daysOfWeek = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
-
-    for (const assignment of sortedAssignments) {
-      let placed = false;
-
-      for (const day of daysOfWeek) {
-        if (placed) break;
-
-        for (const slot of this.config.DEFAULT_TIME_SLOTS) {
-          if (placed) break;
-
-          // Vérifier les contraintes
-          if (
-            !this.isSlotAvailableForAssignment(
-              slot,
-              day,
-              constraints,
-              tracking,
-              assignment
-            )
-          ) {
-            continue;
-          }
-
-          try {
-            // Vérifier les conflits
-            const conflictCheck = await this.checkScheduleConflicts(
-              assignment.professeurId,
-              classId,
-              day,
-              `2000-01-01T${slot.start}Z`,
-              `2000-01-01T${slot.end}Z`
-            );
-
-            if (!conflictCheck.hasConflict) {
-              // Créer le schedule
-              const schedule = await tx.schedule.create({
-                data: {
-                  assignmentId: assignment.id,
-                  classId,
-                  professeurId: assignment.professeurId,
-                  dayOfWeek: day,
-                  startTime: slot.start,
-                  endTime: slot.end,
-                  classroom: this.getAvailableClassroom(
-                    day,
-                    slot.start,
-                    tracking
-                  ),
-                  status: "ACTIVE",
-                  notes: "Automatically generated",
-                },
-                include: {
-                  classAssignment: {
-                    include: {
-                      subject: true,
-                      professeur: true,
-                    },
-                  },
-                },
-              });
-
-              schedules.push(schedule);
-              placed = true;
-
-              // Mettre à jour le tracking
-              this.updateTracking(
-                tracking,
-                assignment,
-                day,
-                slot,
-                schedule.classroom || "Unassigned"
-              );
-            }
-          } catch (error) {
-            // Continuer avec le prochain slot
-            continue;
-          }
-        }
-      }
-
-      if (!placed) {
-        errors.push({
-          assignmentId: assignment.id,
-          subject: assignment.subject.name,
-          professor: `${assignment.professeur.firstName} ${assignment.professeur.lastName}`,
-          message:
-            "Could not place this assignment - all slots are occupied or constrained",
-        });
-      }
-    }
-
-    return { schedules, errors };
-  }
-
-  private isSlotAvailableForAssignment(
-    slot: { start: string; end: string },
-    day: string,
-    constraints: GenerationConstraints,
-    tracking: AssignmentTracking,
-    assignment: any
-  ): boolean {
-    // Vérifier la pause
-    if (constraints.breakTime) {
-      const slotStartHour = parseInt(slot.start.split(":")[0]);
-      const breakStartHour = parseInt(
-        constraints.breakTime.start.split(":")[0]
-      );
-      const breakEndHour = parseInt(constraints.breakTime.end.split(":")[0]);
-
-      if (slotStartHour >= breakStartHour && slotStartHour < breakEndHour) {
-        return false;
-      }
-    }
-
-    // Préférence pour les créneaux du matin
-    if (
-      constraints.preferMorningSlots !== false &&
-      parseInt(slot.start.split(":")[0]) >= 14
-    ) {
-      return false;
-    }
-
-    // Vérifier les limites du professeur
-    const professorKey = `${assignment.professeurId}-${day}`;
-    const professorCount = tracking.professorCounts.get(professorKey) || 0;
-
-    if (professorCount >= this.config.MAX_SCHEDULES_PER_PROFESSOR_PER_DAY) {
-      return false;
-    }
-
-    // Vérifier les matières consécutives
-    if (constraints.avoidConsecutiveSameSubject !== false) {
-      const subjectKey = `${assignment.subjectId}-${day}`;
-      const subjectCount = tracking.subjectCounts.get(subjectKey) || 0;
-
-      if (subjectCount > 0) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  private getAvailableClassroom(
-    day: string,
-    startTime: string,
-    tracking: AssignmentTracking
-  ): string {
-    const availableClassrooms = [
-      "A101",
-      "A102",
-      "A103",
-      "A104",
-      "B201",
-      "B202",
-      "B203",
-      "B204",
-      "C301",
-      "C302",
-      "C303",
-      "C304",
-      "D401",
-      "D402",
-      "D403",
-      "D404",
-      "E501",
-      "E502",
-      "E503",
-      "E504",
-    ];
-
-    const key = `${day}-${startTime}`;
-    const occupiedRooms = tracking.roomAssignments.get(key) || [];
-
-    const availableRoom = availableClassrooms.find(
-      (room) => !occupiedRooms.includes(room)
-    );
-    return availableRoom || availableClassrooms[0];
-  }
-
-  private updateTracking(
-    tracking: AssignmentTracking,
-    assignment: any,
-    day: string,
-    slot: { start: string; end: string },
-    classroom: string
-  ) {
-    // Mettre à jour le compteur du professeur
-    const professorKey = `${assignment.professeurId}-${day}`;
-    tracking.professorCounts.set(
-      professorKey,
-      (tracking.professorCounts.get(professorKey) || 0) + 1
-    );
-
-    // Mettre à jour le compteur de la matière
-    const subjectKey = `${assignment.subjectId}-${day}`;
-    tracking.subjectCounts.set(subjectKey, 1);
-
-    // Mettre à jour les salles assignées
-    const roomKey = `${day}-${slot.start}`;
-    const rooms = tracking.roomAssignments.get(roomKey) || [];
-    rooms.push(classroom);
-    tracking.roomAssignments.set(roomKey, rooms);
-  }
-
-  private calculateGenerationStatistics(
-    schedules: any[],
-    totalAssignments: number,
-    errorCount: number
-  ) {
-    const successfullyPlaced = schedules.length;
-    const successRate =
-      totalAssignments > 0 ? (successfullyPlaced / totalAssignments) * 100 : 0;
-
-    return {
-      totalAssignments,
-      successfullyPlaced,
-      failed: errorCount,
-      successRate: Math.round(successRate * 100) / 100,
-      totalHours: this.calculateTotalHours(schedules),
-      averageHoursPerDay: this.calculateAverageHoursPerDay(schedules),
-    };
-  }
-
-  private calculateAverageHoursPerDay(schedules: any[]): number {
-    const days = new Set(schedules.map((s) => s.dayOfWeek)).size;
-    const totalHours = this.calculateTotalHours(schedules);
-    return days > 0 ? parseFloat((totalHours / days).toFixed(1)) : 0;
-  }
-
-  // ==================== UTILITY METHODS ====================
-
-  async deleteSchedule(id: string): Promise<ApiResponse> {
-    return await this.prismaClient.$transaction(async (tx) => {
-      try {
-        if (!this.isValidId(id)) {
-          throw this.createError(400, "INVALID_ID_FORMAT", "Invalid ID format");
-        }
-
-        const schedule = await tx.schedule.findUnique({
-          where: { id },
-          include: {
-            classAssignment: { include: { subject: true } },
-            schoolClass: true,
-          },
-        });
-
-        if (!schedule) {
-          throw this.createError(
-            404,
-            "SCHEDULE_NOT_FOUND",
-            "Schedule not found"
-          );
-        }
-
-        await tx.schedule.delete({ where: { id } });
-
-        return {
-          success: true,
-          message: "Schedule deleted successfully",
-          metadata: {
-            subject: schedule.classAssignment?.subject?.name || "Unknown",
-            class: schedule.schoolClass?.name || "Unknown",
-            dayOfWeek: schedule.dayOfWeek,
-            time: `${this.formatTimeForDisplay(schedule.startTime)} - ${this.formatTimeForDisplay(schedule.endTime)}`,
-            deletedAt: new Date().toISOString(),
-          },
-        };
-      } catch (error: any) {
-        return this.handleError("deleteSchedule", error);
-      }
-    });
-  }
-
-  async validateTimetable(classId: string): Promise<ApiResponse> {
-    try {
-      if (!this.isValidId(classId)) {
-        throw this.createError(400, "INVALID_CLASS_ID", "Invalid class ID");
-      }
-
-      const timetableResponse = await this.getClassTimetable(classId);
-
-      if (!timetableResponse.success) {
-        throw this.createError(
-          400,
-          "TIMETABLE_FETCH_FAILED",
-          "Failed to fetch timetable"
-        );
-      }
-
-      const schedules = timetableResponse.data.schedules || [];
-      const validationResults = {
-        isValid: true,
-        issues: [] as any[],
-        statistics: {} as any,
-      };
-
-      // Vérifier chaque horaire
-      for (const schedule of schedules) {
-        if (schedule.status === "ACTIVE") {
-          const conflictCheck = await this.checkScheduleConflicts(
-            schedule.professeurId,
-            schedule.classId,
-            schedule.dayOfWeek,
-            schedule.startTime,
-            schedule.endTime,
-            schedule.classroom,
-            schedule.id
-          );
-
-          if (conflictCheck.hasConflict) {
-            validationResults.isValid = false;
-            validationResults.issues.push({
-              scheduleId: schedule.id,
-              type: "CONFLICT",
-              conflicts: conflictCheck.conflicts,
-            });
-          }
-        }
-      }
-
-      // Statistiques
-      validationResults.statistics = {
-        totalSchedules: schedules.length,
-        activeSchedules: schedules.filter(
-          (s: { status: string }) => s.status === "ACTIVE"
-        ).length,
-        totalHours: this.calculateTotalHours(schedules),
-        averageDuration: this.calculateAverageDuration(schedules),
-        daysWithSchedules: new Set(
-          schedules.map((s: { dayOfWeek: any }) => s.dayOfWeek)
-        ).size,
-      };
-
-      return {
-        success: true,
-        message: validationResults.isValid
-          ? "Timetable is valid"
-          : "Issues detected in timetable",
-        data: validationResults,
-        metadata: {
-          classId,
-          validatedAt: new Date().toISOString(),
-          issuesCount: validationResults.issues.length,
-        },
-      };
-    } catch (error: any) {
-      return this.handleError("validateTimetable", error);
-    }
   }
 }

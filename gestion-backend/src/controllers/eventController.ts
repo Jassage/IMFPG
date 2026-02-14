@@ -49,14 +49,8 @@ export const eventController = {
 
       res.status(201).json(result);
     } catch (error: any) {
-      console.error("❌ Erreur création événement:", error);
-
-      // Journalisation de l'erreur (sans bloquer la réponse)
       try {
-        // Vous pouvez ajouter ici la journalisation d'erreur si nécessaire
-      } catch (logError) {
-        console.error("❌ Erreur de journalisation:", logError);
-      }
+      } catch (logError) {}
 
       res.status(error.status || 500).json({
         success: false,
@@ -98,8 +92,6 @@ export const eventController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur récupération événements:", error);
-
       res.status(error.status || 500).json({
         success: false,
         message:
@@ -121,8 +113,6 @@ export const eventController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur récupération événements à venir:", error);
-
       res.status(error.status || 500).json({
         success: false,
         message:
@@ -142,8 +132,6 @@ export const eventController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur récupération événement:", error);
-
       res.status(error.status || 500).json({
         success: false,
         message:
@@ -167,14 +155,8 @@ export const eventController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur mise à jour événement:", error);
-
-      // Journalisation de l'erreur
       try {
-        // Vous pouvez ajouter ici la journalisation d'erreur si nécessaire
-      } catch (logError) {
-        console.error("❌ Erreur de journalisation:", logError);
-      }
+      } catch (logError) {}
 
       res.status(error.status || 500).json({
         success: false,
@@ -198,15 +180,6 @@ export const eventController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur suppression événement:", error);
-
-      // Journalisation de l'erreur
-      try {
-        // Vous pouvez ajouter ici la journalisation d'erreur si nécessaire
-      } catch (logError) {
-        console.error("❌ Erreur de journalisation:", logError);
-      }
-
       res.status(error.status || 500).json({
         success: false,
         message:
@@ -223,8 +196,6 @@ export const eventController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur récupération statistiques:", error);
-
       res.status(error.status || 500).json({
         success: false,
         message:
@@ -252,8 +223,6 @@ export const eventController = {
 
       res.json(result);
     } catch (error: any) {
-      console.error("❌ Erreur récupération événements par catégorie:", error);
-
       res.status(error.status || 500).json({
         success: false,
         message:

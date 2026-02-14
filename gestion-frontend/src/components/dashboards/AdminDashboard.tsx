@@ -1449,23 +1449,6 @@ const AdminDashboard = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex bg-muted rounded-lg p-1">
-            {["month", "quarter", "year"].map((range) => (
-              <Button
-                key={range}
-                variant={timeRange === range ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setTimeRange(range)}
-                className="capitalize"
-              >
-                {range === "month"
-                  ? "Mois"
-                  : range === "quarter"
-                  ? "Trimestre"
-                  : "Année"}
-              </Button>
-            ))}
-          </div>
           <Button
             variant="outline"
             size="sm"
