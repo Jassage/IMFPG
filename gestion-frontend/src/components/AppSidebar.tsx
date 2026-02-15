@@ -30,8 +30,8 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import roleConfigurations from "@/config/roleConfig";
-
-// Configuration des menus par rôle
+import { useEffect, useState } from "react";
+import { useSettings } from "@/hooks/useSystemSettings";
 
 interface AppSidebarProps {
   activeTab: ActiveTab;
@@ -58,21 +58,44 @@ export function AppSidebar({
   const { user: authUser } = useAuthStore();
   const { hasPermission: internalHasPermission } = usePermissions();
 
+  // Utiliser les paramètres système
+  const { settings, getSchoolInfo, isModuleEnabled, isLoading } = useSettings();
+  const [schoolInfo, setSchoolInfo] = useState({
+    name: "IMFP",
+    slogan: "Institution Mixte Faustin 1er",
+  });
+
+  // Mettre à jour les infos de l'école quand les settings changent
+  useEffect(() => {
+    if (settings) {
+      setSchoolInfo(getSchoolInfo());
+    }
+  }, [settings, getSchoolInfo]);
+
   const currentUser = user || authUser;
   const hasPermission = externalHasPermission || internalHasPermission;
 
   // Déterminer la configuration basée sur le rôle
   const getConfig = () => {
     if (config) return config;
-
     if (!currentUser) return roleConfigurations.Admin;
-
     const role = currentUser.role as UserRole;
     return roleConfigurations[role] || roleConfigurations.Admin;
   };
 
   const currentConfig = getConfig();
   const userRole = (currentUser?.role as UserRole) || "Admin";
+
+  // Filtrer les items de menu en fonction des modules activés
+  const filterItemsByEnabledModules = (items: any[]) => {
+    return items.filter((item) => {
+      // Si l'item a une dépendance de module, vérifier si le module est activé
+      if (item.requiredModule) {
+        return isModuleEnabled(item.requiredModule);
+      }
+      return true;
+    });
+  };
 
   const handleMenuClick = (tabId: string) => {
     onTabChange(tabId as ActiveTab);
@@ -81,7 +104,7 @@ export function AppSidebar({
     }
   };
 
-  // Rendu d'une section de menu
+  // Rendu d'une section de menu avec filtrage par module
   const renderMenuSection = (
     items: {
       id: ActiveTab;
@@ -89,16 +112,19 @@ export function AppSidebar({
       icon: any;
       permission: string;
       description?: string;
+      requiredModule?: string; // Ajout du champ pour la dépendance de module
     }[],
     title: string,
   ) => {
-    const filteredItems = items.filter((item) => {
-      // Pour admin, toujours montrer les items (a toutes les permissions)
-      if (userRole === "Admin") {
-        return true;
-      }
+    // Filtrer d'abord par permissions
+    let filteredItems = items.filter((item) => {
+      if (userRole === "Admin") return true;
       return hasPermission(item.permission);
     });
+
+    // Ensuite filtrer par modules activés
+    filteredItems = filterItemsByEnabledModules(filteredItems);
+
     if (filteredItems.length === 0) return null;
 
     return (
@@ -141,11 +167,6 @@ export function AppSidebar({
                     {(!isCollapsed || isMobile) && (
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="font-medium">{item.label}</span>
-                        {/* {item.description && !isCollapsed && (
-                          <span className="text-xs text-sidebar-foreground/60 truncate">
-                            {item.description}
-                          </span>
-                        )} */}
                       </div>
                     )}
                     {isActive && (
@@ -160,39 +181,6 @@ export function AppSidebar({
       </SidebarGroup>
     );
   };
-
-  // Rendu des actions rapides
-  // const renderQuickActions = () => {
-  //   if (!currentConfig.quickActions || currentConfig.quickActions.length === 0)
-  //     return null;
-  //   if (isCollapsed && !isMobile) return null;
-
-  //   return (
-  //     <SidebarGroup>
-  //       <SidebarGroupContent>
-  //         <div className="p-2">
-  //           <div className="text-xs font-medium text-sidebar-foreground/70 mb-2">
-  //             Actions Rapides
-  //           </div>
-  //           <div className="flex flex-wrap gap-1">
-  //             {currentConfig.quickActions.map((action: any) => (
-  //               <Button
-  //                 key={action.id}
-  //                 size="sm"
-  //                 variant="outline"
-  //                 className="h-auto py-1 px-2 text-xs"
-  //                 onClick={action.action}
-  //               >
-  //                 <action.icon className="h-3 w-3 mr-1" />
-  //                 {action.label}
-  //               </Button>
-  //             ))}
-  //           </div>
-  //         </div>
-  //       </SidebarGroupContent>
-  //     </SidebarGroup>
-  //   );
-  // };
 
   // Obtenir l'icône de rôle
   const getRoleIcon = (role: UserRole) => {
@@ -214,23 +202,6 @@ export function AppSidebar({
     }
   };
 
-  // Rendu de l'indicateur de rôle
-  const renderRoleIndicator = () => {
-    if (isCollapsed && !isMobile) return null;
-
-    return (
-      <div className="flex items-center gap-2 px-2 py-1 mb-2 text-xs text-sidebar-foreground/70">
-        {getRoleIcon(userRole)}
-        <span className="font-medium capitalize">{userRole}</span>
-        {currentUser?.facultyName && (
-          <Badge variant="outline" className="ml-auto text-xs">
-            {currentUser.facultyName}
-          </Badge>
-        )}
-      </div>
-    );
-  };
-
   return (
     <Sidebar
       className={cn(
@@ -244,17 +215,19 @@ export function AppSidebar({
           <div className="flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20 text-white">
               <img
-                src="/logo.png"
-                alt="UJEPH Logo"
+                src={
+                  settings?.schoolLogo
+                    ? `http://localhost:5000${settings.schoolLogo}`
+                    : "/logo.png"
+                }
+                alt={schoolInfo.name}
                 className="h-10 w-10 object-contain"
               />
             </div>
             {(!isCollapsed || isMobile) && (
               <div className="flex flex-col text-white">
-                <span className="text-lg font-bold">IMFP</span>
-                <span className="text-xs opacity-90">
-                  Institution Mixte Faustin 1er
-                </span>
+                <span className="text-lg font-bold">{schoolInfo.name}</span>
+                <span className="text-xs opacity-90">{schoolInfo.slogan}</span>
               </div>
             )}
           </div>
@@ -270,25 +243,22 @@ export function AppSidebar({
             </Button>
           )}
         </div>
-
-        {/* {(!isCollapsed || isMobile) && renderRoleIndicator()} */}
       </SidebarHeader>
 
       <SidebarContent className="bg-sidebar overflow-y-auto">
-        {/* Actions rapides (uniquement sur desktop développé) */}
-        {/* {(!isCollapsed || isMobile) && renderQuickActions()} */}
-
         {/* Navigation Principale */}
         {renderMenuSection(currentConfig.mainItems, "Navigation Principale")}
 
-        {/* Gestion Académique */}
-        {renderMenuSection(currentConfig.academicItems, "Gestion Académique")}
+        {/* Gestion Académique - Ne s'affiche que si le module académique est activé */}
+        {isModuleEnabled("attendance") &&
+          renderMenuSection(currentConfig.academicItems, "Gestion Académique")}
 
         {/* Documents */}
         {renderMenuSection(currentConfig.documentItems, "Documents")}
 
-        {/* Administration */}
-        {renderMenuSection(currentConfig.adminItems, "Administration")}
+        {/* Administration - Ne s'affiche que pour les admins */}
+        {userRole === "Admin" &&
+          renderMenuSection(currentConfig.adminItems, "Administration")}
 
         {/* Section d'aide pour les petits écrans */}
         {isMobile && (
@@ -332,11 +302,20 @@ export function AppSidebar({
               </div>
             )}
 
+            {/* Informations de contact depuis les paramètres */}
+            <div className="mt-2 space-y-1 text-xs">
+              <div className="flex items-center gap-1 text-sidebar-foreground/60">
+                <span className="truncate">{settings?.phone}</span>
+                {" /"}
+                <span className="truncate">{settings?.email}</span>
+              </div>
+            </div>
+
             {/* Indicateur de statut */}
             <div className="mt-2 flex items-center gap-2 text-xs">
               <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
               <span className="text-sidebar-foreground/60">
-                Système en ligne
+                {isLoading ? "Chargement..." : "Système en ligne"}
               </span>
             </div>
           </div>

@@ -4,6 +4,8 @@
  * @version 1.0.0
  */
 
+import path from "path";
+import fs from "fs";
 import { PrismaClient } from "../../generated/prisma";
 import { SettingsUpdateData, SystemSettings } from "../types/settings";
 import { sanitizeInput } from "../utils/validators";
@@ -538,6 +540,135 @@ export class SettingsService {
     } catch (error) {
       console.error("SettingsService - getPublicSettings error:", error);
       throw new Error("Erreur lors de la récupération des paramètres publics");
+    }
+  }
+
+  /**
+   * @method uploadLogo
+   * @description Gère l'upload et la mise à jour du logo
+   * @param {Express.Multer.File} file - Fichier uploadé
+   * @param {string} userId - ID de l'utilisateur
+   * @returns {Promise<SystemSettings>} Paramètres mis à jour
+   */
+  static async uploadLogo(
+    file: Express.Multer.File,
+    userId?: string,
+  ): Promise<SystemSettings> {
+    try {
+      // Vérifier que le fichier existe
+      if (!file) {
+        throw new Error("Aucun fichier fourni");
+      }
+
+      // Construire l'URL du logo
+      const logoUrl = `/uploads/profiles/${file.filename}`;
+
+      // Récupérer les paramètres actuels pour supprimer l'ancien logo
+      const existing = await prisma.systemSettings.findFirst();
+
+      if (existing?.schoolLogo) {
+        // Supprimer l'ancien fichier si ce n'est pas l'URL par défaut
+        await this.deleteOldLogo(existing.schoolLogo);
+      }
+
+      // Mettre à jour les paramètres
+      const settings = await prisma.systemSettings.update({
+        where: { id: existing?.id },
+        data: {
+          schoolLogo: logoUrl,
+          updatedBy: userId,
+        },
+      });
+
+      // Retourner les paramètres mis à jour
+      return {
+        ...settings,
+        paymentMethods: this.parseJsonField(settings.paymentMethods, []),
+        passwordPolicy: this.parseJsonField(settings.passwordPolicy, {}),
+        enabledModules: this.parseJsonField(settings.enabledModules, {}),
+      } as SystemSettings;
+    } catch (error) {
+      console.error("SettingsService - uploadLogo error:", error);
+      throw new Error("Erreur lors de l'upload du logo");
+    }
+  }
+
+  /**
+   * @method uploadFavicon
+   * @description Gère l'upload et la mise à jour du favicon
+   * @param {Express.Multer.File} file - Fichier uploadé
+   * @param {string} userId - ID de l'utilisateur
+   * @returns {Promise<SystemSettings>} Paramètres mis à jour
+   */
+  static async uploadFavicon(
+    file: Express.Multer.File,
+    userId?: string,
+  ): Promise<SystemSettings> {
+    try {
+      if (!file) {
+        throw new Error("Aucun fichier fourni");
+      }
+
+      const faviconUrl = `/uploads/profiles/${file.filename}`;
+
+      const existing = await prisma.systemSettings.findFirst();
+
+      if (existing?.schoolFavicon && !existing.schoolFavicon.startsWith("/")) {
+        await this.deleteOldLogo(existing.schoolFavicon);
+      }
+
+      const settings = await prisma.systemSettings.update({
+        where: { id: existing?.id },
+        data: {
+          schoolFavicon: faviconUrl,
+          updatedBy: userId,
+        },
+      });
+
+      return {
+        ...settings,
+        paymentMethods: this.parseJsonField(settings.paymentMethods, []),
+        passwordPolicy: this.parseJsonField(settings.passwordPolicy, {}),
+        enabledModules: this.parseJsonField(settings.enabledModules, {}),
+      } as SystemSettings;
+    } catch (error) {
+      console.error("SettingsService - uploadFavicon error:", error);
+      throw new Error("Erreur lors de l'upload du favicon");
+    }
+  }
+
+  /**
+   * @method deleteOldLogo
+   * @description Supprime l'ancien fichier logo
+   * @param {string} logoUrl - URL de l'ancien logo
+   */
+  private static async deleteOldLogo(logoUrl: string): Promise<void> {
+    try {
+      // Ne pas supprimer si c'est une URL par défaut
+      if (logoUrl.startsWith("/") && !logoUrl.includes("/uploads/")) {
+        return;
+      }
+
+      // Extraire le chemin du fichier
+      const fileName = logoUrl.split("/").pop();
+      if (!fileName) return;
+
+      // Construire le chemin complet
+      const filePath = path.join(
+        process.cwd(),
+        "uploads",
+        "profiles",
+        fileName,
+      );
+
+      // Vérifier si le fichier existe et le supprimer
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`✅ Ancien logo supprimé: ${fileName}`);
+      }
+    } catch (error) {
+      console.error("❌ Erreur suppression ancien logo:", error);
+      // Ne pas bloquer le processus en cas d'erreur de suppression
     }
   }
 }

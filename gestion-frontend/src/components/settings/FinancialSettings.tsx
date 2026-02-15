@@ -62,11 +62,14 @@ export const FinancialSettings = ({ settings, setSettings }: Props) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="XOF">XOF - Franc CFA (BCEAO)</SelectItem>
-                  <SelectItem value="XAF">XAF - Franc CFA (BEAC)</SelectItem>
+                  <SelectItem value="HTG">HTG - Gourde haïtienne</SelectItem>
                   <SelectItem value="EUR">EUR - Euro</SelectItem>
                   <SelectItem value="USD">USD - Dollar US</SelectItem>
                   <SelectItem value="GBP">GBP - Livre sterling</SelectItem>
+                  <SelectItem value="CAD">CAD - Dollar canadien</SelectItem>
+                  <SelectItem value="JPY">JPY - Yen japonais</SelectItem>
+                  <SelectItem value="CNY">CNY - Yuan chinois</SelectItem>
+                  <SelectItem value="INR">INR - Roupie indienne</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -78,7 +81,7 @@ export const FinancialSettings = ({ settings, setSettings }: Props) => {
                 onChange={(e) =>
                   setSettings({ ...settings, currencySymbol: e.target.value })
                 }
-                placeholder="FCFA, €, $..."
+                placeholder="HTG, €, $..."
               />
             </div>
           </div>
@@ -95,7 +98,7 @@ export const FinancialSettings = ({ settings, setSettings }: Props) => {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Taux de TVA (%)</Label>
+              <Label>Taux de TCA (%)</Label>
               <Input
                 type="number"
                 value={settings.taxRate}

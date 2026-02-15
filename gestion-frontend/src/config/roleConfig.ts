@@ -158,6 +158,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.GENERATE_TRANSCRIPTS,
         "Édition des bulletins de notes",
       ),
+      createNavItem(
+        "student-cards",
+        "Cartes d'Étudiants",
+        "IdCard",
+        PERMISSIONS.GENERATE_CARDS,
+        "Génération des cartes d'étudiants",
+      ),
     ],
     adminItems: [
       createNavItem(

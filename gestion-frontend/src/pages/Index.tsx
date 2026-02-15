@@ -84,6 +84,7 @@ import ProfessorGradeManager from "@/components/ProfessorGradesManager";
 import AnnouncementManager from "@/components/AnnouncementManager";
 
 import { NotificationBell } from "@/components/NotificationBell";
+import { StudentCardGenerator } from "@/components/StudentCardGenerator";
 
 // Types pour les rôles
 type UserRole =
@@ -401,6 +402,7 @@ const Index = () => {
       schedule: <ScheduleManager />,
       transcripts: <BulletinPage />,
       class_assignment: <ClassAssignmentManager />,
+      "student-cards": <StudentCardGenerator />,
     };
 
     const component = tabComponents[activeTab];

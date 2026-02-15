@@ -343,3 +343,309 @@ export const getPublicSettings = async (
     res.status(500).json(response);
   }
 };
+
+/**
+ * @controller uploadLogo
+ * @description Upload et mise à jour du logo de l'école
+ * @route POST /api/settings/upload-logo
+ * @access Private (Admin)
+ */
+export const uploadLogo = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const userId = auditData.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Non autorisé",
+        code: "UNAUTHORIZED",
+      });
+      return;
+    }
+
+    // Vérifier que le fichier est présent
+    if (!req.file) {
+      res.status(400).json({
+        success: false,
+        message: "Aucun fichier fourni",
+        code: "NO_FILE_UPLOADED",
+      });
+      return;
+    }
+
+    console.log("📸 Upload logo - Fichier reçu:", {
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+    });
+
+    // Appel du service pour gérer l'upload
+    const settings = await SettingsService.uploadLogo(req.file, userId);
+
+    // Journaliser l'action
+    await createAuditLog({
+      ...auditData,
+      action: "UPLOAD_LOGO",
+      entity: "SystemSettings",
+      entityId: settings.id,
+      userId: userId,
+      description: "Upload du logo de l'école",
+      status: "SUCCESS",
+      metadata: {
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        size: req.file.size,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Logo uploadé avec succès",
+      data: {
+        settings,
+        file: {
+          filename: req.file.filename,
+          url: settings.schoolLogo,
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error("❌ uploadLogo error:", error);
+
+    // Journaliser l'erreur
+    await createAuditLog({
+      ...auditData,
+      action: "UPLOAD_LOGO_ERROR",
+      entity: "SystemSettings",
+      description: "Erreur lors de l'upload du logo",
+      status: "ERROR",
+      errorMessage: error.message,
+      metadata: {
+        filename: req.file?.filename,
+        error: error.message,
+      },
+    });
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Erreur lors de l'upload du logo",
+      code: "UPLOAD_ERROR",
+    });
+  }
+};
+
+/**
+ * @controller uploadFavicon
+ * @description Upload et mise à jour du favicon de l'école
+ * @route POST /api/settings/upload-favicon
+ * @access Private (Admin)
+ */
+export const uploadFavicon = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const userId = auditData.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Non autorisé",
+        code: "UNAUTHORIZED",
+      });
+      return;
+    }
+
+    // Vérifier que le fichier est présent
+    if (!req.file) {
+      res.status(400).json({
+        success: false,
+        message: "Aucun fichier fourni",
+        code: "NO_FILE_UPLOADED",
+      });
+      return;
+    }
+
+    console.log("📸 Upload favicon - Fichier reçu:", {
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+    });
+
+    // Appel du service pour gérer l'upload
+    const settings = await SettingsService.uploadFavicon(req.file, userId);
+
+    // Journaliser l'action
+    await createAuditLog({
+      ...auditData,
+      action: "UPLOAD_FAVICON",
+      entity: "SystemSettings",
+      entityId: settings.id,
+      userId: userId,
+      description: "Upload du favicon de l'école",
+      status: "SUCCESS",
+      metadata: {
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        size: req.file.size,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Favicon uploadé avec succès",
+      data: {
+        settings,
+        file: {
+          filename: req.file.filename,
+          url: settings.schoolFavicon,
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error("❌ uploadFavicon error:", error);
+
+    // Journaliser l'erreur
+    await createAuditLog({
+      ...auditData,
+      action: "UPLOAD_FAVICON_ERROR",
+      entity: "SystemSettings",
+      description: "Erreur lors de l'upload du favicon",
+      status: "ERROR",
+      errorMessage: error.message,
+      metadata: {
+        filename: req.file?.filename,
+        error: error.message,
+      },
+    });
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Erreur lors de l'upload du favicon",
+      code: "UPLOAD_ERROR",
+    });
+  }
+};
+
+/**
+ * @controller deleteLogo
+ * @description Supprime le logo de l'école (remet le logo par défaut)
+ * @route DELETE /api/settings/logo
+ * @access Private (Admin)
+ */
+export const deleteLogo = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const userId = auditData.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Non autorisé",
+        code: "UNAUTHORIZED",
+      });
+      return;
+    }
+
+    // Remettre le logo par défaut
+    const settings = await SettingsService.updateSettings(
+      { schoolLogo: "/logo.png" },
+      userId,
+    );
+
+    // Journaliser l'action
+    await createAuditLog({
+      ...auditData,
+      action: "DELETE_LOGO",
+      entity: "SystemSettings",
+      entityId: settings.id,
+      userId: userId,
+      description: "Suppression du logo (retour au logo par défaut)",
+      status: "SUCCESS",
+    });
+
+    res.json({
+      success: true,
+      message: "Logo réinitialisé avec succès",
+      data: { settings },
+    });
+  } catch (error: any) {
+    console.error("❌ deleteLogo error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Erreur lors de la suppression du logo",
+      code: "DELETE_ERROR",
+    });
+  }
+};
+
+/**
+ * @controller deleteFavicon
+ * @description Supprime le favicon de l'école (remet le favicon par défaut)
+ * @route DELETE /api/settings/favicon
+ * @access Private (Admin)
+ */
+export const deleteFavicon = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const userId = auditData.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Non autorisé",
+        code: "UNAUTHORIZED",
+      });
+      return;
+    }
+
+    // Remettre le favicon par défaut
+    const settings = await SettingsService.updateSettings(
+      { schoolFavicon: "/favicon.ico" },
+      userId,
+    );
+
+    // Journaliser l'action
+    await createAuditLog({
+      ...auditData,
+      action: "DELETE_FAVICON",
+      entity: "SystemSettings",
+      entityId: settings.id,
+      userId: userId,
+      description: "Suppression du favicon (retour au favicon par défaut)",
+      status: "SUCCESS",
+    });
+
+    res.json({
+      success: true,
+      message: "Favicon réinitialisé avec succès",
+      data: { settings },
+    });
+  } catch (error: any) {
+    console.error("❌ deleteFavicon error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Erreur lors de la suppression du favicon",
+      code: "DELETE_ERROR",
+    });
+  }
+};

@@ -1,10 +1,13 @@
-import React from "react";
+// components/settings/GeneralSettings.tsx
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, Upload } from "lucide-react";
+import { Building2, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SystemSettings } from "@/types/settings";
+import { useToast } from "@/hooks/use-toast";
+import api from "@/services/api";
 
 interface Props {
   settings: SystemSettings;
@@ -12,17 +15,65 @@ interface Props {
 }
 
 export const GeneralSettings = ({ settings, setSettings }: Props) => {
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { toast } = useToast();
+  const [uploading, setUploading] = useState(false);
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Erreur",
+        description: "L'image ne doit pas dépasser 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Erreur",
+        description: "Le fichier doit être une image",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("logo", file);
+
+      const response = await api.post("/settings/upload-logo", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      if (response.data.success) {
+        // Mettre à jour les settings locaux
         setSettings({
           ...settings,
-          schoolLogo: reader.result as string,
+          schoolLogo: response.data.data.settings.schoolLogo,
         });
-      };
-      reader.readAsDataURL(file);
+
+        toast({
+          title: "Succès",
+          description: "Logo mis à jour avec succès",
+        });
+      }
+    } catch (error: any) {
+      console.error("Erreur upload:", error);
+      toast({
+        title: "Erreur",
+        description: error.response?.data?.message || "Erreur lors de l'upload",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -60,12 +111,16 @@ export const GeneralSettings = ({ settings, setSettings }: Props) => {
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Logo</Label>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Logo de l'école</Label>
             <div className="flex items-center gap-4">
               <div className="w-20 h-20 border rounded-lg overflow-hidden bg-gray-100">
                 <img
-                  src={settings.schoolLogo}
+                  src={
+                    settings?.schoolLogo
+                      ? `http://localhost:5000${settings.schoolLogo}`
+                      : "/logo.png"
+                  }
                   alt="Logo"
                   className="w-full h-full object-contain"
                   onError={(e) => (e.currentTarget.src = "/logo.png")}
@@ -78,6 +133,7 @@ export const GeneralSettings = ({ settings, setSettings }: Props) => {
                   onChange={handleLogoChange}
                   className="hidden"
                   id="logo-upload"
+                  disabled={uploading}
                 />
                 <Button
                   type="button"
@@ -85,33 +141,24 @@ export const GeneralSettings = ({ settings, setSettings }: Props) => {
                   onClick={() =>
                     document.getElementById("logo-upload")?.click()
                   }
+                  disabled={uploading}
                 >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Changer le logo
+                  {uploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Upload en cours...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Changer le logo
+                    </>
+                  )}
                 </Button>
+                <p className="text-xs text-muted-foreground mt-1">
+                  JPEG, PNG, GIF. Max 5MB
+                </p>
               </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="favicon">Favicon</Label>
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 border rounded-lg overflow-hidden bg-gray-100">
-                <img
-                  src={settings.schoolFavicon}
-                  alt="Favicon"
-                  className="w-full h-full object-contain"
-                />
-              </div>
-              <Input
-                id="favicon"
-                value={settings.schoolFavicon}
-                onChange={(e) =>
-                  setSettings({ ...settings, schoolFavicon: e.target.value })
-                }
-                placeholder="/favicon.ico"
-                className="flex-1"
-              />
             </div>
           </div>
         </div>

@@ -53,13 +53,12 @@ import { AcademicSettings } from "@/components/settings/AcademicSettings";
 import { FinancialSettings } from "@/components/settings/FinancialSettings";
 import { SecuritySettings as SecuritySettingsComponent } from "@/components/settings/SecuritySettings";
 import { AppearanceSettings as AppearanceSettingsComponent } from "@/components/settings/AppearanceSettings";
-import { ModulesSettings } from "@/components/settings/ModulesSettings";
 import { useSettings } from "@/hooks/useSystemSettings";
 
 export const SettingsPage = () => {
   const { toast } = useToast();
   const { theme } = useTheme();
-  const { user } = useAuthStore(); // ✅ CORRECTION: Utiliser useAuthStore au lieu de useAuth
+  const { user } = useAuthStore();
 
   const {
     settings: dbSettings,
@@ -504,7 +503,11 @@ export const SettingsPage = () => {
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 border rounded-lg overflow-hidden bg-gray-100">
                 <img
-                  src={localSettings.schoolLogo}
+                  src={
+                    localSettings?.schoolLogo
+                      ? `http://localhost:5000${localSettings.schoolLogo}`
+                      : "/logo.png"
+                  }
                   alt={localSettings.schoolName}
                   className="w-full h-full object-contain"
                   onError={(e) => (e.currentTarget.src = "/logo.png")}
