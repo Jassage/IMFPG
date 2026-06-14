@@ -108,6 +108,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ProfesseurDetails } from "./professorDetails";
+import { ProfesseurRosterPrint } from "./profesor/ProfesseurRosterPrint";
 import api from "@/services/api";
 import {
   Sheet,
@@ -1624,23 +1625,26 @@ export const ProfesseursManager = () => {
             </p>
           </div>
 
-          <Dialog
-            open={isFormOpen}
-            onOpenChange={(open) => {
-              setIsFormOpen(open);
-              if (!open) resetForm();
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button
-                className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all duration-300"
-                onClick={resetForm}
-                size="lg"
-              >
-                <Plus className="h-5 w-5 mr-2" />
-                Nouveau Professeur
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <ProfesseurRosterPrint />
+
+            <Dialog
+              open={isFormOpen}
+              onOpenChange={(open) => {
+                setIsFormOpen(open);
+                if (!open) resetForm();
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button
+                  className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all duration-300"
+                  onClick={resetForm}
+                  size="lg"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  Nouveau Professeur
+                </Button>
+              </DialogTrigger>
             <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader className="pb-4 border-b">
                 <DialogTitle className="text-2xl flex items-center gap-2">
@@ -2486,6 +2490,7 @@ export const ProfesseursManager = () => {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {/* Filtres et onglets */}

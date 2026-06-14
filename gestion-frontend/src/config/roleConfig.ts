@@ -143,6 +143,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "Planning des cours",
       ),
       createNavItem(
+        "attendance",
+        "Presences",
+        "ClipboardCheck",
+        PERMISSIONS.MANAGE_ATTENDANCE,
+        "Gestion des Presences",
+      ),
+      createNavItem(
         "class_assignment",
         "Catalogue des Cours",
         "RotateCcw",
@@ -157,6 +164,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "ScrollText",
         PERMISSIONS.GENERATE_TRANSCRIPTS,
         "Édition des bulletins de notes",
+      ),
+      createNavItem(
+        "reports",
+        "Rapports",
+        "FileBarChart",
+        PERMISSIONS.GENERATE_REPORTS,
+        "Palmarès et notes totales par niveau",
       ),
       createNavItem(
         "student-cards",
@@ -284,11 +298,11 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
     ],
     documentItems: [
       createNavItem(
-        "transcripts",
-        "Bulletins",
-        "ScrollText",
+        "reports",
+        "Rapports",
+        "FileBarChart",
         PERMISSIONS.GENERATE_REPORTS,
-        "Génération de rapports scolaires",
+        "Palmarès et notes totales par niveau",
       ),
       createNavItem(
         "transcripts",
@@ -443,6 +457,14 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "FileEdit",
         PERMISSIONS.MANAGE_OWN_GRADES,
         "Évaluation des élèves",
+      ),
+
+      createNavItem(
+        "attendance",
+        "Faire l'appel",
+        "ClipboardCheck",
+        PERMISSIONS.MANAGE_ATTENDANCE,
+        "Présence de mes élèves",
       ),
     ],
     academicItems: [],

@@ -3,7 +3,6 @@ import React from "react";
 import { UserRole } from "@/types/navigation";
 import AdminDashboard from "./dashboards/AdminDashboard";
 import SecretaryDashboard from "./dashboards/SecretaryDashboard";
-import ParentDashboard from "./dashboards/ParentDashboard";
 import StudentDashboard from "./dashboards/StudentDashboard";
 import ProfessorDashboard from "./dashboards/ProfessorDashboard";
 import DirectorDashboard from "./dashboards/DirectorDashboard";

@@ -363,6 +363,31 @@ export interface StudentFee {
   academicYearRef?: AcademicYear;
 }
 
+export interface FeeReportRow {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  studentCode: string;
+  className: string;
+  classLevel: string;
+  totalAmount: number;
+  paidAmount: number;
+  remaining: number;
+  status: "pending" | "partial" | "paid" | "overdue" | "non_assigne";
+}
+
+export interface FeeReportSummary {
+  totalStudents: number;
+  totalExpected: number;
+  totalCollected: number;
+  totalRemaining: number;
+}
+
+export interface FeeReport {
+  students: FeeReportRow[];
+  summary: FeeReportSummary;
+}
+
 export interface CreateFeeStructureInput {
   academicYear: string;
   name: string;

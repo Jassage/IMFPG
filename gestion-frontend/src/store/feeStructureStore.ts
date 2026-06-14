@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import api from "../services/api";
-import { FeeStructure, StudentFee } from "../types/academic";
+import { FeeReport, FeeStructure, StudentFee } from "../types/academic";
 import { AxiosResponse } from "axios";
 
 interface FeeStructureStore {
@@ -84,6 +84,12 @@ interface FeeStructureStore {
     fees: StudentFee[];
     specificFee?: StudentFee | null;
   }>;
+
+  getFeeReportByClass: (filters: {
+    academicYearId: string;
+    classId?: string;
+    classLevel?: string;
+  }) => Promise<FeeReport>;
 
   // Supprimer les doublons
   removeDuplicatesFromFees: (fees: StudentFee[]) => StudentFee[];
@@ -568,6 +574,39 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       return get().handleError(
         err,
         "Erreur lors de la récupération des frais étudiants"
+      );
+    }
+  },
+
+  // État des paiements (rapport) pour une classe/niveau et une année académique
+  getFeeReportByClass: async (filters: {
+    academicYearId: string;
+    classId?: string;
+    classLevel?: string;
+  }): Promise<FeeReport> => {
+    set({ loading: true, error: null });
+    try {
+      const params = new URLSearchParams();
+      params.append("academicYearId", filters.academicYearId);
+      if (filters.classId) params.append("classId", filters.classId);
+      if (filters.classLevel) params.append("classLevel", filters.classLevel);
+
+      const response = await api.get(
+        `/student-fees/reports/by-class?${params.toString()}`
+      );
+      const result = get().extractDataFromResponse(response);
+
+      set({ loading: false });
+      return (result as FeeReport) || { students: [], summary: {
+        totalStudents: 0,
+        totalExpected: 0,
+        totalCollected: 0,
+        totalRemaining: 0,
+      } };
+    } catch (err: any) {
+      return get().handleError(
+        err,
+        "Erreur lors de la génération de l'état des paiements"
       );
     }
   },

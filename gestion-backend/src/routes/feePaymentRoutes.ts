@@ -20,7 +20,6 @@ import {
   deleteFeePayment,
   getAllFeePayments,
   getFeePaymentById,
-  getFeePayments,
   getPaymentHistory,
   updateFeePayment,
 } from "../controllers/feePaymentController";
@@ -39,15 +38,6 @@ const router = Router();
  * @returns {Object[]} Liste des paiements
  */
 router.get("/", requireAuth, requireStaff, getAllFeePayments);
-
-/**
- * @route GET /api/fee-payments/filtered
- * @description Récupère les paiements filtrés
- * @query {string} [studentFeeId] - ID des frais étudiants
- * @access Staff/Admin
- * @returns {Object[]} Paiements filtrés
- */
-router.get("/filtered", requireAuth, requireStaff, getFeePayments);
 
 /**
  * @route GET /api/fee-payments/history/:studentFeeId

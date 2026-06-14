@@ -219,60 +219,6 @@ export const createFeePayment = async (req: Request, res: Response) => {
 };
 
 /**
- * @function getFeePayments
- * @description Récupère les paiements avec filtres
- * @route GET /api/fee-payments/filtered
- * @access Staff/Admin
- * @query {string} [studentFeeId] - ID des frais étudiants pour filtrer
- * @returns {Promise<void>}
- */
-export const getFeePayments = async (req: Request, res: Response) => {
-  const auditData = {
-    ipAddress: req.ip || "unknown",
-    userAgent: req.get("User-Agent") || "unknown",
-    userId: (req as any).userId || "unknown",
-  };
-
-  try {
-    const { studentFeeId } = req.query;
-
-    const result = await FeePaymentService.getFeePayments({
-      studentFeeId: studentFeeId as string,
-    });
-
-    // Log de consultation
-    await createAuditLog({
-      ...auditData,
-      action: "GET_FEE_PAYMENTS",
-      entity: "FeePayment",
-      description: "Consultation des paiements de frais",
-      status: "SUCCESS",
-      metadata: result.metadata,
-    });
-
-    res.json(result.data);
-  } catch (error: any) {
-    // Log d'erreur
-    await createAuditLog({
-      ...auditData,
-      action: "GET_FEE_PAYMENTS_ERROR",
-      entity: "FeePayment",
-      description: "Erreur lors de la récupération des paiements",
-      status: "ERROR",
-      errorMessage: error.message || "Erreur inconnue",
-    });
-
-    res.status(error.status || 500).json({
-      error: error.message || "Erreur serveur",
-      details:
-        process.env.NODE_ENV === "development" && error.details
-          ? error.details
-          : undefined,
-    });
-  }
-};
-
-/**
  * @function updateFeePayment
  * @description Met à jour un paiement existant et recalcule automatiquement le solde
  * @route PUT /api/fee-payments/:id

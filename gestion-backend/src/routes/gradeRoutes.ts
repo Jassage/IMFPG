@@ -9,6 +9,7 @@ import {
   requireAuth,
   requireAdmin,
   requireTeacher,
+  requireDirector,
   validateRequestBody,
   validateContentType,
   sanitizeInput,
@@ -35,6 +36,8 @@ import {
   publishGradesToStudents,
   getGradesByClass,
   getGradesBySubject,
+  getPalmares,
+  getPalmaresCumulatif,
 } from "../controllers/gradeController";
 import {
   validateCreateGrade,
@@ -61,6 +64,28 @@ const router = Router();
  * @query {boolean} [includeDraft=false] - Inclure les brouillons (admin/professeur seulement)
  */
 router.get("/student/:studentId", requireAuth, sanitizeInput, getStudentGrades);
+
+/**
+ * @route GET /api/grades/palmares
+ * @description Génère le palmarès (classement) d'un niveau pour un contrôle
+ * @access Staff / Admin / Directeur
+ * @query {string} classLevel, controlType, academicYearId, [status]
+ */
+router.get("/palmares", requireAuth, requireDirector, sanitizeInput, getPalmares);
+
+/**
+ * @route GET /api/grades/palmares-cumulatif
+ * @description Génère le palmarès cumulatif (notes totales) d'un niveau pour une année
+ * @access Staff / Admin / Directeur
+ * @query {string} classLevel, academicYearId, [status], [controlTypes] (liste séparée par des virgules)
+ */
+router.get(
+  "/palmares-cumulatif",
+  requireAuth,
+  requireDirector,
+  sanitizeInput,
+  getPalmaresCumulatif
+);
 
 /**
  * @route GET /api/grades/:id

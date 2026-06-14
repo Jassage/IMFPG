@@ -769,6 +769,48 @@ export const getProfesseurByIdService = async (id: string) => {
 };
 
 /**
+ * @desc Récupère le professeur associé à un compte utilisateur
+ */
+export const getProfesseurByUserIdService = async (userId: string) => {
+  try {
+    if (!userId) {
+      throw new ProfesseurError(
+        PROFESSEUR_ERRORS.MISSING_REQUIRED_FIELDS,
+        "ID utilisateur requis",
+        { field: "userId" }
+      );
+    }
+
+    const professeur = await prisma.professeur.findUnique({
+      where: { userId },
+    });
+
+    if (!professeur) {
+      throw new ProfesseurError(
+        PROFESSEUR_ERRORS.PROFESSEUR_NOT_FOUND,
+        "Professeur non trouvé pour cet utilisateur",
+        { userId }
+      );
+    }
+
+    return {
+      success: true,
+      data: { professeur },
+    };
+  } catch (error: any) {
+    if (error instanceof ProfesseurError) {
+      throw error;
+    }
+    console.error("Erreur dans getProfesseurByUserIdService:", error);
+    throw new ProfesseurError(
+      PROFESSEUR_ERRORS.DATABASE_ERROR,
+      "Erreur lors de la récupération du professeur",
+      { error: error.message }
+    );
+  }
+};
+
+/**
  * @desc Crée un nouveau professeur avec envoi d'identifiants par email
  */
 export const createProfesseurService = async (data: CreateProfesseurData) => {

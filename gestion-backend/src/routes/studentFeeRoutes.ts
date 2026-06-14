@@ -18,6 +18,7 @@ import {
   assignFeeToStudent,
   deleteStudentFee,
   getAllStudentFees,
+  getFeeReportByClass,
   getStudentFeeById,
   getStudentFeeByStudentAndYear,
   getStudentFeesByStudent,
@@ -69,6 +70,24 @@ router.get(
   requireStaff,
   sanitizeInput,
   getStudentFeeByStudentAndYear
+);
+
+/**
+ * @route GET /api/student-fees/reports/by-class
+ * @description État des paiements (rapport) pour une classe ou un niveau et
+ * une année académique : liste des élèves avec montants attendu/versé/restant
+ * @query {string} [classId] - ID de la classe
+ * @query {string} [classLevel] - Niveau de classe (si classId non fourni)
+ * @query {string} academicYearId - ID de l'année académique (requis)
+ * @access Staff/Admin
+ * @returns {Object} Liste des élèves et totaux agrégés
+ */
+router.get(
+  "/reports/by-class",
+  requireAuth,
+  requireStaff,
+  sanitizeInput,
+  getFeeReportByClass
 );
 
 /**

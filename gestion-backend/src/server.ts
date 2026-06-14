@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import prisma from "./prisma";
 
@@ -12,6 +13,7 @@ import authRoutes from "./routes/auth.routes";
 import academicYearRoutes from "./routes/academicYear.routes";
 import classesRoutes from "./routes/classRoutes";
 import guardianRoutes from "./routes/guardianRoutes";
+import parentRoutes from "./routes/parentRoutes";
 import gradeRoutes from "./routes/gradeRoutes";
 import scheduleRoutes from "./routes/scheduleRoutes";
 import feePaymentRoutes from "./routes/feePaymentRoutes";
@@ -24,7 +26,9 @@ import studentFeeRoutes from "./routes/studentFeeRoutes";
 import auditRoutes from "./routes/auditRoutes";
 import backupRoutes from "./routes/backupRoutes";
 import transcriptRoutes from "./routes/transcriptRoutes";
+import bulletinRoutes from "./routes/bulletinRoutes";
 import settingsRoutes from "./routes/settingsRoutes";
+import attendanceRoutes from "./routes/attendanceRoutes";
 
 import {
   ensureAcademicYearsExist,
@@ -45,23 +49,23 @@ dotenv.config();
 const app = express();
 // Middleware pour gérer les CORS et le JSON
 
+// Origines autorisées : valeurs par défaut pour le dev local,
+// surchargeables en prod via la variable CORS_ORIGINS (liste séparée par des virgules).
+const defaultOrigins = [
+  "http://localhost:3001",
+  "http://localhost:5000",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5000",
+];
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
+  : defaultOrigins;
+
 const corsOptions = {
   origin: (origin: string | undefined, callback: Function) => {
-    // Autoriser les origines spécifiques
-    const allowedOrigins = [
-      "http://localhost:3000",
-      "http://localhost:5000",
-      "http://127.0.0.1:3000",
-      "http://127.0.0.1:5000",
-    ];
-
-    // En développement, autoriser toutes les origines
-    if (process.env.NODE_ENV === "development") {
-      callback(null, true);
-    }
-    // En production, vérifier l'origine
-    else if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, origin);
+    // Requêtes sans origine (curl, Postman, apps mobiles) : autorisées.
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, origin || true);
     } else {
       callback(new Error("Not allowed by CORS"));
     }
@@ -79,13 +83,14 @@ const corsOptions = {
   maxAge: 86400,
 };
 
+// En-têtes de sécurité HTTP
+app.use(helmet());
+
 // Appliquer CORS
 app.use(cors(corsOptions));
 
 cleanupExpiredSessions();
 app.use(trackUserActivity);
-app.use(express.json());
-
 app.use(
   "/uploads/profiles",
   express.static(path.join(process.cwd(), "uploads", "profiles")),
@@ -94,6 +99,7 @@ app.use(
   "/uploads/imports",
   express.static(path.join(process.cwd(), "uploads", "imports")),
 );
+app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 
@@ -111,6 +117,7 @@ app.use("/api/academic-years", academicYearRoutes);
 app.use("/api/classes", classesRoutes);
 app.use("/api/class-assignments", classeAssignmentRoutes);
 app.use("/api/guardians", guardianRoutes);
+app.use("/api/parents", parentRoutes);
 app.use("/api/grades", gradeRoutes);
 app.use("/api/schedules", scheduleRoutes);
 app.use("/api/events", eventRoutes);
@@ -121,7 +128,9 @@ app.use("/api/fee-payments", feePaymentRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/backup", backupRoutes);
 app.use("/api/transcripts", transcriptRoutes);
+app.use("/api/bulletins", bulletinRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/attendance", attendanceRoutes);
 app.use((req, res, next) => {
   // Vérifie si aucune route n'a matché
   if (!req.route) {

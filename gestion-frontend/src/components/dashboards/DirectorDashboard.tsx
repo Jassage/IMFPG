@@ -715,80 +715,56 @@ const DirectorDashboard = () => {
     ];
     const currentMonth = new Date().getMonth();
 
-    // Tendance des inscriptions (basé sur les données réelles)
-    const enrollmentBase = students.length || 1000;
+    const thisYear = new Date().getFullYear();
+
+    // Tendance des inscriptions : RÉELLE, nb d'élèves créés par mois cette année
     const enrollmentTrend = months
       .slice(0, currentMonth + 1)
       .map((month, index) => ({
         date: month,
-        value: Math.round(
-          enrollmentBase * (0.8 + index * 0.05 + Math.random() * 0.1)
-        ),
+        value: (students || []).filter((s: any) => {
+          if (!s.createdAt) return false;
+          const d = new Date(s.createdAt);
+          return d.getFullYear() === thisYear && d.getMonth() === index;
+        }).length,
       }));
 
-    // Tendance des revenus (basé sur les paiements)
-    const revenueBase =
-      allFeesArray.reduce(
-        (sum, fee) => sum + (Number(fee.paidAmount) || 0),
-        0
-      ) || 5000000;
+    // Tendance des revenus : RÉELLE, somme des paiements par mois cette année
     const revenueTrend = months
       .slice(0, currentMonth + 1)
       .map((month, index) => ({
         date: month,
-        value: Math.round(
-          revenueBase * (0.7 + index * 0.08 + Math.random() * 0.15)
-        ),
+        value: allFeesArray.reduce((sum, fee) => {
+          const ref = fee.updatedAt || fee.createdAt;
+          if (!ref) return sum;
+          const d = new Date(ref);
+          if (d.getFullYear() === thisYear && d.getMonth() === index) {
+            return sum + (Number(fee.paidAmount) || 0);
+          }
+          return sum;
+        }, 0),
       }));
 
-    // Satisfaction des étudiants
-    const satisfactionBase = metrics.operations.studentSatisfaction || 85;
+    // NOTE : ces 4 métriques ne sont PAS mesurées par l'application
+    // (aucune source de données). Valeurs déterministes de référence,
+    // à remplacer par de vraies mesures ou à retirer du tableau de bord.
+    const satisfactionBase = metrics.operations.studentSatisfaction || 0;
     const studentSatisfaction = months
       .slice(0, currentMonth + 1)
-      .map((month, index) => ({
-        date: month,
-        value: Math.max(
-          60,
-          Math.min(
-            100,
-            Math.round(satisfactionBase + (Math.random() - 0.5) * 10)
-          )
-        ),
-      }));
+      .map((month) => ({ date: month, value: Math.round(satisfactionBase) }));
 
-    // Charge de travail des enseignants
-    const workloadBase = metrics.operations.teacherWorkload || 70;
+    const workloadBase = metrics.operations.teacherWorkload || 0;
     const teacherWorkload = months
       .slice(0, currentMonth + 1)
-      .map((month, index) => ({
-        date: month,
-        value: Math.max(
-          40,
-          Math.min(100, Math.round(workloadBase + (Math.random() - 0.5) * 15))
-        ),
-      }));
+      .map((month) => ({ date: month, value: Math.round(workloadBase) }));
 
-    // Participation aux événements
-    const eventBase = events.length * 20 || 200;
     const eventParticipation = months
       .slice(0, currentMonth + 1)
-      .map((month, index) => ({
-        date: month,
-        value: Math.round(
-          eventBase * (0.9 + index * 0.02 + Math.random() * 0.2)
-        ),
-      }));
+      .map((month) => ({ date: month, value: 0 }));
 
-    // Vues des annonces
-    const announcementBase = announcements.length * 100 || 1000;
     const announcementViews = months
       .slice(0, currentMonth + 1)
-      .map((month, index) => ({
-        date: month,
-        value: Math.round(
-          announcementBase * (0.85 + index * 0.03 + Math.random() * 0.25)
-        ),
-      }));
+      .map((month) => ({ date: month, value: 0 }));
 
     setTimeSeriesData({
       enrollmentTrend,
@@ -813,39 +789,32 @@ const DirectorDashboard = () => {
       (sum, fee) => sum + (Number(fee.paidAmount) || 0),
       0
     );
+    // Seule la scolarité est réellement suivie ; les autres sources ne sont
+    // pas mesurées par l'application (mises à 0 plutôt que fabriquées).
     const revenueBySource = [
-      {
-        name: "Frais de scolarité",
-        value: Math.round(tuitionRevenue * 0.85),
-      },
-      {
-        name: "Bourses",
-        value: Math.round(tuitionRevenue * 0.08),
-      },
-      {
-        name: "Partenariats",
-        value: Math.round(tuitionRevenue * 0.05),
-      },
-      {
-        name: "Autres",
-        value: Math.round(tuitionRevenue * 0.02),
-      },
+      { name: "Frais de scolarité", value: Math.round(tuitionRevenue) },
+      { name: "Bourses", value: 0 },
+      { name: "Partenariats", value: 0 },
+      { name: "Autres", value: 0 },
     ];
 
-    // Distribution des événements par catégorie
+    // Distribution RÉELLE des événements par catégorie
     const eventsByCategory =
       eventCategories?.map((category) => ({
         name: category,
-        value: Math.round(events.length * Math.random() * 0.3) + 1,
+        value: (events || []).filter((e: any) => e.category === category)
+          .length,
       })) || [];
 
-    // Distribution des annonces par priorité
-    const announcementsByPriority = [
-      { name: "Critique", value: Math.round(announcements.length * 0.1) + 1 },
-      { name: "Haute", value: Math.round(announcements.length * 0.2) + 1 },
-      { name: "Moyenne", value: Math.round(announcements.length * 0.4) + 2 },
-      { name: "Basse", value: Math.round(announcements.length * 0.3) + 1 },
-    ];
+    // Distribution RÉELLE des annonces par priorité (regroupement réel)
+    const priorityCounts: Record<string, number> = {};
+    (announcements || []).forEach((a: any) => {
+      const p = a.priority || "Non définie";
+      priorityCounts[p] = (priorityCounts[p] || 0) + 1;
+    });
+    const announcementsByPriority = Object.entries(priorityCounts).map(
+      ([name, value]) => ({ name, value })
+    );
 
     // CORRECTION: Distribution des paiements par statut
     const paymentStatus = calculatePaymentStatusDistribution;

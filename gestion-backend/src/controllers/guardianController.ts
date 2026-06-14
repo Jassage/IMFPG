@@ -680,6 +680,131 @@ export const searchGuardians = async (
 };
 
 /**
+ * @desc Recherche un parent existant (compte parent ou guardian) par email/téléphone
+ * @route POST /api/guardians/find-parent
+ * @access Admin/Staff
+ */
+export const findParent = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { email, phone } = req.body;
+
+    const trimmedEmail =
+      typeof email === "string" ? email.trim() : "";
+    const trimmedPhone =
+      typeof phone === "string" ? phone.trim() : "";
+
+    console.log(
+      `🔍 POST /api/guardians/find-parent - email: ${trimmedEmail}, phone: ${trimmedPhone}`
+    );
+
+    if (!trimmedEmail && !trimmedPhone) {
+      res.status(400).json({
+        success: false,
+        message: "Un email ou un numéro de téléphone est requis",
+      });
+      return;
+    }
+
+    // Construire les conditions de recherche à partir des champs fournis
+    const userOr: any[] = [];
+    const guardianOr: any[] = [];
+
+    if (trimmedEmail) {
+      userOr.push({ email: trimmedEmail });
+      guardianOr.push({ email: trimmedEmail });
+    }
+
+    if (trimmedPhone) {
+      userOr.push({ phone: trimmedPhone });
+      guardianOr.push({ phone: trimmedPhone });
+    }
+
+    // 1) Un compte parent (User role=Parent) existe-t-il déjà ?
+    const parent = await prisma.parent.findFirst({
+      where: {
+        user: {
+          role: "Parent",
+          OR: userOr,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    if (parent) {
+      res.json({
+        success: true,
+        message: "Compte parent existant trouvé",
+        data: {
+          action: "existingParent",
+          parent,
+          guardian: null,
+        },
+      });
+      return;
+    }
+
+    // 2) Pas de compte parent, mais un guardian existe-t-il avec ces coordonnées ?
+    const guardian = await prisma.guardian.findFirst({
+      where: {
+        OR: guardianOr,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        studentId: true,
+      },
+    });
+
+    if (guardian) {
+      res.json({
+        success: true,
+        message: "Tuteur existant trouvé, création de compte parent possible",
+        data: {
+          action: "createFromGuardian",
+          parent: null,
+          guardian,
+        },
+      });
+      return;
+    }
+
+    // 3) Aucun résultat
+    res.json({
+      success: true,
+      message: "Aucun parent ou tuteur trouvé avec ces coordonnées",
+      data: {
+        action: "notFound",
+        parent: null,
+        guardian: null,
+      },
+    });
+  } catch (error: any) {
+    console.error("❌ Erreur findParent:", error);
+    res.status(500).json({
+      success: false,
+      message: "Erreur lors de la recherche du parent",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/**
  * @desc Définit un guardian comme principal pour un étudiant
  * @route PUT /api/guardians/:id/set-primary
  * @access Admin/Staff

@@ -38,7 +38,7 @@ export class StudentService {
   async getStudents(
     options: StudentFilterOptions,
     userId?: string,
-    userRole?: string
+    userRole?: string,
   ): Promise<PaginatedResponse> {
     const {
       page = 1,
@@ -221,7 +221,7 @@ export class StudentService {
   async getStudentById(
     id: string,
     userId?: string,
-    userRole?: string
+    userRole?: string,
   ): Promise<any> {
     // Récupérer l'étudiant avec toutes ses informations
     const student = await prisma.student.findUnique({
@@ -336,7 +336,7 @@ export class StudentService {
     // Vérifier les permissions pour les parents
     if (userRole === "Parent" && userId) {
       const isGuardian = student.guardians.some(
-        (guardian) => guardian.id === userId
+        (guardian) => guardian.id === userId,
       );
       if (!isGuardian) {
         throw new Error("UNAUTHORIZED");
@@ -371,10 +371,19 @@ export class StudentService {
       guardians = [],
     } = data;
 
+    // Ajouter une validation pour l'URL de la photo
+    if (photo && typeof photo === "string") {
+      // Vérifier que l'URL est valide (optionnel)
+      const isValidUrl = photo.startsWith("http") || photo.startsWith("https");
+      if (!isValidUrl) {
+        console.warn(`[WARNING] URL photo potentiellement invalide: ${photo}`);
+      }
+    }
+
     // Validation des données requises
     if (!firstName || !lastName || !email) {
       throw new Error(
-        "MISSING_REQUIRED_FIELDS: firstName, lastName et email sont requis"
+        "MISSING_REQUIRED_FIELDS: firstName, lastName et email sont requis",
       );
     }
 
@@ -390,7 +399,7 @@ export class StudentService {
 
         if (existingStudent) {
           throw new Error(
-            `EMAIL_ALREADY_EXISTS: L'email ${email} est déjà utilisé par l'étudiant ${existingStudent.studentCode}`
+            `EMAIL_ALREADY_EXISTS: L'email ${email} est déjà utilisé par l'étudiant ${existingStudent.studentCode}`,
           );
         }
 
@@ -402,7 +411,7 @@ export class StudentService {
 
           if (existingUser) {
             throw new Error(
-              `USER_EMAIL_ALREADY_EXISTS: L'email ${email} est déjà utilisé par un utilisateur`
+              `USER_EMAIL_ALREADY_EXISTS: L'email ${email} est déjà utilisé par un utilisateur`,
             );
           }
         }
@@ -415,7 +424,7 @@ export class StudentService {
 
           if (studentWithCIN) {
             throw new Error(
-              `CIN_ALREADY_EXISTS: Le CIN ${cin} est déjà utilisé par l'étudiant ${studentWithCIN.studentCode}`
+              `CIN_ALREADY_EXISTS: Le CIN ${cin} est déjà utilisé par l'étudiant ${studentWithCIN.studentCode}`,
             );
           }
         }
@@ -429,14 +438,14 @@ export class StudentService {
 
           if (!schoolClass) {
             throw new Error(
-              `CLASS_NOT_FOUND: La classe avec l'ID ${classId} n'existe pas`
+              `CLASS_NOT_FOUND: La classe avec l'ID ${classId} n'existe pas`,
             );
           }
 
           // Vérifier si la classe est active
           if (schoolClass.status !== "Active") {
             throw new Error(
-              `CLASS_NOT_ACTIVE: La classe ${schoolClass.name} n'est pas active`
+              `CLASS_NOT_ACTIVE: La classe ${schoolClass.name} n'est pas active`,
             );
           }
         }
@@ -450,7 +459,7 @@ export class StudentService {
 
           if (!academicYear) {
             throw new Error(
-              `ACADEMIC_YEAR_NOT_FOUND: L'année académique avec l'ID ${academicYearId} n'existe pas`
+              `ACADEMIC_YEAR_NOT_FOUND: L'année académique avec l'ID ${academicYearId} n'existe pas`,
             );
           }
 
@@ -465,7 +474,7 @@ export class StudentService {
             // Comparer par date de début
             if (academicYear.startDate > currentAcademicYear.startDate) {
               throw new Error(
-                `FUTURE_ACADEMIC_YEAR: L'année ${academicYear.year} (débute ${academicYear.startDate.toISOString().split("T")[0]}) est future par rapport à l'année courante ${currentAcademicYear.year} (débute ${currentAcademicYear.startDate.toISOString().split("T")[0]})`
+                `FUTURE_ACADEMIC_YEAR: L'année ${academicYear.year} (débute ${academicYear.startDate.toISOString().split("T")[0]}) est future par rapport à l'année courante ${currentAcademicYear.year} (débute ${currentAcademicYear.startDate.toISOString().split("T")[0]})`,
               );
             }
           }
@@ -475,10 +484,10 @@ export class StudentService {
           if (academicYear.startDate > today) {
             const daysUntilStart = Math.ceil(
               (academicYear.startDate.getTime() - today.getTime()) /
-                (1000 * 3600 * 24)
+                (1000 * 3600 * 24),
             );
             throw new Error(
-              `ACADEMIC_YEAR_NOT_STARTED: L'année ${academicYear.year} commence dans ${daysUntilStart} jours (${academicYear.startDate.toISOString().split("T")[0]})`
+              `ACADEMIC_YEAR_NOT_STARTED: L'année ${academicYear.year} commence dans ${daysUntilStart} jours (${academicYear.startDate.toISOString().split("T")[0]})`,
             );
           }
         }
@@ -496,7 +505,7 @@ export class StudentService {
           const capacity = schoolClass.capacity || 30;
           if (currentEnrollments >= capacity) {
             throw new Error(
-              `CLASS_FULL: La classe ${schoolClass.name} a atteint sa capacité maximale (${currentEnrollments}/${capacity} étudiants)`
+              `CLASS_FULL: La classe ${schoolClass.name} a atteint sa capacité maximale (${currentEnrollments}/${capacity} étudiants)`,
             );
           }
         }
@@ -511,7 +520,7 @@ export class StudentService {
         ];
         if (inactiveStatuses.includes(status)) {
           throw new Error(
-            `CANNOT_CREATE_INACTIVE_STUDENT: Impossible de créer un étudiant avec le statut ${status}`
+            `CANNOT_CREATE_INACTIVE_STUDENT: Impossible de créer un étudiant avec le statut ${status}`,
           );
         }
 
@@ -618,7 +627,7 @@ export class StudentService {
 
           if (existingEnrollment) {
             throw new Error(
-              `STUDENT_ALREADY_ENROLLED_FOR_YEAR: L'étudiant est déjà inscrit pour l'année ${academicYear?.year}`
+              `STUDENT_ALREADY_ENROLLED_FOR_YEAR: L'étudiant est déjà inscrit pour l'année ${academicYear?.year}`,
             );
           }
 
@@ -665,7 +674,7 @@ export class StudentService {
         maxWait: 5000,
         timeout: 10000,
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      }
+      },
     );
   }
 
@@ -681,7 +690,7 @@ export class StudentService {
       dateOfBirth,
       placeOfBirth,
       address,
-      photo,
+      photo, // ← AJOUTER ce champ
       bloodGroup,
       allergies,
       disabilities,
@@ -713,7 +722,12 @@ export class StudentService {
     }
     if (placeOfBirth !== undefined) updateData.placeOfBirth = placeOfBirth;
     if (address !== undefined) updateData.address = address;
-    if (photo !== undefined) updateData.photo = photo;
+
+    // ← AJOUTER la gestion de la photo
+    if (photo !== undefined) {
+      updateData.photo = photo || null;
+    }
+
     if (bloodGroup !== undefined) {
       updateData.bloodGroup = convertBloodGroup(bloodGroup);
     }
@@ -787,6 +801,7 @@ export class StudentService {
         sexe: true,
         cin: true,
         classId: true,
+        photo: true, // ← AJOUTER la photo dans la sélection
         schoolClass: {
           select: {
             id: true,
@@ -797,13 +812,22 @@ export class StudentService {
       },
     });
 
+    console.log(
+      `[SUCCESS] Mise à jour étudiant - ID: ${id}, Photo: ${updatedStudent.photo || "Aucune"}`,
+    );
+
     return updatedStudent;
   }
 
   /**
    * Supprime un étudiant
    */
+  /**
+   * Supprime un étudiant (hard delete)
+   */
   async deleteStudent(id: string): Promise<void> {
+    console.log(`[DELETE] Tentative de suppression de l'étudiant: ${id}`);
+
     try {
       // Vérifier si l'étudiant existe AVANT la transaction
       const student = await prisma.student.findUnique({
@@ -822,104 +846,130 @@ export class StudentService {
       });
 
       if (!student) {
+        console.log(`[DELETE] Étudiant non trouvé: ${id}`);
         throw new Error("STUDENT_NOT_FOUND");
       }
+
+      console.log(
+        `[DELETE] Étudiant trouvé: ${student.studentCode}, préparation suppression...`,
+      );
 
       // Utiliser une transaction pour garantir l'intégrité
       await prisma.$transaction(
         async (tx) => {
-          try {
-            // 1. Supprimer les paiements associés aux frais
-            if (student.studentFees && student.studentFees.length > 0) {
-              const feeIds = student.studentFees.map((fee) => fee.id);
+          // 1. Supprimer les paiements associés aux frais
+          if (student.studentFees && student.studentFees.length > 0) {
+            const feeIds = student.studentFees.map((fee) => fee.id);
 
-              // Supprimer les paiements d'abord
-              await tx.feePayment.deleteMany({
-                where: {
-                  studentFeeId: {
-                    in: feeIds,
-                  },
+            console.log(
+              `[DELETE] Suppression des paiements pour ${feeIds.length} frais...`,
+            );
+
+            // Supprimer les paiements d'abord
+            await tx.feePayment.deleteMany({
+              where: {
+                studentFeeId: {
+                  in: feeIds,
                 },
-              });
-
-              // Puis supprimer les frais
-              await tx.studentFee.deleteMany({
-                where: {
-                  studentId: id,
-                },
-              });
-            }
-
-            // 2. Supprimer les notes
-            if (student.grades && student.grades.length > 0) {
-              await tx.grade.deleteMany({
-                where: { studentId: id },
-              });
-            }
-
-            // 3. Supprimer les inscriptions
-            if (student.enrollments && student.enrollments.length > 0) {
-              await tx.enrollment.deleteMany({
-                where: { studentId: id },
-              });
-            }
-
-            // 4. Supprimer les gardiens
-            if (student.guardians && student.guardians.length > 0) {
-              await tx.guardian.deleteMany({
-                where: { studentId: id },
-              });
-            }
-
-            // 5. Supprimer l'utilisateur associé s'il existe
-            if (student.user) {
-              await tx.user.delete({
-                where: { id: student.user.id },
-              });
-            }
-
-            // 6. Vérifier à nouveau que l'étudiant existe avant de supprimer
-            const studentExists = await tx.student.findUnique({
-              where: { id },
-              select: { id: true },
+              },
             });
 
-            if (!studentExists) {
-              throw new Error("STUDENT_ALREADY_DELETED");
-            }
-
-            // 7. Supprimer définitivement l'étudiant
-            await tx.student.delete({
-              where: { id },
+            // Puis supprimer les frais
+            await tx.studentFee.deleteMany({
+              where: {
+                studentId: id,
+              },
             });
-          } catch (error: any) {
-            // Log l'erreur avec un message court pour l'audit
-            console.error("Erreur lors de la suppression de l'étudiant:", {
-              studentId: id,
-              error: error.message?.substring(0, 100) || "Erreur inconnue",
-              code: error.code,
-            });
-
-            // Relancer l'erreur pour la gestion externe
-            throw error;
           }
+
+          // 2. Supprimer les notes
+          if (student.grades && student.grades.length > 0) {
+            console.log(
+              `[DELETE] Suppression de ${student.grades.length} notes...`,
+            );
+            await tx.grade.deleteMany({
+              where: { studentId: id },
+            });
+          }
+
+          // 3. Supprimer les inscriptions
+          if (student.enrollments && student.enrollments.length > 0) {
+            console.log(
+              `[DELETE] Suppression de ${student.enrollments.length} inscriptions...`,
+            );
+            await tx.enrollment.deleteMany({
+              where: { studentId: id },
+            });
+          }
+
+          // 4. Supprimer les gardiens
+          if (student.guardians && student.guardians.length > 0) {
+            console.log(
+              `[DELETE] Suppression de ${student.guardians.length} gardiens...`,
+            );
+            await tx.guardian.deleteMany({
+              where: { studentId: id },
+            });
+          }
+
+          // 5. Supprimer l'utilisateur associé s'il existe
+          if (student.user) {
+            console.log(
+              `[DELETE] Suppression de l'utilisateur associé: ${student.user.id}`,
+            );
+            await tx.user.delete({
+              where: { id: student.user.id },
+            });
+          }
+
+          // 6. Supprimer l'étudiant - CORRECTION: Vérifier d'abord s'il existe encore
+          const studentExists = await tx.student.findUnique({
+            where: { id },
+            select: { id: true },
+          });
+
+          if (!studentExists) {
+            console.log(
+              `[DELETE] L'étudiant n'existe plus, probablement déjà supprimé`,
+            );
+            return; // Sortir de la transaction sans erreur
+          }
+
+          console.log(`[DELETE] Suppression définitive de l'étudiant: ${id}`);
+          await tx.student.delete({
+            where: { id },
+          });
         },
         {
           maxWait: 10000,
           timeout: 30000,
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        }
+        },
+      );
+
+      console.log(
+        `[SUCCESS] Étudiant supprimé - ID: ${id}, Code: ${student.studentCode}`,
       );
     } catch (error: any) {
-      // Log l'erreur finale avec un message court
       console.error("Échec de la suppression de l'étudiant:", {
         studentId: id,
-        error: error.message?.substring(0, 200) || "Erreur inconnue",
+        error: error.message?.substring(0, 500) || "Erreur inconnue",
+        code: error.code,
+        meta: error.meta,
       });
 
-      // Propager l'erreur avec un message court pour l'audit
+      // Si l'erreur est "Record to delete does not exist", considérer comme succès
+      if (
+        error.code === "P2025" ||
+        error.message?.includes("Record to delete does not exist")
+      ) {
+        console.log(`[DELETE] L'étudiant ${id} est déjà supprimé`);
+        return; // Sortir sans erreur
+      }
+
+      // Propager l'erreur avec un message court
       throw new Error(
-        `Échec de suppression: ${error.message?.substring(0, 100) || "Erreur inconnue"}`
+        `Échec de suppression: ${error.message?.substring(0, 200) || "Erreur inconnue"}`,
       );
     }
   }
@@ -930,7 +980,7 @@ export class StudentService {
   async updateStudentStatus(
     id: string,
     status: StudentStatus,
-    reason?: string
+    reason?: string,
   ): Promise<any> {
     // Valider le statut
     const validStatuses = [
@@ -1015,7 +1065,7 @@ export class StudentService {
   async assignStudentToClass(
     id: string,
     classId: string,
-    academicYearId?: string
+    academicYearId?: string,
   ): Promise<any> {
     if (!classId) {
       throw new Error("MISSING_CLASS_ID");
@@ -1202,14 +1252,14 @@ export class StudentService {
           acc[item.status] = item._count.id;
           return acc;
         },
-        {} as Record<string, number>
+        {} as Record<string, number>,
       ),
       byGender: genderCounts.reduce(
         (acc, item) => {
           acc[item.sexe || "Non spécifié"] = item._count.id;
           return acc;
         },
-        {} as Record<string, number>
+        {} as Record<string, number>,
       ),
       byClass: classStats,
       recentEnrollments,
@@ -1321,7 +1371,7 @@ export class StudentService {
     if (lastStudent && lastStudent.studentCode) {
       const lastNumber = parseInt(
         lastStudent.studentCode.replace(prefix, ""),
-        10
+        10,
       );
       nextNumber = isNaN(lastNumber) ? 1 : lastNumber + 1;
     }
@@ -1377,7 +1427,7 @@ export class StudentService {
    */
   async checkEmailAvailability(
     email: string,
-    excludeStudentId?: string
+    excludeStudentId?: string,
   ): Promise<boolean> {
     const where: any = {
       email: email,
@@ -1399,7 +1449,7 @@ export class StudentService {
    */
   async checkCINAvailability(
     cin: string,
-    excludeStudentId?: string
+    excludeStudentId?: string,
   ): Promise<boolean> {
     if (!cin) return true;
 
@@ -1629,7 +1679,7 @@ export class StudentService {
         recentPayments,
         totalPending: pendingFees.reduce(
           (sum, fee) => sum + (fee.totalAmount - fee.paidAmount),
-          0
+          0,
         ),
       },
 

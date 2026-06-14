@@ -204,7 +204,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
         }
       });
 
-      const response = await api.get(`/api/academic/schedules?${params}`);
+      const response = await api.get(`/schedules?${params}`);
 
       if (response.data.success) {
         const schedules = response.data.data?.schedules || [];
@@ -267,7 +267,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
       }
 
       const response = await api.get(
-        `/api/academic/schedules/class/${classId}?${params}`
+        `/schedules/class/${classId}?${params}`
       );
 
       if (response.data.success) {
@@ -336,7 +336,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
       });
 
       const response = await api.get(
-        `/api/academic/schedules/professor/${professeurId}?${params}`
+        `/schedules/professor/${professeurId}?${params}`
       );
 
       if (response.data.success) {
@@ -404,7 +404,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
 
       console.log("📤 Création horaire - Données envoyées:", formattedData);
 
-      const response = await api.post("/api/academic/schedules", formattedData);
+      const response = await api.post("/schedules", formattedData);
 
       if (response.data.success) {
         const newSchedule = response.data.data?.schedule;
@@ -545,7 +545,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
       console.log("📤 Mise à jour horaire - Données envoyées:", formattedData);
 
       const response = await api.put(
-        `/api/academic/schedules/${id}`,
+        `/schedules/${id}`,
         formattedData
       );
 
@@ -632,7 +632,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await api.delete(`/api/academic/schedules/${id}`);
+      const response = await api.delete(`/schedules/${id}`);
 
       if (response.data.success) {
         const deletedSchedule = get().schedules.find((s) => s.id === id);
@@ -683,7 +683,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await api.post("/api/academic/schedules/generate", data);
+      const response = await api.post("/schedules/generate", data);
 
       if (response.data.success) {
         // Recharger l'emploi du temps de la classe
@@ -752,11 +752,11 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
 
       console.log(
         "🔗 URL de vérification:",
-        `/api/academic/schedules/check-conflicts?${params}`
+        `/schedules/check-conflicts?${params}`
       );
 
       const response = await api.get(
-        `/api/academic/schedules/check-conflicts?${params}`
+        `/schedules/check-conflicts?${params}`
       );
 
       console.log("✅ Réponse vérification conflits:", response.data);
@@ -788,7 +788,7 @@ export const useTimetableStore = create<TimetableState>((set, get) => ({
       });
 
       const response = await api.get(
-        `/api/academic/schedules/available-slots?${params}`
+        `/schedules/available-slots?${params}`
       );
       return response.data;
     } catch (error: any) {

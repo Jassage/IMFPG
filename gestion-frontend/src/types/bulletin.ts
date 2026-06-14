@@ -212,6 +212,7 @@ export interface BulletinStatistics {
   minGrade?: number;
   maxGrade?: number;
   rankInClass?: number;
+  totalStudents?: number;
   classAverage?: number;
   totalSubjects?: number;
   passingSubjects?: number;

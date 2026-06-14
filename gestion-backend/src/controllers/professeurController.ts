@@ -217,6 +217,42 @@ export const getProfesseurById = async (
 };
 
 /**
+ * @desc Récupère le professeur associé à un compte utilisateur (espace professeur connecté)
+ */
+export const getProfesseurByUserId = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      throw new ProfesseurError(
+        "MISSING_REQUIRED_FIELDS",
+        "ID utilisateur requis",
+        { field: "userId" }
+      );
+    }
+
+    const result = await professeurService.getProfesseurByUserIdService(userId);
+
+    res.json(result);
+  } catch (error: any) {
+    await handleError(
+      error,
+      req,
+      res,
+      auditData,
+      "PROFESSEUR_DETAILS",
+      "Professeur",
+      req.params.userId
+    );
+  }
+};
+
+/**
  * @desc Crée un nouveau professeur avec option de création de compte utilisateur
  */
 export const createProfesseur = async (

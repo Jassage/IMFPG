@@ -288,7 +288,7 @@ const AdminDashboard = () => {
           const month = date.toLocaleDateString("fr-FR", { month: "short" });
           enrollmentTrend.push({
             month,
-            count: Math.floor(Math.random() * 20) + 10,
+            count: 0,
           });
         }
       } else {
@@ -341,8 +341,8 @@ const AdminDashboard = () => {
 
         revenueTrend.push({
           month,
-          revenue: revenue || Math.floor(Math.random() * 50000) + 10000,
-          expenses: revenue * 0.6,
+          revenue,
+          expenses: 0,
         });
       }
 

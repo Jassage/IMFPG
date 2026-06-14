@@ -6,6 +6,7 @@ import {
   deleteProfesseur,
   detachUserFromProfesseur,
   getProfesseurById,
+  getProfesseurByUserId,
   getProfesseurFullDetails,
   getProfesseurs,
   getProfesseurSchedule,
@@ -35,6 +36,19 @@ const router = Router();
  * @access Staff/Admin
  */
 router.get("/", requireAuth, requireStaff, getProfesseurs);
+
+/**
+ * @route GET /api/professeurs/user/:userId
+ * @description Récupère le professeur associé à un compte utilisateur (espace professeur connecté)
+ * @access Staff/Admin/Teacher
+ */
+router.get(
+  "/user/:userId",
+  requireAuth,
+  requireTeacherOrStaff,
+  sanitizeInput,
+  getProfesseurByUserId
+);
 
 /**
  * @route GET /api/professeurs/:id

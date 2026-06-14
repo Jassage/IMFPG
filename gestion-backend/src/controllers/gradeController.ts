@@ -20,6 +20,79 @@ import {
 const prisma = new PrismaClient();
 const gradeService = new GradeService();
 
+/**
+ * @desc Génère le palmarès (classement) d'un niveau pour un contrôle
+ */
+export const getPalmares = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+  try {
+    const result = await gradeService.getPalmares(
+      {
+        classLevel: req.query.classLevel as any,
+        controlType: req.query.controlType as any,
+        academicYearId: req.query.academicYearId as string,
+        status: req.query.status as string,
+      },
+      auditData
+    );
+
+    if (!result.success) {
+      res.status(400).json(result);
+      return;
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    });
+  }
+};
+
+/**
+ * @desc Génère le palmarès cumulatif (notes totales) d'un niveau pour une année
+ */
+export const getPalmaresCumulatif = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+  try {
+    const controlTypesParam = req.query.controlTypes as string | undefined;
+    const controlTypes = controlTypesParam
+      ? (controlTypesParam.split(",").filter(Boolean) as any)
+      : undefined;
+
+    const result = await gradeService.getPalmaresCumulatif(
+      {
+        classLevel: req.query.classLevel as any,
+        academicYearId: req.query.academicYearId as string,
+        status: req.query.status as string,
+        controlTypes,
+      },
+      auditData
+    );
+
+    if (!result.success) {
+      res.status(400).json(result);
+      return;
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Erreur interne du serveur",
+      code: "INTERNAL_ERROR",
+    });
+  }
+};
+
 // Interface pour les réponses API étendue
 interface ExtendedApiResponse extends ApiResponse {
   statusCode?: number;

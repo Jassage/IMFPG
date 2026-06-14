@@ -452,6 +452,71 @@ export const getStudentFeeByStudentAndYear = async (
 };
 
 /**
+ * @function getFeeReportByClass
+ * @description État des paiements (rapport) pour une classe ou un niveau,
+ * pour une année académique : liste des élèves avec montants attendu, versé
+ * et restant, plus les totaux agrégés
+ * @route GET /api/student-fees/reports/by-class
+ * @access Staff/Admin
+ * @query {string} [classId] - ID de la classe
+ * @query {string} [classLevel] - Niveau (si classId non fourni)
+ * @query {string} academicYearId - ID de l'année académique (requis)
+ * @returns {Promise<void>}
+ */
+export const getFeeReportByClass = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).userId || "unknown",
+  };
+
+  try {
+    const { classId, classLevel, academicYearId } = req.query;
+
+    const result = await StudentFeeService.getFeeReportByClass({
+      classId: classId as string,
+      classLevel: classLevel as string,
+      academicYearId: academicYearId as string,
+    });
+
+    await createAuditLog({
+      ...auditData,
+      action: "GET_FEE_REPORT_BY_CLASS",
+      entity: "StudentFee",
+      description: "Consultation de l'état des paiements par classe",
+      status: "SUCCESS",
+      metadata: {
+        classId: classId as string,
+        classLevel: classLevel as string,
+        academicYearId: academicYearId as string,
+        studentsCount: result.data.students.length,
+      },
+    });
+
+    res.json(result.data);
+  } catch (error: any) {
+    console.error("❌ Erreur génération état des paiements:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: "GET_FEE_REPORT_BY_CLASS_ERROR",
+      entity: "StudentFee",
+      description: "Erreur lors de la génération de l'état des paiements",
+      status: "ERROR",
+      errorMessage: error.message || "Erreur inconnue",
+    });
+
+    res.status(error.status || 500).json({
+      error: error.message || "Erreur serveur",
+      details:
+        process.env.NODE_ENV === "development" && error.details
+          ? error.details
+          : undefined,
+    });
+  }
+};
+
+/**
  * @function getStudentFeesByStudent
  * @description Récupère tous les frais d'un étudiant (toutes années confondues)
  * @route GET /api/student-fees/student/:studentId

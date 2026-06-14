@@ -38,33 +38,14 @@ import {
   XCircle,
   RefreshCw,
   MoreVertical,
-  Shield,
-  Activity,
   Star,
   Target,
-  Banknote,
-  Building,
   ScrollText,
   User2,
-  ShieldAlert,
-  ShieldCheck,
-  Heart,
-  Briefcase,
   School,
-  Clock,
-  FileText,
-  Tag,
-  Percent,
   Bookmark,
-  ChartBar,
-  Trophy,
-  Medal,
   Crown,
   BookmarkCheck,
-  BookmarkX,
-  Check,
-  X,
-  UserPlus,
 } from "lucide-react";
 import { Student, Enrollment, Guardian } from "../../types/academic";
 import { useEnrollmentStore } from "../../store/enrollmentStore";
@@ -325,6 +306,15 @@ export const StudentDetails = ({
     return totalWeight > 0 ? totalWeightedGrade / totalWeight : 0;
   };
 
+  // Une note est validée si elle est >= 10/20 : le champ "status" du backend
+  // reflète le workflow de publication (Draft/Submitted/Published, etc.), pas
+  // la réussite académique
+  const isGradeValidated = (grade: GradeWithDetails): boolean =>
+    (grade.grade || 0) >= 10;
+
+  const isGradeRetake = (grade: GradeWithDetails): boolean =>
+    grade.session === "Reprise";
+
   const getLevelText = (level: string) => {
     const levelNum = parseInt(level);
     if (isNaN(levelNum)) return level;
@@ -347,11 +337,7 @@ export const StudentDetails = ({
   };
 
   const getGradeStatusBadge = (grade: GradeWithDetails) => {
-    const isRetake = grade.session === "Reprise" || grade.status === "Reprise";
-    const isValid = grade.status === "Valid_" || (grade.grade || 0) >= 10;
-    const isFailed = grade.status === "Non_valid_" || (grade.grade || 0) < 10;
-
-    if (isValid) {
+    if (isGradeValidated(grade)) {
       return (
         <Badge
           variant="default"
@@ -363,18 +349,10 @@ export const StudentDetails = ({
       );
     }
 
-    if (isFailed) {
-      return (
-        <Badge variant="destructive" className="gap-1 text-xs">
-          <XCircle className="h-3 w-3" />
-          Échec
-        </Badge>
-      );
-    }
-
     return (
-      <Badge variant="outline" className="text-xs">
-        {grade.status || "Inconnu"}
+      <Badge variant="destructive" className="gap-1 text-xs">
+        <XCircle className="h-3 w-3" />
+        Échec
       </Badge>
     );
   };
@@ -473,9 +451,7 @@ export const StudentDetails = ({
       };
     }
 
-    const validatedGrades = enrollmentGrades.filter(
-      (g) => g.status === "Valid_" || (g.grade || 0) >= 10
-    );
+    const validatedGrades = enrollmentGrades.filter(isGradeValidated);
 
     const weightedAverage = calculateWeightedAverage(enrollmentGrades);
 
@@ -1120,20 +1096,11 @@ export const StudentDetails = ({
         );
 
         if (enrollmentGrades.length > 0) {
-          const validatedGrades = enrollmentGrades.filter(
-            (g) => g.status === "Valid_" || (g.grade || 0) >= 10
+          const validatedGrades = enrollmentGrades.filter(isGradeValidated);
+          const failedGrades = enrollmentGrades.filter(
+            (g) => !isGradeValidated(g)
           );
-          const failedGrades = enrollmentGrades.filter((g) => {
-            const status = String(g.status);
-            return (
-              status === "Non_valid_" ||
-              status === "Echec" ||
-              (g.grade || 0) < 10
-            );
-          });
-          const retakeGrades = enrollmentGrades.filter(
-            (g) => g.session === "Reprise" || g.status === "Reprise"
-          );
+          const retakeGrades = enrollmentGrades.filter(isGradeRetake);
 
           const weightedAverage = calculateWeightedAverage(enrollmentGrades);
 
@@ -1188,10 +1155,7 @@ export const StudentDetails = ({
   const successRate =
     grades.length > 0
       ? Math.round(
-          (grades.filter((g) => g.status === "Valid_" || (g.grade || 0) >= 10)
-            .length /
-            grades.length) *
-            100
+          (grades.filter(isGradeValidated).length / grades.length) * 100
         )
       : 0;
 
@@ -1251,6 +1215,16 @@ export const StudentDetails = ({
                       {getStatusBadge(student.status)}
                     </div>
                   </div>
+                  {currentEnrollment && (
+                    <div className="flex items-center justify-center sm:justify-start gap-2 text-sm text-slate-600">
+                      <School className="h-4 w-4 text-slate-400" />
+                      <span>
+                        {getClassName(currentEnrollment.classId)} •{" "}
+                        {getLevelText(getClassLevel(currentEnrollment.classId))} •{" "}
+                        {getAcademicYear(currentEnrollment.academicYearId)}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Stats */}
@@ -1638,9 +1612,7 @@ export const StudentDetails = ({
                             .toLowerCase()
                             .includes(searchTerm.toLowerCase());
                         const matchesRetakeFilter =
-                          !showOnlyRetakes ||
-                          grade.session === "Reprise" ||
-                          grade.status === "Reprise";
+                          !showOnlyRetakes || isGradeRetake(grade);
                         return matchesSearch && matchesRetakeFilter;
                       });
 

@@ -20,7 +20,7 @@ import {
  */
 export const getStudents = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
@@ -28,7 +28,7 @@ export const getStudents = async (
     const result = await StudentService.getStudents(
       req.query,
       auditData.userId ?? undefined,
-      auditData.userRole
+      auditData.userRole,
     );
 
     // Log d'audit
@@ -82,7 +82,7 @@ export const getStudents = async (
  */
 export const getStudentById = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
@@ -92,7 +92,7 @@ export const getStudentById = async (
     const student = await StudentService.getStudentById(
       id,
       auditData.userId ?? undefined,
-      auditData.userRole
+      auditData.userRole,
     );
 
     // Log d'audit
@@ -162,12 +162,27 @@ export const getStudentById = async (
  */
 export const createStudent = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
   try {
-    const result = await StudentService.createStudent(req.body);
+    // Traiter la photo si elle a été uploadée
+    let photoUrl = null;
+    if (req.file) {
+      // Construire l'URL complète pour accéder à la photo
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      photoUrl = `${baseUrl}/uploads/profiles/${req.file.filename}`;
+      console.log("📸 Photo uploadée:", photoUrl);
+    }
+
+    // Fusionner les données du body avec la photo
+    const studentData = {
+      ...req.body,
+      photo: photoUrl, // Ajouter l'URL de la photo
+    };
+
+    const result = await StudentService.createStudent(studentData);
 
     // Préparer la réponse
     const responseData: any = {
@@ -212,7 +227,10 @@ export const createStudent = async (
     const response: StudentControllerResponse = {
       success: true,
       message: "Étudiant créé avec succès",
-      data: responseData,
+      data: {
+        student: result.student,
+        photo: photoUrl, // Inclure l'URL de la photo dans la réponse
+      },
     };
 
     res.status(201).json(response);
@@ -339,16 +357,89 @@ export const createStudent = async (
  */
 export const updateStudent = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
-
+  // DEBUG DÉTAILLÉ
+  console.log("🔍 === UPDATE STUDENT BACKEND DEBUG ===");
+  console.log("Content-Type:", req.headers["content-type"]);
+  console.log("req.file:", req.file);
+  if (req.file) {
+    console.log("📸 Photo reçue:", {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      filename: req.file.filename,
+      path: req.file.path,
+    });
+  } else {
+    console.log("❌ Aucun fichier reçu dans req.file");
+  }
+  console.log("req.body (clés):", Object.keys(req.body));
+  console.log("req.body.photo:", req.body.photo);
+  console.log("====================================");
   try {
     const { id } = req.params;
 
-    const updatedStudent = await StudentService.updateStudent(id, req.body);
+    // Parser les données
+    let requestData = req.body;
 
-    // Log d'audit
+    if (req.headers["content-type"]?.includes("multipart/form-data")) {
+      requestData = { ...req.body };
+
+      if (requestData.guardians && typeof requestData.guardians === "string") {
+        try {
+          requestData.guardians = JSON.parse(requestData.guardians);
+        } catch (e) {
+          console.warn("Failed to parse guardians:", e);
+        }
+      }
+    } else {
+      // CORRECTION: Nettoyer les données JSON
+      requestData = { ...req.body };
+
+      // Supprimer les objets vides (comme photo: {})
+      Object.keys(requestData).forEach((key) => {
+        if (
+          requestData[key] &&
+          typeof requestData[key] === "object" &&
+          !Array.isArray(requestData[key]) &&
+          Object.keys(requestData[key]).length === 0
+        ) {
+          delete requestData[key];
+        }
+      });
+    }
+
+    // Traiter la photo
+    let photoUrl = null;
+    if (req.file) {
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      photoUrl = `${baseUrl}/uploads/profiles/${req.file.filename}`;
+      console.log("📸 Nouvelle photo uploadée:", photoUrl);
+    }
+
+    // Préparer les données de mise à jour
+    const updateData = { ...requestData };
+
+    if (photoUrl) {
+      updateData.photo = photoUrl;
+    } else if (requestData.photo === null || requestData.photo === "") {
+      updateData.photo = null;
+    }
+    // Si photo est undefined ou un objet vide, ne pas l'inclure
+    else if (requestData.photo && typeof requestData.photo === "object") {
+      delete updateData.photo;
+    }
+
+    // Supprimer les champs qui ne doivent pas être mis à jour
+    delete updateData.id;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+    delete updateData.studentCode;
+
+    const updatedStudent = await StudentService.updateStudent(id, updateData);
+
     await createAuditLog({
       ...auditData,
       action: StudentActionTypes.STUDENT_UPDATED,
@@ -358,7 +449,8 @@ export const updateStudent = async (
       description: "Étudiant mis à jour avec succès",
       status: "SUCCESS",
       metadata: {
-        updatedFields: Object.keys(req.body),
+        updatedFields: Object.keys(updateData),
+        hasPhoto: !!photoUrl,
       },
     });
 
@@ -370,9 +462,8 @@ export const updateStudent = async (
 
     res.json(response);
   } catch (error: any) {
-    console.error(" StudentController - updateStudent error:", error);
+    console.error("StudentController - updateStudent error:", error);
 
-    // Gestion des erreurs spécifiques
     let statusCode = 500;
     let errorCode = "INTERNAL_ERROR";
     let errorMessage = "Erreur interne du serveur";
@@ -408,6 +499,7 @@ export const updateStudent = async (
       success: false,
       message: errorMessage,
       code: errorCode,
+      ...(process.env.NODE_ENV === "development" && { details: error.message }),
     };
 
     res.status(statusCode).json(response);
@@ -419,48 +511,62 @@ export const updateStudent = async (
  * @route DELETE /api/students/:id
  * @access Admin/Staff
  */
-export /**
+/**
  * Supprime un étudiant
  */
-const deleteStudent = async (req: Request, res: Response) => {
-  try {
-    const studentId = req.params.id;
+/**
+ * Supprime un étudiant (soft delete)
+ */
+export const deleteStudent = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const auditData = extractAuditData(req);
 
-    if (!studentId) {
-      return res.status(400).json({
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      res.status(400).json({
         success: false,
-        error: "ID de l'étudiant requis",
+        message: "ID de l'étudiant requis",
+        code: "MISSING_ID",
       });
+      return;
     }
 
-    await StudentService.deleteStudent(studentId);
+    await StudentService.deleteStudent(id);
 
-    return res.status(200).json({
+    await createAuditLog({
+      ...auditData,
+      action: StudentActionTypes.STUDENT_DELETED,
+      entity: "Student",
+      entityId: id,
+      userId: auditData.userId,
+      description: `Étudiant supprimé avec succès`,
+      status: "SUCCESS",
+    });
+
+    res.status(200).json({
       success: true,
       message: "Étudiant supprimé avec succès",
+      data: { deletedId: id },
     });
   } catch (error: any) {
     console.error("StudentController - deleteStudent error:", error);
 
-    // Gérer spécifiquement le cas où l'étudiant est déjà supprimé
-    if (error.message.includes("STUDENT_ALREADY_DELETED")) {
-      return res.status(200).json({
-        success: true,
-        message: "Étudiant déjà supprimé",
-      });
+    let statusCode = 500;
+    let errorMessage = "Erreur interne du serveur";
+
+    if (error.message === "STUDENT_NOT_FOUND") {
+      statusCode = 404;
+      errorMessage = "Étudiant non trouvé";
     }
 
-    // Gérer le cas où l'étudiant n'est pas trouvé
-    if (error.message.includes("STUDENT_NOT_FOUND")) {
-      return res.status(404).json({
-        success: false,
-        error: "Étudiant non trouvé",
-      });
-    }
-
-    return res.status(500).json({
+    res.status(statusCode).json({
       success: false,
-      error: "Erreur lors de la suppression de l'étudiant",
+      message: errorMessage,
+      code: error.code || "INTERNAL_ERROR",
     });
   }
 };
@@ -472,7 +578,7 @@ const deleteStudent = async (req: Request, res: Response) => {
  */
 export const updateStudentStatus = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
@@ -549,7 +655,7 @@ export const updateStudentStatus = async (
  */
 export const assignStudentToClass = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
@@ -560,7 +666,7 @@ export const assignStudentToClass = async (
     const result = await StudentService.assignStudentToClass(
       id,
       classId,
-      academicYearId
+      academicYearId,
     );
 
     // Log d'audit
@@ -634,7 +740,7 @@ export const assignStudentToClass = async (
  */
 export const getStudentStatistics = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
@@ -686,7 +792,7 @@ export const getStudentStatistics = async (
  */
 export const importStudents = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
@@ -757,7 +863,7 @@ export const importStudents = async (
  */
 export const searchStudents = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
@@ -776,7 +882,7 @@ export const searchStudents = async (
 
     const students = await StudentService.searchStudents(
       q.toString(),
-      parseInt(limit.toString())
+      parseInt(limit.toString()),
     );
 
     const response: StudentControllerResponse = {
@@ -806,7 +912,7 @@ export const searchStudents = async (
  */
 export const checkEmailAvailability = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const { email, excludeStudentId } = req.query;
@@ -823,7 +929,7 @@ export const checkEmailAvailability = async (
 
     const isAvailable = await StudentService.checkEmailAvailability(
       email.toString(),
-      excludeStudentId?.toString()
+      excludeStudentId?.toString(),
     );
 
     const response: StudentControllerResponse = {
@@ -853,7 +959,7 @@ export const checkEmailAvailability = async (
  */
 export const getStudentsByClass = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
@@ -871,7 +977,7 @@ export const getStudentsByClass = async (
         sortOrder: "asc",
       },
       auditData.userId ?? undefined,
-      auditData.userRole
+      auditData.userRole,
     );
 
     const response: StudentControllerResponse = {
@@ -901,7 +1007,7 @@ export const getStudentsByClass = async (
  */
 export const exportStudents = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const auditData = extractAuditData(req);
 
@@ -914,7 +1020,7 @@ export const exportStudents = async (
         limit: 10000, // Limite élevée pour l'export
       },
       auditData.userId ?? undefined,
-      auditData.userRole
+      auditData.userRole,
     );
 
     // Formater les données pour l'export
@@ -959,7 +1065,7 @@ export const exportStudents = async (
       res.setHeader("Content-Type", "text/csv");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename=etudiants_${new Date().toISOString().split("T")[0]}.csv`
+        `attachment; filename=etudiants_${new Date().toISOString().split("T")[0]}.csv`,
       );
 
       // Convertir en CSV (simplifié)

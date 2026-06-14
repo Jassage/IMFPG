@@ -183,6 +183,37 @@ interface UpdateGradeData {
   rejectionReason?: string;
 }
 
+// Interfaces pour le palmarès
+export interface PalmaresSubject {
+  id: string;
+  name: string;
+  code?: string;
+  maxGrade: number;
+  coefficient?: number;
+}
+
+export interface PalmaresStudent {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  studentCode?: string;
+  grades: Record<string, number>;
+  total: number;
+  moyenne: number;
+  rank: number;
+}
+
+export interface PalmaresData {
+  classLevel: ClassLevel;
+  controlType?: ControlType;
+  controlTypes?: ControlType[] | "all";
+  academicYearId: string;
+  maxTotal: number;
+  subjects: PalmaresSubject[];
+  students: PalmaresStudent[];
+  generatedAt: string;
+}
+
 // Interface pour les opérations en masse
 interface BulkGradeData {
   studentId: string;
@@ -333,6 +364,20 @@ interface GradeStore {
   // Import/Export
   exportGradesToExcel: (filters?: GradeFilters) => Promise<Blob>;
   downloadGradeTemplate: () => Promise<void>;
+
+  // Palmarès / rapports
+  fetchPalmares: (filters: {
+    classLevel: ClassLevel;
+    controlType: ControlType;
+    academicYearId: string;
+    status?: string;
+  }) => Promise<PalmaresData>;
+  fetchPalmaresCumulatif: (filters: {
+    classLevel: ClassLevel;
+    academicYearId: string;
+    status?: string;
+    controlTypes?: ControlType[];
+  }) => Promise<PalmaresData>;
 
   // Gestion de l'état
   clearError: () => void;
@@ -1568,6 +1613,63 @@ export const useGradeStore = create<GradeStore>()(
 
           set({ loading: false });
           toast.success("Modèle téléchargé avec succès");
+        } catch (error: any) {
+          const errorMessage =
+            error.response?.data?.message || error.message || "Erreur réseau";
+          set({ error: errorMessage, loading: false });
+          toast.error(errorMessage);
+          throw error;
+        }
+      },
+
+      // Palmarès / rapports
+      fetchPalmares: async (filters) => {
+        set({ loading: true, error: null });
+        try {
+          const response = await api.get("/grades/palmares", {
+            params: filters,
+          });
+
+          if (!response.data?.success) {
+            throw new Error(
+              response.data?.message ||
+                "Erreur lors de la génération du palmarès"
+            );
+          }
+
+          set({ loading: false });
+          return response.data.data as PalmaresData;
+        } catch (error: any) {
+          const errorMessage =
+            error.response?.data?.message || error.message || "Erreur réseau";
+          set({ error: errorMessage, loading: false });
+          toast.error(errorMessage);
+          throw error;
+        }
+      },
+
+      fetchPalmaresCumulatif: async (filters) => {
+        set({ loading: true, error: null });
+        try {
+          const { controlTypes, ...rest } = filters;
+          const response = await api.get("/grades/palmares-cumulatif", {
+            params: {
+              ...rest,
+              controlTypes: controlTypes?.length
+                ? controlTypes.join(",")
+                : undefined,
+            },
+          });
+
+          if (!response.data?.success) {
+            throw new Error(
+              response.data?.message ||
+                "Erreur lors de la génération du palmarès cumulatif"
+            );
+          }
+
+          set({ loading: false });
+          return response.data.data as PalmaresData;
         } catch (error: any) {
           const errorMessage =
             error.response?.data?.message || error.message || "Erreur réseau";

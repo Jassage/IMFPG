@@ -25,21 +25,16 @@ import {
   Users,
   BookOpen,
   FileText,
-  TrendingUp,
   BellRing,
-  MessageSquare,
   AlertCircle,
-  User,
   Download,
-  Plus,
   Printer,
   Search,
-  ChevronLeft,
-  ChevronRight,
   Eye,
-  X,
   ExternalLink,
   MapPin,
+  Sparkles,
+  GraduationCap,
   User as UserIcon,
 } from "lucide-react";
 import {
@@ -89,7 +84,34 @@ import {
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
+// Palette de couleurs sûres pour les cartes de statistiques (évite les classes Tailwind dynamiques)
+const STATS_COLORS: Record<
+  string,
+  { border: string; iconBg: string; progressBg: string }
+> = {
+  primary: {
+    border: "border-l-primary",
+    iconBg: "bg-gradient-to-br from-primary/20 to-primary/5",
+    progressBg: "bg-primary/10",
+  },
+  green: {
+    border: "border-l-green-500",
+    iconBg: "bg-gradient-to-br from-green-500/20 to-green-500/5",
+    progressBg: "bg-green-100",
+  },
+  blue: {
+    border: "border-l-blue-500",
+    iconBg: "bg-gradient-to-br from-blue-500/20 to-blue-500/5",
+    progressBg: "bg-blue-100",
+  },
+  amber: {
+    border: "border-l-amber-500",
+    iconBg: "bg-gradient-to-br from-amber-500/20 to-amber-500/5",
+    progressBg: "bg-amber-100",
+  },
+};
 
 // Composant mémoïsé pour les cartes de statistiques
 const StatsCard = React.memo(
@@ -107,26 +129,32 @@ const StatsCard = React.memo(
     description: string;
     color?: string;
     progressValue?: number;
-  }) => (
-    <Card className="group hover:shadow-lg transition-shadow">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <div
-          className={`h-8 w-8 rounded-lg bg-${color}/10 flex items-center justify-center group-hover:bg-${color}/20 transition-colors`}
-        >
-          {icon}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        <p className="text-xs text-muted-foreground">{description}</p>
-        <Progress
-          value={Math.min(progressValue, 100)}
-          className={`h-2 mt-3 bg-${color}/10`}
-        />
-      </CardContent>
-    </Card>
-  )
+  }) => {
+    const colors = STATS_COLORS[color] || STATS_COLORS.primary;
+
+    return (
+      <Card
+        className={`group hover:shadow-lg hover:-translate-y-0.5 transition-all border-l-4 ${colors.border}`}
+      >
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <div
+            className={`h-8 w-8 rounded-lg ${colors.iconBg} flex items-center justify-center`}
+          >
+            {icon}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{value}</div>
+          <p className="text-xs text-muted-foreground">{description}</p>
+          <Progress
+            value={Math.min(progressValue, 100)}
+            className={`h-2 mt-3 ${colors.progressBg}`}
+          />
+        </CardContent>
+      </Card>
+    );
+  },
 );
 
 StatsCard.displayName = "StatsCard";
@@ -307,7 +335,7 @@ const EventModal = ({
   // Fonction de formatage sécurisée
   const formatDateSafe = (
     dateString?: string,
-    formatStr: string = "dd/MM/yyyy HH:mm"
+    formatStr: string = "dd/MM/yyyy HH:mm",
   ) => {
     if (!dateString) return "Date non définie";
     try {
@@ -463,6 +491,58 @@ const EventModal = ({
   );
 };
 
+// Anneau de progression circulaire (ex: cours de la journée déjà effectués)
+const ProgressRing = ({
+  percentage,
+  size = 96,
+  centerText,
+  label,
+}: {
+  percentage: number;
+  size?: number;
+  centerText: React.ReactNode;
+  label?: string;
+}) => {
+  const stroke = 8;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const ratio = Math.max(0, Math.min(1, percentage / 100));
+  const offset = circumference * (1 - ratio);
+
+  return (
+    <div className="flex flex-col items-center justify-center">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth={stroke}
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="white"
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            style={{ transition: "stroke-dashoffset 0.6s ease" }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center text-white">
+          {centerText}
+        </div>
+      </div>
+      {label && <span className="mt-2 text-xs text-white/80">{label}</span>}
+    </div>
+  );
+};
+
 export const ProfessorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
@@ -595,7 +675,7 @@ export const ProfessorDashboard = () => {
 
       if (selectedYear === "current") {
         filtered = filtered.filter(
-          (assignment) => assignment.academicYear?.isCurrent
+          (assignment) => assignment.academicYear?.isCurrent,
         );
       }
 
@@ -654,7 +734,7 @@ export const ProfessorDashboard = () => {
         }
         return acc;
       },
-      0
+      0,
     );
 
     const now = new Date();
@@ -730,7 +810,7 @@ export const ProfessorDashboard = () => {
       .filter((event) => isAfter(parseISO(event.startDate), now))
       .sort(
         (a, b) =>
-          parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime()
+          parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime(),
       )
       .slice(0, 3); // Limiter à 3 événements
   }, [upcomingEvents]);
@@ -754,6 +834,22 @@ export const ProfessorDashboard = () => {
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
   }, [professeurSchedule]);
 
+  // Progression des cours du jour (terminés vs total)
+  const todayProgress = useMemo(() => {
+    const total = todaySchedule.length;
+    if (total === 0) return { done: 0, total: 0, percentage: 0 };
+
+    const now = new Date();
+    const currentTime = now.getHours() * 60 + now.getMinutes();
+
+    const done = todaySchedule.filter((schedule) => {
+      const [endHours, endMinutes] = schedule.endTime.split(":").map(Number);
+      return endHours * 60 + endMinutes <= currentTime;
+    }).length;
+
+    return { done, total, percentage: Math.round((done / total) * 100) };
+  }, [todaySchedule]);
+
   // Obtenir les classes uniques pour le filtre
   const uniqueClasses = useMemo(() => {
     const classes = filteredAssignments
@@ -764,7 +860,7 @@ export const ProfessorDashboard = () => {
 
   const formatDateSafe = (
     dateString?: string,
-    formatStr: string = "dd/MM/yyyy HH:mm"
+    formatStr: string = "dd/MM/yyyy HH:mm",
   ) => {
     if (!dateString) return "Date non définie";
     try {
@@ -807,17 +903,82 @@ export const ProfessorDashboard = () => {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            Bonjour, {user?.firstName} {user?.lastName}
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            {currentProfesseur?.speciality || "Professeur"} • Semaine{" "}
-            {Math.floor(new Date().getDate() / 7) + 1}
-          </p>
-        </div>
-      </div>
+      <Card className="overflow-hidden border-none bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white shadow-lg">
+        <CardContent className="p-6 md:p-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16 border-2 border-white/30 bg-white/10">
+                <AvatarFallback className="bg-transparent text-xl font-bold text-white">
+                  {user?.firstName?.charAt(0)}
+                  {user?.lastName?.charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="flex items-center gap-2 text-sm text-white/70">
+                  <Sparkles className="h-4 w-4" />
+                  {new Date().toLocaleDateString("fr-FR", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  })}
+                </div>
+                <h1 className="text-2xl md:text-3xl font-bold mt-1">
+                  Bonjour, {user?.firstName} {user?.lastName} !
+                </h1>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge className="bg-white/15 text-white border-white/20 hover:bg-white/20">
+                    <GraduationCap className="h-3 w-3 mr-1" />
+                    {currentProfesseur?.speciality || "Professeur"}
+                  </Badge>
+                  <span className="text-xs text-white/70">
+                    Semaine {Math.floor(new Date().getDate() / 7) + 1}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="hidden sm:flex flex-col gap-1.5 text-sm text-white/85">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  {stats.totalClasses} cours assigné
+                  {stats.totalClasses > 1 ? "s" : ""}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  {stats.totalStudents} élève
+                  {stats.totalStudents > 1 ? "s" : ""} encadré
+                  {stats.totalStudents > 1 ? "s" : ""}
+                </div>
+                {stats.nextClass ? (
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Prochain cours :{" "}
+                    {formatDayOfWeek(stats.nextClass.dayOfWeek)},{" "}
+                    {formatTime(stats.nextClass.startTime)}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-white/60">
+                    <Clock className="h-4 w-4" />
+                    Aucun cours à venir
+                  </div>
+                )}
+              </div>
+              <ProgressRing
+                percentage={todayProgress.percentage}
+                centerText={
+                  <div className="flex flex-col items-center">
+                    <span className="text-xl font-bold leading-none">
+                      {todayProgress.done}/{todayProgress.total}
+                    </span>
+                    <span className="text-[10px] text-white/70">cours</span>
+                  </div>
+                }
+                label="Aujourd'hui"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Notification si données manquantes */}
       {!currentProfesseur && (
@@ -838,7 +999,7 @@ export const ProfessorDashboard = () => {
         onValueChange={setActiveTab}
         className="space-y-4"
       >
-        <TabsList className="grid grid-cols-4 lg:w-[400px]">
+        <TabsList className="grid grid-cols-3 lg:w-[400px]">
           <TabsTrigger value="overview">Aperçu</TabsTrigger>
           <TabsTrigger value="courses">Cours</TabsTrigger>
           <TabsTrigger value="schedule">Emploi du temps</TabsTrigger>
@@ -862,7 +1023,7 @@ export const ProfessorDashboard = () => {
               value={
                 stats.nextClass
                   ? `${formatDayOfWeek(
-                      stats.nextClass.dayOfWeek
+                      stats.nextClass.dayOfWeek,
                     )}, ${formatTime(stats.nextClass.startTime)}`
                   : "Aucun"
               }
@@ -877,18 +1038,56 @@ export const ProfessorDashboard = () => {
               color="green"
               progressValue={stats.nextClass ? 60 : 0}
             />
+
+            <StatsCard
+              title="Élèves"
+              value={stats.totalStudents}
+              icon={<Users className="h-4 w-4 text-blue-500" />}
+              description="Élèves encadrés cette année"
+              color="blue"
+              progressValue={Math.min((stats.totalStudents / 100) * 100, 100)}
+            />
+
+            <StatsCard
+              title="Cours aujourd'hui"
+              value={todaySchedule.length}
+              icon={<Calendar className="h-4 w-4 text-amber-500" />}
+              description={
+                todaySchedule.length > 0
+                  ? `${todayProgress.done} terminé${
+                      todayProgress.done > 1 ? "s" : ""
+                    } sur ${todayProgress.total}`
+                  : "Aucun cours aujourd'hui"
+              }
+              color="amber"
+              progressValue={todayProgress.percentage}
+            />
           </div>
 
           {/* Grille principale */}
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Emploi du temps du jour */}
-            <Card className="lg:col-span-2">
+            <Card className="lg:col-span-2 border-l-4 border-l-blue-500">
               <CardHeader>
-                <CardTitle>Emploi du temps du jour</CardTitle>
-                <CardDescription>
-                  {formatDayOfWeek(new Date().getDay())}{" "}
-                  {format(new Date(), "dd/MM/yyyy", { locale: fr })}
-                </CardDescription>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-blue-600" />
+                      Emploi du temps du jour
+                    </CardTitle>
+                    <CardDescription>
+                      {formatDayOfWeek(new Date().getDay())}{" "}
+                      {format(new Date(), "dd/MM/yyyy", { locale: fr })}
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setActiveTab("schedule")}
+                  >
+                    Emploi complet
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -896,8 +1095,8 @@ export const ProfessorDashboard = () => {
                     todaySchedule.map((schedule) => (
                       <div
                         key={schedule.id}
-                        className={`flex items-center justify-between p-3 rounded-lg border hover:shadow-sm transition-all ${getCourseColor(
-                          schedule.id
+                        className={`flex items-center justify-between p-3 rounded-lg border hover:shadow-md hover:-translate-y-0.5 transition-all ${getCourseColor(
+                          schedule.id,
                         )}`}
                       >
                         <div className="flex items-center gap-3">
@@ -937,9 +1136,12 @@ export const ProfessorDashboard = () => {
             </Card>
 
             {/* Annonces importantes */}
-            <Card>
+            <Card className="border-l-4 border-l-purple-500">
               <CardHeader>
-                <CardTitle>Annonces importantes</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <BellRing className="h-5 w-5 text-purple-600" />
+                  Annonces importantes
+                </CardTitle>
                 <CardDescription>Dernières annonces</CardDescription>
               </CardHeader>
               <CardContent>
@@ -948,7 +1150,7 @@ export const ProfessorDashboard = () => {
                     professorAnnouncements.map((announcement) => (
                       <div
                         key={announcement.id}
-                        className="rounded-lg border p-3 hover:shadow-sm transition-shadow cursor-pointer"
+                        className="rounded-lg border p-3 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
                         onClick={() => handleAnnouncementClick(announcement)}
                       >
                         <div className="flex items-start gap-3">
@@ -964,7 +1166,7 @@ export const ProfessorDashboard = () => {
                                 {format(
                                   parseISO(announcement.publishDate),
                                   "dd/MM",
-                                  { locale: fr }
+                                  { locale: fr },
                                 )}
                               </span>
                             </div>
@@ -1004,11 +1206,14 @@ export const ProfessorDashboard = () => {
           </div>
 
           {/* Événements à venir */}
-          <Card>
+          <Card className="border-l-4 border-l-amber-500">
             <CardHeader>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <CardTitle>Événements à venir</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-amber-600" />
+                    Événements à venir
+                  </CardTitle>
                   <CardDescription>
                     Prochains événements et réunions
                   </CardDescription>
@@ -1034,7 +1239,7 @@ export const ProfessorDashboard = () => {
                   dashboardEvents.map((event) => (
                     <Card
                       key={event.id}
-                      className="hover:shadow-lg transition-shadow cursor-pointer"
+                      className="hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer"
                       onClick={() => handleEventClick(event)}
                     >
                       <CardHeader className="pb-3">
@@ -1331,8 +1536,8 @@ export const ProfessorDashboard = () => {
                         <html>
                           <head>
                             <title>Emploi du temps - ${user?.firstName} ${
-                        user?.lastName
-                      }</title>
+                              user?.lastName
+                            }</title>
                             <style>
                               body { font-family: Arial, sans-serif; margin: 20px; }
                               h2 { color: #333; }
@@ -1343,8 +1548,8 @@ export const ProfessorDashboard = () => {
                           </head>
                           <body>
                             <h2>Emploi du temps - ${user?.firstName} ${
-                        user?.lastName
-                      }</h2>
+                              user?.lastName
+                            }</h2>
                             <p>${format(new Date(), "dd/MM/yyyy", {
                               locale: fr,
                             })}</p>
@@ -1363,16 +1568,16 @@ export const ProfessorDashboard = () => {
                                   .sort(
                                     (a, b) =>
                                       a.dayOfWeek - b.dayOfWeek ||
-                                      a.startTime.localeCompare(b.startTime)
+                                      a.startTime.localeCompare(b.startTime),
                                   )
                                   .map(
                                     (schedule) => `
                                     <tr>
                                       <td>${formatDayOfWeek(
-                                        schedule.dayOfWeek
+                                        schedule.dayOfWeek,
                                       )}</td>
                                       <td>${formatTime(
-                                        schedule.startTime
+                                        schedule.startTime,
                                       )} - ${formatTime(schedule.endTime)}</td>
                                       <td>${
                                         schedule.subject?.name || "Non spécifié"
@@ -1386,7 +1591,7 @@ export const ProfessorDashboard = () => {
                                         schedule.classroom || "Non spécifié"
                                       }</td>
                                     </tr>
-                                  `
+                                  `,
                                   )
                                   .join("")}
                               </tbody>
@@ -1512,13 +1717,7 @@ export const ProfessorDashboard = () => {
 const LoadingSkeleton = () => (
   <div className="space-y-6 p-6">
     {/* Header skeleton */}
-    <div className="flex justify-between items-center">
-      <div>
-        <Skeleton className="h-8 w-48 mb-2" />
-        <Skeleton className="h-4 w-64" />
-      </div>
-      <Skeleton className="h-10 w-32" />
-    </div>
+    <div className="h-40 bg-gray-200 rounded-2xl animate-pulse" />
 
     {/* Stats cards skeleton */}
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

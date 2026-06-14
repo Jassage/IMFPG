@@ -1,4 +1,4 @@
-// components/students/StudentForm.tsx - VERSION CORRIGÉE
+// components/students/StudentForm.tsx - AVEC CHAMP PHOTO
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Student } from "@/types/academic";
 import { useClassStore } from "@/store/classStore";
+
 import { useAcademicYearStore } from "@/store/academicYearStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -38,6 +39,9 @@ import {
   ShieldAlert,
   CheckCircle,
   Mail,
+  Camera,
+  Upload,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -48,6 +52,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // Constantes pour les valeurs "vides"
 const EMPTY_VALUES = {
@@ -108,14 +113,13 @@ const guardianSchema = z.object({
       (phone) => {
         if (!phone) return false;
         const cleaned = phone.replace(/[\s\-()]/g, "");
-        // Format Haïtien: +509XXXXXXXX
         const phoneRegex = /^(\+509)\d{8}$/;
         return cleaned.length === 12 && phoneRegex.test(cleaned);
       },
       {
         message:
           "Format téléphone invalide. Utilisez +509XXXXXXXX (ex: +50944556677)",
-      }
+      },
     ),
 
   email: z.string().email("Email invalide").optional().or(z.literal("")),
@@ -129,7 +133,7 @@ const guardianSchema = z.object({
   isPrimary: z.boolean().default(false),
 });
 
-// CORRIGÉ : Schéma principal avec date de naissance obligatoire
+// Schéma principal avec date de naissance obligatoire
 const studentSchema = z.object({
   // Informations personnelles
   firstName: z
@@ -157,17 +161,15 @@ const studentSchema = z.object({
       (phone) => {
         if (!phone) return true;
         const cleaned = phone.replace(/[\s\-()]/g, "");
-        // Format Haïtien: +509XXXXXXXX
         const phoneRegex = /^(\+509)\d{8}$/;
         return cleaned.length === 12 && phoneRegex.test(cleaned);
       },
       {
         message:
           "Format téléphone invalide. Utilisez +509XXXXXXXX (ex: +50944556677)",
-      }
+      },
     ),
 
-  // CORRIGÉ : Date de naissance rendue obligatoire
   dateOfBirth: z
     .string()
     .min(1, "La date de naissance est requise")
@@ -178,20 +180,15 @@ const studentSchema = z.object({
         const birthDate = new Date(date);
         const today = new Date();
 
-        // Calculer l'âge précis
         let age = today.getFullYear() - birthDate.getFullYear();
         const monthDiff = today.getMonth() - birthDate.getMonth();
         const dayDiff = today.getDate() - birthDate.getDate();
 
-        // Ajuster l'âge si l'anniversaire n'est pas encore passé cette année
         if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
           age--;
         }
 
-        // Vérifier si l'étudiant a au moins 13 ans
         if (age < 13) return false;
-
-        // Vérifier si l'étudiant n'a pas plus de 25 ans
         if (age > 25) return false;
 
         return true;
@@ -199,7 +196,7 @@ const studentSchema = z.object({
       {
         message:
           "Date de naissance invalide. L'étudiant doit avoir entre 13 et 25 ans",
-      }
+      },
     ),
 
   placeOfBirth: z
@@ -214,7 +211,10 @@ const studentSchema = z.object({
     .optional()
     .or(z.literal("")),
 
-  photo: z.string().optional(),
+  // NOUVEAU: Champ photo
+  photo: z.string().optional().or(z.literal("")),
+
+  photoFile: z.any().optional(), // Pour stocker le fichier temporairement
 
   bloodGroup: z.string().optional(),
 
@@ -234,7 +234,6 @@ const studentSchema = z.object({
 
   sexe: z.string().optional(),
 
-  // Inscription à la classe
   classId: z
     .string()
     .min(1, "La classe est requise")
@@ -249,7 +248,6 @@ const studentSchema = z.object({
       message: "Veuillez sélectionner une année académique",
     }),
 
-  // Parents/tuteurs
   guardians: z
     .array(guardianSchema)
     .min(1, "Au moins un parent/tuteur est requis")
@@ -257,7 +255,6 @@ const studentSchema = z.object({
       message: "Un parent/tuteur principal doit être désigné",
     }),
 
-  // Création de compte utilisateur
   createUserAccount: z.boolean().default(false),
   sendWelcomeEmail: z.boolean().default(false),
 });
@@ -321,12 +318,16 @@ export const StudentForm = ({
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [serverError, setServerError] = useState<string | null>(null);
   const [currentTab, setCurrentTab] = useState("student-info");
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const { fetchStudentById } = useStudentStore();
+  const { createStudent, updateStudent } = useStudentStore();
 
   // États pour le tracking de la complétion
   const [completedTabs, setCompletedTabs] = useState<Set<string>>(
-    new Set(["student-info"])
+    new Set(["student-info"]),
   );
 
   // État pour vérifier la disponibilité de l'email
@@ -364,6 +365,7 @@ export const StudentForm = ({
       placeOfBirth: "",
       address: "",
       photo: "",
+      photoFile: undefined,
       bloodGroup: EMPTY_VALUES.NO_BLOOD_GROUP,
       allergies: "",
       disabilities: "",
@@ -406,7 +408,6 @@ export const StudentForm = ({
       setServerError(null);
 
       try {
-        // Charger les données complètes de l'étudiant
         const fullStudent = await fetchStudentById(student.id);
 
         if (!fullStudent) {
@@ -430,6 +431,11 @@ export const StudentForm = ({
           sexe: fullStudent.sexe || EMPTY_VALUES.NO_SEX,
           classId: fullStudent.classId || EMPTY_VALUES.NO_CLASS,
         };
+
+        // Définir l'aperçu de la photo
+        if (fullStudent.photo) {
+          setPhotoPreview(fullStudent.photo);
+        }
 
         // Gestion des gardiens
         if (fullStudent.guardians && fullStudent.guardians.length > 0) {
@@ -462,13 +468,11 @@ export const StudentForm = ({
           studentData.academicYearId =
             latestEnrollment.academicYearId || EMPTY_VALUES.NO_ACADEMIC_YEAR;
 
-          // Utiliser l'ID de classe de l'inscription si disponible
           if (latestEnrollment.classId) {
             studentData.classId = latestEnrollment.classId;
           }
         }
 
-        // Trouver l'année académique courante si aucune n'est spécifiée
         if (!studentData.academicYearId && academicYears.length > 0) {
           const currentYear = academicYears.find((year) => year.isCurrent);
           if (currentYear) {
@@ -476,17 +480,8 @@ export const StudentForm = ({
           }
         }
 
-        console.log("📋 Données préparées pour le formulaire:", {
-          ...studentData,
-          guardiansCount: studentData.guardians?.length,
-          hasClass: !!studentData.classId,
-          hasAcademicYear: !!studentData.academicYearId,
-        });
-
-        // Réinitialiser le formulaire avec les données chargées
         form.reset(studentData as StudentFormData);
 
-        // Marquer les onglets comme visités
         setCompletedTabs(new Set(["student-info", "guardians", "enrollment"]));
 
         toast({
@@ -504,7 +499,6 @@ export const StudentForm = ({
           variant: "destructive",
         });
 
-        // Réinitialiser avec les valeurs par défaut
         form.reset(getDefaultValues());
       } finally {
         setIsLoadingDetails(false);
@@ -513,6 +507,89 @@ export const StudentForm = ({
 
     loadStudentData();
   }, [student?.id, fetchStudentById, academicYears, form, getDefaultValues]);
+
+  // Fonction pour gérer l'upload de photo
+  // StudentForm.tsx - Version corrigée de handlePhotoUpload
+
+  const handlePhotoUpload = async (file: File) => {
+    if (!file) return;
+
+    console.log("📸 Fichier sélectionné:", file.name, file.type, file.size);
+    // Vérifier le type de fichier
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Format invalide",
+        description: "Veuillez uploader une image (JPEG, PNG, WEBP)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Vérifier la taille (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Fichier trop volumineux",
+        description: "La taille maximale est de 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+
+    try {
+      // Créer un aperçu local
+      const previewUrl = URL.createObjectURL(file);
+      setPhotoPreview(previewUrl);
+
+      // Stocker le fichier directement (pas en base64)
+      form.setValue("photoFile", file);
+      form.setValue("photo", previewUrl); // Pour l'aperçu
+
+      console.log("✅ Photo stockée dans le formulaire");
+
+      toast({
+        title: "Photo ajoutée",
+        description: "La photo a été ajoutée avec succès",
+      });
+    } catch (error) {
+      console.error("Erreur lors de l'upload:", error);
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  // Nettoyer les URLs blob
+  useEffect(() => {
+    return () => {
+      if (photoPreview && photoPreview.startsWith("blob:")) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
+
+  // CORRECTION: Nettoyer l'URL object lors du démontage
+  useEffect(() => {
+    return () => {
+      if (photoPreview && photoPreview.startsWith("blob:")) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
+
+  // Fonction pour supprimer la photo
+  const handleRemovePhoto = () => {
+    setPhotoPreview(null);
+    form.setValue("photo", "");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    toast({
+      title: "Photo supprimée",
+      description: "La photo a été supprimée",
+    });
+  };
 
   // Fonction pour vérifier la disponibilité de l'email
   const checkEmailAvailability = useCallback(
@@ -525,10 +602,7 @@ export const StudentForm = ({
       setEmailAvailability({ checking: true, available: undefined });
 
       try {
-        // Simuler une vérification d'email
-        // En production, vous feriez un appel API ici
         setTimeout(() => {
-          // Pour la démo, on simule que l'email est disponible si ce n'est pas l'étudiant actuel
           const isAvailable = !student || student.email !== email;
           setEmailAvailability({ checking: false, available: isAvailable });
         }, 500);
@@ -537,7 +611,7 @@ export const StudentForm = ({
         setEmailAvailability({ checking: false, available: undefined });
       }
     },
-    [student]
+    [student],
   );
 
   // Calcul du pourcentage de complétion
@@ -546,12 +620,11 @@ export const StudentForm = ({
     let completed = 0;
     let total = 0;
 
-    // Champs obligatoires de base - CORRIGÉ : ajout de dateOfBirth
     const requiredFields = [
       { key: "firstName", value: values.firstName },
       { key: "lastName", value: values.lastName },
       { key: "email", value: values.email },
-      { key: "dateOfBirth", value: values.dateOfBirth }, // ← AJOUTÉ
+      { key: "dateOfBirth", value: values.dateOfBirth },
       { key: "classId", value: values.classId },
       { key: "academicYearId", value: values.academicYearId },
     ];
@@ -561,7 +634,6 @@ export const StudentForm = ({
       if (value && value.trim()) completed++;
     });
 
-    // Gardiens
     if (values.guardians && values.guardians.length > 0) {
       const guardian = values.guardians[0];
       const guardianFields = [
@@ -588,7 +660,7 @@ export const StudentForm = ({
         "lastName",
         "email",
         "phone",
-        "dateOfBirth", // ← AJOUTÉ ici aussi
+        "dateOfBirth",
       ],
       guardians: ["guardians"],
       enrollment: ["classId", "academicYearId"],
@@ -600,7 +672,6 @@ export const StudentForm = ({
     const result = await form.trigger(fields as any);
 
     if (result) {
-      // Marquer l'onglet comme complété
       setCompletedTabs((prev) => new Set([...prev, currentTab]));
     }
 
@@ -625,68 +696,99 @@ export const StudentForm = ({
   };
 
   // Soumission du formulaire
+  // StudentForm.tsx - Dans handleSubmit, corriger l'envoi de la photo
+
+  // StudentForm.tsx - Dans handleSubmit
+  // StudentForm.tsx - Dans handleSubmit
   const handleSubmit = async (data: StudentFormData) => {
     setIsSubmitting(true);
-    setValidationErrors([]);
-    setServerError(null);
 
     try {
-      // Nettoyer les données
-      const cleanData = {
-        ...data,
-        firstName: data.firstName.trim(),
-        lastName: data.lastName.trim(),
-        email: data.email.trim().toLowerCase(),
-        phone: data.phone ? data.phone.trim() : "",
-        dateOfBirth: data.dateOfBirth,
-        placeOfBirth: data.placeOfBirth ? data.placeOfBirth.trim() : "",
-        address: data.address ? data.address.trim() : "",
-        allergies: data.allergies ? data.allergies.trim() : "",
-        disabilities: data.disabilities ? data.disabilities.trim() : "",
-        bloodGroup:
-          data.bloodGroup === EMPTY_VALUES.NO_BLOOD_GROUP
-            ? undefined
-            : data.bloodGroup,
-        sexe: data.sexe === EMPTY_VALUES.NO_SEX ? undefined : data.sexe,
-        ...(student && data.status ? { status: data.status } : {}),
-        guardians: data.guardians.map((guardian) => ({
-          ...guardian,
-          firstName: guardian.firstName.trim(),
-          lastName: guardian.lastName.trim(),
-          phone: guardian.phone.trim(),
-          email: guardian.email ? guardian.email.trim().toLowerCase() : "",
-          address: guardian.address ? guardian.address.trim() : "",
-        })),
-      };
+      let requestData: any;
+      let isMultipart = false;
 
-      await onSubmit(cleanData);
+      // CORRECTION: Vérification plus stricte
+      const hasPhotoToUpload = data.photoFile instanceof File;
 
-      // Le toast de succès est géré par le parent
-    } catch (error: any) {
-      // Gestion des erreurs de validation du serveur
-      if (error.response?.data?.errors) {
-        const errors = Object.values(
-          error.response.data.errors
-        ).flat() as string[];
-        setValidationErrors(errors);
+      console.log("🔍 Vérification photo:", {
+        hasPhotoToUpload,
+        photoFileType:
+          data.photoFile instanceof File ? "File" : typeof data.photoFile,
+        photoPreview: photoPreview
+          ? photoPreview.startsWith("blob:")
+            ? "blob"
+            : "url"
+          : "none",
+      });
 
-        toast({
-          title: "Erreur de validation",
-          description:
-            errors.join(" ") || "Veuillez vérifier les données saisies",
-          variant: "destructive",
+      if (hasPhotoToUpload) {
+        isMultipart = true;
+        const formData = new FormData();
+
+        // Ajouter tous les champs
+        Object.keys(data).forEach((key) => {
+          if (key === "photoFile") return; // Skip le champ photoFile
+          if (key === "photo") return; // Skip l'ancienne photo
+
+          const value = data[key as keyof StudentFormData];
+
+          if (key === "guardians" && value) {
+            formData.append(key, JSON.stringify(value));
+          } else if (
+            key === "createUserAccount" &&
+            typeof value === "boolean"
+          ) {
+            formData.append(key, String(value));
+          } else if (value !== undefined && value !== null && value !== "") {
+            formData.append(key, String(value));
+          }
         });
+
+        // Ajouter la photo (IMPORTANT: le champ doit s'appeler "photo")
+        const photoFile = data.photoFile as File;
+        formData.append("photo", photoFile);
+        console.log(
+          "📤 Photo ajoutée au FormData:",
+          photoFile.name,
+          photoFile.type,
+          photoFile.size,
+        );
+
+        requestData = formData;
       } else {
-        const errorMessage =
-          error.message || "Une erreur s'est produite lors de la soumission";
-        setServerError(errorMessage);
+        // Mode JSON
+        isMultipart = false;
+        requestData = { ...data };
+        delete requestData.photoFile;
 
-        toast({
-          title: "Erreur",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        // Si suppression de photo
+        if (data.photo === null || data.photo === "") {
+          requestData.photo = null;
+        }
       }
+
+      console.log("📤 Envoi de la requête:", {
+        isMultipart,
+        hasPhoto: isMultipart ? true : !!requestData.photo,
+        contentType: isMultipart ? "multipart/form-data" : "application/json",
+      });
+
+      if (student) {
+        await updateStudent(student.id, requestData);
+        toast({ title: "Succès", description: "Étudiant modifié avec succès" });
+      } else {
+        await createStudent(requestData);
+        toast({ title: "Succès", description: "Étudiant créé avec succès" });
+      }
+
+      onClose();
+    } catch (error: any) {
+      console.error("Erreur:", error);
+      toast({
+        title: "Erreur",
+        description: error.message,
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -734,7 +836,6 @@ export const StudentForm = ({
     const guardianToRemove = currentGuardians[index];
     const newGuardians = currentGuardians.filter((_, i) => i !== index);
 
-    // Si on supprime le parent principal, désigner le premier comme principal
     if (guardianToRemove.isPrimary && newGuardians.length > 0) {
       newGuardians[0].isPrimary = true;
     }
@@ -761,11 +862,10 @@ export const StudentForm = ({
 
     const cleaned = phone.replace(/[\s\-()]/g, "");
 
-    // Format Haïtien: +509 XX XX XX XX
     if (cleaned.startsWith("+509") && cleaned.length === 12) {
       return `+509 ${cleaned.slice(4, 6)} ${cleaned.slice(
         6,
-        8
+        8,
       )} ${cleaned.slice(8, 10)} ${cleaned.slice(10)}`;
     }
 
@@ -775,7 +875,7 @@ export const StudentForm = ({
   // Gestionnaire de changement de téléphone
   const handlePhoneChange = (
     e: React.ChangeEvent<HTMLInputElement>,
-    onChange: (value: string) => void
+    onChange: (value: string) => void,
   ) => {
     const value = e.target.value;
     const formatted = formatPhoneNumber(value);
@@ -785,7 +885,7 @@ export const StudentForm = ({
     onChange(e.target.value);
   };
 
-  // Suivi des changements d'email pour vérifier la disponibilité
+  // Suivi des changements d'email
   useEffect(() => {
     const email = form.watch("email");
     if (email && email.includes("@")) {
@@ -797,7 +897,6 @@ export const StudentForm = ({
     }
   }, [form.watch("email"), checkEmailAvailability]);
 
-  // Affichage du chargement
   if (isLoadingDetails) {
     return (
       <div className="space-y-6">
@@ -814,7 +913,6 @@ export const StudentForm = ({
     );
   }
 
-  // Affichage de l'erreur de chargement
   if (serverError) {
     return (
       <div className="space-y-6">
@@ -909,6 +1007,84 @@ export const StudentForm = ({
           >
             {/* Onglet Informations étudiant */}
             <TabsContent value="student-info" className="space-y-6">
+              {/* Section Photo */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Photo de profil</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col items-center space-y-4">
+                    {/* Avatar avec aperçu */}
+                    <div className="relative">
+                      <Avatar className="w-32 h-32 border-4 border-primary/20">
+                        <AvatarImage src={photoPreview || ""} />
+                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-4xl font-bold">
+                          {form.watch("firstName")?.[0] || ""}
+                          {form.watch("lastName")?.[0] || ""}
+                        </AvatarFallback>
+                      </Avatar>
+
+                      {/* Badge de chargement */}
+                      {isUploadingPhoto && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
+                          <Loader2 className="h-8 w-8 animate-spin text-white" />
+                        </div>
+                      )}
+                    </div>
+                    {/* Boutons d'action */}
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingPhoto}
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        {photoPreview
+                          ? "Changer la photo"
+                          : "Ajouter une photo"}
+                      </Button>
+
+                      {photoPreview && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={handleRemovePhoto}
+                          disabled={isUploadingPhoto}
+                        >
+                          <X className="h-4 w-4 mr-2" />
+                          Supprimer
+                        </Button>
+                      )}
+                    </div>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/jpg,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          console.log(
+                            "📁 Fichier sélectionné par l'utilisateur:",
+                            file.name,
+                          );
+                          handlePhotoUpload(file);
+                        }
+                        // Reset l'input pour permettre de sélectionner le même fichier à nouveau
+                        e.target.value = "";
+                      }}
+                    />
+                    <FormDescription className="text-center">
+                      Formats acceptés: JPEG, PNG, WEBP. Taille max: 5MB
+                    </FormDescription>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle>Informations personnelles</CardTitle>
@@ -1039,14 +1215,12 @@ export const StudentForm = ({
                       )}
                     />
 
-                    {/* CORRIGÉ : Date de naissance avec étoile */}
                     <FormField
                       control={form.control}
                       name="dateOfBirth"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Date de naissance *</FormLabel>{" "}
-                          {/* ← ÉTOILE AJOUTÉE */}
+                          <FormLabel>Date de naissance *</FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -1227,7 +1401,7 @@ export const StudentForm = ({
               </Card>
             </TabsContent>
 
-            {/* Onglet Parents/Tuteurs */}
+            {/* Onglet Parents/Tuteurs (inchangé) */}
             <TabsContent value="guardians" className="space-y-6">
               <Card>
                 <CardHeader>
@@ -1649,8 +1823,8 @@ export const StudentForm = ({
                         currentTab === "enrollment"
                           ? "guardians"
                           : currentTab === "guardians"
-                          ? "student-info"
-                          : "student-info";
+                            ? "student-info"
+                            : "student-info";
                       setCurrentTab(prevTab);
                     }}
                     disabled={isSubmitting}
@@ -1696,8 +1870,8 @@ export const StudentForm = ({
                         currentTab === "student-info"
                           ? "guardians"
                           : currentTab === "guardians"
-                          ? "enrollment"
-                          : "enrollment";
+                            ? "enrollment"
+                            : "enrollment";
                       setCurrentTab(nextTab);
                     }}
                     disabled={isSubmitting}

@@ -20,28 +20,25 @@ import {
   BookOpen,
   TrendingUp,
   Clock,
+  Clock4,
   Calendar,
   FileText,
-  Download,
   Eye,
-  Star,
-  Bell,
-  MessageSquare,
-  HelpCircle,
+  EyeOff,
   GraduationCap,
-  School,
-  Clock3,
-  Notebook,
-  CalendarDays,
   Megaphone,
-  CalendarClock,
   RefreshCw,
   AlertCircle,
+  AlertTriangle,
   XCircle,
   CheckCircle,
-  EyeOff,
   CheckCheck,
-  AlertTriangle,
+  Award,
+  Sparkles,
+  MapPin,
+  HelpCircle,
+  ArrowRight,
+  School,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
@@ -71,7 +68,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import useEventStore, { Event } from "@/store/eventStore";
 
 // Composants modaux
@@ -84,12 +81,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import api from "@/services/api";
-import { useTimetableStore } from "@/store/timetableStore";
 import { GradeStatus } from "@/types/bulletin";
-import { is } from "date-fns/locale";
-
-// Import des types de statut
-// import { GradeStatus } from "@/types/grade";
 
 // Types pour le dashboard
 interface Course {
@@ -214,15 +206,15 @@ const AnnouncementModal = ({
                   announcement.priority === "High"
                     ? "destructive"
                     : announcement.priority === "Medium"
-                    ? "secondary"
-                    : "outline"
+                      ? "secondary"
+                      : "outline"
                 }
               >
                 {announcement.priority === "High"
                   ? "Important"
                   : announcement.priority === "Medium"
-                  ? "Moyenne"
-                  : "Normale"}
+                    ? "Moyenne"
+                    : "Normale"}
               </Badge>
               <Badge variant="outline">
                 {announcement.category || "Général"}
@@ -259,23 +251,23 @@ const EventModal = ({
     evtStatus.includes("scheduled") || evtStatus.includes("program")
       ? "default"
       : evtStatus.includes("cancel") || evtStatus.includes("annul")
-      ? "destructive"
-      : evtStatus.includes("complete") ||
-        evtStatus.includes("term") ||
-        evtStatus.includes("en cours")
-      ? "secondary"
-      : "outline";
+        ? "destructive"
+        : evtStatus.includes("complete") ||
+            evtStatus.includes("term") ||
+            evtStatus.includes("en cours")
+          ? "secondary"
+          : "outline";
 
   const statusLabel =
     evtStatus.includes("scheduled") || evtStatus.includes("program")
       ? "Programmé"
       : evtStatus.includes("cancel") || evtStatus.includes("annul")
-      ? "Annulé"
-      : evtStatus.includes("complete") ||
-        evtStatus.includes("term") ||
-        evtStatus.includes("en cours")
-      ? "Terminé"
-      : event?.status;
+        ? "Annulé"
+        : evtStatus.includes("complete") ||
+            evtStatus.includes("term") ||
+            evtStatus.includes("en cours")
+          ? "Terminé"
+          : event?.status;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -363,6 +355,61 @@ const EventModal = ({
   );
 };
 
+// Jauge circulaire pour afficher la moyenne générale sur 20
+const CircularGauge = ({
+  value,
+  max = 20,
+  size = 96,
+  label,
+}: {
+  value: number;
+  max?: number;
+  size?: number;
+  label?: string;
+}) => {
+  const stroke = 8;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const ratio = Math.max(0, Math.min(1, value / max));
+  const offset = circumference * (1 - ratio);
+
+  return (
+    <div className="flex flex-col items-center justify-center">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth={stroke}
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="white"
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            style={{ transition: "stroke-dashoffset 0.6s ease" }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+          <span className="text-xl font-bold leading-none">
+            {value.toFixed(1)}
+          </span>
+          <span className="text-[10px] text-white/70">/{max}</span>
+        </div>
+      </div>
+      {label && <span className="mt-2 text-xs text-white/80">{label}</span>}
+    </div>
+  );
+};
+
 const StudentDashboard = () => {
   const { toast } = useToast();
   const { user } = useAuthStore();
@@ -372,22 +419,20 @@ const StudentDashboard = () => {
     loading: studentLoading,
   } = useStudentStore();
 
-  const { fetchStudentGrades, fetchStudentDashboardGrades } = useGradeStore();
+  const { fetchStudentDashboardGrades } = useGradeStore();
   const { announcements, fetchAnnouncements } = useAnnouncementStore();
-  const { assignments, fetchAssignmentsByClass } = useAssignmentStore();
-  const { schedules, fetchClassTimetable } = useTimetableStore();
+  const { fetchAssignmentsByClass } = useAssignmentStore();
   const { upcomingEvents, fetchUpcomingEvents } = useEventStore();
 
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date());
   const [filterType, setFilterType] = useState("all");
   const [gradeStatusFilter, setGradeStatusFilter] = useState<string>("all");
 
   // États pour les données
   const [studentGrades, setStudentGrades] = useState<GradeWithDetails[]>([]);
   const [publishedGrades, setPublishedGrades] = useState<GradeWithDetails[]>(
-    []
+    [],
   );
   const [studentCourses, setStudentCourses] = useState<Course[]>([]);
   const [studentSchedule, setStudentSchedule] = useState<Schedule[]>([]);
@@ -442,7 +487,7 @@ const StudentDashboard = () => {
         return grade.subject.passingGrade / 100;
       return getMaxGrade(grade) * 0.5; // 50% par défaut
     },
-    [getMaxGrade]
+    [getMaxGrade],
   );
 
   // Fonction pour calculer le pourcentage
@@ -452,7 +497,7 @@ const StudentDashboard = () => {
       const maxGrade = getMaxGrade(grade);
       return maxGrade > 0 ? (gradeValue / maxGrade) * 100 : 0;
     },
-    [getMaxGrade]
+    [getMaxGrade],
   );
 
   // Fonction pour convertir la note en note sur 20 (pour la moyenne)
@@ -462,7 +507,7 @@ const StudentDashboard = () => {
       const maxGrade = getMaxGrade(grade);
       return maxGrade > 0 ? (gradeValue / maxGrade) * 20 : 0;
     },
-    [getMaxGrade]
+    [getMaxGrade],
   );
 
   // Fonction pour vérifier si la note est validée
@@ -472,7 +517,7 @@ const StudentDashboard = () => {
       const passingGrade = getPassingGrade(grade);
       return gradeValue >= passingGrade;
     },
-    [getPassingGrade]
+    [getPassingGrade],
   );
 
   // Fonction pour filtrer les notes selon le statut
@@ -514,7 +559,7 @@ const StudentDashboard = () => {
         return false;
       });
     },
-    [isGradeValidated]
+    [isGradeValidated],
   );
 
   // Fonction pour obtenir le nom de la matière
@@ -539,7 +584,7 @@ const StudentDashboard = () => {
       if (percentage >= 50) return "text-amber-600";
       return "text-red-600 font-semibold";
     },
-    [getGradePercentage]
+    [getGradePercentage],
   );
 
   // Fonction pour le badge de statut
@@ -659,22 +704,9 @@ const StudentDashboard = () => {
         return;
       }
 
-      // Charger les notes PUBLIÉES de l'étudiant
+      // Charger les notes (approuvées/publiées) de l'étudiant
       try {
-        console.log(" Chargement des notes publiées pour le dashboard...");
-
-        // Utiliser la fonction du store (qui utilise maintenant le bon endpoint)
         const gradesData = await fetchStudentDashboardGrades(studentId);
-
-        console.log(
-          " Détails des notes:",
-          gradesData.map((g: any) => ({
-            id: g.id,
-            status: g.status,
-            grade: g.grade,
-            subject: g.subject?.name,
-          }))
-        );
 
         if (gradesData && Array.isArray(gradesData) && gradesData.length > 0) {
           // Formater les notes
@@ -704,10 +736,7 @@ const StudentDashboard = () => {
 
           setStudentGrades(formattedGrades);
           setPublishedGrades(formattedGrades);
-
-          console.log(" Notes formatées:", formattedGrades.length);
         } else {
-          console.log(" Aucune note publiée trouvée");
           setStudentGrades([]);
           setPublishedGrades([]);
         }
@@ -791,26 +820,26 @@ const StudentDashboard = () => {
                         classroom:
                           scheduleData.classroom || "Salle non définie",
                         classAssignment: {
-                          subject: scheduleData.subject || {
-                            name: scheduleData.subject?.name || "Matière",
-                            code: scheduleData.subject?.code || "MAT",
+                          subject: scheduleData.classAssignment?.subject || {
+                            name: "Matière",
+                            code: "MAT",
                           },
-                          professeur: scheduleData.professeur || {
-                            firstName:
-                              scheduleData.professeur?.firstName ||
-                              "Professeur",
-                            lastName: scheduleData.professeur?.lastName || "",
+                          professeur: scheduleData.classAssignment
+                            ?.professeur || {
+                            firstName: "Professeur",
+                            lastName: "",
                           },
                         },
-                        schoolClass: currentStudent?.schoolClass || {
-                          name: currentStudent?.schoolClass?.name || "",
-                          level: currentStudent?.schoolClass?.level || "N/A",
-                        },
+                        schoolClass: scheduleData.schoolClass ||
+                          currentStudent?.schoolClass || {
+                            name: currentStudent?.schoolClass?.name || "",
+                            level: currentStudent?.schoolClass?.level || "N/A",
+                          },
                       });
                     }
                   });
                 }
-              }
+              },
             );
 
             setStudentSchedule(schedules);
@@ -820,7 +849,7 @@ const StudentDashboard = () => {
         } catch (error) {
           console.error(
             "Erreur lors du chargement de l'emploi du temps:",
-            error
+            error,
           );
           setStudentSchedule([]);
         }
@@ -899,7 +928,7 @@ const StudentDashboard = () => {
 
     filtered.sort(
       (a: any, b: any) =>
-        new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime()
+        new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime(),
     );
 
     setFilteredAnnouncements(filtered);
@@ -924,7 +953,7 @@ const StudentDashboard = () => {
   // Calculer la moyenne générale (sur 20) basée sur les notes PUBLIÉES
   const calculateAverage = useMemo(() => {
     const publishedGrades = studentGrades.filter(
-      (grade) => grade.status === GradeStatus.PUBLISHED
+      (grade) => grade.status === GradeStatus.PUBLISHED,
     );
 
     if (!publishedGrades || publishedGrades.length === 0) {
@@ -1008,11 +1037,11 @@ const StudentDashboard = () => {
 
       const totalCredits = visibleGrades.reduce(
         (sum, grade) => sum + (grade.subject?.coefficient || 0),
-        0
+        0,
       );
       const obtainedCredits = validatedGrades.reduce(
         (sum, grade) => sum + (grade.subject?.coefficient || 0),
-        0
+        0,
       );
 
       return {
@@ -1064,7 +1093,7 @@ const StudentDashboard = () => {
   // Données pour le graphique de progression (basé sur les notes publiées)
   const getProgressData = useMemo(() => {
     const publishedGrades = studentGrades.filter(
-      (grade) => grade.status === GradeStatus.PUBLISHED
+      (grade) => grade.status === GradeStatus.PUBLISHED,
     );
 
     if (publishedGrades.length > 0) {
@@ -1073,7 +1102,7 @@ const StudentDashboard = () => {
 
       publishedGrades.forEach((grade) => {
         const date = new Date(
-          grade.publishedAt || grade.createdAt || new Date()
+          grade.publishedAt || grade.createdAt || new Date(),
         );
         const month = date.toLocaleString("fr-FR", { month: "short" });
 
@@ -1091,15 +1120,7 @@ const StudentDashboard = () => {
       }));
     }
 
-    // Données fictives si pas de notes
-    return [
-      { month: "Sept", average: 0 },
-      { month: "Oct", average: 0 },
-      { month: "Nov", average: 0 },
-      { month: "Déc", average: 0 },
-      { month: "Jan", average: 0 },
-      { month: "Fév", average: 0 },
-    ];
+    return [];
   }, [studentGrades, getGradeOn20]);
 
   // Fonction pour grouper les notes PUBLIÉES par type de contrôle
@@ -1108,8 +1129,6 @@ const StudentDashboard = () => {
       const status = grade.status?.toLowerCase();
       return status === "approved" || status === "published";
     });
-
-    console.log("Notes visibles:", visibleGrades);
 
     if (!visibleGrades.length) return {};
 
@@ -1172,7 +1191,7 @@ const StudentDashboard = () => {
   // Données pour le radar des compétences (basé sur le pourcentage des notes publiées)
   const getSkillData = useMemo(() => {
     const publishedGrades = studentGrades.filter(
-      (grade) => grade.status === GradeStatus.PUBLISHED
+      (grade) => grade.status === GradeStatus.PUBLISHED,
     );
 
     if (publishedGrades.length > 0) {
@@ -1249,6 +1268,12 @@ const StudentDashboard = () => {
     return [];
   }, [studentSchedule, studentCourses]);
 
+  // Créneaux horaires distincts de l'emploi du temps (pour la grille hebdomadaire)
+  const scheduleTimeSlots = useMemo(() => {
+    const slots = new Set(studentSchedule.map((s) => s.startTime));
+    return Array.from(slots).sort();
+  }, [studentSchedule]);
+
   // Fonction pour forcer le rechargement
   const handleRefresh = useCallback(() => {
     hasLoadedRef.current = false;
@@ -1277,8 +1302,12 @@ const StudentDashboard = () => {
 
     return (
       <Card
-        className={`hover:shadow-md transition-shadow hover:border-primary/50 ${
-          !isApprove ? "opacity-75" : ""
+        className={`hover:shadow-md transition-all hover:-translate-y-0.5 border-l-4 ${
+          isApprove
+            ? isValidated
+              ? "border-l-green-500"
+              : "border-l-red-500"
+            : "border-l-gray-300 opacity-75"
         }`}
       >
         <CardContent className="p-4">
@@ -1328,7 +1357,7 @@ const StudentDashboard = () => {
                 <>
                   <div
                     className={`text-xl sm:text-2xl font-bold ${getGradeColor(
-                      grade
+                      grade,
                     )}`}
                   >
                     {gradeValue.toFixed(0)}/{maxGrade}
@@ -1392,8 +1421,8 @@ const StudentDashboard = () => {
                 announcement.priority === "High"
                   ? "bg-red-100"
                   : announcement.priority === "Medium"
-                  ? "bg-yellow-100"
-                  : "bg-blue-100"
+                    ? "bg-yellow-100"
+                    : "bg-blue-100"
               }`}
             >
               <Megaphone
@@ -1401,8 +1430,8 @@ const StudentDashboard = () => {
                   announcement.priority === "High"
                     ? "text-red-600"
                     : announcement.priority === "Medium"
-                    ? "text-yellow-600"
-                    : "text-blue-600"
+                      ? "text-yellow-600"
+                      : "text-blue-600"
                 }`}
               />
             </div>
@@ -1413,15 +1442,15 @@ const StudentDashboard = () => {
                     announcement.priority === "High"
                       ? "destructive"
                       : announcement.priority === "Medium"
-                      ? "secondary"
-                      : "outline"
+                        ? "secondary"
+                        : "outline"
                   }
                 >
                   {announcement.category === "event" ? "Événement" : "Annonce"}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
                   {new Date(announcement.publishDate).toLocaleDateString(
-                    "fr-FR"
+                    "fr-FR",
                   )}
                 </span>
               </div>
@@ -1454,11 +1483,11 @@ const StudentDashboard = () => {
 
   // Composant de carte de cours
   const CourseCard = ({ course }: { course: Course }) => (
-    <Card className="hover:shadow-md transition-all">
+    <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all border-l-4 border-l-blue-500">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-500/5 flex items-center justify-center">
               <School className="h-5 w-5 text-blue-600" />
             </div>
             <div>
@@ -1569,7 +1598,7 @@ const StudentDashboard = () => {
     const publishedCount = visibleGrades.length;
     const validatedCount = visibleGrades.filter(isGradeValidated).length;
     const failedCount = visibleGrades.filter(
-      (g) => !isGradeValidated(g)
+      (g) => !isGradeValidated(g),
     ).length;
 
     return (
@@ -1609,16 +1638,7 @@ const StudentDashboard = () => {
   // Composant d'état de chargement
   const LoadingSkeleton = () => (
     <div className="space-y-6 p-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <div className="h-8 w-64 bg-gray-200 rounded animate-pulse mb-2" />
-          <div className="h-4 w-48 bg-gray-200 rounded animate-pulse" />
-        </div>
-        <div className="flex gap-2">
-          <div className="h-10 w-32 bg-gray-200 rounded animate-pulse" />
-          <div className="h-10 w-32 bg-gray-200 rounded animate-pulse" />
-        </div>
-      </div>
+      <div className="h-40 bg-gray-200 rounded-2xl animate-pulse" />
 
       <div className="grid gap-4 md:grid-cols-4">
         {[...Array(4)].map((_, i) => (
@@ -1780,34 +1800,77 @@ const StudentDashboard = () => {
       />
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            Bonjour, {user?.firstName} {user?.lastName} !
-          </h1>
-          <div className="flex items-center gap-3 mt-2">
-            <Badge className="bg-gradient-to-r from-blue-600 to-purple-600">
-              <GraduationCap className="h-3 w-3 mr-1" />
-              {displayStudent?.schoolClass?.name || "Étudiant"}
-            </Badge>
-            <div className="flex items-center text-sm text-muted-foreground">
-              <Star className="h-3 w-3 mr-1 text-yellow-500" />
-              Moyenne: {average}/20
-              {!hasData && publishedCount === 0 && (
-                <span className="text-xs text-muted-foreground ml-2">
-                  (pas de notes publiées)
-                </span>
-              )}
-              {hasData && (
-                <span className="text-xs text-green-600 ml-2">
-                  ({publishedCount} note{publishedCount > 1 ? "s" : ""} publiée
-                  {publishedCount > 1 ? "s" : ""})
-                </span>
-              )}
+      <Card className="overflow-hidden border-none bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white shadow-lg">
+        <CardContent className="p-6 md:p-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16 border-2 border-white/30 bg-white/10">
+                <AvatarFallback className="bg-transparent text-xl font-bold text-white">
+                  {user?.firstName?.charAt(0)}
+                  {user?.lastName?.charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="flex items-center gap-2 text-sm text-white/70">
+                  <Sparkles className="h-4 w-4" />
+                  {new Date().toLocaleDateString("fr-FR", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  })}
+                </div>
+                <h1 className="text-2xl md:text-3xl font-bold mt-1">
+                  Bonjour, {user?.firstName} {user?.lastName} !
+                </h1>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge className="bg-white/15 text-white border-white/20 hover:bg-white/20">
+                    <GraduationCap className="h-3 w-3 mr-1" />
+                    {displayStudent?.schoolClass?.name || "Étudiant"}
+                  </Badge>
+                  {hasData ? (
+                    <span className="text-xs text-white/80">
+                      {publishedCount} note{publishedCount > 1 ? "s" : ""}{" "}
+                      publiée{publishedCount > 1 ? "s" : ""}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-white/60">
+                      Aucune note publiée pour le moment
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6">
+              <div className="hidden sm:flex flex-col gap-1.5 text-sm text-white/85">
+                <div className="flex items-center gap-2">
+                  <Award className="h-4 w-4" />
+                  {gradeStats.validatedCount}/{publishedCount} matières validées
+                </div>
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  {studentCourses.length} matière
+                  {studentCourses.length > 1 ? "s" : ""} suivie
+                  {studentCourses.length > 1 ? "s" : ""}
+                </div>
+                {nextClass ? (
+                  <div className="flex items-center gap-2">
+                    <Clock4 className="h-4 w-4" />
+                    Prochain cours : {nextClass.startTime?.slice(0, 5)} -{" "}
+                    {nextClass.classAssignment?.subject?.name || "Cours"}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-white/60">
+                    <Clock4 className="h-4 w-4" />
+                    Aucun cours à venir
+                  </div>
+                )}
+              </div>
+              <CircularGauge value={Number(average) || 0} label="Moyenne /20" />
             </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Tabs de navigation */}
       <Tabs
@@ -1824,189 +1887,231 @@ const StudentDashboard = () => {
 
         {/* Tab: Aperçu */}
         <TabsContent value="overview" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Colonne gauche - Statistiques et données */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Cartes de statistiques */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="group hover:shadow-lg transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">
-                          Moyenne générale
-                        </p>
-                        <p className="text-2xl font-bold">{average}/20</p>
-                        <div className="flex items-center text-sm mt-1 text-green-600">
-                          <TrendingUp className="h-3 w-3 mr-1" />
-                          {gradeStats.validatedCount}/{publishedCount} validés
-                        </div>
-                      </div>
-                      <div className="p-3 rounded-full bg-primary/10">
-                        <TrendingUp className="h-6 w-6 text-primary" />
-                      </div>
+          {/* Cartes de statistiques */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Moyenne générale
+                    </p>
+                    <p className="text-2xl font-bold">{average}/20</p>
+                    <div className="flex items-center text-sm mt-1 text-green-600">
+                      <TrendingUp className="h-3 w-3 mr-1" />
+                      {gradeStats.validatedCount}/{publishedCount} validés
                     </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="group hover:shadow-lg transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">
-                          Matières suivies
-                        </p>
-                        <p className="text-2xl font-bold">
-                          {studentCourses.length}
-                        </p>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          {publishedCount} notes publiées
-                        </div>
-                      </div>
-                      <div className="p-3 rounded-full bg-blue-100">
-                        <BookOpen className="h-6 w-6 text-blue-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="group hover:shadow-lg transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">
-                          Prochain cours
-                        </p>
-                        <p className="text-2xl font-bold">
-                          {nextClass?.startTime?.split(":")[0] || "--"}h
-                        </p>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          {nextClass?.classAssignment?.subject?.name ||
-                            "Aucun cours"}
-                        </div>
-                      </div>
-                      <div className="p-3 rounded-full bg-green-100">
-                        <Clock3 className="h-6 w-6 text-green-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="group hover:shadow-lg transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">
-                          Notes publiées
-                        </p>
-                        <p className="text-2xl font-bold">
-                          {publishedCount}/{studentGrades.length}
-                        </p>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          {studentGrades.length - publishedCount} en attente
-                        </div>
-                      </div>
-                      <div className="p-3 rounded-full bg-yellow-100">
-                        <CheckCheck className="h-6 w-6 text-yellow-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Graphiques (uniquement si des notes publiées existent) */}
-              {publishedCount > 0 ? (
-                <div className="grid gap-6 md:grid-cols-2">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Progression des notes</CardTitle>
-                      <CardDescription>
-                        Évolution sur l'année (sur 20)
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={progressData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="month" />
-                            <YAxis domain={[0, 20]} />
-                            <Tooltip
-                              formatter={(value) => [`${value}/20`, "Moyenne"]}
-                              labelFormatter={(label) => `Mois: ${label}`}
-                            />
-                            <Line
-                              type="monotone"
-                              dataKey="average"
-                              stroke="#8884d8"
-                              strokeWidth={2}
-                              name="Moyenne générale"
-                              dot={{ r: 4 }}
-                              activeDot={{ r: 6 }}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {skillData.length > 0 && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Compétences par matière</CardTitle>
-                        <CardDescription>
-                          Profil académique (en %)
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-64">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <RadarChart
-                              cx="50%"
-                              cy="50%"
-                              outerRadius="80%"
-                              data={skillData}
-                            >
-                              <PolarGrid />
-                              <PolarAngleAxis dataKey="subject" />
-                              <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                              <Radar
-                                name="Score (%)"
-                                dataKey="score"
-                                stroke="#8884d8"
-                                fill="#8884d8"
-                                fillOpacity={0.6}
-                              />
-                              <Tooltip
-                                formatter={(value) => [`${value}%`, "Score"]}
-                              />
-                            </RadarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                  </div>
+                  <div className="p-3 rounded-2xl bg-primary/10">
+                    <TrendingUp className="h-6 w-6 text-primary" />
+                  </div>
                 </div>
-              ) : (
-                <Card>
-                  <CardContent className="p-8">
-                    <div className="text-center">
-                      <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                      <h3 className="text-lg font-medium mb-2">
-                        Aucune note publiée
-                      </h3>
-                      <p className="text-muted-foreground mb-4">
-                        Les graphiques s'afficheront ici une fois que des notes
-                        auront été publiées.
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Matières suivies
+                    </p>
+                    <p className="text-2xl font-bold">
+                      {studentCourses.length}
+                    </p>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {publishedCount} notes publiées
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-blue-50">
+                    <BookOpen className="h-6 w-6 text-blue-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Prochain cours
+                    </p>
+                    <p className="text-2xl font-bold">
+                      {nextClass?.startTime?.split(":")[0] || "--"}h
+                    </p>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {nextClass?.classAssignment?.subject?.name ||
+                        "Aucun cours"}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-green-50">
+                    <Clock4 className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Notes publiées
+                    </p>
+                    <p className="text-2xl font-bold">
+                      {publishedCount}/{studentGrades.length}
+                    </p>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {studentGrades.length - publishedCount} en attente
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-amber-50">
+                    <CheckCheck className="h-6 w-6 text-amber-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Progression des notes + Prochain cours */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            {publishedCount > 0 ? (
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>Progression des notes</CardTitle>
+                  <CardDescription>
+                    Évolution sur l'année (sur 20)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={progressData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis domain={[0, 20]} />
+                        <Tooltip
+                          formatter={(value) => [`${value}/20`, "Moyenne"]}
+                          labelFormatter={(label) => `Mois: ${label}`}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="average"
+                          stroke="#8884d8"
+                          strokeWidth={2}
+                          name="Moyenne générale"
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="lg:col-span-2 flex flex-col">
+                <CardContent className="flex-1 flex items-center justify-center p-8">
+                  <div className="text-center">
+                    <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <h3 className="text-lg font-medium mb-2">
+                      Aucune note publiée
+                    </h3>
+                    <p className="text-muted-foreground">
+                      Les graphiques s'afficheront ici une fois que des notes
+                      auront été publiées.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Prochain cours */}
+            <Card className="flex flex-col">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock4 className="h-5 w-5 text-green-600" />
+                  Prochain cours
+                </CardTitle>
+                <CardDescription>Aujourd'hui</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 flex items-center">
+                {nextClass ? (
+                  <div className="space-y-3 w-full">
+                    <div>
+                      <h4 className="font-semibold text-lg">
+                        {nextClass.classAssignment?.subject?.name || "Cours"}
+                      </h4>
+                      <p className="text-sm text-muted-foreground">
+                        {nextClass.startTime?.slice(0, 5)} -{" "}
+                        {nextClass.endTime?.slice(0, 5)}
                       </p>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      {nextClass.classroom || "Salle non définie"}
+                    </div>
+                    <Badge variant="outline">
+                      <GraduationCap className="h-3 w-3 mr-1" />
+                      {nextClass.classAssignment?.professeur?.firstName?.charAt(
+                        0,
+                      )}
+                      .{" "}
+                      {nextClass.classAssignment?.professeur?.lastName ||
+                        "Prof"}
+                    </Badge>
+                  </div>
+                ) : (
+                  <div className="text-center w-full text-muted-foreground">
+                    <Clock4 className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">Aucun cours à venir aujourd'hui</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
-              {/* Cours d'aujourd'hui */}
-              <Card>
-                <CardHeader>
+          {/* Compétences par matière */}
+          {skillData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Compétences par matière</CardTitle>
+                <CardDescription>Profil académique (en %)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart
+                      cx="50%"
+                      cy="50%"
+                      outerRadius="80%"
+                      data={skillData}
+                    >
+                      <PolarGrid />
+                      <PolarAngleAxis dataKey="subject" />
+                      <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                      <Radar
+                        name="Score (%)"
+                        dataKey="score"
+                        stroke="#8884d8"
+                        fill="#8884d8"
+                        fillOpacity={0.6}
+                      />
+                      <Tooltip
+                        formatter={(value) => [`${value}%`, "Score"]}
+                      />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Cours d'aujourd'hui */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2">
+                <div>
                   <CardTitle>Cours d'aujourd'hui</CardTitle>
                   <CardDescription>
                     {new Date().toLocaleDateString("fr-FR", {
@@ -2016,204 +2121,181 @@ const StudentDashboard = () => {
                       day: "numeric",
                     })}
                   </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {todaySchedule.length > 0 ? (
-                      todaySchedule.map((schedule, index) => (
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActiveTab("schedule")}
+                >
+                  Emploi du temps
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {todaySchedule.length > 0 ? (
+                  todaySchedule.map((schedule, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Clock className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium">
+                            {schedule.classAssignment?.subject?.name ||
+                              "Cours"}
+                          </h4>
+                          <p className="text-sm text-muted-foreground">
+                            {schedule.startTime} - {schedule.endTime} •{" "}
+                            {schedule.classroom || "Salle non définie"}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="outline">
+                        {schedule.classAssignment?.professeur?.firstName?.charAt(
+                          0,
+                        )}
+                        .{" "}
+                        {schedule.classAssignment?.professeur?.lastName ||
+                          "Prof"}
+                      </Badge>
+                    </div>
+                  ))
+                ) : studentCourses.length > 0 ? (
+                  <div className="text-center py-8">
+                    <Calendar className="h-12 w-12 mx-auto mb-3 text-blue-500" />
+                    <h3 className="text-lg font-medium mb-2">
+                      Pas de cours programmé aujourd'hui
+                    </h3>
+                    <p className="text-muted-foreground mb-4">
+                      Mais vous avez {studentCourses.length} matière
+                      {studentCourses.length > 1 ? "s" : ""} cette année
+                    </p>
+                    <div className="space-y-2 max-w-md mx-auto">
+                      {studentCourses.slice(0, 3).map((course, index) => (
                         <div
                           key={index}
-                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors"
+                          className="flex items-center justify-between p-3 border rounded-lg"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                              <Clock className="h-5 w-5 text-primary" />
+                            <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                              <BookOpen className="h-4 w-4 text-blue-600" />
                             </div>
-                            <div>
-                              <h4 className="font-medium">
-                                {schedule.classAssignment?.subject?.name ||
-                                  "Cours"}
-                              </h4>
-                              <p className="text-sm text-muted-foreground">
-                                {schedule.startTime} - {schedule.endTime} •{" "}
-                                {schedule.classroom || "Salle non définie"}
-                              </p>
-                            </div>
+                            <span className="font-medium">
+                              {course.subject?.name}
+                            </span>
                           </div>
                           <Badge variant="outline">
-                            {schedule.classAssignment?.professeur?.firstName?.charAt(
-                              0
-                            )}
-                            .{" "}
-                            {schedule.classAssignment?.professeur?.lastName ||
-                              "Prof"}
+                            {course.professeur?.firstName?.charAt(0)}.{" "}
+                            {course.professeur?.lastName}
                           </Badge>
                         </div>
-                      ))
-                    ) : studentCourses.length > 0 ? (
-                      <div className="text-center py-8">
-                        <Calendar className="h-12 w-12 mx-auto mb-3 text-blue-500" />
-                        <h3 className="text-lg font-medium mb-2">
-                          Pas de cours programmé aujourd'hui
-                        </h3>
-                        <p className="text-muted-foreground mb-4">
-                          Mais vous avez {studentCourses.length} matière
-                          {studentCourses.length > 1 ? "s" : ""} cette année
-                        </p>
-                        <div className="space-y-2 max-w-md mx-auto">
-                          {studentCourses.slice(0, 3).map((course, index) => (
-                            <div
-                              key={index}
-                              className="flex items-center justify-between p-3 border rounded-lg"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                                  <BookOpen className="h-4 w-4 text-blue-600" />
-                                </div>
-                                <span className="font-medium">
-                                  {course.subject?.name}
-                                </span>
-                              </div>
-                              <Badge variant="outline">
-                                {course.professeur?.firstName?.charAt(0)}.{" "}
-                                {course.professeur?.lastName}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                        <p>Aucun cours aujourd'hui</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Colonne droite - Événements et annonces */}
-            <div className="space-y-6">
-              {/* Calendrier et filtres */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>Calendrier</span>
-                    <CalendarDays className="h-5 w-5 text-muted-foreground" />
-                  </CardTitle>
-                  <CardDescription>
-                    Sélectionnez une date pour filtrer
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="p-4 border rounded-lg text-center bg-accent/50">
-                      <div className="text-2xl font-bold">
-                        {selectedDate.getDate()}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {selectedDate.toLocaleDateString("fr-FR", {
-                          weekday: "long",
-                          month: "long",
-                        })}
-                      </div>
+                      ))}
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="filterType">Filtrer par type</Label>
-                      <Select value={filterType} onValueChange={setFilterType}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Tous les types" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Tous les types</SelectItem>
-                          <SelectItem value="academic">Académique</SelectItem>
-                          <SelectItem value="event">Événements</SelectItem>
-                          <SelectItem value="important">Important</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => setSelectedDate(new Date())}
-                    >
-                      <CalendarClock className="h-4 w-4 mr-2" />
-                      Aujourd'hui
-                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Événements à venir */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5" />
-                    Événements à venir
-                  </CardTitle>
-                  <CardDescription>
-                    Prochains événements scolaires
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {events.slice(0, 3).map((event, index) => (
-                      <div
-                        key={index}
-                        className="p-3 border rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
-                        onClick={() => {
-                          setSelectedEvent(event);
-                          setIsEventModalOpen(true);
-                        }}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <Badge variant="outline">{event.category}</Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(event.startDate).toLocaleDateString(
-                              "fr-FR"
-                            )}
-                          </span>
-                        </div>
-                        <h4 className="font-medium">{event.title}</h4>
-                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                          {event.description}
-                        </p>
-                      </div>
-                    ))}
-
-                    {events.length === 0 && (
-                      <div className="text-center py-4 text-muted-foreground">
-                        <p>Aucun événement à venir</p>
-                      </div>
-                    )}
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>Aucun cours aujourd'hui</p>
                   </div>
-                </CardContent>
-              </Card>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
-              {/* Dernières annonces */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Megaphone className="h-5 w-5" />
-                    Dernières annonces
-                  </CardTitle>
-                  <CardDescription>Informations importantes</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {filteredAnnouncements
+          {/* Dernières annonces + Événements à venir */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Megaphone className="h-5 w-5" />
+                      Dernières annonces
+                    </CardTitle>
+                    <CardDescription>
+                      Informations importantes
+                    </CardDescription>
+                  </div>
+                  <Select value={filterType} onValueChange={setFilterType}>
+                    <SelectTrigger className="w-[140px] h-8 text-xs">
+                      <SelectValue placeholder="Tous les types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous les types</SelectItem>
+                      <SelectItem value="academic">Académique</SelectItem>
+                      <SelectItem value="event">Événements</SelectItem>
+                      <SelectItem value="important">Important</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {filteredAnnouncements.length > 0 ? (
+                  filteredAnnouncements
                     .slice(0, 3)
                     .map((announcement, index) => (
                       <AnnouncementCard
                         key={index}
                         announcement={announcement}
                       />
-                    ))}
-                </CardContent>
-              </Card>
-            </div>
+                    ))
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <p className="text-sm">Aucune annonce pour ce filtre</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Événements à venir
+                </CardTitle>
+                <CardDescription>
+                  Prochains événements scolaires
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {events.slice(0, 3).map((event, index) => (
+                    <div
+                      key={index}
+                      className="p-3 border rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
+                      onClick={() => {
+                        setSelectedEvent(event);
+                        setIsEventModalOpen(true);
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant="outline">{event.category}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(event.startDate).toLocaleDateString(
+                            "fr-FR",
+                          )}
+                        </span>
+                      </div>
+                      <h4 className="font-medium">{event.title}</h4>
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                        {event.description}
+                      </p>
+                    </div>
+                  ))}
+
+                  {events.length === 0 && (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <p>Aucun événement à venir</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -2297,7 +2379,7 @@ const StudentDashboard = () => {
                             {formatControlType(controlType)} (
                             {groupGradesByControlType[controlType].length})
                           </TabsTrigger>
-                        )
+                        ),
                       )}
                     </TabsList>
 
@@ -2357,7 +2439,7 @@ const StudentDashboard = () => {
                                       </div>
                                     </CardContent>
                                   </Card>
-                                )
+                                ),
                               )}
                             </div>
                           </CardContent>
@@ -2462,7 +2544,7 @@ const StudentDashboard = () => {
                             </CardContent>
                           </Card>
                         </TabsContent>
-                      )
+                      ),
                     )}
                   </Tabs>
                 </>
@@ -2487,7 +2569,7 @@ const StudentDashboard = () => {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b">
+                      <tr className="border-b bg-muted/50">
                         <th className="text-left p-3 font-medium">Heure</th>
                         {[
                           "Lundi",
@@ -2504,14 +2586,14 @@ const StudentDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {["08:00", "10:00", "14:00", "16:00"].map((timeSlot) => (
+                      {scheduleTimeSlots.map((timeSlot) => (
                         <tr key={timeSlot} className="border-b last:border-b-0">
-                          <td className="p-3 text-sm text-muted-foreground text-center border-r">
-                            {timeSlot}
+                          <td className="p-3 text-sm text-muted-foreground text-center border-r whitespace-nowrap">
+                            {timeSlot.slice(0, 5)}
                           </td>
                           {[1, 2, 3, 4, 5, 6].map((dayIndex) => {
                             const dayKey = Object.keys(dayMap).find(
-                              (key) => dayMap[key] === dayIndex
+                              (key) => dayMap[key] === dayIndex,
                             );
 
                             if (!dayKey)
@@ -2525,7 +2607,7 @@ const StudentDashboard = () => {
                             const schedule = studentSchedule.find(
                               (s) =>
                                 s.dayOfWeek === dayKey &&
-                                s.startTime?.startsWith(timeSlot.split(":")[0])
+                                s.startTime === timeSlot,
                             );
 
                             return (
@@ -2534,7 +2616,7 @@ const StudentDashboard = () => {
                                 className="p-2 min-h-[80px] border-r last:border-r-0"
                               >
                                 {schedule && (
-                                  <div className="h-full rounded-lg bg-blue-50 p-2 border border-blue-200">
+                                  <div className="h-full rounded-lg bg-blue-50 p-2 border border-blue-200 hover:border-blue-400 transition-colors">
                                     <p className="font-medium text-sm truncate">
                                       {schedule.classAssignment?.subject
                                         ?.name || "Cours"}
@@ -2543,12 +2625,13 @@ const StudentDashboard = () => {
                                       {schedule.classroom || "Salle"}
                                     </p>
                                     <p className="text-xs text-muted-foreground truncate">
-                                      {schedule.startTime} - {schedule.endTime}
+                                      {schedule.startTime?.slice(0, 5)} -{" "}
+                                      {schedule.endTime?.slice(0, 5)}
                                     </p>
                                     <div className="mt-1">
                                       <span className="text-xs text-muted-foreground">
                                         {schedule.classAssignment?.professeur?.firstName?.charAt(
-                                          0
+                                          0,
                                         )}
                                         .{" "}
                                         {schedule.classAssignment?.professeur

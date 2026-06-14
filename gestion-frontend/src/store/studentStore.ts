@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { Student } from "@/types/academic";
 import api from "@/services/api";
+import * as XLSX from "xlsx";
 import { Toast } from "@/components/ui/toast";
 import { toast } from "@/hooks/use-toast";
 
@@ -41,20 +42,21 @@ interface StudentManagementState {
   createStudent: (studentData: CreateStudentData) => Promise<Student>;
   updateStudent: (
     id: string,
-    studentData: Partial<Student>
+    studentData: Partial<Student>,
   ) => Promise<Student>;
   deleteStudent: (id: string) => Promise<void>;
   updateStudentStatus: (
     id: string,
     status: Student["status"],
-    reason?: string
+    reason?: string,
   ) => Promise<Student>;
   assignStudentToClass: (
     studentId: string,
-    classId: string
+    classId: string,
   ) => Promise<Student>;
   getStatistics: () => Promise<any>;
-  importStudents: (students: any[]) => Promise<any>;
+  importStudents: (fileOrArray: File | any[]) => Promise<any>;
+  downloadImportTemplate: () => Promise<void>;
   exportStudents: (filters?: any) => Promise<any>;
   clearError: () => void;
   clearStudents: () => void;
@@ -243,7 +245,7 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     try {
       // Chercher par email
       const response = await api.get(
-        `/students?email=${encodeURIComponent(email)}`
+        `/students?email=${encodeURIComponent(email)}`,
       );
 
       let student = null;
@@ -268,20 +270,28 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     }
   },
 
-  createStudent: async (studentData: CreateStudentData) => {
+  // studentStore.ts - Version corrigée
+
+  createStudent: async (studentData: any) => {
     set({ loading: true, error: null });
     try {
-      const dataToSend = {
-        ...studentData,
-        status: studentData.status || "Active",
-      };
+      let response;
 
-      const response = await api.post("/students", dataToSend);
+      // Vérifier si c'est un FormData
+      if (studentData instanceof FormData) {
+        response = await api.post("/students", studentData, {
+          headers: {
+            // NE PAS définir Content-Type manuellement
+            // Laisser axios le définir automatiquement avec le boundary
+          },
+        });
+      } else {
+        response = await api.post("/students", studentData);
+      }
 
       const responseData = response.data;
       let newStudent: Student;
 
-      // CORRECTION ICI : Structure de réponse corrigée
       if (responseData.success && responseData.data) {
         newStudent = responseData.data.student || responseData.data;
       } else {
@@ -315,25 +325,98 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
         loading: false,
       });
 
-      toast({
-        title: "Erreur",
-        description: errorMessage,
-        variant: "destructive",
-      });
-
       throw error;
     }
   },
 
-  updateStudent: async (id: string, studentData: Partial<Student>) => {
+  updateStudent: async (id: string, studentData: any) => {
     set({ loading: true, error: null });
     try {
-      const response = await api.put(`/students/${id}`, studentData);
+      let response;
+      if (studentData instanceof FormData) {
+        console.log("📤 Envoi FormData pour update");
+
+        // AFFICHER LE CONTENU DU FORMDATA POUR DEBUG
+        for (let pair of studentData.entries()) {
+          console.log(
+            `FormData entry: ${pair[0]} =`,
+            pair[1] instanceof File ? `File: ${pair[1].name}` : pair[1],
+          );
+        }
+
+        response = await api.put(`/students/${id}`, studentData, {
+          headers: {
+            // NE PAS DÉFINIR Content-Type - laisser axios le gérer
+          },
+          // Important pour les gros fichiers
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+      } else {
+        response = await api.put(`/students/${id}`, studentData);
+      }
+      let dataToSend = studentData;
+
+      console.log("📤 updateStudent appelé avec:", {
+        id,
+        isFormData: studentData instanceof FormData,
+        contentType:
+          studentData instanceof FormData
+            ? "multipart/form-data"
+            : "application/json",
+      });
+
+      if (studentData instanceof FormData) {
+        // Log les clés du FormData
+        const keys: string[] = [];
+        for (const pair of studentData.entries()) {
+          keys.push(pair[0]);
+        }
+        console.log("📋 FormData keys:", keys);
+      }
+      // Si ce n'est pas du FormData, nettoyer les données
+      if (!(studentData instanceof FormData)) {
+        dataToSend = { ...studentData };
+
+        // CORRECTION: Supprimer les champs undefined et les objets vides
+        Object.keys(dataToSend).forEach((key) => {
+          if (dataToSend[key] === undefined) {
+            delete dataToSend[key];
+          }
+          // Supprimer les objets vides (comme photo: {})
+          if (
+            dataToSend[key] &&
+            typeof dataToSend[key] === "object" &&
+            !Array.isArray(dataToSend[key]) &&
+            Object.keys(dataToSend[key]).length === 0
+          ) {
+            delete dataToSend[key];
+          }
+        });
+
+        // Supprimer les champs qui ne doivent pas être mis à jour
+        delete dataToSend.id;
+        delete dataToSend.createdAt;
+        delete dataToSend.updatedAt;
+        delete dataToSend.studentCode;
+        delete dataToSend._count;
+        delete dataToSend.enrollments;
+        delete dataToSend.guardians; // Les gardiens sont gérés séparément
+      }
+
+      if (dataToSend instanceof FormData) {
+        response = await api.put(`/students/${id}`, dataToSend, {
+          headers: {
+            // Laisser axios définir le Content-Type
+          },
+        });
+      } else {
+        response = await api.put(`/students/${id}`, dataToSend);
+      }
 
       const responseData = response.data;
       let updatedStudent: Student;
 
-      // CORRECTION ICI : Structure de réponse corrigée
       if (responseData.success && responseData.data) {
         updatedStudent = responseData.data.student || responseData.data;
       } else {
@@ -346,7 +429,7 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
 
       set((state) => ({
         students: state.students.map((student) =>
-          student.id === id ? updatedStudent : student
+          student.id === id ? updatedStudent : student,
         ),
         currentStudent:
           state.currentStudent?.id === id
@@ -383,19 +466,31 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     }
   },
 
+  // studentStore.ts - Version corrigée de deleteStudent
   deleteStudent: async (id: string) => {
     set({ loading: true, error: null });
     try {
-      await api.delete(`/students/${id}`);
+      const response = await api.delete(`/students/${id}`);
 
+      // Vérifier la réponse
+      const responseData = response.data;
+
+      if (responseData?.success === false) {
+        throw new Error(
+          responseData.message || "Erreur lors de la suppression",
+        );
+      }
+
+      // IMPORTANT: Mettre à jour l'état local en filtrant l'étudiant supprimé
       set((state) => ({
         students: state.students.filter((student) => student.id !== id),
         loading: false,
+        error: null,
       }));
 
       toast({
         title: "Succès",
-        description: "Étudiant supprimé avec succès",
+        description: responseData?.message || "Étudiant supprimé avec succès",
       });
     } catch (error: any) {
       const errorMessage =
@@ -422,7 +517,7 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
   updateStudentStatus: async (
     id: string,
     status: Student["status"],
-    reason?: string
+    reason?: string,
   ) => {
     set({ loading: true, error: null });
     try {
@@ -447,7 +542,7 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
 
       set((state) => ({
         students: state.students.map((student) =>
-          student.id === id ? updatedStudent : student
+          student.id === id ? updatedStudent : student,
         ),
         loading: false,
       }));
@@ -503,7 +598,7 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
 
       set((state) => ({
         students: state.students.map((student) =>
-          student.id === studentId ? updatedStudent : student
+          student.id === studentId ? updatedStudent : student,
         ),
         loading: false,
       }));
@@ -568,20 +663,63 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
     }
   },
 
-  importStudents: async (students: any[]) => {
+  importStudents: async (fileOrArray: File | any[]) => {
     set({ loading: true, error: null });
     try {
-      const response = await api.post("/students/import", { students });
+      // Le composant passe un fichier : on le parse ici en tableau d'objets.
+      let students: any[];
+      if (Array.isArray(fileOrArray)) {
+        students = fileOrArray;
+      } else if (fileOrArray && fileOrArray.name?.match(/\.json$/i)) {
+        const text = await fileOrArray.text();
+        const parsed = JSON.parse(text);
+        students = Array.isArray(parsed) ? parsed : parsed.students || [];
+      } else {
+        const buffer = await (fileOrArray as File).arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        students = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      }
 
-      const responseData = response.data;
+      if (!students || students.length === 0) {
+        throw new Error("Le fichier ne contient aucune ligne exploitable");
+      }
+
+      const response = await api.post("/students/import", { students });
+      const data = response.data?.data || response.data || {};
       set({ loading: false });
 
-      // CORRECTION ICI : Structure de réponse corrigée
-      if (responseData.success && responseData.data) {
-        return responseData.data;
-      } else {
-        return responseData;
+      // Normaliser vers la forme attendue par le composant : { results: [...] }
+      const created = data.created || [];
+      const errors = data.errors || [];
+      const results = [
+        ...created.map((s: any, i: number) => ({
+          index: i + 1,
+          studentId: s.studentCode || s.email || "",
+          status: "success" as const,
+          message: "Importé avec succès",
+          data: s,
+        })),
+        ...errors.map((e: any, i: number) => ({
+          index: created.length + i + 1,
+          studentId: e.student?.email || e.student?.studentId || "",
+          status: "error" as const,
+          message: e.error || "Erreur",
+          data: e.student,
+        })),
+      ];
+
+      // Rafraîchir la liste des élèves après import
+      try {
+        await get().fetchStudents();
+      } catch {
+        // non bloquant
       }
+
+      return {
+        results,
+        summary: { success: data.success, failed: data.failed },
+      };
     } catch (error: any) {
       const errorMessage =
         error.response?.data?.message ||
@@ -596,6 +734,41 @@ export const useStudentStore = create<StudentManagementState>((set, get) => ({
 
       throw error;
     }
+  },
+
+  downloadImportTemplate: async () => {
+    // Génère un template Excel avec les colonnes réellement exploitées par
+    // l'import backend, plus une ligne d'exemple.
+    const headers = [
+      "firstName",
+      "lastName",
+      "email",
+      "phone",
+      "dateOfBirth",
+      "placeOfBirth",
+      "address",
+      "sexe",
+      "cin",
+      "bloodGroup",
+      "status",
+    ];
+    const example = {
+      firstName: "Jean",
+      lastName: "Dupont",
+      email: "jean.dupont@example.ht",
+      phone: "+50912345678",
+      dateOfBirth: "2010-09-15",
+      placeOfBirth: "Pignon",
+      address: "Rue principale",
+      sexe: "Masculin",
+      cin: "",
+      bloodGroup: "O+",
+      status: "Active",
+    };
+    const worksheet = XLSX.utils.json_to_sheet([example], { header: headers });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Élèves");
+    XLSX.writeFile(workbook, "template-import-eleves.xlsx");
   },
 
   exportStudents: async (filters?: any) => {

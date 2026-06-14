@@ -522,6 +522,17 @@ export const usePDFGenerator = () => {
         startY + 18,
       );
 
+      if (data.statistics.rankInClass && data.statistics.totalStudents) {
+        doc.text(
+          `Place: ${data.statistics.rankInClass}${
+            data.statistics.rankInClass === 1 ? "er" : "ème"
+          } / ${data.statistics.totalStudents}`,
+          40,
+          startY + 26,
+        );
+        return startY + 43;
+      }
+
       return startY + 35;
     },
     [formatGrade, getPDFConfig],

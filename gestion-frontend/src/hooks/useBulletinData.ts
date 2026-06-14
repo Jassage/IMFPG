@@ -6,6 +6,8 @@ import {
   GradeWithDetails,
   normalizeGrade,
 } from "@/types/bulletin";
+import { ClassLevel } from "@/types/academic";
+import { useGradeStore } from "@/store/gradeStore";
 import bulletinService from "@/services/bulletinService";
 import api from "@/services/api";
 
@@ -65,8 +67,15 @@ export const useBulletinData = ({
     totalSubjects: 0,
     passingSubjects: 0,
   });
+  const [ranking, setRanking] = useState<{
+    rankInClass?: number;
+    totalStudents?: number;
+    classAverage?: number;
+  }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { fetchPalmares, fetchPalmaresCumulatif } = useGradeStore();
 
   // Fonction pour normaliser toutes les notes sur 20
   const normalizeGrades = useCallback((grades: any[]): any[] => {
@@ -477,6 +486,56 @@ export const useBulletinData = ({
     calculateStatistics,
   ]);
 
+  // Charger le classement (place de l'élève) via le palmarès du niveau
+  const loadRanking = useCallback(async () => {
+    const level = studentClass?.level;
+    const yearId = selectedAcademicYear?.id;
+
+    if (!studentId || studentId === "all" || !level || !yearId) {
+      setRanking({});
+      return;
+    }
+
+    try {
+      const data =
+        !controlType || controlType === "all"
+          ? await fetchPalmaresCumulatif({
+              classLevel: level as ClassLevel,
+              academicYearId: yearId,
+              status: "all",
+            })
+          : await fetchPalmares({
+              classLevel: level as ClassLevel,
+              controlType: controlType as ControlType,
+              academicYearId: yearId,
+              status: "all",
+            });
+
+      const entry = data.students.find((s) => s.studentId === studentId);
+      if (entry && data.students.length > 0) {
+        const classAverage =
+          data.students.reduce((sum, s) => sum + s.moyenne, 0) /
+          data.students.length;
+        setRanking({
+          rankInClass: entry.rank,
+          totalStudents: data.students.length,
+          classAverage: parseFloat(classAverage.toFixed(2)),
+        });
+      } else {
+        setRanking({});
+      }
+    } catch {
+      setRanking({});
+    }
+  }, [
+    studentId,
+    studentClass,
+    selectedAcademicYear,
+    controlType,
+    fetchPalmares,
+    fetchPalmaresCumulatif,
+  ]);
+
   // Charger les données initiales
   useEffect(() => {
     loadStudents();
@@ -488,10 +547,15 @@ export const useBulletinData = ({
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    loadRanking();
+  }, [loadRanking]);
+
   const refetch = useCallback(() => {
     loadData();
     loadAcademicYears();
-  }, [loadData, loadAcademicYears]);
+    loadRanking();
+  }, [loadData, loadAcademicYears, loadRanking]);
 
   return {
     students,
@@ -501,7 +565,7 @@ export const useBulletinData = ({
     selectedStudent,
     selectedAcademicYear,
     studentClass,
-    statistics,
+    statistics: { ...statistics, ...ranking },
     isLoading,
     error,
     refetch,

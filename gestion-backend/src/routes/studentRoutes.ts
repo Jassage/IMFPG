@@ -1,9 +1,4 @@
-/**
- * @file studentRoutes.ts
- * @description Routes pour la gestion des étudiants
- * @version 2.0.0
- */
-
+// studentRoutes.ts - VERSION CORRIGÉE AVEC UPLOAD PHOTO
 import { Router } from "express";
 import {
   requireAuth,
@@ -16,6 +11,7 @@ import {
   requireTeacher,
   requireTeacherOrStaff,
   requireDirector,
+  validateContentTypeFlexible,
 } from "../middleware";
 
 import {
@@ -38,6 +34,12 @@ import {
   validateUpdateStudent,
   validateAssignClass,
 } from "../utils/studentValidators";
+import {
+  uploadProfile,
+  logUpload,
+  uploadStudentPhoto,
+  parseStudentForm,
+} from "../middleware/upload";
 
 const router = Router();
 
@@ -76,7 +78,7 @@ router.get(
   requireAuth,
   requireDirector,
   sanitizeInput,
-  getStudentStatistics
+  getStudentStatistics,
 );
 
 /**
@@ -95,19 +97,20 @@ router.get("/:id", requireAuth, sanitizeInput, getStudentById);
 
 /**
  * @route POST /api/students
- * @description Crée un nouvel étudiant
- * @access Admin
+ * @description Crée un nouvel étudiant avec photo
+ * @access Admin/Staff
  */
 router.post(
   "/",
   requireAuth,
   requireStaff,
-  validateContentType(),
-  validateRequestBody,
+  uploadProfile.single("photo"), // ← UN SEUL middleware multer
+  logUpload,
+  parseStudentForm, // ← Parse les champs JSON après multer
   sanitizeInput,
   validateCreateStudent,
   handleValidationErrors,
-  createStudent
+  createStudent,
 );
 
 /**
@@ -123,24 +126,25 @@ router.post(
   validateRequestBody,
   sanitizeInput,
   handleValidationErrors,
-  importStudents
+  importStudents,
 );
 
 /**
  * @route PUT /api/students/:id
- * @description Met à jour un étudiant
- * @access Admin
+ * @description Met à jour un étudiant avec photo
+ * @access Admin/Staff
  */
 router.put(
   "/:id",
   requireAuth,
   requireStaff,
-  validateContentType(),
-  validateRequestBody,
+  uploadProfile.single("photo"), // ← UN SEUL middleware multer
+  logUpload,
+  parseStudentForm, // ← Parse les champs JSON après multer
   sanitizeInput,
   validateUpdateStudent,
   handleValidationErrors,
-  updateStudent
+  updateStudent,
 );
 
 /**
@@ -156,7 +160,7 @@ router.put(
   validateRequestBody,
   sanitizeInput,
   handleValidationErrors,
-  updateStudentStatus
+  updateStudentStatus,
 );
 
 /**
@@ -173,7 +177,7 @@ router.put(
   sanitizeInput,
   validateAssignClass,
   handleValidationErrors,
-  assignStudentToClass
+  assignStudentToClass,
 );
 
 /**
@@ -181,13 +185,12 @@ router.put(
  * @description Supprime un étudiant
  * @access Admin
  */
-
 router.delete(
   "/:id",
   requireAuth,
   requireDirector,
   sanitizeInput,
-  deleteStudent
+  deleteStudent,
 );
 
 /**
@@ -200,7 +203,7 @@ router.get(
   requireAuth,
   requireStaff,
   sanitizeInput,
-  getStudentsByClass
+  getStudentsByClass,
 );
 
 export default router;

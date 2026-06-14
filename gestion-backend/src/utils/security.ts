@@ -10,9 +10,19 @@ import crypto from "crypto";
 
 /**
  * @constant {string} JWT_SECRET - Clé secrète pour JWT
+ * On refuse de démarrer sans secret explicite : pas de valeur par défaut
+ * en dur, qui serait connue de tous et permettrait de forger des tokens.
  */
-const JWT_SECRET =
-  process.env.JWT_SECRET || "votre_secret_jwt_super_securise_changez_moi";
+const rawJwtSecret = process.env.JWT_SECRET;
+
+if (!rawJwtSecret || rawJwtSecret.length < 32) {
+  throw new Error(
+    "JWT_SECRET manquant ou trop court (>= 32 caractères requis). " +
+      "Définissez-le dans le fichier .env."
+  );
+}
+
+const JWT_SECRET: string = rawJwtSecret;
 
 /**
  * @constant {number} BCRYPT_SALT_ROUNDS - Nombre de tours de hachage bcrypt

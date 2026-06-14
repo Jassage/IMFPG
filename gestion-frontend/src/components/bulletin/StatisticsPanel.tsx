@@ -146,6 +146,17 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
                     {mention}
                   </span>
                 </div>
+                {statistics.rankInClass && statistics.totalStudents && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Place:</span>
+                    <span className="font-medium px-2 py-0.5 rounded bg-amber-50 text-amber-700">
+                      {statistics.rankInClass}
+                      {statistics.rankInClass === 1
+                        ? "er"
+                        : "ème"} / {statistics.totalStudents}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

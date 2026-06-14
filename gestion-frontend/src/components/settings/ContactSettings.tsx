@@ -41,7 +41,7 @@ export const ContactSettings = ({ settings, setSettings }: Props) => {
                 onChange={(e) =>
                   setSettings({ ...settings, phone: e.target.value })
                 }
-                placeholder="+229 01 23 45 67"
+                placeholder="+509 00 00 0000"
               />
             </div>
 
@@ -53,7 +53,7 @@ export const ContactSettings = ({ settings, setSettings }: Props) => {
                 onChange={(e) =>
                   setSettings({ ...settings, secondaryPhone: e.target.value })
                 }
-                placeholder="+229 98 76 54 32"
+                placeholder="+509 00 00 0000"
               />
             </div>
 
@@ -66,7 +66,7 @@ export const ContactSettings = ({ settings, setSettings }: Props) => {
                 onChange={(e) =>
                   setSettings({ ...settings, email: e.target.value })
                 }
-                placeholder="contact@imfp.bj"
+                placeholder="contact@imfp.ht"
               />
             </div>
 
@@ -79,7 +79,7 @@ export const ContactSettings = ({ settings, setSettings }: Props) => {
                 onChange={(e) =>
                   setSettings({ ...settings, secondaryEmail: e.target.value })
                 }
-                placeholder="administration@imfp.bj"
+                placeholder="administration@imfp.ht"
               />
             </div>
 
@@ -91,7 +91,7 @@ export const ContactSettings = ({ settings, setSettings }: Props) => {
                 onChange={(e) =>
                   setSettings({ ...settings, website: e.target.value })
                 }
-                placeholder="https://www.imfp.bj"
+                placeholder="https://www.imfp.ht"
               />
             </div>
           </div>
@@ -118,7 +118,7 @@ export const ContactSettings = ({ settings, setSettings }: Props) => {
                 onChange={(e) =>
                   setSettings({ ...settings, city: e.target.value })
                 }
-                placeholder="Cotonou"
+                placeholder="Port-au-Prince"
               />
             </div>
 
@@ -130,7 +130,7 @@ export const ContactSettings = ({ settings, setSettings }: Props) => {
                 onChange={(e) =>
                   setSettings({ ...settings, country: e.target.value })
                 }
-                placeholder="Bénin"
+                placeholder="Haïti"
               />
             </div>
 
@@ -142,7 +142,7 @@ export const ContactSettings = ({ settings, setSettings }: Props) => {
                 onChange={(e) =>
                   setSettings({ ...settings, postalCode: e.target.value })
                 }
-                placeholder="01 BP 1234"
+                placeholder="HT6110"
               />
             </div>
           </div>

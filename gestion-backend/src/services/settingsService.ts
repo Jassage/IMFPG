@@ -68,9 +68,10 @@ export class SettingsService {
             currentAcademicYearId: currentYear?.id,
             paymentMethods: JSON.stringify([
               "Espèces",
-              "Carte bancaire",
-              "Mobile Money",
-              "Virement",
+              "MonCash",
+              "NatCash",
+              "Virement bancaire",
+              "Chèque",
             ]),
             passwordPolicy: JSON.stringify({
               minLength: 8,
@@ -96,8 +97,8 @@ export class SettingsService {
         ...settings,
         paymentMethods: this.parseJsonField(settings.paymentMethods, [
           "Espèces",
-          "Carte bancaire",
-          "Mobile Money",
+          "MonCash",
+          "NatCash",
           "Virement",
         ]),
         passwordPolicy: this.parseJsonField(settings.passwordPolicy, {
@@ -185,9 +186,10 @@ export class SettingsService {
               sanitizedData.paymentMethods ||
               JSON.stringify([
                 "Espèces",
-                "Carte bancaire",
-                "Mobile Money",
-                "Virement",
+                "MonCash",
+                "NatCash",
+                "Virement bancaire",
+                "Chèque",
               ]),
             passwordPolicy:
               sanitizedData.passwordPolicy ||
@@ -217,8 +219,8 @@ export class SettingsService {
         ...settings,
         paymentMethods: this.parseJsonField(settings.paymentMethods, [
           "Espèces",
-          "Carte bancaire",
-          "Mobile Money",
+          "MonCash",
+          "NatCash",
           "Virement",
         ]),
         passwordPolicy: this.parseJsonField(settings.passwordPolicy, {
@@ -271,8 +273,8 @@ export class SettingsService {
         ...settings,
         paymentMethods: this.parseJsonField(settings.paymentMethods, [
           "Espèces",
-          "Carte bancaire",
-          "Mobile Money",
+          "MonCash",
+          "NatCash",
           "Virement",
         ]),
         passwordPolicy: this.parseJsonField(settings.passwordPolicy, {
@@ -315,14 +317,14 @@ export class SettingsService {
         schoolSlogan: "L'excellence pour tous",
         schoolLogo: "/logo.png",
         schoolFavicon: "/favicon.ico",
-        phone: "+229 01 23 45 67",
+        phone: "+509 00 00 0000",
         secondaryPhone: null,
-        email: "contact@imfp.bj",
+        email: "contact@imfp.ht",
         secondaryEmail: null,
-        website: "https://www.imfp.bj",
+        website: "https://www.imfp.ht",
         address: "123 Rue de l'École",
-        city: "Cotonou",
-        country: "Bénin",
+        city: "Port-au-Prince",
+        country: "Haïti",
         postalCode: null,
         facebook: null,
         twitter: null,
@@ -333,15 +335,16 @@ export class SettingsService {
         gradingSystem: "percentage",
         passingGrade: 50,
         maxGrade: 100,
-        currency: "XOF",
-        currencySymbol: "FCFA",
-        taxRate: 18,
-        latePaymentFee: 5000,
+        currency: "HTG",
+        currencySymbol: "G",
+        taxRate: 0,
+        latePaymentFee: 500,
         paymentMethods: JSON.stringify([
           "Espèces",
-          "Carte bancaire",
-          "Mobile Money",
-          "Virement",
+          "MonCash",
+          "NatCash",
+          "Virement bancaire",
+          "Chèque",
         ]),
         enableEmailNotifications: true,
         enableSmsNotifications: true,
@@ -391,8 +394,8 @@ export class SettingsService {
         ...settings,
         paymentMethods: this.parseJsonField(settings.paymentMethods, [
           "Espèces",
-          "Carte bancaire",
-          "Mobile Money",
+          "MonCash",
+          "NatCash",
           "Virement",
         ]),
         passwordPolicy: this.parseJsonField(settings.passwordPolicy, {

@@ -487,6 +487,126 @@ export class StudentFeeService {
   }
 
   /**
+   * Génère l'état des paiements (rapport) pour une classe ou un niveau,
+   * pour une année académique donnée : liste des élèves avec montant
+   * attendu, versé et restant, plus les totaux agrégés.
+   */
+  static async getFeeReportByClass(filters: {
+    classId?: string;
+    classLevel?: string;
+    academicYearId: string;
+  }) {
+    const { classId, classLevel, academicYearId } = filters;
+
+    if (!academicYearId) {
+      throw {
+        status: 400,
+        message: "L'ID de l'année académique est requis",
+      };
+    }
+
+    const enrollmentWhere: any = {
+      academicYearId,
+      status: "Active",
+    };
+    if (classId) {
+      enrollmentWhere.classId = classId;
+    } else if (classLevel) {
+      enrollmentWhere.schoolClass = { level: classLevel };
+    }
+
+    const enrollments = await prisma.enrollment.findMany({
+      where: enrollmentWhere,
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            studentCode: true,
+          },
+        },
+        schoolClass: { select: { id: true, name: true, level: true } },
+      },
+    });
+
+    const emptySummary = {
+      totalStudents: 0,
+      totalExpected: 0,
+      totalCollected: 0,
+      totalRemaining: 0,
+    };
+
+    if (enrollments.length === 0) {
+      return {
+        success: true,
+        data: { students: [], summary: emptySummary },
+      };
+    }
+
+    const studentIds = enrollments.map((e) => e.studentId);
+
+    const studentFees = await prisma.studentFee.findMany({
+      where: { academicYearId, studentId: { in: studentIds } },
+    });
+
+    const feesByStudent = new Map<string, typeof studentFees>();
+    for (const fee of studentFees) {
+      const list = feesByStudent.get(fee.studentId) || [];
+      list.push(fee);
+      feesByStudent.set(fee.studentId, list);
+    }
+
+    const students = enrollments
+      .map((e) => {
+        const fees = feesByStudent.get(e.studentId) || [];
+        const totalAmount = fees.reduce((sum, f) => sum + f.totalAmount, 0);
+        const paidAmount = fees.reduce((sum, f) => sum + f.paidAmount, 0);
+        const remaining = totalAmount - paidAmount;
+
+        let status: string;
+        if (fees.length === 0) status = "non_assigne";
+        else if (remaining <= 0) status = "paid";
+        else if (paidAmount > 0) status = "partial";
+        else status = "pending";
+
+        return {
+          studentId: e.studentId,
+          firstName: e.student.firstName,
+          lastName: e.student.lastName,
+          studentCode: e.student.studentCode,
+          className: e.schoolClass.name,
+          classLevel: e.schoolClass.level,
+          totalAmount,
+          paidAmount,
+          remaining,
+          status,
+        };
+      })
+      .sort((a, b) =>
+        `${a.lastName} ${a.firstName}`.localeCompare(
+          `${b.lastName} ${b.firstName}`,
+          "fr"
+        )
+      );
+
+    const summary = students.reduce(
+      (acc, s) => {
+        acc.totalExpected += s.totalAmount;
+        acc.totalCollected += s.paidAmount;
+        acc.totalRemaining += s.remaining;
+        return acc;
+      },
+      { ...emptySummary, totalStudents: students.length }
+    );
+
+    return {
+      success: true,
+      data: { students, summary },
+    };
+  }
+
+  /**
    * Récupère tous les frais d'un étudiant (toutes années confondues)
    */
   static async getStudentFeesByStudent(studentId: string) {

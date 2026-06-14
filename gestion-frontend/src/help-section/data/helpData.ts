@@ -3871,7 +3871,7 @@ export const adminHelpSections: HelpSection[] = [
        
        📄 Chèque : Chèque bancaire (numéro de chèque)
        
-       📲 Mobile Money : Paiement mobile (à venir)`,
+       📲 MonCash / NatCash : Paiement mobile`,
         targetRole: ["Admin", "Comptable"],
         importance: "medium",
       },
@@ -4932,7 +4932,7 @@ export const parentHelpSections: HelpSection[] = [
        
        📄 Chèque : Chèque bancaire (numéro de chèque)
        
-       📲 Mobile Money : Paiement mobile (à venir)`,
+       📲 MonCash / NatCash : Paiement mobile`,
         targetRole: ["Admin", "Comptable"],
         importance: "medium",
       },

@@ -9,6 +9,7 @@ import {
   searchGuardians,
   setPrimaryGuardian,
   getGuardianStatistics,
+  findParent,
 } from "../controllers/guardianController";
 
 const router = express.Router();
@@ -18,6 +19,7 @@ router.get("/", getAllGuardians);
 router.get("/search", searchGuardians);
 router.get("/statistics", getGuardianStatistics);
 router.get("/:id", getGuardianById);
+router.post("/find-parent", findParent);
 router.post("/", createGuardian);
 router.put("/:id", updateGuardian);
 router.delete("/:id", deleteGuardian);

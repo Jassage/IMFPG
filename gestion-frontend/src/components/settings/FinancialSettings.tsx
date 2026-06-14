@@ -152,7 +152,7 @@ export const FinancialSettings = ({ settings, setSettings }: Props) => {
                 <Input
                   value={method}
                   onChange={(e) => updatePaymentMethod(index, e.target.value)}
-                  placeholder="Ex: Mobile Money, Carte bancaire..."
+                  placeholder="Ex: MonCash, NatCash..."
                   className="flex-1"
                 />
                 <Button

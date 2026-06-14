@@ -50,7 +50,7 @@ import { useSettings } from "@/hooks/useSystemSettings";
 export const StudentCardGenerator = () => {
   const { students } = useStudentStore();
   const { classes } = useClassStore();
-  const { academicYears } = useAcademicYearStore(); // Récupération des années académiques
+  const { academicYears } = useAcademicYearStore();
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [selectedFaculty, setSelectedFaculty] = useState<string>("");
   const [cardStyle, setCardStyle] = useState<"modern" | "classic" | "premium">(
@@ -93,9 +93,11 @@ export const StudentCardGenerator = () => {
     if (student.enrollments && student.enrollments.length > 0) {
       const latestEnrollment =
         student.enrollments[student.enrollments.length - 1];
+
       const academicYear = academicYears.find(
-        (ay) => ay.id === latestEnrollment.academicYearId,
+        (ay) => ay.id === latestEnrollment.academicYear.id,
       );
+
       return academicYear ? academicYear.year : "Non assigné";
     }
     return "Non assigné";
@@ -554,7 +556,7 @@ export const StudentCardGenerator = () => {
                     {/* <User className="h-20 w-20 text-gray-400" /> */}
                     {/* photo de l'etudiant */}
                     <img
-                      src={`http://localhost:5000${selectedStudentData.photo}`}
+                      src={selectedStudentData.photo}
                       alt={`${selectedStudentData.firstName} ${selectedStudentData.lastName}`}
                       className="w-full h-full object-cover"
                     />

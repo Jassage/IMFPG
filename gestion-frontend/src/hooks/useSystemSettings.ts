@@ -23,8 +23,8 @@ export const useSettings = () => {
   }, [user]);
 
   const formatCurrency = (amount: number): string => {
-    if (!settings) return `${amount} FCFA`;
-    return `${amount.toLocaleString()} ${settings.currencySymbol || "FCFA"}`;
+    if (!settings) return `${amount} G`;
+    return `${amount.toLocaleString()} ${settings.currencySymbol || "G"}`;
   };
 
   const formatGrade = (grade: number): string => {

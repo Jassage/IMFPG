@@ -7,7 +7,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,42 +23,32 @@ import {
   Calendar,
   Clock,
   Users,
-  GraduationCap,
   Award,
   MapPin,
-  FileText,
   Edit,
   Shield,
   CheckCircle,
   XCircle,
   CalendarDays,
   Clock4,
-  Building,
   Hash,
   Briefcase,
   Plus,
-  Download,
   Eye,
   ShieldAlert,
-  Key,
   Users2,
   MailCheck,
   MoreVertical,
   Trash2,
   AlertTriangle,
   Star,
-  StarHalf,
-  Clock3,
-  Target,
   Layers,
 } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -77,13 +66,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import type {
-  Professeur as StoreProfesseur,
-  ProfesseurSubject,
-} from "@/store/professorStore";
+import type { Professeur as StoreProfesseur } from "@/store/professorStore";
 import useProfesseurStore from "@/store/professorStore";
+import { useSubjectStore } from "@/store/subjectStore";
 import { useAuthStore } from "@/store/authStore";
-import { Select, SelectContent, SelectTrigger, SelectValue } from "./ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 interface ProfesseurDetailsProps {
   professeur: StoreProfesseur;
@@ -123,9 +116,10 @@ export const ProfesseurDetails = ({
     removeSubjectFromProfesseur,
   } = useProfesseurStore();
 
+  const { subjects: availableSubjects, fetchSubjects } = useSubjectStore();
+
   useEffect(() => {
     if (professeur.id) {
-      console.log("🔍 Chargement détails pour professeur ID:", professeur.id);
       loadProfesseurFullDetails();
     }
 
@@ -134,17 +128,13 @@ export const ProfesseurDetails = ({
     };
   }, [professeur.id]);
 
+  useEffect(() => {
+    fetchSubjects();
+  }, []);
+
   const loadProfesseurFullDetails = async () => {
     try {
-      console.log("🔄 Début chargement détails...");
-      const details = await fetchProfesseurFullDetails(professeur.id);
-      console.log("✅ Détails chargés avec succès:", {
-        id: details.id,
-        name: `${details.firstName} ${details.lastName}`,
-        subjectsCount: details.subjectsTaught?.length,
-        assignmentsCount: details._count?.assignments,
-        userExists: !!details.user,
-      });
+      await fetchProfesseurFullDetails(professeur.id);
     } catch (error) {
       console.error("❌ Erreur chargement détails:", error);
       toast({
@@ -154,19 +144,6 @@ export const ProfesseurDetails = ({
       });
     }
   };
-
-  // Fonction pour accéder aux données en toute sécurité
-  const getProfesseurData = () => {
-    return currentProfesseur || professeur;
-  };
-
-  const data = getProfesseurData();
-  console.log("📊 Données pour affichage:", {
-    currentProfesseur: !!currentProfesseur,
-    originalProfesseur: !!professeur,
-    subjectsTaught: data.subjectsTaught?.length || 0,
-    loading: loadingDetails,
-  });
 
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase();
@@ -362,6 +339,9 @@ export const ProfesseurDetails = ({
         {/* En-tête avec navigation et actions */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
             <div className="flex items-center gap-4">
               <Avatar className="h-16 w-16 border-4 border-background shadow-lg">
                 <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-xl font-bold">
@@ -424,6 +404,29 @@ export const ProfesseurDetails = ({
               </div>
             </div>
           </div>
+
+          {currentUser?.role === "Admin" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 w-9 p-0">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEdit(currentProfesseur)}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Modifier
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-red-600"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {/* Statistiques rapides */}
@@ -757,6 +760,12 @@ export const ProfesseurDetails = ({
                   Gestion des matières que ce professeur peut enseigner
                 </p>
               </div>
+              {subjectsTaught.length > 0 && (
+                <Button onClick={() => setShowAddSubjectDialog(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter une matière
+                </Button>
+              )}
             </div>
 
             {subjectsTaught.length > 0 ? (
@@ -782,8 +791,40 @@ export const ProfesseurDetails = ({
                             Code: {subjectItem.subject?.code}
                           </CardDescription>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-red-600"
+                          onClick={() =>
+                            handleRemoveSubject(subjectItem.subjectId)
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </CardHeader>
+                    <CardContent className="pt-3 space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          Expérience
+                        </span>
+                        <Badge variant="outline">
+                          {getExperienceStars(
+                            subjectItem.yearsOfExperience || 0
+                          )}{" "}
+                          ({subjectItem.yearsOfExperience || 0} an
+                          {(subjectItem.yearsOfExperience || 0) > 1
+                            ? "s"
+                            : ""}
+                          )
+                        </Badge>
+                      </div>
+                      {subjectItem.notes && (
+                        <p className="text-sm text-muted-foreground line-clamp-2">
+                          {subjectItem.notes}
+                        </p>
+                      )}
+                    </CardContent>
                   </Card>
                 ))}
               </div>
@@ -835,13 +876,29 @@ export const ProfesseurDetails = ({
                         <SelectValue placeholder="Choisir une matière..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {/* Vous devrez charger les matières disponibles ici */}
-                        {/* Exemple: */}
-                        {/* {availableSubjects.map((subject) => (
-                          <SelectItem key={subject.id} value={subject.id}>
-                            {subject.name} ({subject.code})
-                          </SelectItem>
-                        ))} */}
+                        {availableSubjects.filter(
+                          (subject) =>
+                            !subjectsTaught.some(
+                              (s) => s.subjectId === subject.id
+                            )
+                        ).length === 0 ? (
+                          <div className="px-2 py-4 text-sm text-center text-muted-foreground">
+                            Toutes les matières sont déjà attribuées
+                          </div>
+                        ) : (
+                          availableSubjects
+                            .filter(
+                              (subject) =>
+                                !subjectsTaught.some(
+                                  (s) => s.subjectId === subject.id
+                                )
+                            )
+                            .map((subject) => (
+                              <SelectItem key={subject.id} value={subject.id}>
+                                {subject.name} ({subject.code})
+                              </SelectItem>
+                            ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

@@ -16,7 +16,6 @@ import {
   Calendar,
   TrendingUp,
   Clock,
-  Download,
   RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -174,14 +173,12 @@ const SecretaryDashboard = () => {
     value,
     icon: Icon,
     color = "primary",
-    trend,
     subtitle,
   }: {
     title: string;
     value: string | number;
     icon: any;
     color?: string;
-    trend?: "up" | "down" | "neutral";
     subtitle?: string;
   }) => (
     <Card className="hover:shadow-md transition-shadow">
@@ -189,32 +186,7 @@ const SecretaryDashboard = () => {
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <div className="flex items-baseline gap-2 mt-2">
-              <p className="text-3xl font-bold">{value}</p>
-              {trend && (
-                <Badge
-                  variant="outline"
-                  className={
-                    trend === "up"
-                      ? "bg-green-50 text-green-700 border-green-200"
-                      : trend === "down"
-                      ? "bg-red-50 text-red-700 border-red-200"
-                      : "bg-gray-50 text-gray-700 border-gray-200"
-                  }
-                >
-                  <TrendingUp
-                    className={`h-3 w-3 mr-1 ${
-                      trend === "up"
-                        ? "text-green-600"
-                        : trend === "down"
-                        ? "text-red-600 rotate-180"
-                        : "text-gray-600"
-                    }`}
-                  />
-                  {trend === "up" ? "+12%" : trend === "down" ? "-5%" : "0%"}
-                </Badge>
-              )}
-            </div>
+            <p className="text-3xl font-bold mt-2">{value}</p>
             {subtitle && (
               <p className="text-xs text-muted-foreground mt-2">{subtitle}</p>
             )}
@@ -329,7 +301,6 @@ const SecretaryDashboard = () => {
           value={enrollmentStats.today}
           icon={Calendar}
           color="primary"
-          trend="up"
           subtitle={`${formattedToday}`}
         />
         <StatCard
@@ -337,7 +308,6 @@ const SecretaryDashboard = () => {
           value={enrollmentStats.thisWeek}
           icon={TrendingUp}
           color="success"
-          trend="up"
           subtitle="Derniers 7 jours"
         />
         <StatCard
@@ -456,58 +426,50 @@ const SecretaryDashboard = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Indicateurs de performance</CardTitle>
-            <CardDescription>Tendances et comparaisons</CardDescription>
+            <CardTitle>Répartition par statut</CardTitle>
+            <CardDescription>
+              État actuel des inscriptions
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full bg-green-100">
-                    <TrendingUp className="h-4 w-4 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Taux de croissance</p>
-                    <p className="text-sm text-muted-foreground">
-                      Mois dernier
-                    </p>
-                  </div>
+          <CardContent className="space-y-3">
+            <StatusCard
+              status="En attente"
+              count={enrollmentStats.pending}
+              icon={Clock}
+              color="warning"
+            />
+            <StatusCard
+              status="Approuvées"
+              count={enrollmentStats.approved}
+              icon={UserCheck}
+              color="success"
+            />
+            <StatusCard
+              status="Rejetées"
+              count={enrollmentStats.rejected}
+              icon={UserX}
+              color="destructive"
+            />
+            <div className="flex items-center justify-between p-3 border rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-purple-100">
+                  <TrendingUp className="h-4 w-4 text-purple-600" />
                 </div>
-                <span className="text-green-600 font-bold">+12.5%</span>
-              </div>
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full bg-blue-100">
-                    <Clock className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Temps moyen de traitement</p>
-                    <p className="text-sm text-muted-foreground">En attente</p>
-                  </div>
+                <div>
+                  <p className="font-medium">Conversion</p>
+                  <p className="text-sm text-muted-foreground">
+                    Inscriptions → Actifs
+                  </p>
                 </div>
-                <span className="font-bold">2.3 jours</span>
               </div>
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full bg-purple-100">
-                    <UserCheck className="h-4 w-4 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Conversion</p>
-                    <p className="text-sm text-muted-foreground">
-                      Inscriptions → Actifs
-                    </p>
-                  </div>
-                </div>
-                <span className="font-bold">
-                  {students.length > 0
-                    ? (
-                        (enrollmentStats.activeStudents / students.length) *
-                        100
-                      ).toFixed(1) + "%"
-                    : "0%"}
-                </span>
-              </div>
+              <span className="font-bold">
+                {students.length > 0
+                  ? (
+                      (enrollmentStats.activeStudents / students.length) *
+                      100
+                    ).toFixed(1) + "%"
+                  : "0%"}
+              </span>
             </div>
           </CardContent>
         </Card>

@@ -7,13 +7,14 @@ import { Request, Response, NextFunction } from "express";
 // Configuration de Multer pour les photos de profil
 const profileStorage = multer.diskStorage({
   destination: (req: Request, file, cb) => {
-    // Utiliser un chemin ABSOLU
     const uploadDir = path.resolve(process.cwd(), "uploads", "profiles");
 
-    // Créer le dossier récursivement s'il n'existe pas
+    console.log("📁 Destination upload:", uploadDir);
+
     try {
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
+        console.log("📁 Dossier créé:", uploadDir);
       }
       cb(null, uploadDir);
     } catch (error) {
@@ -25,7 +26,7 @@ const profileStorage = multer.diskStorage({
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const filename =
       "profile-" + uniqueSuffix + path.extname(file.originalname);
-
+    console.log("📄 Nom du fichier généré:", filename);
     cb(null, filename);
   },
 });
@@ -64,7 +65,7 @@ const importStorage = multer.diskStorage({
 const fileFilter = (
   req: Request,
   file: Express.Multer.File,
-  cb: multer.FileFilterCallback
+  cb: multer.FileFilterCallback,
 ) => {
   console.log("🔍 Fichier reçu:", file.originalname, "Type:", file.mimetype);
 
@@ -101,6 +102,40 @@ export const uploadImport = multer({
   },
 });
 
+// Configuration pour gérer à la fois la photo et les champs texte
+export const uploadStudentPhoto = multer({
+  storage: profileStorage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max
+  },
+}).single("photo");
+
+// Middleware pour parser les champs texte après upload
+export const parseStudentForm = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  // Si guardians est une string JSON, le parser
+  if (req.body.guardians && typeof req.body.guardians === "string") {
+    try {
+      req.body.guardians = JSON.parse(req.body.guardians);
+    } catch (error) {
+      console.error("Erreur parsing guardians:", error);
+    }
+  }
+
+  // Convertir les boolean strings
+  if (req.body.createUserAccount === "true") req.body.createUserAccount = true;
+  if (req.body.createUserAccount === "false")
+    req.body.createUserAccount = false;
+
+  if (req.body.sendWelcomeEmail === "true") req.body.sendWelcomeEmail = true;
+  if (req.body.sendWelcomeEmail === "false") req.body.sendWelcomeEmail = false;
+
+  next();
+};
 // Middleware de debug pour voir les fichiers uploadés
 export const logUpload = (req: Request, res: Response, next: NextFunction) => {
   console.log("🔄 === MIDDLEWARE MULTER DEBUG ===");

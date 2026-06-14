@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { useAcademicStore } from "@/store/studentStore";
+import useStudentStore from "@/store/studentStore";
 import { toast } from "@/hooks/use-toast";
 
 interface ImportResult {
@@ -31,7 +31,7 @@ interface ImportResult {
 
 export const ImportStudents: React.FC = () => {
   const { importStudents, downloadImportTemplate, loading } =
-    useAcademicStore();
+    useStudentStore();
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importResults, setImportResults] = useState<ImportResult[]>([]);

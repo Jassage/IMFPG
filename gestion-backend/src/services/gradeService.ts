@@ -2736,4 +2736,275 @@ export class GradeService {
       console.error("Erreur de notification de rejet:", error);
     }
   }
+
+  /**
+   * Génère le palmarès (classement) d'un niveau pour un contrôle donné.
+   * Pour chaque élève : note par matière, Total, Moyenne (Total / somme des
+   * barèmes × 100), puis classement par moyenne décroissante.
+   */
+  async getPalmares(
+    filters: {
+      classLevel?: ClassLevel;
+      controlType?: ControlType;
+      academicYearId?: string;
+      status?: string;
+    },
+    auditData: AuditData
+  ): Promise<ApiResponse> {
+    try {
+      const { classLevel, controlType, academicYearId, status } = filters;
+
+      if (!classLevel || !controlType || !academicYearId) {
+        return {
+          success: false,
+          message: "classLevel, controlType et academicYearId sont requis",
+          code: "MISSING_PARAMS",
+        };
+      }
+
+      const where: any = {
+        isActive: true,
+        classLevel,
+        controlType,
+        academicYearId,
+      };
+      if (status && status !== "all") {
+        where.status = status;
+      } else if (!status) {
+        where.status = GradeStatus.Published;
+      }
+
+      const grades = await prisma.grade.findMany({
+        where,
+        include: {
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              studentCode: true,
+            },
+          },
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              maxGrade: true,
+              coefficient: true,
+            },
+          },
+        },
+      });
+
+      // Matières présentes, ordonnées par nom
+      const subjectMap = new Map<string, any>();
+      grades.forEach((g) => {
+        if (g.subject) subjectMap.set(g.subject.id, g.subject);
+      });
+      const subjects = Array.from(subjectMap.values()).sort((a, b) =>
+        (a.name || "").localeCompare(b.name || "", "fr")
+      );
+      const maxTotal = subjects.reduce(
+        (sum, s) => sum + (s.maxGrade || 0),
+        0
+      );
+
+      // Agrégation par élève
+      const studentMap = new Map<string, any>();
+      grades.forEach((g) => {
+        if (!g.student) return;
+        const sid = g.student.id;
+        if (!studentMap.has(sid)) {
+          studentMap.set(sid, {
+            studentId: sid,
+            firstName: g.student.firstName,
+            lastName: g.student.lastName,
+            studentCode: g.student.studentCode,
+            grades: {} as Record<string, number>,
+            total: 0,
+          });
+        }
+        const entry = studentMap.get(sid);
+        entry.grades[g.subjectId] = g.grade;
+        entry.total += g.grade || 0;
+      });
+
+      const students = Array.from(studentMap.values()).map((s) => ({
+        ...s,
+        moyenne: maxTotal > 0 ? (s.total / maxTotal) * 100 : 0,
+      }));
+
+      // Tri par moyenne décroissante + rang
+      students.sort((a, b) => b.moyenne - a.moyenne);
+      students.forEach((s, i) => {
+        s.rank = i + 1;
+      });
+
+      return {
+        success: true,
+        message: "Palmarès généré avec succès",
+        data: {
+          classLevel,
+          controlType,
+          academicYearId,
+          maxTotal,
+          subjects,
+          students,
+          generatedAt: new Date(),
+        },
+      };
+    } catch (error: any) {
+      console.error("GradeService - getPalmares error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Génère le palmarès cumulatif (notes totales) d'un niveau pour une année
+   * académique : pour chaque élève et chaque matière, on calcule la moyenne
+   * des contrôles disponibles, puis Total = somme des moyennes par matière
+   * et Moyenne générale = Total / somme des barèmes × 100.
+   */
+  async getPalmaresCumulatif(
+    filters: {
+      classLevel?: ClassLevel;
+      academicYearId?: string;
+      status?: string;
+      controlTypes?: ControlType[];
+    },
+    auditData: AuditData
+  ): Promise<ApiResponse> {
+    try {
+      const { classLevel, academicYearId, status, controlTypes } = filters;
+
+      if (!classLevel || !academicYearId) {
+        return {
+          success: false,
+          message: "classLevel et academicYearId sont requis",
+          code: "MISSING_PARAMS",
+        };
+      }
+
+      const where: any = {
+        isActive: true,
+        classLevel,
+        academicYearId,
+      };
+      if (controlTypes && controlTypes.length > 0) {
+        where.controlType = { in: controlTypes };
+      }
+      if (status && status !== "all") {
+        where.status = status;
+      } else if (!status) {
+        where.status = GradeStatus.Published;
+      }
+
+      const grades = await prisma.grade.findMany({
+        where,
+        include: {
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              studentCode: true,
+            },
+          },
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              maxGrade: true,
+              coefficient: true,
+            },
+          },
+        },
+      });
+
+      // Matières présentes, ordonnées par nom
+      const subjectMap = new Map<string, any>();
+      grades.forEach((g) => {
+        if (g.subject) subjectMap.set(g.subject.id, g.subject);
+      });
+      const subjects = Array.from(subjectMap.values()).sort((a, b) =>
+        (a.name || "").localeCompare(b.name || "", "fr")
+      );
+      const maxTotal = subjects.reduce(
+        (sum, s) => sum + (s.maxGrade || 0),
+        0
+      );
+
+      // Regrouper les notes par élève puis par matière (liste des notes par contrôle)
+      const studentMap = new Map<string, any>();
+      grades.forEach((g) => {
+        if (!g.student) return;
+        const sid = g.student.id;
+        if (!studentMap.has(sid)) {
+          studentMap.set(sid, {
+            studentId: sid,
+            firstName: g.student.firstName,
+            lastName: g.student.lastName,
+            studentCode: g.student.studentCode,
+            subjectGrades: new Map<string, number[]>(),
+          });
+        }
+        const entry = studentMap.get(sid);
+        if (!entry.subjectGrades.has(g.subjectId)) {
+          entry.subjectGrades.set(g.subjectId, []);
+        }
+        entry.subjectGrades.get(g.subjectId).push(g.grade || 0);
+      });
+
+      // Calcul de la moyenne par matière puis du total et de la moyenne générale
+      const students = Array.from(studentMap.values()).map((s) => {
+        const grades: Record<string, number> = {};
+        let total = 0;
+        subjects.forEach((subj) => {
+          const values: number[] = s.subjectGrades.get(subj.id) || [];
+          const avg =
+            values.length > 0
+              ? values.reduce((sum, v) => sum + v, 0) / values.length
+              : 0;
+          grades[subj.id] = avg;
+          total += avg;
+        });
+        return {
+          studentId: s.studentId,
+          firstName: s.firstName,
+          lastName: s.lastName,
+          studentCode: s.studentCode,
+          grades,
+          total,
+          moyenne: maxTotal > 0 ? (total / maxTotal) * 100 : 0,
+        };
+      });
+
+      // Tri par moyenne décroissante + rang
+      students.sort((a, b) => b.moyenne - a.moyenne);
+      students.forEach((s, i) => {
+        (s as any).rank = i + 1;
+      });
+
+      return {
+        success: true,
+        message: "Palmarès cumulatif généré avec succès",
+        data: {
+          classLevel,
+          academicYearId,
+          controlTypes: controlTypes && controlTypes.length > 0
+            ? controlTypes
+            : "all",
+          maxTotal,
+          subjects,
+          students,
+          generatedAt: new Date(),
+        },
+      };
+    } catch (error: any) {
+      console.error("GradeService - getPalmaresCumulatif error:", error);
+      throw error;
+    }
+  }
 }

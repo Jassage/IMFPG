@@ -40,6 +40,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -61,6 +62,9 @@ import { useStudentStore } from "@/store/studentStore";
 import { Student } from "@/types/academic";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
 import * as XLSX from "xlsx";
+import { StudentRosterPrint } from "./students/StudentRosterPrint";
+import { ImportStudents } from "./students/ImportStudents";
+import { Upload } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -544,6 +548,7 @@ export const StudentsManager = () => {
   const [showAssignClassModal, setShowAssignClassModal] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState("");
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // État du formulaire avec gestion d'erreur
   const [formState, setFormState] = useState<FormState>({
@@ -662,13 +667,13 @@ export const StudentsManager = () => {
   // Calcul des statistiques
   const statistics = useMemo(() => {
     const activeCount = filteredStudents.filter(
-      (s) => s.status === "Active"
+      (s) => s.status === "Active",
     ).length;
     const inactiveCount = filteredStudents.filter(
-      (s) => s.status === "Inactive"
+      (s) => s.status === "Inactive",
     ).length;
     const graduatedCount = filteredStudents.filter(
-      (s) => s.status === "Graduated"
+      (s) => s.status === "Graduated",
     ).length;
     const assignedCount = filteredStudents.filter((s) => s.classId).length;
 
@@ -704,7 +709,7 @@ export const StudentsManager = () => {
         }));
       }
     },
-    [viewMode]
+    [viewMode],
   );
 
   const handleViewDetails = useCallback((student: Student) => {
@@ -726,35 +731,82 @@ export const StudentsManager = () => {
   const handleConfirmDelete = useCallback(async () => {
     if (!studentToDelete) return;
 
+    setIsDeleting(true);
+
     try {
       if (studentToDelete.includes(",")) {
         const ids = studentToDelete.split(",");
-        const deletePromises = ids.map((id) => deleteStudent(id));
-        await Promise.all(deletePromises);
 
-        toast.success(`${ids.length} Éleves ont été supprimés avec succès`);
+        // Supprimer un par un pour un meilleur contrôle
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const id of ids) {
+          try {
+            await deleteStudent(id);
+            successCount++;
+          } catch (error) {
+            failCount++;
+            console.error(`Erreur suppression ${id}:`, error);
+          }
+        }
+
+        if (successCount > 0) {
+          toast.success(`${successCount} étudiant(s) supprimé(s) avec succès`);
+        }
+        if (failCount > 0) {
+          toast.error(`${failCount} étudiant(s) non supprimé(s)`);
+        }
+
+        // Rafraîchir la liste après suppression multiple
+        await fetchStudents({
+          search: debouncedSearchTerm,
+          page: currentPage,
+          limit: itemsPerPage,
+          status: filters.status,
+          classId: filters.classId,
+        });
       } else {
         await deleteStudent(studentToDelete);
-        toast.success("L'étudiant a été supprimé avec succès");
+
+        // Optionnel: Rafraîchir la liste pour être sûr
+        await fetchStudents({
+          search: debouncedSearchTerm,
+          page: currentPage,
+          limit: itemsPerPage,
+          status: filters.status,
+          classId: filters.classId,
+        });
       }
 
+      // Nettoyer l'état
       setStudentToDelete(null);
       setSelectedStudents([]);
       setIsSelecting(false);
     } catch (error: any) {
       console.error("Erreur suppression:", error);
       toast.error(
-        error.message || "Une erreur s'est produite lors de la suppression"
+        error.message || "Une erreur s'est produite lors de la suppression",
       );
+    } finally {
+      setIsDeleting(false);
     }
-  }, [studentToDelete, deleteStudent]);
+  }, [
+    studentToDelete,
+    deleteStudent,
+    fetchStudents,
+    debouncedSearchTerm,
+    currentPage,
+    itemsPerPage,
+    filters,
+  ]);
 
   // Sélection des Éleves
   const toggleStudentSelection = useCallback((studentId: string) => {
     setSelectedStudents((prev) =>
       prev.includes(studentId)
         ? prev.filter((id) => id !== studentId)
-        : [...prev, studentId]
+        : [...prev, studentId],
     );
   }, []);
 
@@ -780,14 +832,14 @@ export const StudentsManager = () => {
           return updateStudentStatus(
             studentId,
             newStatus,
-            "Modification groupée"
+            "Modification groupée",
           );
         });
 
         await Promise.all(updatePromises);
 
         toast.success(
-          `Le statut de ${selectedStudents.length} Éleves a été modifié`
+          `Le statut de ${selectedStudents.length} Éleves a été modifié`,
         );
 
         setSelectedStudents([]);
@@ -795,11 +847,11 @@ export const StudentsManager = () => {
         console.error("Erreur mise à jour statut:", error);
         toast.error(
           error.message ||
-            "Une erreur s'est produite lors de la mise à jour des statuts"
+            "Une erreur s'est produite lors de la mise à jour des statuts",
         );
       }
     },
-    [selectedStudents, updateStudentStatus]
+    [selectedStudents, updateStudentStatus],
   );
 
   const handleBulkAssignClass = useCallback(() => {
@@ -818,7 +870,7 @@ export const StudentsManager = () => {
       await Promise.all(updatePromises);
 
       toast.success(
-        `${selectedStudents.length} Éleves ont été affectés à la classe`
+        `${selectedStudents.length} Éleves ont été affectés à la classe`,
       );
 
       setSelectedStudents([]);
@@ -829,7 +881,7 @@ export const StudentsManager = () => {
       console.error(" Erreur lors de l'affectation groupée:", error);
       toast.error(
         error.message ||
-          "Une erreur s'est produite lors de l'affectation à la classe"
+          "Une erreur s'est produite lors de l'affectation à la classe",
       );
     }
   }, [selectedStudents, selectedClassId, assignStudentToClass]);
@@ -873,32 +925,32 @@ export const StudentsManager = () => {
         XLSX.writeFile(workbook, filename);
 
         toast.success(
-          `Les données de ${studentsToExport.length} Éleves ont été exportées`
+          `Les données de ${studentsToExport.length} Éleves ont été exportées`,
         );
       } catch (error) {
         toast.error("Une erreur s'est produite lors de l'exportation");
       }
     },
-    [classes]
+    [classes],
   );
 
   const handleBulkExport = useCallback(() => {
     if (selectedStudents.length === 0) return;
 
     const selectedStudentsData = students.filter((student) =>
-      selectedStudents.includes(student.id)
+      selectedStudents.includes(student.id),
     );
 
     exportToExcel(
       selectedStudentsData,
-      `etudiants-selection-${new Date().toISOString().split("T")[0]}.xlsx`
+      `etudiants-selection-${new Date().toISOString().split("T")[0]}.xlsx`,
     );
   }, [selectedStudents, students, exportToExcel]);
 
   const exportAllToExcel = useCallback(() => {
     exportToExcel(
       filteredStudents,
-      `etudiants-${new Date().toISOString().split("T")[0]}.xlsx`
+      `etudiants-${new Date().toISOString().split("T")[0]}.xlsx`,
     );
   }, [filteredStudents, exportToExcel]);
 
@@ -951,7 +1003,7 @@ export const StudentsManager = () => {
         toast.error(errorMessage);
       }
     },
-    [formState.mode, formState.student?.id, createStudent, updateStudent]
+    [formState.mode, formState.student?.id, createStudent, updateStudent],
   );
 
   const handleOpenCreateForm = useCallback(() => {
@@ -1288,6 +1340,29 @@ export const StudentsManager = () => {
             <CheckCircle className="h-4 w-4" />
             <span className="hidden sm:inline">Sélection</span>
           </Button>
+
+          {/* Import d'élèves via fichier Excel */}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Upload className="h-4 w-4" />
+                <span className="hidden sm:inline">Importer (Excel)</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Importer des élèves depuis Excel</DialogTitle>
+                <DialogDescription>
+                  Téléchargez le template, remplissez-le, puis importez le
+                  fichier .xlsx.
+                </DialogDescription>
+              </DialogHeader>
+              <ImportStudents />
+            </DialogContent>
+          </Dialog>
+
+          {/* Impression de la liste des élèves par classe et année */}
+          <StudentRosterPrint />
 
           {/* Bouton Nouvel Étudiant */}
 

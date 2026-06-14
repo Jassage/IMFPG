@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import * as XLSX from "xlsx";
 import {
   Card,
   CardContent,
@@ -21,20 +22,15 @@ import {
   Plus,
   Edit2,
   Check,
-  X,
   CreditCard,
   Loader2,
   Wallet,
-  BookOpen,
   FileText,
   RefreshCw,
   MoreHorizontal,
   ChevronsUpDown,
   Table as TableIcon,
   LayoutGrid,
-  ChevronLeft,
-  ChevronRight,
-  FileDown,
   AlertCircle,
   Search,
   Filter,
@@ -43,9 +39,8 @@ import {
   BarChart3,
   History,
   Download,
-  Eye,
   Trash2,
-  CalendarIcon,
+  Receipt,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -64,15 +59,14 @@ import {
 } from "@/components/ui/popover";
 import { useAcademicYearStore } from "@/store/academicYearStore";
 import { useFeeStructureStore } from "@/store/feeStructureStore";
+import PaymentReport from "@/components/reports/PaymentReport";
 import { cn } from "@/lib/utils";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -104,15 +98,6 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { useToast } from "@/hooks/use-toast";
-import { DateRange } from "react-day-picker";
-import {
-  addDays,
-  format,
-  differenceInDays,
-  startOfDay,
-  endOfDay,
-} from "date-fns";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import useStudentStore from "@/store/studentStore";
 import { StudentFee } from "@/types/enrollementTypes";
 
@@ -137,6 +122,65 @@ interface FormData {
   description: string;
 }
 
+// Formate un montant en HTG, en version compacte (K/M/Md) avec la valeur
+// complète affichée au survol
+const formatAmountCompact = (value: number): string => {
+  if (value === 0) return "0 HTG";
+
+  const absValue = Math.abs(value);
+
+  if (absValue >= 1_000_000_000) {
+    const formatted = (value / 1_000_000_000).toFixed(2);
+    return `${formatted.replace(/\.?0+$/, "")}Md HTG`;
+  }
+  if (absValue >= 1_000_000) {
+    const formatted = (value / 1_000_000).toFixed(2);
+    return `${formatted.replace(/\.?0+$/, "")}M HTG`;
+  }
+  if (absValue >= 10_000) {
+    const formatted = (value / 1_000).toFixed(1);
+    return `${formatted.replace(/\.?0+$/, "")}K HTG`;
+  }
+  return (
+    value.toLocaleString("fr-FR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }) + " HTG"
+  );
+};
+
+const formatAmountFull = (value: number): string =>
+  value.toLocaleString("fr-FR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }) + " HTG";
+
+const AmountDisplay: React.FC<{
+  amount: number;
+  className?: string;
+  showFullOnHover?: boolean;
+  compact?: boolean;
+}> = ({ amount, className = "", showFullOnHover = true, compact = false }) => {
+  const displayAmount = compact
+    ? formatAmountCompact(amount)
+    : formatAmountFull(amount);
+  const fullAmount = formatAmountFull(amount);
+
+  if (!showFullOnHover || displayAmount === fullAmount) {
+    return <span className={className}>{displayAmount}</span>;
+  }
+
+  return (
+    <div className="relative inline-block group">
+      <span className={`${className} cursor-help`}>{displayAmount}</span>
+      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+        {fullAmount}
+        <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
+      </div>
+    </div>
+  );
+};
+
 export const PaymentManager = () => {
   const { students, fetchStudents } = useStudentStore();
   const { academicYears, fetchAcademicYears } = useAcademicYearStore();
@@ -155,6 +199,7 @@ export const PaymentManager = () => {
 
   // États principaux
   const [showForm, setShowForm] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState("ALL_STUDENTS");
   const [selectedAcademicYear, setSelectedAcademicYear] = useState("ALL_YEARS");
   const [activeTab, setActiveTab] = useState("all");
@@ -168,18 +213,12 @@ export const PaymentManager = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [editingPayment, setEditingPayment] = useState<FeePayment | null>(null);
   const [deletingPayment, setDeletingPayment] = useState<FeePayment | null>(
-    null
+    null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
-
-  // États pour les filtres
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: addDays(new Date(), -30),
-    to: new Date(),
-  });
 
   // Données du formulaire
   const [formData, setFormData] = useState<FormData>({
@@ -297,7 +336,7 @@ export const PaymentManager = () => {
         setDataLoading(false);
       }
     },
-    [getStudentFees, toast]
+    [getStudentFees, toast],
   );
 
   // Chargement de l'historique des paiements
@@ -320,7 +359,7 @@ export const PaymentManager = () => {
         setHistoryLoading(false);
       }
     },
-    [getPaymentHistory, toast]
+    [getPaymentHistory, toast],
   );
 
   // Filtrer les étudiants
@@ -333,7 +372,7 @@ export const PaymentManager = () => {
         student.studentCode || ""
       }`
         .toLowerCase()
-        .includes(searchTerm.toLowerCase())
+        .includes(searchTerm.toLowerCase()),
     );
   }, [students, searchTerm]);
 
@@ -395,7 +434,7 @@ export const PaymentManager = () => {
         if (formData.amount > remainingBalance + 0.01) {
           // Tolérance de 0.01
           errors.push(
-            `Le montant ne peut pas dépasser le solde restant (${remainingBalance.toLocaleString()} HTG)`
+            `Le montant ne peut pas dépasser le solde restant (${remainingBalance.toLocaleString()} HTG)`,
           );
         }
 
@@ -424,14 +463,14 @@ export const PaymentManager = () => {
     // Filtrer par étudiant
     if (selectedStudent && selectedStudent !== "ALL_STUDENTS") {
       filtered = filtered.filter(
-        (fee) => fee && fee.studentId === selectedStudent
+        (fee) => fee && fee.studentId === selectedStudent,
       );
     }
 
     // Filtrer par année académique
     if (selectedAcademicYear && selectedAcademicYear !== "ALL_YEARS") {
       filtered = filtered.filter(
-        (fee) => fee.academicYearId === selectedAcademicYear
+        (fee) => fee.academicYearId === selectedAcademicYear,
       );
     }
 
@@ -476,15 +515,6 @@ export const PaymentManager = () => {
       });
     }
 
-    // Filtrer par période
-    if (dateRange?.from && dateRange?.to) {
-      filtered = filtered.filter((fee) => {
-        // Ici, vous devriez filtrer par date de création ou de paiement
-        // Adaptez cette logique selon vos besoins
-        return true;
-      });
-    }
-
     return filtered;
   }, [
     feesArray,
@@ -493,7 +523,6 @@ export const PaymentManager = () => {
     activeTab,
     searchTerm,
     students,
-    dateRange,
   ]);
 
   // Gestion des dates
@@ -508,8 +537,6 @@ export const PaymentManager = () => {
   // Édition d'un paiement
   const handleEditPayment = useCallback(
     (payment: FeePayment) => {
-      console.log("🔄 Ouverture modal d'édition pour:", payment);
-
       const fee = feesArray.find((f) => f.id === payment.studentFeeId);
 
       if (!fee) {
@@ -526,7 +553,7 @@ export const PaymentManager = () => {
       const paymentDate = new Date(payment.paymentDate);
       const today = new Date();
       const diffDays = Math.floor(
-        (today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24)
+        (today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24),
       );
 
       if (diffDays > 30) {
@@ -555,7 +582,7 @@ export const PaymentManager = () => {
       setEditingPayment(payment);
       setShowForm(true);
     },
-    [feesArray, toast]
+    [feesArray, toast],
   );
 
   // Suppression d'un paiement
@@ -566,7 +593,7 @@ export const PaymentManager = () => {
     const paymentDate = new Date(deletingPayment.paymentDate);
     const today = new Date();
     const diffDays = Math.floor(
-      (today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24)
+      (today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24),
     );
 
     if (diffDays > 7) {
@@ -656,13 +683,11 @@ export const PaymentManager = () => {
           apiPayload.paymentDate = formatDateForAPI(formData.paymentDate);
         }
 
-        console.log("📤 Payload API:", apiPayload);
-
         if (editingPayment) {
           // Vérifier les contraintes de modification
           const originalAmount = editingPayment.amount;
           const fee = feesArray.find(
-            (f) => f.id === editingPayment.studentFeeId
+            (f) => f.id === editingPayment.studentFeeId,
           );
 
           if (fee) {
@@ -670,7 +695,7 @@ export const PaymentManager = () => {
               fee.totalAmount - fee.paidAmount + originalAmount;
             if (apiPayload.amount > currentBalance) {
               throw new Error(
-                `Le montant modifié ne peut pas dépasser ${currentBalance.toLocaleString()} HTG`
+                `Le montant modifié ne peut pas dépasser ${currentBalance.toLocaleString()} HTG`,
               );
             }
           }
@@ -739,7 +764,7 @@ export const PaymentManager = () => {
       loadStudentFees,
       getAllStudentFees,
       toast,
-    ]
+    ],
   );
 
   // Réinitialisation du formulaire
@@ -759,10 +784,6 @@ export const PaymentManager = () => {
 
   // Réinitialisation des filtres
   const resetFilters = useCallback(() => {
-    setDateRange({
-      from: addDays(new Date(), -30),
-      to: new Date(),
-    });
     setSelectedStudent("ALL_STUDENTS");
     setSelectedAcademicYear("ALL_YEARS");
     setSearchTerm("");
@@ -778,8 +799,62 @@ export const PaymentManager = () => {
         ? `${student.firstName || ""} ${student.lastName || ""}`
         : "Étudiant inconnu";
     },
-    [students]
+    [students],
   );
+
+  // Affichage de l'année académique
+  const getAcademicYearDisplay = useCallback(
+    (yearId: string): string => {
+      const year = academicYears.find((y) => y.id === yearId);
+      return year ? year.year : yearId;
+    },
+    [academicYears],
+  );
+
+  // Export Excel des frais affichés (selon les filtres actifs)
+  const handleExportPayments = useCallback(() => {
+    if (filteredPayments.length === 0) return;
+
+    const statusLabels: Record<string, string> = {
+      Pending: "Non payé",
+      "Partially Paid": "Partiel",
+      Paid: "Payé",
+      Overdue: "En retard",
+    };
+
+    const rows = filteredPayments.map((fee) => {
+      const student = students.find((s) => s.id === fee.studentId);
+      return {
+        Étudiant: getStudentName(fee.studentId),
+        Code: student?.studentCode || "",
+        "Structure de frais": fee.feeStructure?.name || "",
+        "Année académique": getAcademicYearDisplay(fee.academicYearId),
+        "Montant total": fee.totalAmount,
+        "Montant payé": fee.paidAmount,
+        Reste: fee.totalAmount - fee.paidAmount,
+        Statut: statusLabels[fee.status] || fee.status,
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [
+      { wch: 24 },
+      { wch: 12 },
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 12 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Paiements");
+    XLSX.writeFile(
+      wb,
+      `paiements-${new Date().toISOString().split("T")[0]}.xlsx`,
+    );
+  }, [filteredPayments, students, getStudentName, getAcademicYearDisplay]);
 
   // Badge de statut
   const getStatusBadge = useCallback(
@@ -806,7 +881,7 @@ export const PaymentManager = () => {
         );
       }
     },
-    []
+    [],
   );
 
   // Badge de méthode de paiement
@@ -830,7 +905,7 @@ export const PaymentManager = () => {
         variant="outline"
         className={cn(
           "text-xs",
-          colors[method as keyof typeof colors] || "bg-gray-100"
+          colors[method as keyof typeof colors] || "bg-gray-100",
         )}
       >
         {methodLabels[method as keyof typeof methodLabels] || method}
@@ -846,39 +921,30 @@ export const PaymentManager = () => {
 
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredPayments.length / itemsPerPage)
+    Math.ceil(filteredPayments.length / itemsPerPage),
   );
 
   // Statistiques
   const getPaymentStats = useCallback(() => {
     const total = filteredPayments.length;
     const paid = filteredPayments.filter(
-      (f) => Math.abs(f.paidAmount - f.totalAmount) < 0.01
+      (f) => Math.abs(f.paidAmount - f.totalAmount) < 0.01,
     ).length;
     const partial = filteredPayments.filter(
-      (f) => f.paidAmount > 0 && f.paidAmount < f.totalAmount - 0.01
+      (f) => f.paidAmount > 0 && f.paidAmount < f.totalAmount - 0.01,
     ).length;
     const pending = filteredPayments.filter((f) => f.paidAmount === 0).length;
     const totalAmount = filteredPayments.reduce(
       (sum, f) => sum + (f.totalAmount || 0),
-      0
+      0,
     );
     const paidAmount = filteredPayments.reduce(
       (sum, f) => sum + (f.paidAmount || 0),
-      0
+      0,
     );
 
     return { total, paid, partial, pending, totalAmount, paidAmount };
   }, [filteredPayments]);
-
-  // Affichage de l'année académique
-  const getAcademicYearDisplay = useCallback(
-    (yearId: string): string => {
-      const year = academicYears.find((y) => y.id === yearId);
-      return year ? year.year : yearId;
-    },
-    [academicYears]
-  );
 
   const stats = getPaymentStats();
 
@@ -887,7 +953,7 @@ export const PaymentManager = () => {
     (page: number) => {
       setCurrentPage(Math.max(1, Math.min(page, totalPages)));
     },
-    [totalPages]
+    [totalPages],
   );
 
   // Gestionnaire de changement d'éléments par page
@@ -903,79 +969,6 @@ export const PaymentManager = () => {
       loadStudentFees(selectedStudent);
     }
   }, [selectedStudent, loadStudentFees]);
-
-  // Composant pour formater les montants de manière optimisée
-  const AmountDisplay: React.FC<{
-    amount: number;
-    className?: string;
-    showFullOnHover?: boolean;
-    compact?: boolean;
-  }> = ({
-    amount,
-    className = "",
-    showFullOnHover = true,
-    compact = false,
-  }) => {
-    const formatCompact = useCallback((value: number): string => {
-      if (value === 0) return "0 HTG";
-
-      const absValue = Math.abs(value);
-
-      if (absValue >= 1_000_000_000) {
-        // Milliard
-        const formatted = (value / 1_000_000_000).toFixed(2);
-        return `${formatted.replace(/\.?0+$/, "")}Md HTG`;
-      }
-      if (absValue >= 1_000_000) {
-        // Million
-        const formatted = (value / 1_000_000).toFixed(2);
-        return `${formatted.replace(/\.?0+$/, "")}M HTG`;
-      }
-      if (absValue >= 100_000) {
-        // Cent mille et plus
-        const formatted = (value / 1_000).toFixed(1);
-        return `${formatted.replace(/\.?0+$/, "")}K HTG`;
-      }
-      if (absValue >= 10_000) {
-        // Dix mille et plus
-        const formatted = (value / 1_000).toFixed(1);
-        return `${formatted.replace(/\.?0+$/, "")}K HTG`;
-      }
-      // Pour les petits montants, garder 2 décimales
-      return (
-        value.toLocaleString("fr-FR", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }) + " HTG"
-      );
-    }, []);
-
-    const formatFull = useCallback((value: number): string => {
-      return (
-        value.toLocaleString("fr-FR", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }) + " HTG"
-      );
-    }, []);
-
-    const displayAmount = compact ? formatCompact(amount) : formatFull(amount);
-    const fullAmount = formatFull(amount);
-
-    if (!showFullOnHover || displayAmount === fullAmount) {
-      return <span className={className}>{displayAmount}</span>;
-    }
-
-    return (
-      <div className="relative inline-block group">
-        <span className={`${className} cursor-help`}>{displayAmount}</span>
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-          {fullAmount}
-          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
-        </div>
-      </div>
-    );
-  };
 
   // Afficher un loader pendant le chargement initial
   if (initialLoading) {
@@ -1004,18 +997,42 @@ export const PaymentManager = () => {
           </p>
         </div>
 
-        <Button
-          className="flex items-center gap-2 bg-primary hover:bg-primary/90"
-          onClick={() => {
-            resetForm();
-            setShowForm(true);
-          }}
-          disabled={dataLoading}
-        >
-          <Plus className="h-4 w-4" />
-          Nouveau Paiement
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={() => setShowReport(true)}
+          >
+            <Receipt className="h-4 w-4" />
+            État des paiements
+          </Button>
+          <Button
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90"
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+            }}
+            disabled={dataLoading}
+          >
+            <Plus className="h-4 w-4" />
+            Nouveau Paiement
+          </Button>
+        </div>
       </div>
+
+      {/* Dialogue : État des paiements (rapport + impression) */}
+      <Dialog open={showReport} onOpenChange={setShowReport}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>État des paiements</DialogTitle>
+            <DialogDescription>
+              Générez la liste des élèves d'une classe avec les montants
+              attendus, versés et restants, puis exportez ou imprimez.
+            </DialogDescription>
+          </DialogHeader>
+          <PaymentReport />
+        </DialogContent>
+      </Dialog>
       {/* Cartes de statistiques */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
@@ -1134,7 +1151,7 @@ export const PaymentManager = () => {
                     ? Math.round(
                         ((stats.totalAmount - stats.paidAmount) /
                           stats.totalAmount) *
-                          100
+                          100,
                       )
                     : 0}
                   %
@@ -1283,6 +1300,7 @@ export const PaymentManager = () => {
                 variant="outline"
                 size="sm"
                 className="flex items-center gap-1"
+                onClick={handleExportPayments}
                 disabled={filteredPayments.length === 0 || dataLoading}
               >
                 <Download className="h-4 w-4" />
@@ -1382,7 +1400,7 @@ export const PaymentManager = () => {
                                   studentFeeId: fee.id,
                                   amount: Math.max(
                                     0,
-                                    fee.totalAmount - fee.paidAmount
+                                    fee.totalAmount - fee.paidAmount,
                                   ),
                                   paymentMethod: "cash",
                                   reference: "",
@@ -1425,7 +1443,7 @@ export const PaymentManager = () => {
                     Affichage de {(currentPage - 1) * itemsPerPage + 1} à{" "}
                     {Math.min(
                       currentPage * itemsPerPage,
-                      filteredPayments.length
+                      filteredPayments.length,
                     )}{" "}
                     sur {filteredPayments.length} entrées
                   </div>
@@ -1466,7 +1484,7 @@ export const PaymentManager = () => {
                               </PaginationLink>
                             </PaginationItem>
                           );
-                        }
+                        },
                       )}
 
                       <PaginationItem>
@@ -1543,7 +1561,7 @@ export const PaymentManager = () => {
                                 studentFeeId: fee.id,
                                 amount: Math.max(
                                   0,
-                                  fee.totalAmount - fee.paidAmount
+                                  fee.totalAmount - fee.paidAmount,
                                 ),
                                 paymentMethod: "cash",
                                 reference: "",
@@ -1665,7 +1683,7 @@ export const PaymentManager = () => {
                                   "mr-2 h-4 w-4",
                                   selectedStudent === student.id
                                     ? "opacity-100"
-                                    : "opacity-0"
+                                    : "opacity-0",
                                 )}
                               />
                               {student.firstName} {student.lastName} (
@@ -1694,7 +1712,7 @@ export const PaymentManager = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {feesArray.filter(
-                        (fee) => fee.studentId === selectedStudent
+                        (fee) => fee.studentId === selectedStudent,
                       ).length === 0 ? (
                         <SelectItem value="no-fees" disabled>
                           Aucun frais trouvé pour cet étudiant
@@ -1733,7 +1751,7 @@ export const PaymentManager = () => {
                 <AlertDescription className="text-blue-600">
                   {(() => {
                     const fee = feesArray.find(
-                      (f) => f.id === formData.studentFeeId
+                      (f) => f.id === formData.studentFeeId,
                     );
                     if (!fee) return "Frais non trouvé";
                     const remaining = fee.totalAmount - fee.paidAmount;
@@ -1913,7 +1931,7 @@ export const PaymentManager = () => {
                     const today = new Date();
                     const diffDays = Math.floor(
                       (today.getTime() - paymentDate.getTime()) /
-                        (1000 * 60 * 60 * 24)
+                        (1000 * 60 * 60 * 24),
                     );
                     const canEdit = diffDays <= 30;
                     const canDelete = diffDays <= 7;

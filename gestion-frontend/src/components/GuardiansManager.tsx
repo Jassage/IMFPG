@@ -186,11 +186,15 @@ export const GuardiansManager = () => {
               createParentAccount: true,
             }));
             break;
+
+          default:
+            alert("Aucun parent ou tuteur trouvé avec ces coordonnées");
+            break;
         }
       }
     } catch (error: any) {
       console.error("Erreur recherche parent:", error);
-      alert(error.response?.data?.error || "Erreur lors de la recherche");
+      alert(error.response?.data?.message || "Erreur lors de la recherche");
     }
   };
 
@@ -259,29 +263,40 @@ export const GuardiansManager = () => {
       return;
     }
 
+    if (!parentFormData.password) {
+      alert("Le mot de passe est obligatoire");
+      return;
+    }
+
     try {
       const response = await api.post("/parents/create", {
         firstName: parentFormData.firstName,
         lastName: parentFormData.lastName,
         email: parentFormData.email,
-        phone: parentFormData.phone,
+        phone: parentFormData.phone || undefined,
         password: parentFormData.password,
+        address: parentFormData.address || undefined,
         children: parentFormData.children,
-        address: parentFormData.address,
         sendWelcomeEmail: parentFormData.sendWelcomeEmail,
       });
 
-      if (response.data.success) {
+      if (response.data?.success) {
         alert("Compte parent créé avec succès");
         setIsParentFormOpen(false);
         resetParentForm();
-        // Recharger les guardians pour voir les changements
+        // Rafraîchir la liste pour refléter les liaisons de tuteurs
         fetchGuardians();
+      } else {
+        alert(
+          response.data?.message || "Erreur lors de la création du compte parent"
+        );
       }
     } catch (error: any) {
       console.error("Erreur création compte parent:", error);
       alert(
-        error.response?.data?.error || "Erreur lors de la création du compte"
+        error.response?.data?.message ||
+          error.message ||
+          "Erreur lors de la création du compte parent"
       );
     }
   };

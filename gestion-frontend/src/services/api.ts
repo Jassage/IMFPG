@@ -9,6 +9,7 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+
   timeout: 10000,
 });
 
@@ -18,6 +19,11 @@ let isRedirecting = false;
 // Intercepteur de requête
 api.interceptors.request.use(
   (config) => {
+    if (config.data instanceof FormData) {
+      delete config.headers["Content-Type"];
+      // Ou le définir explicitement
+      config.headers["Content-Type"] = "multipart/form-data";
+    }
     // Récupérer le token du localStorage uniquement
     const token = localStorage.getItem("authToken");
 
@@ -28,7 +34,7 @@ api.interceptors.request.use(
     // Debug: seulement en développement
     if (process.env.NODE_ENV === "development") {
       console.log(
-        `🔄 API Request: ${config.method?.toUpperCase()} ${config.url}`
+        `🔄 API Request: ${config.method?.toUpperCase()} ${config.url}`,
       );
     }
 
@@ -37,7 +43,7 @@ api.interceptors.request.use(
   (error) => {
     console.error(" Request error:", error);
     return Promise.reject(error);
-  }
+  },
 );
 
 // Intercepteur de réponse CORRIGÉ
@@ -93,7 +99,7 @@ api.interceptors.response.use(
           // Rediriger uniquement si pas déjà sur la page de login
           if (!window.location.pathname.includes("/login")) {
             window.location.href = `/login?redirect=${encodeURIComponent(
-              window.location.pathname
+              window.location.pathname,
             )}`;
           }
           isRedirecting = false;
@@ -103,7 +109,7 @@ api.interceptors.response.use(
 
     // Pour toutes les autres erreurs, rejeter normalement
     return Promise.reject(error);
-  }
+  },
 );
 
 api.interceptors.response.use(
@@ -126,7 +132,7 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 // Intercepteur pour les requêtes
@@ -143,7 +149,7 @@ api.interceptors.request.use(
   (error) => {
     console.error(" Request error:", error);
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;

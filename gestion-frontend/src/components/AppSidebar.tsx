@@ -30,8 +30,9 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import roleConfigurations from "@/config/roleConfig";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSettings } from "@/hooks/useSystemSettings";
+import { useHelp } from "@/help-section/context/HelpContext";
 
 interface AppSidebarProps {
   activeTab: ActiveTab;
@@ -59,131 +60,160 @@ export function AppSidebar({
   const { hasPermission: internalHasPermission } = usePermissions();
 
   // Utiliser les paramètres système
-  const { settings, getSchoolInfo, isModuleEnabled, isLoading } = useSettings();
-  const [schoolInfo, setSchoolInfo] = useState({
-    name: "IMFP",
-    slogan: "Institution Mixte Faustin 1er",
-  });
+  const { settings, isModuleEnabled, isLoading } = useSettings();
+  const { openHelp } = useHelp();
 
-  // Mettre à jour les infos de l'école quand les settings changent
-  useEffect(() => {
+  // Mémoriser les infos de l'école pour éviter les recalculs inutiles
+  const schoolInfo = useMemo(() => {
     if (settings) {
-      setSchoolInfo(getSchoolInfo());
+      return {
+        name: settings.schoolName || "IMFP",
+        slogan: settings.schoolSlogan || "Institution Mixte Faustin 1er",
+      };
     }
-  }, [settings, getSchoolInfo]);
+    return {
+      name: "IMFP",
+      slogan: "Institution Mixte Faustin 1er",
+    };
+  }, [settings?.schoolName, settings?.schoolSlogan]); // Dépendances spécifiques, pas l'objet settings entier
 
   const currentUser = user || authUser;
-  const hasPermission = externalHasPermission || internalHasPermission;
+  const hasPermission = useCallback(
+    (permission: string) => {
+      if (externalHasPermission) return externalHasPermission(permission);
+      return internalHasPermission(permission);
+    },
+    [externalHasPermission, internalHasPermission],
+  );
 
-  // Déterminer la configuration basée sur le rôle
-  const getConfig = () => {
+  // Déterminer la configuration basée sur le rôle - mémorisée
+  const currentConfig = useMemo(() => {
     if (config) return config;
     if (!currentUser) return roleConfigurations.Admin;
     const role = currentUser.role as UserRole;
     return roleConfigurations[role] || roleConfigurations.Admin;
-  };
+  }, [config, currentUser]);
 
-  const currentConfig = getConfig();
-  const userRole = (currentUser?.role as UserRole) || "Admin";
+  const userRole = useMemo(
+    () => (currentUser?.role as UserRole) || "Admin",
+    [currentUser?.role],
+  );
 
-  // Filtrer les items de menu en fonction des modules activés
-  const filterItemsByEnabledModules = (items: any[]) => {
-    return items.filter((item) => {
-      // Si l'item a une dépendance de module, vérifier si le module est activé
-      if (item.requiredModule) {
-        return isModuleEnabled(item.requiredModule);
+  // Filtrer les items de menu en fonction des modules activés - mémorisé
+  const filterItemsByEnabledModules = useCallback(
+    (items: any[]) => {
+      return items.filter((item) => {
+        // Si l'item a une dépendance de module, vérifier si le module est activé
+        if (item.requiredModule) {
+          return isModuleEnabled(item.requiredModule);
+        }
+        return true;
+      });
+    },
+    [isModuleEnabled],
+  );
+
+  const handleMenuClick = useCallback(
+    (tabId: string) => {
+      onTabChange(tabId as ActiveTab);
+      if (isMobile && onClose) {
+        onClose();
       }
-      return true;
-    });
-  };
-
-  const handleMenuClick = (tabId: string) => {
-    onTabChange(tabId as ActiveTab);
-    if (isMobile && onClose) {
-      onClose();
-    }
-  };
+    },
+    [onTabChange, isMobile, onClose],
+  );
 
   // Rendu d'une section de menu avec filtrage par module
-  const renderMenuSection = (
-    items: {
-      id: ActiveTab;
-      label: string;
-      icon: any;
-      permission: string;
-      description?: string;
-      requiredModule?: string; // Ajout du champ pour la dépendance de module
-    }[],
-    title: string,
-  ) => {
-    // Filtrer d'abord par permissions
-    let filteredItems = items.filter((item) => {
-      if (userRole === "Admin") return true;
-      return hasPermission(item.permission);
-    });
+  const renderMenuSection = useCallback(
+    (
+      items: {
+        id: ActiveTab;
+        label: string;
+        icon: any;
+        permission: string;
+        description?: string;
+        requiredModule?: string;
+      }[],
+      title: string,
+    ) => {
+      // Filtrer d'abord par permissions
+      let filteredItems = items.filter((item) => {
+        if (userRole === "Admin") return true;
+        return hasPermission(item.permission);
+      });
 
-    // Ensuite filtrer par modules activés
-    filteredItems = filterItemsByEnabledModules(filteredItems);
+      // Ensuite filtrer par modules activés
+      filteredItems = filterItemsByEnabledModules(filteredItems);
 
-    if (filteredItems.length === 0) return null;
+      if (filteredItems.length === 0) return null;
 
-    return (
-      <SidebarGroup>
-        {(!isCollapsed || isMobile) && (
-          <SidebarGroupLabel className="text-sidebar-foreground/70">
-            {title}
-          </SidebarGroupLabel>
-        )}
-        <SidebarGroupContent>
-          <SidebarMenu>
-            {filteredItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              const hasAccess = hasPermission(item.permission);
+      return (
+        <SidebarGroup key={title}>
+          {(!isCollapsed || isMobile) && (
+            <SidebarGroupLabel className="text-sidebar-foreground/70">
+              {title}
+            </SidebarGroupLabel>
+          )}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {filteredItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                const hasAccess = hasPermission(item.permission);
 
-              if (!hasAccess) return null;
+                if (!hasAccess) return null;
 
-              return (
-                <SidebarMenuItem key={item.id}>
-                  <SidebarMenuButton
-                    onClick={() => handleMenuClick(item.id)}
-                    data-testid={item.id}
-                    data-tab={item.id}
-                    isActive={isActive}
-                    tooltip={
-                      isCollapsed && !isMobile
-                        ? `${item.label}${
-                            item.description ? ` - ${item.description}` : ""
-                          }`
-                        : undefined
-                    }
-                    className={cn(
-                      "w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                      !hasAccess && "opacity-50 cursor-not-allowed",
-                    )}
-                    disabled={!hasAccess}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {(!isCollapsed || isMobile) && (
-                      <div className="flex flex-col flex-1 min-w-0">
-                        <span className="font-medium">{item.label}</span>
-                      </div>
-                    )}
-                    {isActive && (
-                      <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
-                    )}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-    );
-  };
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      onClick={() => handleMenuClick(item.id)}
+                      data-testid={item.id}
+                      data-tab={item.id}
+                      isActive={isActive}
+                      tooltip={
+                        isCollapsed && !isMobile
+                          ? `${item.label}${
+                              item.description ? ` - ${item.description}` : ""
+                            }`
+                          : undefined
+                      }
+                      className={cn(
+                        "w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        !hasAccess && "opacity-50 cursor-not-allowed",
+                      )}
+                      disabled={!hasAccess}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {(!isCollapsed || isMobile) && (
+                        <div className="flex flex-col flex-1 min-w-0">
+                          <span className="font-medium">{item.label}</span>
+                        </div>
+                      )}
+                      {isActive && (
+                        <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      );
+    },
+    [
+      isCollapsed,
+      isMobile,
+      userRole,
+      hasPermission,
+      filterItemsByEnabledModules,
+      activeTab,
+      handleMenuClick,
+    ],
+  );
 
-  // Obtenir l'icône de rôle
-  const getRoleIcon = (role: UserRole) => {
+  // Obtenir l'icône de rôle - mémorisée
+  const getRoleIcon = useCallback((role: UserRole) => {
     switch (role) {
       case "Admin":
         return <ShieldCheck className="h-3 w-3 text-red-500" />;
@@ -200,7 +230,7 @@ export function AppSidebar({
       default:
         return <UserCircle className="h-3 w-3" />;
     }
-  };
+  }, []);
 
   return (
     <Sidebar
@@ -222,6 +252,9 @@ export function AppSidebar({
                 }
                 alt={schoolInfo.name}
                 className="h-10 w-10 object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/logo.png";
+                }}
               />
             </div>
             {(!isCollapsed || isMobile) && (
@@ -269,7 +302,7 @@ export function AppSidebar({
                   variant="ghost"
                   size="sm"
                   className="w-full justify-start text-sidebar-foreground/70"
-                  onClick={() => {}}
+                  onClick={() => openHelp()}
                 >
                   <HelpCircle className="h-4 w-4 mr-2" />
                   Aide & Support
@@ -305,9 +338,13 @@ export function AppSidebar({
             {/* Informations de contact depuis les paramètres */}
             <div className="mt-2 space-y-1 text-xs">
               <div className="flex items-center gap-1 text-sidebar-foreground/60">
-                <span className="truncate">{settings?.phone}</span>
+                <span className="truncate">
+                  {settings?.phone || "+509 00 00 0000"}
+                </span>
                 {" /"}
-                <span className="truncate">{settings?.email}</span>
+                <span className="truncate">
+                  {settings?.email || "contact@imfp.ht"}
+                </span>
               </div>
             </div>
 

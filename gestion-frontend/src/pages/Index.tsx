@@ -80,11 +80,14 @@ import { TimetableManager } from "@/components/TimetableManager";
 import { GradeManager } from "@/components/GradesManager";
 import { usePermissions } from "@/hooks/usePermissions";
 import BulletinPage from "./BulletinPage";
+import PalmaresReport from "@/components/reports/PalmaresReport";
 import ProfessorGradeManager from "@/components/ProfessorGradesManager";
 import AnnouncementManager from "@/components/AnnouncementManager";
 
 import { NotificationBell } from "@/components/NotificationBell";
 import { StudentCardGenerator } from "@/components/StudentCardGenerator";
+import { AttendancePage } from "./AttendancePage";
+import { ProfessorAttendance } from "@/components/attendance/ProfessorAttendance";
 
 // Types pour les rôles
 type UserRole =
@@ -401,8 +404,15 @@ const Index = () => {
       events: <EventManager />,
       schedule: <ScheduleManager />,
       transcripts: <BulletinPage />,
+      reports: <PalmaresReport />,
       class_assignment: <ClassAssignmentManager />,
       "student-cards": <StudentCardGenerator />,
+      attendance:
+        user?.role === "Professeur" ? (
+          <ProfessorAttendance />
+        ) : (
+          <AttendancePage />
+        ),
     };
 
     const component = tabComponents[activeTab];

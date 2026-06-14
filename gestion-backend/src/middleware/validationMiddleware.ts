@@ -40,7 +40,7 @@ export interface ValidationResult {
 export const handleValidationErrors = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const errors = validationResult(req);
@@ -93,7 +93,7 @@ export const handleValidationErrors = (
 export const validateRequestBody = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (
@@ -131,65 +131,13 @@ export const validateRequestBody = (
 };
 
 /**
- * @middleware validateContentType
- * @description Valide le Content-Type de la requête
- * @param {string[]} allowedTypes - Types de contenu autorisés
- */
-export const validateContentType = (
-  allowedTypes: string[] = ["application/json"]
-) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    try {
-      if (
-        req.method === "POST" ||
-        req.method === "PUT" ||
-        req.method === "PATCH"
-      ) {
-        const contentType = req.get("Content-Type");
-
-        if (
-          !contentType ||
-          !allowedTypes.some((type) => contentType.includes(type))
-        ) {
-          const auditData = createSafeAuditData(extractAuditData(req));
-
-          createAuditLog({
-            ...auditData,
-            action: "UNSUPPORTED_MEDIA_TYPE",
-            entity: "Validation",
-            description: "Content-Type non supporté",
-            status: "ERROR",
-            metadata: {
-              contentType,
-              allowedTypes,
-              url: req.url,
-              method: req.method,
-            },
-          }).catch((err) => {});
-
-          return res.status(415).json({
-            success: false,
-            message: `Content-Type non supporté. Types autorisés: ${allowedTypes.join(", ")}`,
-            code: "UNSUPPORTED_MEDIA_TYPE",
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }
-      next();
-    } catch (error: any) {
-      next(error);
-    }
-  };
-};
-
-/**
  * @middleware sanitizeInput
  * @description Nettoie et sécurise les entrées utilisateur contre XSS et injections
  */
 export const sanitizeInput = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     // Sanitizer les paramètres de query
@@ -199,7 +147,7 @@ export const sanitizeInput = (
           (req.query as any)[key] = sanitizeString(req.query[key] as string);
         } else if (Array.isArray(req.query[key])) {
           (req.query as any)[key] = (req.query[key] as string[]).map(
-            sanitizeString
+            sanitizeString,
           );
         }
       });
@@ -279,7 +227,7 @@ const sanitizeObject = (obj: any): any => {
     !(obj instanceof File)
   ) {
     return Object.fromEntries(
-      Object.entries(obj).map(([key, value]) => [key, sanitizeObject(value)])
+      Object.entries(obj).map(([key, value]) => [key, sanitizeObject(value)]),
     );
   }
 
@@ -293,7 +241,7 @@ const sanitizeObject = (obj: any): any => {
 export const validatePagination = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { page, limit, sort, order } = req.query;
@@ -402,7 +350,7 @@ export const rateLimitByUser = (options: {
 
     for (const [key, data] of requests.entries()) {
       const validTimestamps = data.timestamps.filter(
-        (timestamp: number) => timestamp > windowStart
+        (timestamp: number) => timestamp > windowStart,
       );
       if (validTimestamps.length === 0) {
         requests.delete(key);
@@ -429,7 +377,7 @@ export const rateLimitByUser = (options: {
 
       // Filtrer les timestamps dans la fenêtre actuelle
       const recentTimestamps = userData.timestamps.filter(
-        (timestamp: number) => timestamp > windowStart
+        (timestamp: number) => timestamp > windowStart,
       );
 
       if (recentTimestamps.length >= max) {
@@ -511,7 +459,7 @@ export const validateFileUpload = (
     allowedMimeTypes?: string[];
     maxFiles?: number;
     required?: boolean;
-  } = {}
+  } = {},
 ) => {
   const {
     maxSize = 10 * 1024 * 1024, // 10MB par défaut
@@ -626,7 +574,7 @@ export const validateFileUpload = (
 export const validateUUID = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const uuidRegex =
@@ -649,7 +597,7 @@ export const validateUUID = (
     // Vérifier les IDs dans le body si nécessaire
     if (req.body && typeof req.body === "object") {
       const bodyIds = Object.keys(req.body).filter(
-        (key) => key.toLowerCase().includes("id") && req.body[key]
+        (key) => key.toLowerCase().includes("id") && req.body[key],
       );
 
       for (const key of bodyIds) {
@@ -719,7 +667,7 @@ export const validateEmail = (field: string = "email") => {
 export const logValidationSuccess = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (process.env.NODE_ENV === "development") {
@@ -728,4 +676,99 @@ export const logValidationSuccess = (
   } catch (error: any) {
     next();
   }
+};
+
+/**
+ * @middleware validateContentType
+ * @description Valide le Content-Type de la requête
+ * @param {string[]} allowedTypes - Types de contenu autorisés
+ */
+export const validateContentType = (
+  allowedTypes: string[] = ["application/json"],
+) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (
+        req.method === "POST" ||
+        req.method === "PUT" ||
+        req.method === "PATCH"
+      ) {
+        const contentType = req.get("Content-Type");
+
+        // CORRECTION: Vérifier si le content-type existe
+        if (!contentType) {
+          const auditData = createSafeAuditData(extractAuditData(req));
+
+          createAuditLog({
+            ...auditData,
+            action: "MISSING_CONTENT_TYPE",
+            entity: "Validation",
+            description: "Content-Type manquant",
+            status: "ERROR",
+            metadata: {
+              url: req.url,
+              method: req.method,
+            },
+          }).catch((err) => {});
+
+          return res.status(415).json({
+            success: false,
+            message: `Content-Type manquant. Types autorisés: ${allowedTypes.join(", ")}`,
+            code: "MISSING_CONTENT_TYPE",
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // CORRECTION: Normaliser le content-type pour la comparaison
+        const normalizedContentType = contentType
+          .split(";")[0]
+          .trim()
+          .toLowerCase();
+
+        // CORRECTION: Vérifier si le content-type est autorisé
+        const isAllowed = allowedTypes.some(
+          (type) =>
+            normalizedContentType === type.toLowerCase() ||
+            normalizedContentType.includes(type.toLowerCase()),
+        );
+
+        if (!isAllowed) {
+          const auditData = createSafeAuditData(extractAuditData(req));
+
+          createAuditLog({
+            ...auditData,
+            action: "UNSUPPORTED_MEDIA_TYPE",
+            entity: "Validation",
+            description: "Content-Type non supporté",
+            status: "ERROR",
+            metadata: {
+              contentType,
+              allowedTypes,
+              url: req.url,
+              method: req.method,
+            },
+          }).catch((err) => {});
+
+          return res.status(415).json({
+            success: false,
+            message: `Content-Type non supporté. Types autorisés: ${allowedTypes.join(", ")}`,
+            code: "UNSUPPORTED_MEDIA_TYPE",
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+      next();
+    } catch (error: any) {
+      next(error);
+    }
+  };
+};
+
+/**
+ * @middleware validateContentTypeFlexible
+ * @description Version flexible qui accepte JSON ou multipart/form-data
+ * Utiliser pour les routes qui peuvent recevoir des photos
+ */
+export const validateContentTypeFlexible = () => {
+  return validateContentType(["application/json", "multipart/form-data"]);
 };

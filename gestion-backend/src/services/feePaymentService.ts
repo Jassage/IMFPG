@@ -301,46 +301,6 @@ export class FeePaymentService {
   }
 
   /**
-   * Récupère les paiements avec filtres
-   */
-  static async getFeePayments(filters: { studentFeeId?: string }) {
-    const { studentFeeId } = filters;
-
-    console.log("📥 Consultation paiements - Filtre:", { studentFeeId });
-
-    const whereClause: any = {};
-    if (studentFeeId) whereClause.studentFeeId = studentFeeId;
-
-    const payments = await prisma.feePayment.findMany({
-      where: whereClause,
-      include: {
-        studentFee: {
-          include: {
-            student: {
-              select: {
-                firstName: true,
-                lastName: true,
-                studentCode: true,
-              },
-            },
-            feeStructure: true,
-          },
-        },
-      },
-      orderBy: { paymentDate: "desc" },
-    });
-
-    return {
-      success: true,
-      data: payments,
-      metadata: {
-        count: payments.length,
-        studentFeeFilter: studentFeeId || "none",
-      },
-    };
-  }
-
-  /**
    * Met à jour un paiement existant et recalcule automatiquement le solde
    */
   static async updateFeePayment(
