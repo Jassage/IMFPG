@@ -18,11 +18,11 @@ export const HelpSidebar: React.FC<HelpSidebarProps> = ({ sections }) => {
   );
 
   const academicSections = sections.filter((s) =>
-    ["subject", "grades", "schedule", "class_assignment"].includes(s.id)
+    ["subject", "grades", "schedule", "class_assignment", "attendance"].includes(s.id)
   );
 
   const documentSections = sections.filter((s) =>
-    ["transcripts"].includes(s.id)
+    ["transcripts", "reports"].includes(s.id)
   );
 
   const adminSections = sections.filter((s) =>

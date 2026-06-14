@@ -8,9 +8,6 @@ import {
   Download,
   Printer,
   HelpCircle,
-  BookOpen,
-  CheckCircle,
-  Image as ImageIcon,
   Grid,
   List,
   Filter,
@@ -41,10 +38,8 @@ import {
   Server,
   ShieldOff,
   Wrench,
-  Plus,
   Star,
   ExternalLink,
-  Video,
   MessageSquare,
   ThumbsUp,
   ThumbsDown,
@@ -67,126 +62,7 @@ import { HelpContentRenderer } from "./HelpContentRenderer";
 import { FAQSection } from "./FAQSection";
 import { QuickActions } from "./QuickActions";
 import { getHelpSectionsByRole, getSectionById } from "../data/helpData";
-// import { WorkflowsIndex } from "./WorkflowsIndex";
-// import { WorkflowGuide } from "./WorkflowGuide";
-// import { ImageGallery } from "./ImageGallery";
-// import { IMFPRoleBadge } from "./IMFPStyledComponents";
-import { HelpImage } from "./HelpImage";
 import { cn } from "@/lib/utils";
-// import { IMFP_WORKFLOWS } from "./imfp-workflows";
-
-// Images de galerie par section - DÉFINITION SÉCURISÉE
-const SECTION_IMAGES: Record<
-  string,
-  Array<{
-    src: string;
-    alt: string;
-    title: string;
-    description: string;
-    role: "admin" | "secretaire" | "professeur" | "directeur";
-    category: string;
-  }>
-> = {
-  dashboard: [
-    {
-      src: "admin/dashboard-annotated.png",
-      alt: "Tableau de bord principal",
-      title: "Tableau de bord",
-      description: "Vue d'ensemble avec KPI et statistiques",
-      role: "admin",
-      category: "Tableau de bord",
-    },
-    {
-      src: "admin/dashboard-widgets.png",
-      alt: "Widgets personnalisables",
-      title: "Widgets",
-      description: "Personnalisation des widgets",
-      role: "admin",
-      category: "Tableau de bord",
-    },
-  ],
-  students: [
-    {
-      src: "admin/students-list-annotated.png",
-      alt: "Liste des élèves",
-      title: "Liste des élèves",
-      description: "Gestion complète de la liste",
-      role: "admin",
-      category: "Élèves",
-    },
-    {
-      src: "admin/students-add-annotated.png",
-      alt: "Ajout d'un élève",
-      title: "Formulaire d'ajout",
-      description: "Formulaire d'inscription",
-      role: "admin",
-      category: "Élèves",
-    },
-    {
-      src: "admin/add-guardian-annotated.png",
-      alt: "Ajout d'un parent",
-      title: "Parents/Responsables",
-      description: "Gestion des responsables",
-      role: "admin",
-      category: "Élèves",
-    },
-  ],
-  grades: [
-    {
-      src: "professeur/grade-entry-annotated.png",
-      alt: "Saisie des notes",
-      title: "Grille de saisie",
-      description: "Interface de saisie des notes",
-      role: "professeur",
-      category: "Notes",
-    },
-    {
-      src: "professeur/grade-averages-annotated.png",
-      alt: "Calcul des moyennes",
-      title: "Calcul automatique",
-      description: "Moyennes et statistiques",
-      role: "professeur",
-      category: "Notes",
-    },
-  ],
-  announcements: [
-    {
-      src: "admin/announcements-create-annotated.png",
-      alt: "Création d'annonce",
-      title: "Nouvelle annonce",
-      description: "Formulaire de création",
-      role: "admin",
-      category: "Communication",
-    },
-    {
-      src: "admin/announcements-list-annotated.png",
-      alt: "Liste des annonces",
-      title: "Gestion des annonces",
-      description: "Publication et archivage",
-      role: "admin",
-      category: "Communication",
-    },
-  ],
-  // Sections par défaut pour éviter les erreurs
-  default: [
-    {
-      src: "admin/dashboard-annotated.png",
-      alt: "Capture d'écran exemple",
-      title: "Exemple",
-      description: "Capture d'écran annotée",
-      role: "admin",
-      category: "Général",
-    },
-  ],
-};
-
-// Helper function sécurisée
-const getSectionImages = (sectionId?: string) => {
-  if (!sectionId) return SECTION_IMAGES.default;
-
-  const images = SECTION_IMAGES[sectionId];
-  return images || SECTION_IMAGES.default;
-};
 
 export const HelpDashboard: React.FC = () => {
   const {
@@ -199,20 +75,18 @@ export const HelpDashboard: React.FC = () => {
     history,
     addToHistory,
     clearHistory,
+    bookmarks,
+    addBookmark,
+    removeBookmark,
   } = useHelp();
 
   const [filteredSections, setFilteredSections] = useState(
     getHelpSectionsByRole(userRole)
   );
-  const [activeView, setActiveView] = useState<
-    "guide" | "workflows" | "gallery"
-  >("guide");
-  const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [showQuickTour, setShowQuickTour] = useState(false);
   const [tourStep, setTourStep] = useState(0);
-  const [bookmarks, setBookmarks] = useState<string[]>([]);
 
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -254,11 +128,11 @@ export const HelpDashboard: React.FC = () => {
 
   // Gérer les signets
   const toggleBookmark = (sectionId: string) => {
-    setBookmarks((prev) =>
-      prev.includes(sectionId)
-        ? prev.filter((id) => id !== sectionId)
-        : [...prev, sectionId]
-    );
+    if (bookmarks.includes(sectionId)) {
+      removeBookmark(sectionId);
+    } else {
+      addBookmark(sectionId);
+    }
   };
 
   // Télécharger PDF
@@ -445,36 +319,6 @@ export const HelpDashboard: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Bouton nouveau */}
-                  <button
-                    onClick={() => {
-                      /* Ouvrir formulaire de feedback */
-                    }}
-                    className="p-2 hover:bg-blue-700 rounded-lg transition-colors group relative"
-                    title="Nouveau feedback"
-                  >
-                    <Plus className="h-5 w-5" />
-                    <span className="absolute right-full mr-2 top-1/2 -translate-y-1/2 bg-blue-800 text-white text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                      Nouveau feedback
-                    </span>
-                  </button>
-
-                  {/* Bouton signets */}
-                  {bookmarks.length > 0 && (
-                    <button
-                      onClick={() => {
-                        /* Naviguer vers les signets */
-                      }}
-                      className="p-2 hover:bg-blue-700 rounded-lg transition-colors group relative"
-                      title="Mes signets"
-                    >
-                      <BookmarkIcon className="h-5 w-5" />
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                        {bookmarks.length}
-                      </span>
-                    </button>
-                  )}
-
                   <button
                     onClick={() => window.print()}
                     className="p-2 hover:bg-blue-700 rounded-lg transition-colors"
@@ -509,13 +353,6 @@ export const HelpDashboard: React.FC = () => {
                   </button>
                   <ChevronRight className="h-3 w-3 mx-2" />
                   <span className="font-medium">{currentSection.title}</span>
-
-                  {activeView !== "guide" && (
-                    <>
-                      <ChevronRight className="h-3 w-3 mx-2" />
-                      <span className="capitalize">{activeView}</span>
-                    </>
-                  )}
                 </div>
               )}
             </div>
@@ -549,11 +386,7 @@ export const HelpDashboard: React.FC = () => {
                         return (
                           <button
                             key={bookmarkId}
-                            onClick={() => {
-                              setActiveSection(section.id);
-                              setActiveView("guide");
-                              setSelectedWorkflow(null);
-                            }}
+                            onClick={() => setActiveSection(section.id)}
                             className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-left hover:bg-gray-100 rounded"
                           >
                             <BookmarkIcon className="h-3 w-3 text-amber-500 flex-shrink-0" />
@@ -612,10 +445,7 @@ export const HelpDashboard: React.FC = () => {
                         {filteredSections.map((section) => (
                           <div
                             key={section.id}
-                            onClick={() => {
-                              setActiveSection(section.id);
-                              setActiveView("guide");
-                            }}
+                            onClick={() => setActiveSection(section.id)}
                             className="cursor-pointer bg-white border rounded-xl p-5 hover:border-blue-300 hover:shadow-lg transition-all group"
                           >
                             <div className="flex items-start gap-3">
@@ -702,49 +532,6 @@ export const HelpDashboard: React.FC = () => {
                             </p>
                           </div>
                         </div>
-
-                        {/* Onglets de navigation */}
-                        <div className="flex border rounded-lg overflow-hidden">
-                          <button
-                            onClick={() => {
-                              setActiveView("guide");
-                              setSelectedWorkflow(null);
-                            }}
-                            className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
-                              activeView === "guide"
-                                ? "bg-blue-600 text-white"
-                                : "bg-white text-gray-700 hover:bg-gray-100"
-                            }`}
-                          >
-                            <BookOpen className="h-4 w-4" />
-                            Guide
-                          </button>
-                          <button
-                            onClick={() => {
-                              setActiveView("workflows");
-                              setSelectedWorkflow(null);
-                            }}
-                            className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
-                              activeView === "workflows"
-                                ? "bg-blue-600 text-white"
-                                : "bg-white text-gray-700 hover:bg-gray-100"
-                            }`}
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                            Workflows
-                          </button>
-                          <button
-                            onClick={() => setActiveView("gallery")}
-                            className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
-                              activeView === "gallery"
-                                ? "bg-blue-600 text-white"
-                                : "bg-white text-gray-700 hover:bg-gray-100"
-                            }`}
-                          >
-                            <ImageIcon className="h-4 w-4" />
-                            Galerie
-                          </button>
-                        </div>
                       </div>
 
                       {/* Barre d'outils */}
@@ -780,10 +567,7 @@ export const HelpDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Contenu selon la vue active */}
-                    {activeView === "guide" && (
-                      <>
-                        {/* Actions rapides */}
+                    {/* Actions rapides */}
                         {currentSection.quickActions &&
                           currentSection.quickActions.length > 0 && (
                             <div className="mb-8">
@@ -857,12 +641,10 @@ export const HelpDashboard: React.FC = () => {
                             </div>
                           )}
 
-                        {/* FAQ liées */}
-                        <div className="mt-8">
-                          <FAQSection sectionId={currentSection.id} />
-                        </div>
-                      </>
-                    )}
+                    {/* FAQ liées */}
+                    <div className="mt-8">
+                      <FAQSection sectionId={currentSection.id} />
+                    </div>
                   </div>
                 ) : (
                   // Page d'accueil de l'aide
@@ -888,15 +670,6 @@ export const HelpDashboard: React.FC = () => {
                           >
                             <Star className="h-4 w-4" />
                             Visite guidée
-                          </button>
-                          <button
-                            onClick={() => {
-                              /* Ouvrir vidéo tutoriel */
-                            }}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                          >
-                            <Video className="h-4 w-4" />
-                            Tutoriel vidéo
                           </button>
                         </div>
                       </div>

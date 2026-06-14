@@ -673,6 +673,78 @@ export const generalFAQs: FAQItem[] = [
     tags: ["problème", "signalement", "rejet"],
     relatedTo: ["grades"],
   },
+
+  // FAQ Présences
+
+  {
+    id: "faq-attendance-001",
+    question: "Un professeur peut-il modifier l'appel après l'avoir enregistré ?",
+    answer:
+      "Oui. Il suffit de re-sélectionner la même matière, classe, date et horaire puis de cliquer sur 'Ouvrir l'appel' : la séance existante se recharge avec les statuts déjà enregistrés, modifiables et ré-enregistrables.",
+    category: "attendance",
+    tags: ["appel", "modification", "séance"],
+    relatedTo: ["attendance"],
+  },
+  {
+    id: "faq-attendance-002",
+    question: "Quelle est la différence entre le statut de présence et le statut de validation ?",
+    answer:
+      "Le statut de présence (Présent, Absent, Retard, Excusé, Malade...) décrit la présence de l'élève. Le statut de validation (En attente, Validé, Rejeté) indique si l'enregistrement a été contrôlé par l'administration. Les deux sont indépendants.",
+    category: "attendance",
+    tags: ["statut", "validation", "présence"],
+    relatedTo: ["attendance"],
+  },
+  {
+    id: "faq-attendance-003",
+    question: "Comment voir l'appel fait par un professeur pour une séance précise ?",
+    answer:
+      "Dans le module Présences, ouvrez l'onglet 'Séances', choisissez la date de la séance puis cliquez sur la séance pour déplier la liste des élèves et leur statut.",
+    category: "attendance",
+    tags: ["séance", "supervision", "appel"],
+    relatedTo: ["attendance"],
+  },
+
+  // FAQ Rapports (Palmarès / Notes totales)
+
+  {
+    id: "faq-reports-001",
+    question: "Quelle est la différence entre 'Palmarès' et 'Notes totales' ?",
+    answer:
+      "Le 'Palmarès' classe les élèves d'un niveau pour un seul contrôle. Les 'Notes totales' cumulent les notes de tous les contrôles publiés de l'année pour produire un classement général.",
+    category: "reports",
+    tags: ["palmarès", "notes totales", "classement"],
+    relatedTo: ["reports"],
+  },
+  {
+    id: "faq-reports-002",
+    question: "Pourquoi le palmarès affiche 'Aucune note trouvée pour ces critères' ?",
+    answer:
+      "Aucune note ne correspond au statut sélectionné pour ce niveau, ce contrôle et cette année. Vérifiez que les notes ont été publiées, ou essayez le statut 'Toutes les notes'.",
+    category: "reports",
+    tags: ["palmarès", "erreur", "notes"],
+    relatedTo: ["reports"],
+  },
+
+  // FAQ Tableau de bord Étudiant
+
+  {
+    id: "faq-student-001",
+    question: "Pourquoi mes notes n'apparaissent pas dans mon tableau de bord ?",
+    answer:
+      "Seules les notes publiées par l'administration apparaissent dans 'Mes Notes'. Une note soumise ou approuvée mais non encore publiée n'est pas encore visible par l'élève.",
+    category: "dashboard",
+    tags: ["notes", "publication", "étudiant"],
+    relatedTo: ["dashboard"],
+  },
+  {
+    id: "faq-student-002",
+    question: "Comment voir mon emploi du temps ?",
+    answer:
+      "Dans votre tableau de bord, cliquez sur l'onglet 'Emploi du temps' pour voir tous vos cours de l'année. L'onglet 'Aperçu' affiche également votre prochain cours.",
+    category: "dashboard",
+    tags: ["emploi du temps", "cours", "étudiant"],
+    relatedTo: ["dashboard"],
+  },
 ];
 
 // ==================== AIDE POUR ADMIN ====================
@@ -4124,6 +4196,261 @@ export const adminHelpSections: HelpSection[] = [
       },
     ],
   },
+  {
+    id: "attendance",
+    title: "Présences",
+    description: "Appel et suivi des présences",
+    icon: "ClipboardCheck",
+    color: "bg-emerald-100 text-emerald-800",
+    permissions: [PERMISSIONS.VIEW_ATTENDANCE, PERMISSIONS.MANAGE_ATTENDANCE],
+    content: [
+      {
+        id: "attendance-overview",
+        title: "Vue d'ensemble du module Présences",
+        type: "text",
+        content: "Le module Présences regroupe quatre onglets : 'Liste' (toutes les présences enregistrées, avec filtres par classe, année académique, statut et validation), 'Séances' (supervision des appels faits par les professeurs, séance par séance), 'Scanner' (enregistrement rapide par code étudiant) et 'Statistiques' (taux de présence du jour et par classe). Utilisez les filtres en haut de page pour cibler une classe ou une période, et le bouton 'Exporter' pour générer un export des présences affichées.",
+        targetRole: ["Admin", "Directeur"],
+        importance: "medium",
+      },
+      {
+        id: "attendance-take-roll",
+        title: "Faire l'appel (professeur)",
+        type: "steps",
+        content: [
+          {
+            step: 1,
+            title: "Choisir la matière",
+            description: "Le professeur sélectionne le cours pour lequel il veut faire l'appel.",
+            action: "Menu déroulant 'Matière'",
+          },
+          {
+            step: 2,
+            title: "Choisir la classe",
+            description: "Seules les classes correspondant au niveau de la matière choisie s'affichent.",
+            action: "Menu déroulant 'Classe'",
+          },
+          {
+            step: 3,
+            title: "Définir la date et l'horaire",
+            description: "La date du jour est proposée par défaut, l'heure de début et de fin de la séance peuvent être ajustées.",
+            action: "Champs 'Date', 'Heure de début', 'Heure de fin'",
+          },
+          {
+            step: 4,
+            title: "Ouvrir l'appel",
+            description: "Le système charge la liste des élèves actifs de la classe.",
+            action: "Cliquer sur 'Ouvrir l'appel'",
+          },
+          {
+            step: 5,
+            title: "Marquer la présence de chaque élève",
+            description: "Pour chaque élève : Présent, Absent, Retard ou Excusé. Le bouton 'Tout marquer présent' applique le statut Présent à toute la classe en un clic.",
+            action: "Cliquer sur le statut souhaité pour chaque élève",
+          },
+          {
+            step: 6,
+            title: "Enregistrer l'appel",
+            description: "Valide et enregistre la présence de tous les élèves de la séance.",
+            action: "Cliquer sur 'Enregistrer l'appel'",
+          },
+        ],
+        targetRole: ["Professeur"],
+        importance: "high",
+      },
+      {
+        id: "attendance-supervision",
+        title: "Superviser les séances d'appel",
+        type: "steps",
+        content: [
+          {
+            step: 1,
+            title: "Ouvrir l'onglet Séances",
+            description: "Dans le module Présences, basculer sur l'onglet 'Séances'.",
+            action: "Cliquer sur l'onglet 'Séances'",
+          },
+          {
+            step: 2,
+            title: "Choisir la date",
+            description: "Sélectionner la journée à superviser (et éventuellement filtrer par classe en haut de page).",
+            action: "Champ 'Date'",
+          },
+          {
+            step: 3,
+            title: "Consulter la liste des séances",
+            description: "Chaque séance affiche la classe, la matière, l'horaire et le professeur qui a fait l'appel.",
+          },
+          {
+            step: 4,
+            title: "Déplier le détail",
+            description: "Cliquer sur une séance affiche la liste des élèves avec leur statut (Présent, Absent, Retard, Excusé, Malade) et le total par statut.",
+            action: "Cliquer sur la séance pour la déplier",
+          },
+        ],
+        targetRole: ["Admin", "Directeur"],
+        importance: "medium",
+      },
+      {
+        id: "attendance-validation",
+        title: "Statuts de présence et validation",
+        type: "text",
+        content: "Chaque présence porte un statut : Présent, Absent, Retard, Excusé, Malade (les statuts Congé, Suspendu et Autre existent aussi pour des cas particuliers). Indépendamment de ce statut, chaque enregistrement a un statut de validation : En attente, Validé ou Rejeté. Depuis l'onglet 'Liste', activer 'Sélection multiple' pour choisir plusieurs présences en attente puis cliquer sur 'Valider' pour les valider en lot.",
+        targetRole: ["Admin", "Directeur", "Secretaire"],
+        importance: "medium",
+      },
+      {
+        id: "attendance-export-tip",
+        title: "Exporter les présences",
+        type: "tip",
+        content: "Le bouton 'Exporter' (en haut de la liste) génère un export des présences actuellement affichées, en tenant compte des filtres appliqués (classe, période, statut). Affinez vos filtres avant d'exporter pour obtenir un rapport ciblé.",
+        targetRole: ["Admin", "Directeur", "Secretaire"],
+        importance: "low",
+      },
+    ],
+    commonIssues: [
+      {
+        id: "issue-attendance-001",
+        problem: "Le professeur ne voit aucune matière dans 'Faire l'appel'",
+        solution: "Aucune affectation de cours active n'existe pour ce professeur sur l'année académique en cours.",
+        fixSteps: [
+          "Aller dans Affectations (Class Assignments)",
+          "Vérifier qu'une affectation Active existe pour ce professeur, cette matière et l'année académique courante",
+          "Créer ou réactiver l'affectation si nécessaire",
+        ],
+        preventTips: [
+          "Affecter les professeurs à leurs cours en début d'année académique",
+          "Vérifier qu'une année académique est bien marquée comme courante",
+        ],
+      },
+      {
+        id: "issue-attendance-002",
+        problem: "Impossible d'ouvrir l'appel : 'Aucune année académique courante définie'",
+        solution: "Aucune année académique n'est marquée comme année courante dans le système.",
+        fixSteps: [
+          "Aller dans Gestion des années académiques",
+          "Marquer l'année académique en cours comme 'Courante'",
+          "Recharger la page Présences",
+        ],
+        preventTips: [
+          "Définir l'année académique courante dès l'ouverture de chaque nouvelle année scolaire",
+        ],
+      },
+    ],
+  },
+  {
+    id: "reports",
+    title: "Rapports",
+    description: "Palmarès et notes totales",
+    icon: "FileBarChart",
+    color: "bg-amber-100 text-amber-800",
+    permissions: [PERMISSIONS.GENERATE_REPORTS],
+    content: [
+      {
+        id: "reports-overview",
+        title: "Palmarès et Notes totales",
+        type: "text",
+        content: "Le module Rapports génère deux types de classements pour un niveau donné : le 'Palmarès' (classement des élèves pour un contrôle précis) et les 'Notes totales' (classement cumulé sur l'ensemble des contrôles de l'année). Les deux modes utilisent les mêmes filtres : année académique, niveau de classe et statut des notes prises en compte (publiées, approuvées ou toutes).",
+        targetRole: ["Admin", "Directeur"],
+        importance: "medium",
+      },
+      {
+        id: "reports-generate-palmares",
+        title: "Générer un palmarès par contrôle",
+        type: "steps",
+        content: [
+          {
+            step: 1,
+            title: "Choisir l'onglet 'Par contrôle'",
+            description: "C'est le mode sélectionné par défaut.",
+          },
+          {
+            step: 2,
+            title: "Sélectionner l'année académique",
+            description: "Choisir l'année sur laquelle porte le classement.",
+            action: "Menu déroulant 'Année académique'",
+          },
+          {
+            step: 3,
+            title: "Sélectionner le niveau",
+            description: "Choisir le niveau de classe à classer (ex : 9ème A.F, Rhéto, Terminale...).",
+            action: "Menu déroulant 'Niveau'",
+          },
+          {
+            step: 4,
+            title: "Sélectionner le contrôle",
+            description: "Choisir le contrôle concerné (Premier à Quatrième contrôle).",
+            action: "Menu déroulant 'Contrôle'",
+          },
+          {
+            step: 5,
+            title: "Choisir le statut des notes",
+            description: "Notes publiées (par défaut), notes approuvées, ou toutes les notes.",
+            action: "Menu déroulant 'Statut des notes'",
+          },
+          {
+            step: 6,
+            title: "Générer le classement",
+            description: "Le tableau affiche chaque élève avec ses notes par matière, son total, sa moyenne et son rang.",
+            action: "Cliquer sur 'Générer'",
+          },
+        ],
+        targetRole: ["Admin", "Directeur"],
+        importance: "high",
+      },
+      {
+        id: "reports-generate-cumulatif",
+        title: "Générer les notes totales (classement cumulé)",
+        type: "steps",
+        content: [
+          {
+            step: 1,
+            title: "Choisir l'onglet 'Notes totales'",
+            description: "Bascule le mode de génération sur le cumul de l'année.",
+          },
+          {
+            step: 2,
+            title: "Sélectionner l'année académique et le niveau",
+            description: "Mêmes filtres que pour le palmarès par contrôle. Le filtre 'Contrôle' disparaît : tous les contrôles publiés de l'année sont pris en compte.",
+          },
+          {
+            step: 3,
+            title: "Choisir le statut des notes",
+            description: "Notes publiées, approuvées, ou toutes.",
+          },
+          {
+            step: 4,
+            title: "Générer le classement",
+            description: "Le tableau cumule les notes de tous les contrôles de l'année pour calculer le total, la moyenne générale et le rang final de chaque élève.",
+            action: "Cliquer sur 'Générer'",
+          },
+        ],
+        targetRole: ["Admin", "Directeur"],
+        importance: "high",
+      },
+      {
+        id: "reports-export-tip",
+        title: "Exporter en Excel ou PDF",
+        type: "tip",
+        content: "Une fois le classement généré, utiliser 'Exporter Excel' ou 'Exporter PDF' pour télécharger le rapport au format de l'établissement (en-tête avec le titre du rapport, barème par matière, total, moyenne et rang de chaque élève). Le nom du fichier reprend automatiquement le niveau, le contrôle (ou 'notes totales') et l'année.",
+        targetRole: ["Admin", "Directeur"],
+        importance: "low",
+      },
+    ],
+    commonIssues: [
+      {
+        id: "issue-reports-001",
+        problem: "'Aucune note trouvée pour ces critères'",
+        solution: "Aucune note ne correspond au statut sélectionné pour ce niveau, ce contrôle et cette année.",
+        fixSteps: [
+          "Vérifier que les notes du professeur ont bien été soumises, approuvées puis publiées",
+          "Essayer le statut 'Toutes les notes' pour voir si des notes existent en brouillon ou en attente",
+          "Vérifier que le niveau et l'année académique sélectionnés sont corrects",
+        ],
+        preventTips: [
+          "Suivre le workflow de validation des notes (soumission, approbation, publication) avant la fin de chaque période de contrôle",
+        ],
+      },
+    ],
+  },
 ];
 
 // ==================== DONNÉES POUR AUTRES RÔLES ====================
@@ -5518,6 +5845,174 @@ export const professeurHelpSections: HelpSection[] = [
       },
     ],
   },
+  {
+    id: "attendance",
+    title: "Présences",
+    description: "Faire l'appel de vos classes",
+    icon: "ClipboardCheck",
+    color: "bg-emerald-100 text-emerald-800",
+    permissions: [PERMISSIONS.MANAGE_ATTENDANCE],
+    content: [
+      {
+        id: "attendance-take-roll",
+        title: "Faire l'appel",
+        type: "steps",
+        content: [
+          {
+            step: 1,
+            title: "Choisir la matière",
+            description: "Sélectionnez le cours pour lequel vous voulez faire l'appel.",
+            action: "Menu déroulant 'Matière'",
+          },
+          {
+            step: 2,
+            title: "Choisir la classe",
+            description: "Seules les classes correspondant au niveau de la matière choisie s'affichent.",
+            action: "Menu déroulant 'Classe'",
+          },
+          {
+            step: 3,
+            title: "Définir la date et l'horaire",
+            description: "La date du jour est proposée par défaut. Ajustez l'heure de début et de fin de la séance si besoin.",
+            action: "Champs 'Date', 'Heure de début', 'Heure de fin'",
+          },
+          {
+            step: 4,
+            title: "Ouvrir l'appel",
+            description: "Le système charge la liste des élèves actifs de la classe sélectionnée.",
+            action: "Cliquer sur 'Ouvrir l'appel'",
+          },
+          {
+            step: 5,
+            title: "Marquer la présence de chaque élève",
+            description: "Pour chaque élève, choisissez le statut Présent, Absent, Retard ou Excusé. Le bouton 'Tout marquer présent' applique le statut Présent à toute la classe en un clic.",
+            action: "Cliquer sur le statut souhaité pour chaque élève",
+          },
+          {
+            step: 6,
+            title: "Enregistrer l'appel",
+            description: "Valide et enregistre la présence de tous les élèves de la séance.",
+            action: "Cliquer sur 'Enregistrer l'appel'",
+          },
+        ],
+        targetRole: ["Professeur"],
+        importance: "high",
+      },
+      {
+        id: "attendance-statuses-prof",
+        title: "Corriger un appel",
+        type: "tip",
+        content: "Si vous devez corriger des statuts après l'enregistrement, sélectionnez à nouveau la même matière, classe, date et horaire, puis cliquez sur 'Ouvrir l'appel'. La séance existante se recharge avec les statuts déjà enregistrés, modifiez-les et enregistrez de nouveau.",
+        targetRole: ["Professeur"],
+        importance: "medium",
+      },
+    ],
+    commonIssues: [
+      {
+        id: "issue-attendance-prof-001",
+        problem: "'Aucun cours ne vous est affecté pour le moment'",
+        solution: "Aucune affectation de cours active n'existe pour vous sur l'année académique en cours.",
+        fixSteps: [
+          "Contacter l'administration pour vérifier vos affectations de cours",
+          "Vérifier qu'une année académique est marquée comme courante",
+        ],
+        preventTips: [
+          "Signaler rapidement toute absence d'affectation en début d'année",
+        ],
+      },
+    ],
+  },
+];
+
+// ==================== AIDE POUR ÉTUDIANT ====================
+export const studentHelpSections: HelpSection[] = [
+  {
+    id: "dashboard",
+    title: "Mon tableau de bord",
+    description: "Notes, cours et emploi du temps",
+    icon: "Home",
+    color: "bg-violet-100 text-violet-800",
+    permissions: [PERMISSIONS.VIEW_DASHBOARD],
+    content: [
+      {
+        id: "dashboard-overview",
+        title: "Vue d'ensemble",
+        type: "text",
+        content: "Le tableau de bord se compose de quatre onglets : 'Aperçu' (moyenne générale, nombre de matières suivies, prochain cours, notes publiées, progression sur l'année, dernières annonces et événements à venir), 'Mes Cours' (liste des matières suivies), 'Mes Notes' (détail des notes publiées par contrôle) et 'Emploi du temps' (planning de tous vos cours de l'année). La jauge en haut de page affiche votre moyenne générale sur 20.",
+        targetRole: ["Student"],
+        importance: "medium",
+      },
+      {
+        id: "dashboard-courses",
+        title: "Mes Cours",
+        type: "text",
+        content: "L'onglet 'Mes Cours' liste toutes les matières auxquelles vous êtes inscrit pour l'année académique en cours, avec le professeur en charge de chaque matière.",
+        targetRole: ["Student"],
+        importance: "low",
+      },
+      {
+        id: "dashboard-grades",
+        title: "Consulter mes notes",
+        type: "steps",
+        content: [
+          {
+            step: 1,
+            title: "Ouvrir l'onglet Mes Notes",
+            description: "Affiche le résumé statistique de vos notes publiées (moyenne, matières validées).",
+          },
+          {
+            step: 2,
+            title: "Filtrer par statut",
+            description: "Le filtre de statut permet d'affiner les notes affichées.",
+          },
+          {
+            step: 3,
+            title: "Filtrer par type de contrôle",
+            description: "Les onglets 'Toutes les notes', 'Premier contrôle', 'Deuxième contrôle'... affichent vos notes par évaluation, avec un résumé par contrôle (moyenne sur 20 pour chaque type de contrôle).",
+          },
+          {
+            step: 4,
+            title: "Actualiser",
+            description: "Si une note vient d'être publiée par l'administration, cliquez sur 'Actualiser' pour la voir apparaître.",
+            action: "Cliquer sur 'Actualiser'",
+          },
+        ],
+        targetRole: ["Student"],
+        importance: "high",
+      },
+      {
+        id: "dashboard-schedule",
+        title: "Emploi du temps",
+        type: "text",
+        content: "L'onglet 'Emploi du temps' affiche tous vos cours de l'année académique en cours (matière, professeur, jour, horaire). L'onglet 'Aperçu' affiche en plus un raccourci vers votre prochain cours du jour.",
+        targetRole: ["Student"],
+        importance: "medium",
+      },
+      {
+        id: "dashboard-announcements-tip",
+        title: "Annonces et événements",
+        type: "tip",
+        content: "L'onglet 'Aperçu' affiche les dernières annonces de l'établissement ainsi que les événements à venir. Utilisez le filtre par catégorie pour ne voir que les événements, par exemple.",
+        targetRole: ["Student"],
+        importance: "low",
+      },
+    ],
+    commonIssues: [
+      {
+        id: "issue-student-001",
+        problem: "Mes notes n'apparaissent pas",
+        solution: "Seules les notes publiées par l'administration sont visibles par les élèves.",
+        fixSteps: [
+          "Vérifier l'onglet 'Mes Notes' après une nouvelle publication de l'administration",
+          "Cliquer sur 'Actualiser' pour recharger les données",
+          "Contacter votre professeur ou l'administration si une note attendue manque toujours",
+        ],
+        preventTips: [
+          "Les notes en brouillon, soumises ou approuvées ne sont pas encore publiées : c'est normal qu'elles ne soient pas visibles",
+        ],
+      },
+    ],
+  },
 ];
 
 // ==================== FONCTIONS D'ACCÈS ====================
@@ -5531,6 +6026,8 @@ export const getHelpSectionsByRole = (role: UserRole): HelpSection[] => {
       return parentHelpSections;
     case "Professeur":
       return professeurHelpSections;
+    case "Student":
+      return studentHelpSections;
     case "Directeur":
       return adminHelpSections.filter(
         (section) => !["audit-logs", "users"].includes(section.id)
