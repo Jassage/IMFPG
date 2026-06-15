@@ -52,6 +52,7 @@ const app = express();
 // Origines autorisées : valeurs par défaut pour le dev local,
 // surchargeables en prod via la variable CORS_ORIGINS (liste séparée par des virgules).
 const defaultOrigins = [
+  "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:5000",
   "http://127.0.0.1:3000",

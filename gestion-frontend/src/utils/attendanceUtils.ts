@@ -88,6 +88,10 @@ export const formatDate = (
 
 // Formater une heure
 export const formatTime = (time: string): string => {
+  if (!time) return time;
+  if (time.includes("T")) {
+    return format(new Date(time), "HH:mm", { locale: fr });
+  }
   return time;
 };
 

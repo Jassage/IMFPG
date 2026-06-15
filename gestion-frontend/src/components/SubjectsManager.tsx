@@ -495,7 +495,7 @@ export const SubjectsManager = () => {
   // Statistiques
   const stats = useMemo(() => {
     const total = subjects.length;
-    const active = subjects.filter((s) => s.isActive).length;
+    const active = subjects.filter((s) => s.isActive ?? true).length;
     const avgCoefficient =
       total > 0
         ? subjects.reduce((sum, s) => sum + s.coefficient, 0) / total
@@ -1157,7 +1157,7 @@ export const SubjectsManager = () => {
                       key={subject.id}
                       className={cn(
                         "hover:bg-muted/30 transition-colors",
-                        !subject.isActive && "opacity-60"
+                        subject.isActive === false && "opacity-60"
                       )}
                     >
                       <TableCell>

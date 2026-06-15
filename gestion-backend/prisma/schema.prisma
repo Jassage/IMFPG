@@ -775,7 +775,7 @@ model SystemSettings {
   maxGrade              Int     @default(100)
 
   currency       String @default("HTG")
-  currencySymbol String @default("G")
+  currencySymbol String @default("HTG")
   taxRate        Float  @default(0)
   latePaymentFee Float  @default(500)
   paymentMethods Json   @default("[\"Espèces\", \"MonCash\", \"NatCash\", \"Virement bancaire\", \"Chèque\"]")

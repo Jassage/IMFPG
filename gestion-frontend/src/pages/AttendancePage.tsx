@@ -176,7 +176,7 @@ export const AttendancePage: React.FC = () => {
     if (activeTab === "stats") {
       loadStats();
     }
-  }, [selectedAcademicYearId, selectedClassId]);
+  }, [activeTab, selectedAcademicYearId, selectedClassId]);
 
   const loadAttendances = async () => {
     try {

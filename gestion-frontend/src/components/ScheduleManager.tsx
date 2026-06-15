@@ -511,6 +511,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     error,
     loading,
     fetchClassTimetable,
+    fetchSchedules,
     createSchedule,
     updateSchedule,
     deleteSchedule,
@@ -625,6 +626,16 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     loadInitialData();
   }, [propClassId]);
 
+  // Sélectionner automatiquement l'année académique en cours si aucune n'est choisie
+  useEffect(() => {
+    if (!propAcademicYearId && !selectedAcademicYearId && academicYears.length > 0) {
+      const currentYear = academicYears.find((year) => year.isCurrent);
+      if (currentYear) {
+        setSelectedAcademicYearId(currentYear.id);
+      }
+    }
+  }, [academicYears, propAcademicYearId, selectedAcademicYearId]);
+
   // Charger les assignations par niveau
   useEffect(() => {
     if (selectedClassId && selectedClassId !== "all") {
@@ -635,6 +646,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       }
     } else {
       fetchAssignments();
+      fetchSchedules(
+        selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {}
+      );
     }
   }, [selectedClassId, selectedAcademicYearId, classes]);
 
