@@ -35,6 +35,7 @@ import { HelpDashboard } from "./help-section/components/HelpDashboard";
 import { HelpLauncher } from "./help-section/HelpLauncher";
 import LockPage from "./pages/LockPage";
 import { useAutoLock } from "./hooks/useAutoLock";
+import { AutoLockNotification } from "./components/AutoLockNotification";
 import { DataInitializer } from "./components/DataInitializer";
 
 const queryClient = new QueryClient();
@@ -305,7 +306,7 @@ const App = () => {
 
   const navigate = useNavigate();
 
-  useAutoLock();
+  const { showWarning, secondsRemaining, resetTimeouts } = useAutoLock();
   <DataInitializer />;
   // Initialisation des stores
   useEffect(() => {
@@ -450,6 +451,11 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster title={""} description={""} variant={""} />
+        <AutoLockNotification
+          visible={showWarning}
+          secondsRemaining={secondsRemaining}
+          onExtend={resetTimeouts}
+        />
         <AppInitializer>
           <AppContent />
         </AppInitializer>

@@ -135,7 +135,7 @@ router.post(
 /**
  * Routes publiques (sans authentification)
  */
-router.post("/verify-unlock", verifyPasswordForUnlock);
+router.post("/verify-unlock", loginLimiter, verifyPasswordForUnlock);
 
 /**
  * Routes protégées (avec authentification)

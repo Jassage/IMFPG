@@ -78,7 +78,7 @@ export const useAutoLock = () => {
         toast.info(
           "L'application a été verrouillée après 15 minutes d'inactivité."
         );
-        navigate("/lock", { replace: true });
+        navigate("/lock", { replace: true, state: { from: location } });
       }
     }, INACTIVITY_TIMEOUT);
   }, [shouldTrackActivity, updateActivity, lock, isLocked, navigate]);
@@ -93,7 +93,7 @@ export const useAutoLock = () => {
   // Vérifier si on doit rediriger vers la page de verrouillage
   useEffect(() => {
     if (isLocked && location.pathname !== "/lock" && shouldTrackActivity()) {
-      navigate("/lock", { replace: true });
+      navigate("/lock", { replace: true, state: { from: location } });
     }
   }, [isLocked, location.pathname, navigate, shouldTrackActivity]);
 

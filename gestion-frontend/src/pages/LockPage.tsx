@@ -1,5 +1,5 @@
 // pages/LockPage.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useLockStore } from "@/store/lockStore";
@@ -13,6 +13,29 @@ import { verifyPasswordForUnlock } from "@/services/apiService";
 import { Badge } from "@/components/ui/badge";
 // ... autres imports
 
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
+// Dashboard par défaut selon le rôle (utilisé si aucune page d'origine n'est connue)
+const getDefaultPathForRole = (role?: string) => {
+  switch (role) {
+    case "Admin":
+      return "/admin/dashboard";
+    case "Secretaire":
+      return "/secretary/dashboard";
+    case "Student":
+      return "/student/dashboard";
+    case "Professeur":
+      return "/professor/dashboard";
+    case "Directeur":
+      return "/director/dashboard";
+    case "Comptable":
+      return "/comptable/dashboard";
+    default:
+      return "/login";
+  }
+};
+
 const LockPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -24,36 +47,53 @@ const LockPage = () => {
   const [attempts, setAttempts] = useState(0);
   const [isLockedOut, setIsLockedOut] = useState(false);
   const [lockoutTime, setLockoutTime] = useState(0);
+  const lockoutIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Vérifier si l'utilisateur est verrouillé temporairement
+  // Démarre (ou reprend) le compte à rebours de blocage temporaire
+  const startLockoutCountdown = useCallback((endTime: number) => {
+    if (lockoutIntervalRef.current) clearInterval(lockoutIntervalRef.current);
+
+    setIsLockedOut(true);
+    setLockoutTime(Math.ceil((endTime - Date.now()) / 1000));
+
+    lockoutIntervalRef.current = setInterval(() => {
+      const remaining = Math.ceil((endTime - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setIsLockedOut(false);
+        setAttempts(0);
+        localStorage.removeItem("lockoutEnd");
+        localStorage.removeItem("failedAttempts");
+        if (lockoutIntervalRef.current) clearInterval(lockoutIntervalRef.current);
+      } else {
+        setLockoutTime(remaining);
+      }
+    }, 1000);
+  }, []);
+
+  // Restaurer l'état des tentatives échouées / blocage temporaire au chargement
   useEffect(() => {
+    const storedAttempts = parseInt(
+      localStorage.getItem("failedAttempts") || "0",
+      10
+    );
+    setAttempts(storedAttempts);
+
     const lockoutEnd = localStorage.getItem("lockoutEnd");
     if (lockoutEnd) {
       const endTime = parseInt(lockoutEnd);
       if (Date.now() < endTime) {
-        setIsLockedOut(true);
-        setLockoutTime(Math.ceil((endTime - Date.now()) / 1000));
-
-        // Mettre à jour le compte à rebours
-        const interval = setInterval(() => {
-          const remaining = Math.ceil((endTime - Date.now()) / 1000);
-          if (remaining <= 0) {
-            setIsLockedOut(false);
-            localStorage.removeItem("lockoutEnd");
-            localStorage.removeItem("failedAttempts");
-            clearInterval(interval);
-          } else {
-            setLockoutTime(remaining);
-          }
-        }, 1000);
-
-        return () => clearInterval(interval);
+        startLockoutCountdown(endTime);
       } else {
         localStorage.removeItem("lockoutEnd");
         localStorage.removeItem("failedAttempts");
+        setAttempts(0);
       }
     }
-  }, []);
+
+    return () => {
+      if (lockoutIntervalRef.current) clearInterval(lockoutIntervalRef.current);
+    };
+  }, [startLockoutCountdown]);
 
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,14 +115,30 @@ const LockPage = () => {
       // Déverrouiller l'application
       unlock();
 
+      // Réinitialiser les tentatives échouées
+      setAttempts(0);
+      localStorage.removeItem("failedAttempts");
+      localStorage.removeItem("lockoutEnd");
+
       toast.success("Vous pouvez continuer à utiliser l'application.");
 
-      // Retourner à la page précédente
-      const from = location.state?.from?.pathname || "/admin";
+      // Retourner à la page précédente, sinon au dashboard correspondant au rôle
+      const from =
+        location.state?.from?.pathname || getDefaultPathForRole(user?.role);
       navigate(from, { replace: true });
     } catch (err: any) {
       setError(err.message || "Échec du déverrouillage");
       setPassword("");
+
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+      localStorage.setItem("failedAttempts", String(newAttempts));
+
+      if (newAttempts >= MAX_ATTEMPTS) {
+        const endTime = Date.now() + LOCKOUT_DURATION_MS;
+        localStorage.setItem("lockoutEnd", String(endTime));
+        startLockoutCountdown(endTime);
+      }
     } finally {
       setLoading(false);
     }
