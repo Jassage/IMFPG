@@ -328,6 +328,7 @@ export interface FeeStructure {
   id: string;
   name: string;
   academicYear: string;
+  classLevel?: string | null;
   amount: number;
   description?: string;
   isActive: boolean;
@@ -346,6 +347,9 @@ export interface StudentFee {
   studentId: string;
   academicYearId: string;
   feeStructureId: string;
+  originalAmount: number;
+  discountAmount: number;
+  discountReason?: string | null;
   totalAmount: number;
   paidAmount: number;
   remainingAmount: number;

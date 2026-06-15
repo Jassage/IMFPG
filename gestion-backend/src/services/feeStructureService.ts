@@ -4,7 +4,7 @@
  * @module Services/FeeStructures
  */
 
-import { PrismaClient } from "../../generated/prisma";
+import { PrismaClient, ClassLevel } from "../../generated/prisma";
 
 const prisma = new PrismaClient();
 
@@ -20,6 +20,7 @@ export interface FeeStructureFilters {
 export interface CreateFeeStructureData {
   name: string;
   academicYear: string;
+  classLevel?: ClassLevel | null;
   amount: number;
   description?: string;
   isActive?: boolean;
@@ -28,6 +29,7 @@ export interface CreateFeeStructureData {
 export interface UpdateFeeStructureData {
   name?: string;
   academicYear?: string;
+  classLevel?: ClassLevel | null;
   amount?: number;
   description?: string;
   isActive?: boolean;
@@ -173,7 +175,14 @@ export class FeeStructureService {
    */
   async createFeeStructure(data: CreateFeeStructureData) {
     try {
-      const { name, academicYear, amount, description, isActive = true } = data;
+      const {
+        name,
+        academicYear,
+        classLevel,
+        amount,
+        description,
+        isActive = true,
+      } = data;
 
       console.log("📥 Données reçues pour création:", data);
 
@@ -202,11 +211,12 @@ export class FeeStructureService {
             message: "Le montant doit être un nombre positif"}};
       }
 
-      // Vérification de l'unicité
+      // Vérification de l'unicité (nom + année + niveau)
       const existingStructure = await prisma.feeStructure.findFirst({
         where: {
           name,
-          academicYear}});
+          academicYear,
+          classLevel: classLevel ?? null}});
 
       if (existingStructure) {
         return {
@@ -223,6 +233,7 @@ export class FeeStructureService {
         data: {
           name,
           academicYear,
+          classLevel: classLevel ?? null,
           amount: amountValue,
           description,
           isActive}});
@@ -245,7 +256,8 @@ export class FeeStructureService {
    */
   async updateFeeStructure(id: string, data: UpdateFeeStructureData) {
     try {
-      const { name, academicYear, amount, description, isActive } = data;
+      const { name, academicYear, classLevel, amount, description, isActive } =
+        data;
 
       console.log("📥 Mise à jour structure:", { id, data });
 
@@ -262,12 +274,19 @@ export class FeeStructureService {
             message: `Aucune structure de frais trouvée avec l'ID: ${id}`}};
       }
 
-      // Vérification d'unicité si l'année académique est modifiée
-      if (academicYear && academicYear !== existingStructure.academicYear) {
+      // Vérification d'unicité si l'année académique ou le niveau est modifié
+      if (
+        (academicYear && academicYear !== existingStructure.academicYear) ||
+        (classLevel !== undefined && classLevel !== existingStructure.classLevel)
+      ) {
         const duplicateStructure = await prisma.feeStructure.findFirst({
           where: {
             name: name || existingStructure.name,
-            academicYear,
+            academicYear: academicYear || existingStructure.academicYear,
+            classLevel:
+              classLevel !== undefined
+                ? classLevel ?? null
+                : existingStructure.classLevel,
             id: { not: id }}});
 
         if (duplicateStructure) {
@@ -276,7 +295,7 @@ export class FeeStructureService {
             message: "Conflit de données",
             error: "DUPLICATE_ERROR",
             details: {
-              message: `Une structure de frais avec ce nom existe déjà pour l'année ${academicYear}`}};
+              message: `Une structure de frais avec ce nom existe déjà pour l'année ${academicYear || existingStructure.academicYear}`}};
         }
       }
 
@@ -298,6 +317,7 @@ export class FeeStructureService {
 
       if (name !== undefined) updateData.name = name;
       if (academicYear !== undefined) updateData.academicYear = academicYear;
+      if (classLevel !== undefined) updateData.classLevel = classLevel ?? null;
       if (amount !== undefined)
         updateData.amount = parseFloat(amount.toString());
       if (description !== undefined) updateData.description = description;

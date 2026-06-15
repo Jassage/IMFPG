@@ -7,6 +7,20 @@
 import { body, param } from "express-validator";
 import { isValidYearFormat } from "../utils/validationHelpers";
 
+const CLASS_LEVELS = [
+  "Sixieme",
+  "Cinquieme",
+  "Quatrieme",
+  "Troisieme",
+  "Seconde",
+  "Premiere",
+  "Terminale",
+  "NSI",
+  "NSII",
+  "NSIII",
+  "NSIV",
+];
+
 /**
  * Validateur pour la création d'une structure de frais
  */
@@ -24,6 +38,11 @@ export const validateCreateFeeStructure = [
     .withMessage("L'année académique est requise")
     .custom(isValidYearFormat)
     .withMessage("Format d'année académique invalide (ex: 2024-2025)"),
+
+  body("classLevel")
+    .optional({ nullable: true })
+    .isIn(CLASS_LEVELS)
+    .withMessage("Niveau de classe invalide"),
 
   body("amount")
     .notEmpty()
@@ -66,6 +85,11 @@ export const validateUpdateFeeStructure = [
     .trim()
     .custom(isValidYearFormat)
     .withMessage("Format d'année académique invalide (ex: 2024-2025)"),
+
+  body("classLevel")
+    .optional({ nullable: true })
+    .isIn(CLASS_LEVELS)
+    .withMessage("Niveau de classe invalide"),
 
   body("amount")
     .optional()

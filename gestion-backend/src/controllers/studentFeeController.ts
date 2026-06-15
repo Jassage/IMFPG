@@ -381,6 +381,154 @@ export const assignFeeToStudent = async (req: Request, res: Response) => {
 };
 
 /**
+ * @function assignFeeToClassLevel
+ * @description Attribue une structure de frais à tous les élèves actifs d'un niveau de classe
+ * @route POST /api/student-fees/assign-to-level
+ * @access Admin
+ * @body {Object} data - Données d'attribution
+ * @body {string} data.feeStructureId - ID de la structure de frais
+ * @body {string} data.classLevel - Niveau de classe ciblé
+ * @body {string} data.academicYearId - ID de l'année académique
+ * @returns {Promise<void>}
+ */
+export const assignFeeToClassLevel = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).userId || "unknown",
+  };
+
+  try {
+    const { feeStructureId, classLevel, academicYearId } = req.body;
+
+    console.log("📥 Attribution frais à un niveau - Données:", req.body);
+
+    await createAuditLog({
+      ...auditData,
+      action: "ASSIGN_FEE_TO_CLASS_LEVEL_ATTEMPT",
+      entity: "StudentFee",
+      description: "Tentative d'attribution de frais à un niveau de classe",
+      status: "SUCCESS",
+      metadata: { feeStructureId, classLevel, academicYearId },
+    });
+
+    const result = await StudentFeeService.assignFeeToClassLevel({
+      feeStructureId,
+      classLevel,
+      academicYearId,
+    });
+
+    await createAuditLog({
+      ...auditData,
+      action: "ASSIGN_FEE_TO_CLASS_LEVEL_SUCCESS",
+      entity: "StudentFee",
+      description: "Frais attribués au niveau de classe avec succès",
+      status: "SUCCESS",
+      metadata: result.data,
+    });
+
+    res.json(result.data);
+  } catch (error: any) {
+    console.error("❌ Erreur attribution frais au niveau:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: "ASSIGN_FEE_TO_CLASS_LEVEL_ERROR",
+      entity: "StudentFee",
+      description: "Erreur lors de l'attribution des frais au niveau de classe",
+      status: "ERROR",
+      errorMessage: error.message || "Erreur inconnue",
+      metadata: error.metadata || {},
+    });
+
+    if (error.status === 400 || error.status === 404) {
+      return res.status(error.status).json({
+        error: error.message,
+        details: error.details,
+      });
+    }
+
+    res.status(error.status || 500).json({
+      error: error.message || "Erreur serveur",
+      details:
+        process.env.NODE_ENV === "development" && error.details
+          ? error.details
+          : undefined,
+    });
+  }
+};
+
+/**
+ * @function applyStudentFeeDiscount
+ * @description Applique une réduction sur les frais d'un étudiant
+ * @route PATCH /api/student-fees/:id/discount
+ * @access Admin
+ * @param {string} id - ID des frais étudiants
+ * @body {number} discountAmount - Montant de la réduction
+ * @body {string} [discountReason] - Raison de la réduction
+ * @returns {Promise<void>}
+ */
+export const applyStudentFeeDiscount = async (req: Request, res: Response) => {
+  const auditData = {
+    ipAddress: req.ip || "unknown",
+    userAgent: req.get("User-Agent") || "unknown",
+    userId: (req as any).userId || "unknown",
+  };
+
+  try {
+    const { id } = req.params;
+    const { discountAmount, discountReason } = req.body;
+
+    console.log("📥 Application réduction frais - ID:", id, "Données:", req.body);
+
+    const result = await StudentFeeService.applyDiscount(id, {
+      discountAmount,
+      discountReason,
+    });
+
+    await createAuditLog({
+      ...auditData,
+      action: "STUDENT_FEE_DISCOUNT_APPLIED",
+      entity: "StudentFee",
+      entityId: id,
+      description: "Réduction appliquée sur les frais étudiant",
+      status: "SUCCESS",
+      metadata: result.metadata,
+    });
+
+    res.json(result.data);
+  } catch (error: any) {
+    console.error("❌ Erreur application réduction:", error);
+
+    await createAuditLog({
+      ...auditData,
+      action: "STUDENT_FEE_DISCOUNT_ERROR",
+      entity: "StudentFee",
+      entityId: req.params.id,
+      description: "Erreur lors de l'application de la réduction",
+      status: "ERROR",
+      errorMessage: error.message || "Erreur inconnue",
+      metadata: error.metadata || {},
+    });
+
+    if (error.status === 400 || error.status === 404) {
+      return res.status(error.status).json({
+        error: error.message,
+        details: error.details,
+      });
+    }
+
+    res.status(error.status || 500).json({
+      error: error.message || "Erreur serveur",
+      details:
+        process.env.NODE_ENV === "development" && error.details
+          ? error.details
+          : undefined,
+    });
+  }
+};
+
+/**
  * @function getStudentFeeByStudentAndYear
  * @description Récupère les frais d'un étudiant pour une année académique spécifique
  * @route GET /api/student-fees/student/:studentId/year/:academicYear

@@ -91,6 +91,19 @@ interface FeeStructureStore {
     classLevel?: string;
   }) => Promise<FeeReport>;
 
+  // Attribuer une structure de frais à tous les élèves actifs d'un niveau
+  assignFeeToClassLevel: (data: {
+    feeStructureId: string;
+    classLevel: string;
+    academicYearId: string;
+  }) => Promise<{ assignedCount: number; skippedCount: number; message?: string }>;
+
+  // Appliquer une réduction sur les frais d'un étudiant
+  applyDiscount: (
+    id: string,
+    data: { discountAmount: number; discountReason?: string }
+  ) => Promise<StudentFee>;
+
   // Supprimer les doublons
   removeDuplicatesFromFees: (fees: StudentFee[]) => StudentFee[];
 }
@@ -607,6 +620,67 @@ export const useFeeStructureStore = create<FeeStructureStore>((set, get) => ({
       return get().handleError(
         err,
         "Erreur lors de la génération de l'état des paiements"
+      );
+    }
+  },
+
+  // Attribuer une structure de frais à tous les élèves actifs d'un niveau
+  assignFeeToClassLevel: async (data: {
+    feeStructureId: string;
+    classLevel: string;
+    academicYearId: string;
+  }) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.post("/student-fees/assign-to-level", data);
+      const result = get().extractDataFromResponse(response);
+
+      set({ loading: false, lastUpdated: Date.now() });
+      return {
+        assignedCount: result?.assignedCount ?? 0,
+        skippedCount: result?.skippedCount ?? 0,
+        message: response.data?.message,
+      };
+    } catch (err: any) {
+      return get().handleError(
+        err,
+        "Erreur lors de l'attribution des frais au niveau"
+      );
+    }
+  },
+
+  // Appliquer une réduction sur les frais d'un étudiant
+  applyDiscount: async (
+    id: string,
+    data: { discountAmount: number; discountReason?: string }
+  ) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.patch(`/student-fees/${id}/discount`, data);
+      const result = get().extractDataFromResponse(response);
+      const updatedFee = result.studentFee || result;
+
+      set((state) => {
+        const updatedStudentFees: Record<string, StudentFee[]> = {};
+
+        Object.entries(state.studentFees).forEach(([studentId, fees]) => {
+          updatedStudentFees[studentId] = fees.map((fee) =>
+            fee.id === id ? updatedFee : fee
+          );
+        });
+
+        return {
+          studentFees: updatedStudentFees,
+          loading: false,
+          lastUpdated: Date.now(),
+        };
+      });
+
+      return updatedFee;
+    } catch (err: any) {
+      return get().handleError(
+        err,
+        "Erreur lors de l'application de la réduction"
       );
     }
   },

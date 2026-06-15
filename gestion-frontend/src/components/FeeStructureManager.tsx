@@ -79,6 +79,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ClassLevel, formatClassLevel } from "@/types/classLevels";
+import { Users } from "lucide-react";
 
 interface FeeFormData {
   academicYear: string;
@@ -86,6 +88,7 @@ interface FeeFormData {
   amount: number;
   description?: string;
   isActive: boolean;
+  classLevel: string;
 }
 
 interface ValidationError {
@@ -180,6 +183,7 @@ export const FeeStructureManager: React.FC = () => {
     updateFeeStructure,
     deleteFeeStructure,
     getFeeStructures,
+    assignFeeToClassLevel,
     loading,
   } = useFeeStructureStore();
 
@@ -190,6 +194,12 @@ export const FeeStructureManager: React.FC = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
   const [editingFee, setEditingFee] = useState<FeeStructure | null>(null);
   const [feeToDelete, setFeeToDelete] = useState<FeeStructure | null>(null);
+  const [isAssignLevelOpen, setIsAssignLevelOpen] = useState<boolean>(false);
+  const [assignLevelFee, setAssignLevelFee] = useState<FeeStructure | null>(
+    null
+  );
+  const [assignClassLevel, setAssignClassLevel] = useState<string>("");
+  const [isAssigning, setIsAssigning] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -207,6 +217,7 @@ export const FeeStructureManager: React.FC = () => {
     amount: 0,
     description: "",
     isActive: true,
+    classLevel: "",
   });
 
   // Chargement initial des données
@@ -234,6 +245,7 @@ export const FeeStructureManager: React.FC = () => {
         amount: editingFee.amount,
         description: editingFee.description || "",
         isActive: editingFee.isActive,
+        classLevel: editingFee.classLevel || "",
       });
       setErrors([]);
     }
@@ -329,6 +341,7 @@ export const FeeStructureManager: React.FC = () => {
         amount: Number(formData.amount.toFixed(2)),
         description: formData.description?.trim() || undefined,
         isActive: formData.isActive,
+        classLevel: formData.classLevel || null,
       };
 
       if (editingFee) {
@@ -419,6 +432,47 @@ export const FeeStructureManager: React.FC = () => {
     }
   };
 
+  // Attribuer une structure de frais à tous les élèves actifs d'un niveau
+  const handleAssignToLevel = async (): Promise<void> => {
+    if (!assignLevelFee) return;
+
+    const classLevel = assignLevelFee.classLevel || assignClassLevel;
+    if (!classLevel) {
+      toast.error("Veuillez sélectionner un niveau de classe");
+      return;
+    }
+
+    const academicYearId =
+      assignLevelFee.academicYearId ||
+      academicYears.find((y) => y.year === assignLevelFee.academicYear)?.id;
+
+    if (!academicYearId) {
+      toast.error("Année académique introuvable pour cette structure");
+      return;
+    }
+
+    setIsAssigning(true);
+    try {
+      const result = await assignFeeToClassLevel({
+        feeStructureId: assignLevelFee.id,
+        classLevel,
+        academicYearId,
+      });
+
+      toast.success(result.message || "Frais attribués avec succès", {
+        description: `${result.assignedCount} élève(s) mis à jour, ${result.skippedCount} déjà à jour`,
+      });
+
+      setIsAssignLevelOpen(false);
+      setAssignLevelFee(null);
+      setAssignClassLevel("");
+    } catch (error: any) {
+      toast.error(error.message || "Erreur lors de l'attribution des frais");
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
   // Réinitialisation du formulaire
   const resetForm = (): void => {
     setFormData({
@@ -427,6 +481,7 @@ export const FeeStructureManager: React.FC = () => {
       amount: 0,
       description: "",
       isActive: true,
+      classLevel: "",
     });
     setEditingFee(null);
     setErrors([]);
@@ -1057,6 +1112,7 @@ export const FeeStructureManager: React.FC = () => {
                   <TableRow>
                     <TableHead className="w-[300px]">Nom</TableHead>
                     <TableHead>Année Académique</TableHead>
+                    <TableHead>Niveau</TableHead>
                     <TableHead className="text-right">Montant</TableHead>
                     <TableHead>Statut</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -1079,6 +1135,17 @@ export const FeeStructureManager: React.FC = () => {
                         <Badge variant="outline" className="font-normal">
                           {getAcademicYearDisplay(fee.academicYear)}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {fee.classLevel ? (
+                          <Badge variant="outline" className="font-normal">
+                            {formatClassLevel(fee.classLevel)}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            Tous niveaux
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end">
@@ -1146,6 +1213,17 @@ export const FeeStructureManager: React.FC = () => {
                             <DropdownMenuItem onClick={() => handleEdit(fee)}>
                               <Edit className="h-4 w-4 mr-2" />
                               Modifier
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setAssignLevelFee(fee);
+                                setAssignClassLevel(fee.classLevel || "");
+                                setIsAssignLevelOpen(true);
+                              }}
+                              disabled={!fee.isActive}
+                            >
+                              <Users className="h-4 w-4 mr-2" />
+                              Assigner au niveau
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleDeleteClick(fee)}
@@ -1423,6 +1501,35 @@ export const FeeStructureManager: React.FC = () => {
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="classLevel">Niveau de classe</Label>
+                <Select
+                  value={formData.classLevel || "all"}
+                  onValueChange={(value) =>
+                    handleInputChange(
+                      "classLevel",
+                      value === "all" ? "" : value
+                    )
+                  }
+                >
+                  <SelectTrigger id="classLevel">
+                    <SelectValue placeholder="Tous les niveaux" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les niveaux</SelectItem>
+                    {Object.values(ClassLevel).map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {formatClassLevel(level)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Si un niveau est sélectionné, cette structure ne s'appliquera
+                  qu'aux élèves de ce niveau
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
@@ -1598,6 +1705,97 @@ export const FeeStructureManager: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dialog d'attribution en masse au niveau */}
+      <Dialog
+        open={isAssignLevelOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAssignLevelFee(null);
+            setAssignClassLevel("");
+          }
+          setIsAssignLevelOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Assigner au niveau
+            </DialogTitle>
+            <DialogDescription>
+              Attribue cette structure de frais à tous les élèves actifs du
+              niveau sélectionné, pour l'année {assignLevelFee?.academicYear}.
+              Les élèves ayant déjà ces frais sont ignorés.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="p-3 bg-muted rounded-lg">
+              <p className="font-medium">{assignLevelFee?.name}</p>
+              <p className="text-sm text-muted-foreground">
+                {assignLevelFee &&
+                  assignLevelFee.amount.toLocaleString("fr-FR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                HTG
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assignClassLevel">Niveau de classe</Label>
+              {assignLevelFee?.classLevel ? (
+                <Badge variant="outline" className="font-normal">
+                  {formatClassLevel(assignLevelFee.classLevel)}
+                </Badge>
+              ) : (
+                <Select
+                  value={assignClassLevel}
+                  onValueChange={setAssignClassLevel}
+                >
+                  <SelectTrigger id="assignClassLevel">
+                    <SelectValue placeholder="Sélectionner un niveau" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.values(ClassLevel).map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {formatClassLevel(level)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {assignLevelFee?.classLevel && (
+                <p className="text-xs text-muted-foreground">
+                  Cette structure est dédiée à ce niveau, le niveau ne peut
+                  pas être modifié ici.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsAssignLevelOpen(false)}
+              disabled={isAssigning}
+            >
+              Annuler
+            </Button>
+            <Button onClick={handleAssignToLevel} disabled={isAssigning}>
+              {isAssigning ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Attribution...
+                </>
+              ) : (
+                "Assigner"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

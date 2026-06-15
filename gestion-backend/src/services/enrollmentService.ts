@@ -3283,11 +3283,25 @@ export class EnrollmentService {
       const academicYearName = academicYear.year;
       console.log("Nom de l'annee academique:", academicYearName);
 
-      // 2. Récupérer les structures de frais actives pour cette année
+      // 1bis. Récupérer le niveau de classe de l'étudiant pour cette année
+      // (pour ne retenir que les structures de frais qui le concernent)
+      const enrollment = await prismaClient.enrollment.findFirst({
+        where: { studentId, academicYearId },
+        include: { schoolClass: { select: { level: true } } },
+      });
+      const studentClassLevel = enrollment?.schoolClass?.level;
+
+      // 2. Récupérer les structures de frais actives pour cette année,
+      // applicables à tous les niveaux (classLevel = null) ou spécifiques
+      // au niveau de l'étudiant
       const feeStructures = await prismaClient.feeStructure.findMany({
         where: {
           academicYear: academicYearName, // Recherche par nom d'année (String)
           isActive: true,
+          OR: [
+            { classLevel: null },
+            ...(studentClassLevel ? [{ classLevel: studentClassLevel }] : []),
+          ],
         },
       });
 
@@ -3334,6 +3348,8 @@ export class EnrollmentService {
               studentId,
               feeStructureId: feeStructure.id,
               academicYearId: academicYearId, // Champ académicYearId (relation)
+              originalAmount: feeStructure.amount,
+              discountAmount: 0,
               totalAmount: feeStructure.amount,
               paidAmount: 0,
               status: "pending",
@@ -3376,6 +3392,8 @@ export class EnrollmentService {
               studentId,
               feeStructureId: feeStructure.id,
               academicYearId: academicYearId, // Champ académicYearId (relation)
+              originalAmount: feeStructure.amount,
+              discountAmount: 0,
               totalAmount: feeStructure.amount,
               paidAmount: 0,
               status: "pending",

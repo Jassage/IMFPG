@@ -16,6 +16,8 @@ import {
 } from "../middleware";
 import {
   assignFeeToStudent,
+  assignFeeToClassLevel,
+  applyStudentFeeDiscount,
   deleteStudentFee,
   getAllStudentFees,
   getFeeReportByClass,
@@ -26,6 +28,8 @@ import {
 } from "../controllers/studentFeeController";
 import {
   validateAssignFeeToStudent,
+  validateAssignFeeToClassLevel,
+  validateApplyDiscount,
   validateUpdateStudentFee,
 } from "../utils/studentFeeValidators";
 
@@ -122,6 +126,28 @@ router.post(
 );
 
 /**
+ * @route POST /api/student-fees/assign-to-level
+ * @description Attribue une structure de frais à tous les élèves actifs d'un niveau de classe
+ * @body {Object} data - Données d'attribution
+ * @body {string} data.feeStructureId - ID de la structure de frais
+ * @body {string} data.classLevel - Niveau de classe ciblé
+ * @body {string} data.academicYearId - ID de l'année académique
+ * @access Admin
+ * @returns {Object} Nombre d'élèves traités
+ */
+router.post(
+  "/assign-to-level",
+  requireAuth,
+  requireAdmin,
+  validateContentType(),
+  validateRequestBody,
+  sanitizeInput,
+  validateAssignFeeToClassLevel,
+  handleValidationErrors,
+  assignFeeToClassLevel
+);
+
+/**
  * @route PUT /api/student-fees/:id
  * @description Met à jour les frais d'un étudiant
  * @param {string} id - ID des frais à mettre à jour
@@ -141,6 +167,27 @@ router.put(
   validateUpdateStudentFee,
   handleValidationErrors,
   updateStudentFee
+);
+
+/**
+ * @route PATCH /api/student-fees/:id/discount
+ * @description Applique une réduction sur les frais d'un étudiant
+ * @param {string} id - ID des frais à modifier
+ * @body {number} discountAmount - Montant de la réduction
+ * @body {string} [discountReason] - Raison de la réduction
+ * @access Admin
+ * @returns {Object} Frais mis à jour avec la réduction appliquée
+ */
+router.patch(
+  "/:id/discount",
+  requireAuth,
+  requireAdmin,
+  validateContentType(),
+  validateRequestBody,
+  sanitizeInput,
+  validateApplyDiscount,
+  handleValidationErrors,
+  applyStudentFeeDiscount
 );
 
 /**

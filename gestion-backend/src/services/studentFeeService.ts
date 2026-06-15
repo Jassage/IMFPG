@@ -392,6 +392,8 @@ export class StudentFeeService {
         student: { connect: { id: studentId } },
         feeStructure: { connect: { id: feeStructureId } },
         academicYear: { connect: { id: academicYearId } },
+        originalAmount: feeStructure.amount,
+        discountAmount: 0,
         totalAmount: feeStructure.amount,
         paidAmount: 0,
         status: "pending",
@@ -658,6 +660,199 @@ export class StudentFeeService {
             (f: { status: string }) => f.status === "overdue"
           ).length,
         },
+      },
+    };
+  }
+
+  /**
+   * Attribue une structure de frais à tous les élèves activement inscrits
+   * dans un niveau de classe, pour une année académique donnée.
+   * Les élèves ayant déjà ces frais sont ignorés (pas de doublon).
+   */
+  static async assignFeeToClassLevel(data: {
+    feeStructureId: string;
+    classLevel: string;
+    academicYearId: string;
+  }) {
+    const { feeStructureId, classLevel, academicYearId } = data;
+
+    console.log("📥 Attribution frais à un niveau - Données:", data);
+
+    const feeStructure = await prisma.feeStructure.findUnique({
+      where: { id: feeStructureId },
+    });
+    if (!feeStructure) {
+      throw {
+        status: 404,
+        message: "Structure de frais non trouvée",
+      };
+    }
+
+    const academicYear = await prisma.academicYear.findUnique({
+      where: { id: academicYearId },
+    });
+    if (!academicYear) {
+      throw {
+        status: 404,
+        message: "Année académique non trouvée",
+      };
+    }
+
+    const enrollments = await prisma.enrollment.findMany({
+      where: {
+        academicYearId,
+        status: "Active",
+        schoolClass: { level: classLevel as any },
+      },
+      select: { studentId: true },
+    });
+
+    if (enrollments.length === 0) {
+      return {
+        success: true,
+        message: "Aucun élève actif trouvé pour ce niveau et cette année",
+        data: { assignedCount: 0, skippedCount: 0 },
+      };
+    }
+
+    const studentIds = [...new Set(enrollments.map((e) => e.studentId))];
+
+    const existingFees = await prisma.studentFee.findMany({
+      where: {
+        feeStructureId,
+        academicYearId,
+        studentId: { in: studentIds },
+      },
+      select: { studentId: true },
+    });
+    const existingStudentIds = new Set(existingFees.map((f) => f.studentId));
+
+    const toCreate = studentIds.filter((id) => !existingStudentIds.has(id));
+
+    if (toCreate.length === 0) {
+      return {
+        success: true,
+        message: "Tous les élèves de ce niveau ont déjà ces frais attribués",
+        data: { assignedCount: 0, skippedCount: studentIds.length },
+      };
+    }
+
+    const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    await prisma.studentFee.createMany({
+      data: toCreate.map((studentId) => ({
+        studentId,
+        feeStructureId,
+        academicYearId,
+        originalAmount: feeStructure.amount,
+        discountAmount: 0,
+        totalAmount: feeStructure.amount,
+        paidAmount: 0,
+        status: "pending",
+        dueDate,
+      })),
+    });
+
+    console.log(
+      `✅ Frais attribués à ${toCreate.length} élève(s) du niveau ${classLevel}`
+    );
+
+    return {
+      success: true,
+      message: `Frais attribués à ${toCreate.length} élève(s)`,
+      data: {
+        assignedCount: toCreate.length,
+        skippedCount: studentIds.length - toCreate.length,
+      },
+    };
+  }
+
+  /**
+   * Applique (ou retire, avec discountAmount = 0) une réduction sur les
+   * frais d'un étudiant. Le montant dû (totalAmount) est recalculé à
+   * partir du montant initial (originalAmount).
+   */
+  static async applyDiscount(
+    id: string,
+    data: { discountAmount: number; discountReason?: string }
+  ) {
+    const { discountAmount, discountReason } = data;
+
+    console.log("📥 Application réduction frais étudiant - ID:", id, "Données:", data);
+
+    const existingStudentFee = await prisma.studentFee.findUnique({
+      where: { id },
+    });
+
+    if (!existingStudentFee) {
+      throw {
+        status: 404,
+        message: "Frais étudiant non trouvé",
+      };
+    }
+
+    if (discountAmount < 0) {
+      throw {
+        status: 400,
+        message: "Le montant de la réduction doit être positif ou nul",
+      };
+    }
+
+    const originalAmount =
+      existingStudentFee.originalAmount || existingStudentFee.totalAmount;
+
+    if (discountAmount > originalAmount) {
+      throw {
+        status: 400,
+        message: "La réduction ne peut pas dépasser le montant initial des frais",
+      };
+    }
+
+    const newTotalAmount = originalAmount - discountAmount;
+
+    let status = existingStudentFee.status;
+    if (newTotalAmount <= existingStudentFee.paidAmount) {
+      status = "paid";
+    } else if (existingStudentFee.paidAmount > 0) {
+      status = "partial";
+    } else if (status === "paid") {
+      status = "pending";
+    }
+
+    const updatedStudentFee = await prisma.studentFee.update({
+      where: { id },
+      data: {
+        originalAmount,
+        discountAmount,
+        discountReason: discountReason ?? null,
+        totalAmount: newTotalAmount,
+        status,
+      },
+      include: {
+        feeStructure: true,
+        student: {
+          select: {
+            firstName: true,
+            lastName: true,
+            studentCode: true,
+          },
+        },
+      },
+    });
+
+    console.log("✅ Réduction appliquée sur les frais:", id);
+
+    return {
+      success: true,
+      message: "Réduction appliquée avec succès",
+      data: updatedStudentFee,
+      metadata: {
+        studentId: updatedStudentFee.studentId,
+        studentName: `${updatedStudentFee.student.firstName} ${updatedStudentFee.student.lastName}`,
+        originalAmount: updatedStudentFee.originalAmount,
+        discountAmount: updatedStudentFee.discountAmount,
+        totalAmount: updatedStudentFee.totalAmount,
+        status: updatedStudentFee.status,
       },
     };
   }

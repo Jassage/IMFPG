@@ -340,6 +340,7 @@ model FeeStructure {
   id           String       @id @default(cuid())
   name         String
   academicYear String
+  classLevel   ClassLevel?
   amount       Float
   description  String?
   isActive     Boolean      @default(true)
@@ -354,6 +355,9 @@ model StudentFee {
   id             String       @id @default(cuid())
   studentId      String
   feeStructureId String
+  originalAmount Float        @default(0)
+  discountAmount Float        @default(0)
+  discountReason String?
   totalAmount    Float
   paidAmount     Float        @default(0)
   status         String       @default("pending")

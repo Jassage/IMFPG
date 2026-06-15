@@ -137,6 +137,7 @@ export const createFeeStructure = async (req: Request, res: Response) => {
     const data: CreateFeeStructureData = {
       name: req.body.name,
       academicYear: req.body.academicYear,
+      classLevel: req.body.classLevel,
       amount: req.body.amount,
       description: req.body.description,
       isActive: req.body.isActive,
@@ -203,6 +204,7 @@ export const updateFeeStructure = async (req: Request, res: Response) => {
     const data: UpdateFeeStructureData = {
       name: req.body.name,
       academicYear: req.body.academicYear,
+      classLevel: req.body.classLevel,
       amount: req.body.amount,
       description: req.body.description,
       isActive: req.body.isActive,

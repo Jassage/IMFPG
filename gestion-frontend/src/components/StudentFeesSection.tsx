@@ -36,6 +36,7 @@ import {
   TrendingUp,
   ShieldAlert,
   RefreshCw,
+  Percent,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -88,6 +89,7 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
     getStudentFees, // Corrigé: utiliser getStudentFees au lieu de getStudentFeesByStudentId
     recordPayment,
     getPaymentHistory,
+    applyDiscount,
     clearStudentFees,
   } = useFeeStructureStore();
 
@@ -102,6 +104,9 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [activeTab, setActiveTab] = useState<string>("current");
+  const [showDiscountDialog, setShowDiscountDialog] = useState(false);
+  const [discountFeeId, setDiscountFeeId] = useState<string>("");
+  const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
 
   // Données du formulaire
   const [paymentData, setPaymentData] = useState<PaymentFormData>({
@@ -110,6 +115,15 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
     reference: "",
     paymentDate: new Date().toISOString().split("T")[0],
     description: "",
+  });
+
+  // Données du formulaire de réduction
+  const [discountData, setDiscountData] = useState<{
+    discountAmount: number;
+    discountReason: string;
+  }>({
+    discountAmount: 0,
+    discountReason: "",
   });
 
   // Charger les frais de l'étudiant
@@ -290,6 +304,36 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleApplyDiscount = async () => {
+    if (!discountFeeId) return;
+
+    if (discountData.discountAmount < 0) {
+      toast.error("Le montant de la réduction doit être positif ou nul");
+      return;
+    }
+
+    setIsApplyingDiscount(true);
+
+    try {
+      await applyDiscount(discountFeeId, {
+        discountAmount: Number(discountData.discountAmount.toFixed(2)),
+        discountReason: discountData.discountReason.trim() || undefined,
+      });
+
+      toast.success("Réduction appliquée avec succès");
+      setShowDiscountDialog(false);
+      await loadStudentFees();
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        "Erreur lors de l'application de la réduction";
+      toast.error(errorMessage);
+    } finally {
+      setIsApplyingDiscount(false);
     }
   };
 
@@ -779,6 +823,34 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
                         </div>
                       </div>
 
+                      {(fee.discountAmount || 0) > 0 && (
+                        <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-purple-700 flex items-center gap-1">
+                              <Percent className="h-3 w-3" />
+                              Réduction appliquée
+                            </span>
+                            <span className="font-semibold text-purple-700">
+                              -{formatAmount(fee.discountAmount)} HTG
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                            <span>
+                              Montant initial:{" "}
+                              {formatAmount(
+                                fee.originalAmount || totalAmount
+                              )}{" "}
+                              HTG
+                            </span>
+                            {fee.discountReason && (
+                              <span className="italic">
+                                {fee.discountReason}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="space-y-2 mb-4">
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">
@@ -802,6 +874,25 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
                           <History className="h-4 w-4" />
                           Historique
                         </Button>
+
+                        {canManagePayments && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setDiscountFeeId(fee.id);
+                              setDiscountData({
+                                discountAmount: fee.discountAmount || 0,
+                                discountReason: fee.discountReason || "",
+                              });
+                              setShowDiscountDialog(true);
+                            }}
+                            className="gap-2"
+                          >
+                            <Percent className="h-4 w-4" />
+                            Réduction
+                          </Button>
+                        )}
 
                         {canManagePayments && remainingAmount > 0 && (
                           <Button
@@ -1169,6 +1260,129 @@ export const StudentFeesSection: React.FC<StudentFeesSectionProps> = ({
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal d'application d'une réduction */}
+      <Dialog open={showDiscountDialog} onOpenChange={setShowDiscountDialog}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Percent className="h-5 w-5" />
+              Appliquer une réduction
+            </DialogTitle>
+            <DialogDescription>
+              Définissez le montant de la réduction pour ces frais
+            </DialogDescription>
+          </DialogHeader>
+
+          {discountFeeId &&
+            (() => {
+              const fee = getCurrentStudentFees().find(
+                (f: any) => f.id === discountFeeId
+              );
+              if (!fee) return null;
+
+              const originalAmount = fee.originalAmount || fee.totalAmount;
+
+              return (
+                <div className="space-y-4">
+                  <Alert className="bg-blue-50 border-blue-200">
+                    <AlertCircle className="h-4 w-4 text-blue-600" />
+                    <AlertDescription className="text-blue-600">
+                      Frais : <strong>{fee.feeStructure?.name}</strong>
+                      <br />
+                      Montant initial :{" "}
+                      <strong>{formatAmount(originalAmount)} HTG</strong>
+                    </AlertDescription>
+                  </Alert>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="discountAmount">
+                      Montant de la réduction (HTG)
+                    </Label>
+                    <Input
+                      id="discountAmount"
+                      type="number"
+                      value={discountData.discountAmount || ""}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (value > originalAmount) {
+                          toast.warning(
+                            `La réduction ne peut pas dépasser ${formatAmount(
+                              originalAmount
+                            )} HTG`
+                          );
+                          setDiscountData({
+                            ...discountData,
+                            discountAmount: originalAmount,
+                          });
+                        } else {
+                          setDiscountData({
+                            ...discountData,
+                            discountAmount: value,
+                          });
+                        }
+                      }}
+                      min="0"
+                      step="0.01"
+                      max={originalAmount}
+                      placeholder="0.00"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Nouveau total :{" "}
+                      {formatAmount(
+                        Math.max(
+                          originalAmount - (discountData.discountAmount || 0),
+                          0
+                        )
+                      )}{" "}
+                      HTG
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="discountReason">Raison (optionnel)</Label>
+                    <Textarea
+                      id="discountReason"
+                      value={discountData.discountReason}
+                      onChange={(e) =>
+                        setDiscountData({
+                          ...discountData,
+                          discountReason: e.target.value,
+                        })
+                      }
+                      placeholder="ex: Bourse, fratrie, situation sociale..."
+                      rows={2}
+                      maxLength={255}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDiscountDialog(false)}
+              disabled={isApplyingDiscount}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleApplyDiscount}
+              disabled={isApplyingDiscount}
+            >
+              {isApplyingDiscount ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Application...
+                </>
+              ) : (
+                "Appliquer"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
