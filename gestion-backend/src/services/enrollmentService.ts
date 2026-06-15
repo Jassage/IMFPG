@@ -4,7 +4,12 @@
  * @version 2.0.0
  */
 
-import { PrismaClient, Prisma } from "../../generated/prisma";
+import {
+  PrismaClient,
+  Prisma,
+  ControlType,
+  ClassLevel as PrismaClassLevel,
+} from "../../generated/prisma";
 import { DefaultArgs } from "../../generated/prisma/runtime/library";
 import { AuditData } from "../types/auth";
 
@@ -1488,7 +1493,7 @@ export class EnrollmentService {
     if (academicStatus === "Failed") {
       recommendations.push({
         type: "warning",
-        message: `Échec académique (${averageGrade.toFixed(1)}/100) - Redoublement obligatoire`,
+        message: `Échec académique (${averageGrade.toFixed(1)}/20) - Redoublement obligatoire`,
         action: "Inscrire dans le même niveau",
       });
     } else if (academicStatus === "NoGrades") {
@@ -1500,7 +1505,7 @@ export class EnrollmentService {
     } else {
       recommendations.push({
         type: "success",
-        message: `Réussite académique (${averageGrade.toFixed(1)}/100)`,
+        message: `Réussite académique (${averageGrade.toFixed(1)}/20)`,
         action: isRedoublement
           ? "Redoublement recommandé"
           : "Passage au niveau supérieur",
@@ -1699,11 +1704,7 @@ export class EnrollmentService {
 
       const academicEvaluation = {
         status: this.determineAcademicStatus(grades),
-        averageGrade:
-          grades.length > 0
-            ? grades.reduce((sum, grade) => sum + grade.grade, 0) /
-              grades.length
-            : 0,
+        averageGrade: this.calculateWeightedAverage(grades),
         hasGrades: grades.length > 0,
         grades: grades,
       };
@@ -2030,99 +2031,6 @@ export class EnrollmentService {
         };
       }
 
-      if (previousEnrollmentId) {
-        // Cas 1: L'utilisateur a spécifié l'inscription précédente
-        console.log(
-          "Recherche de l'inscription precedente specifiee:",
-          previousEnrollmentId
-        );
-
-        previousEnrollment = await prisma.enrollment.findUnique({
-          where: { id: previousEnrollmentId },
-          include: {
-            academicYear: true,
-            schoolClass: true,
-          },
-        });
-
-        if (!previousEnrollment) {
-          console.error(
-            "Inscription precedente non trouvee:",
-            previousEnrollmentId
-          );
-          return {
-            success: false,
-            message: "L'inscription précédente spécifiée n'existe pas",
-            code: "PREVIOUS_ENROLLMENT_NOT_FOUND",
-          };
-        }
-
-        previousYear = previousEnrollment.academicYear;
-        console.log("Inscription precedente trouvee:", previousYear.year);
-      } else if (previousAcademicYearId) {
-        // Cas 2: Recherche par année académique précédente
-        previousYear = await prisma.academicYear.findUnique({
-          where: { id: previousAcademicYearId },
-        });
-
-        if (!previousYear) {
-          return {
-            success: false,
-            message: "L'année académique précédente spécifiée n'existe pas",
-            code: "PREVIOUS_YEAR_NOT_FOUND",
-          };
-        }
-
-        previousEnrollment = await prisma.enrollment.findUnique({
-          where: {
-            studentId_academicYearId: {
-              studentId,
-              academicYearId: previousAcademicYearId,
-            },
-          },
-          include: {
-            academicYear: true,
-            schoolClass: true,
-          },
-        });
-
-        if (!previousEnrollment) {
-          return {
-            success: false,
-            message: `L'étudiant n'était pas inscrit pour l'année ${previousYear.year}`,
-            code: "NO_ENROLLMENT_FOR_YEAR",
-          };
-        }
-      } else {
-        // Cas 3: Recherche automatique
-        previousEnrollment = await prisma.enrollment.findFirst({
-          where: {
-            studentId,
-            status: { in: ["Active", "Completed"] },
-          },
-          include: {
-            academicYear: true,
-            schoolClass: true,
-          },
-          orderBy: {
-            enrollmentDate: "desc",
-          },
-        });
-
-        if (previousEnrollment) {
-          previousYear = previousEnrollment.academicYear;
-        }
-      }
-
-      // 5. Vérifier si une inscription précédente a été trouvée
-      if (!previousEnrollment || !previousYear) {
-        return {
-          success: false,
-          message: "Aucune inscription précédente trouvée",
-          code: "NO_PREVIOUS_ENROLLMENT",
-        };
-      }
-
       console.log("Inscription precedente confirmee:", {
         previousYear: previousYear.year,
         previousClass: previousEnrollment.schoolClass?.name,
@@ -2445,6 +2353,143 @@ export class EnrollmentService {
       }
 
       throw error;
+    }
+  }
+
+  /**
+   * Vérifie si toutes les notes des 4 contrôles sont saisies pour chaque
+   * matière assignée au niveau de classe de l'étudiant pour une année
+   * académique donnée.
+   */
+  private async hasAllControlGradesComplete(
+    studentId: string,
+    classLevel: PrismaClassLevel,
+    academicYearId: string
+  ): Promise<boolean> {
+    const assignments = await prisma.classAssignment.findMany({
+      where: {
+        classLevel,
+        academicYearId,
+        status: "Active",
+      },
+      select: { subjectId: true },
+    });
+
+    if (assignments.length === 0) return false;
+
+    const subjectIds = [...new Set(assignments.map((a) => a.subjectId))];
+
+    const grades = await prisma.grade.findMany({
+      where: {
+        studentId,
+        academicYearId,
+        subjectId: { in: subjectIds },
+        isActive: true,
+      },
+      select: { subjectId: true, controlType: true },
+    });
+
+    const requiredControls: ControlType[] = [
+      ControlType.CONTROLE_1,
+      ControlType.CONTROLE_2,
+      ControlType.CONTROLE_3,
+      ControlType.CONTROLE_4,
+    ];
+
+    return subjectIds.every((subjectId) => {
+      const controlsForSubject = new Set(
+        grades
+          .filter((g) => g.subjectId === subjectId)
+          .map((g) => g.controlType)
+      );
+      return requiredControls.every((control) =>
+        controlsForSubject.has(control)
+      );
+    });
+  }
+
+  /**
+   * Si toutes les notes des 4 contrôles sont complètes pour l'étudiant,
+   * tente de le réinscrire automatiquement pour l'année suivante.
+   * En cas d'échec d'une condition de réinscription (financier, capacité,
+   * etc.), ne fait rien : la réinscription manuelle reste possible via le
+   * formulaire existant.
+   */
+  async checkAndTriggerAutoReenrollment(
+    studentId: string,
+    classLevel: PrismaClassLevel,
+    academicYearId: string,
+    auditData: AuditData
+  ): Promise<void> {
+    try {
+      const allControlsComplete = await this.hasAllControlGradesComplete(
+        studentId,
+        classLevel,
+        academicYearId
+      );
+
+      if (!allControlsComplete) return;
+
+      console.log(
+        "Tous les controles sont complets, verification de la reinscription automatique pour:",
+        studentId
+      );
+
+      const validation = await this.validateReenrollment(studentId, auditData);
+
+      if (!validation.success || !validation.data?.validation?.canReenroll) {
+        console.log(
+          "Reinscription automatique non declenchee (conditions non remplies):",
+          validation.message
+        );
+        return;
+      }
+
+      const { validation: validationData } = validation.data;
+      const availableClasses = validationData.availableClasses || [];
+      const targetClass = [...availableClasses]
+        .filter((cls: any) => cls.availableSpots > 0)
+        .sort((a: any, b: any) => b.availableSpots - a.availableSpots)[0];
+
+      if (!targetClass) {
+        console.log(
+          "Reinscription automatique non declenchee: aucune classe disponible pour le niveau",
+          validationData.levelRecommendation?.recommendedLevel
+        );
+        return;
+      }
+
+      const reenrollResult = await this.reenrollStudent(
+        {
+          studentId,
+          classId: targetClass.id,
+          academicYearId: validationData.nextAcademicYear.id,
+          previousEnrollmentId: validationData.previousEnrollment.id,
+          notes: "Réinscription automatique - tous les contrôles complétés",
+        },
+        auditData
+      );
+
+      if (reenrollResult.success) {
+        console.log(
+          "Reinscription automatique reussie pour l'etudiant:",
+          studentId,
+          "-> classe:",
+          targetClass.name
+        );
+      } else {
+        console.log(
+          "Reinscription automatique echouee pour l'etudiant:",
+          studentId,
+          "-",
+          reenrollResult.message
+        );
+      }
+    } catch (error: any) {
+      console.error(
+        "EnrollmentService - checkAndTriggerAutoReenrollment error:",
+        error
+      );
     }
   }
 

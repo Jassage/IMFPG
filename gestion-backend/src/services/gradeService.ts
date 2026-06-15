@@ -12,8 +12,10 @@ import {
   UserRole,
 } from "../../generated/prisma/client";
 import { AuditData } from "../types/auth";
+import { EnrollmentService } from "./enrollmentService";
 
 const prisma = new PrismaClient();
+const enrollmentService = new EnrollmentService();
 
 // Interfaces
 export interface GradeFilters {
@@ -723,6 +725,14 @@ export class GradeService {
         },
       });
 
+      // Réinscription automatique si les 4 contrôles sont désormais complets
+      await enrollmentService.checkAndTriggerAutoReenrollment(
+        newGrade.studentId,
+        newGrade.classLevel,
+        newGrade.academicYearId,
+        auditData
+      );
+
       return {
         success: true,
         message,
@@ -958,6 +968,14 @@ export class GradeService {
       } else if (status === GradeStatus.Rejected && rejectionReason) {
         await this.notifyProfessorOfRejectedGrade(id, rejectionReason);
       }
+
+      // Réinscription automatique si les 4 contrôles sont désormais complets
+      await enrollmentService.checkAndTriggerAutoReenrollment(
+        updatedGrade.studentId,
+        updatedGrade.classLevel,
+        updatedGrade.academicYearId,
+        auditData
+      );
 
       return {
         success: true,

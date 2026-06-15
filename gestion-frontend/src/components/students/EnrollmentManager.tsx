@@ -515,8 +515,7 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
   onSuccess,
   feeStructures = [],
 }) => {
-  const { addEnrollment, updateEnrollment, assignFeesToEnrollment } =
-    useEnrollmentStore();
+  const { addEnrollment, updateEnrollment } = useEnrollmentStore();
   const { classes } = useClassStore();
   const { academicYears } = useAcademicYearStore();
   const { assignFeeToStudent } = useFeeStructureStore();
@@ -595,14 +594,10 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
         selectedFeeStructures: formData.selectedFeeStructures,
       };
 
-      let enrollmentResult;
       if (enrollment) {
-        enrollmentResult = await updateEnrollment(
-          enrollment.id,
-          enrollmentData
-        );
+        await updateEnrollment(enrollment.id, enrollmentData);
       } else {
-        enrollmentResult = await addEnrollment(enrollmentData);
+        await addEnrollment(enrollmentData);
       }
 
       if (formData.assignFees && formData.selectedFeeStructures.length > 0) {
@@ -624,22 +619,10 @@ export const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
         } catch (feeError: any) {
           console.error("Erreur lors de l'assignation des frais:", feeError);
 
-          try {
-            const enrollmentId =
-              enrollmentResult.id || enrollmentResult.data?.id;
-            if (enrollmentId) {
-              await assignFeesToEnrollment(
-                enrollmentId,
-                formData.selectedFeeStructures
-              );
-              toast.success("Frais assignés via méthode alternative");
-            }
-          } catch (altError) {
-            toast.warning(
-              "Inscription créée mais erreur lors de l'assignation des frais. " +
-                "Vous pouvez assigner manuellement les frais depuis la section Frais de l'étudiant."
-            );
-          }
+          toast.warning(
+            "Inscription créée mais erreur lors de l'assignation des frais. " +
+              "Vous pouvez assigner manuellement les frais depuis la section Frais de l'étudiant."
+          );
         }
       }
 

@@ -37,6 +37,7 @@ import {
   validateUpdateEnrollment,
   validateReenrollment as validateReenrollmentSchema,
   validateBulkEnrollments,
+  validateUnenroll,
 } from "../utils/enrollmentValidators";
 
 const router = Router();
@@ -181,6 +182,8 @@ router.post(
   validateContentType(),
   validateRequestBody,
   sanitizeInput,
+  validateUnenroll,
+  handleValidationErrors,
   unenrollStudent
 );
 
@@ -200,7 +203,7 @@ router.get(
 );
 
 /**
- * @route GET /api/enrollments/:id/delete
+ * @route DELETE /api/enrollments/:id/delete
  * @description Supprime une inscription par ID (à utiliser avec prudence)
  * @access Admin
  */

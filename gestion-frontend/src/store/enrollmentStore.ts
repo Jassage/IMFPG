@@ -30,11 +30,6 @@ interface EnrollmentStore {
 
   getAvailableFeeStructures: () => Promise<any[]>;
   getEnrollmentsByStudent: (studentId: string) => any[];
-
-  assignFeesToEnrollment: (
-    enrollmentId: string,
-    feeStructureIds: string[]
-  ) => Promise<any>;
 }
 
 export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
@@ -131,7 +126,7 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
 
   getAvailableFeeStructures: async () => {
     try {
-      const response = await api.get("/fee-structures");
+      const response = await api.get("/enrollments/fee-structures");
       return response.data.data?.feeStructures || [];
     } catch (error: any) {
       console.error("Erreur récupération frais:", error);
@@ -159,22 +154,5 @@ export const useEnrollmentStore = create<EnrollmentStore>((set, get) => ({
     return enrollments.filter(
       (enrollment) => enrollment.studentId === studentId
     );
-  },
-
-  assignFeesToEnrollment: async (enrollmentId, feeStructureIds) => {
-    try {
-      const response = await api.post(
-        `/enrollments/${enrollmentId}/assign-fees`,
-        {
-          feeStructureIds,
-        }
-      );
-      toast.success("Frais attribués avec succès");
-      return response.data;
-    } catch (error: any) {
-      console.error("Erreur attribution frais:", error);
-      toast.error("Erreur lors de l'attribution des frais");
-      throw error;
-    }
   },
 }));

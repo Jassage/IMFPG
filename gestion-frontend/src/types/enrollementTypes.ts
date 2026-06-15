@@ -6,7 +6,7 @@ export interface Enrollment {
   classId: string; // CORRECT: classId au lieu de faculty
   academicYearId: string;
   enrollmentDate: string; // Chaîne ISO
-  status: "Active" | "Suspended" | "Completed";
+  status: "Active" | "Suspended" | "Completed" | "Archived";
   isReenrollment?: boolean;
   previousEnrollmentId?: string;
   reenrollmentDate?: string;
@@ -26,14 +26,14 @@ export interface CreateEnrollmentData {
   studentId: string;
   classId: string;
   academicYearId: string;
-  status?: "Active" | "Suspended" | "Completed";
+  status?: "Active" | "Suspended" | "Completed" | "Archived";
   enrollmentDate?: string;
 }
 
 export interface UpdateEnrollmentData {
   classId?: string;
   academicYearId?: string;
-  status?: "Active" | "Suspended" | "Completed";
+  status?: "Active" | "Suspended" | "Completed" | "Archived";
   enrollmentDate?: string;
 }
 
