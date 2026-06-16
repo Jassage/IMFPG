@@ -149,7 +149,6 @@ export const SessionAttendanceSupervision: React.FC<Props> = ({
         <div className="space-y-2">
           {sessions.map((s) => {
             const expanded = expandedId === s.id;
-            const recordCount = s._count?.attendanceRecords ?? 0;
             return (
               <Card key={s.id}>
                 <CardContent className="p-0">
@@ -177,12 +176,16 @@ export const SessionAttendanceSupervision: React.FC<Props> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {s.isCompleted && (
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      {s.isCompleted ? (
+                        <Badge className="bg-green-100 text-green-800 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Appel effectué
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-amber-600 border-amber-300">
+                          En attente
+                        </Badge>
                       )}
-                      <Badge variant="outline">
-                        {recordCount} enregistrée(s)
-                      </Badge>
                     </div>
                   </button>
 
@@ -192,25 +195,37 @@ export const SessionAttendanceSupervision: React.FC<Props> = ({
                         <div className="flex justify-center py-6">
                           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                         </div>
+                      ) : !s.isCompleted ? (
+                        <p className="text-sm text-amber-600 text-center py-4">
+                          L'appel n'a pas encore été effectué pour cette séance.
+                        </p>
                       ) : roster.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-4">
-                          Aucun élève / appel non encore saisi.
+                          Aucun élève enregistré.
                         </p>
                       ) : (
                         <>
                           <div className="flex flex-wrap gap-2 mb-3">
-                            <Badge className={STATUS_BADGE.PRESENT}>
-                              Présents : {rosterCounts.PRESENT}
-                            </Badge>
-                            <Badge className={STATUS_BADGE.ABSENT}>
-                              Absents : {rosterCounts.ABSENT}
-                            </Badge>
-                            <Badge className={STATUS_BADGE.LATE}>
-                              Retards : {rosterCounts.LATE}
-                            </Badge>
-                            <Badge className={STATUS_BADGE.EXCUSED}>
-                              Excusés : {rosterCounts.EXCUSED}
-                            </Badge>
+                            {rosterCounts.PRESENT > 0 && (
+                              <Badge className={STATUS_BADGE.PRESENT}>
+                                Présents : {rosterCounts.PRESENT}
+                              </Badge>
+                            )}
+                            {rosterCounts.ABSENT > 0 && (
+                              <Badge className={STATUS_BADGE.ABSENT}>
+                                Absents : {rosterCounts.ABSENT}
+                              </Badge>
+                            )}
+                            {rosterCounts.LATE > 0 && (
+                              <Badge className={STATUS_BADGE.LATE}>
+                                Retards : {rosterCounts.LATE}
+                              </Badge>
+                            )}
+                            {rosterCounts.EXCUSED > 0 && (
+                              <Badge className={STATUS_BADGE.EXCUSED}>
+                                Excusés : {rosterCounts.EXCUSED}
+                              </Badge>
+                            )}
                           </div>
                           <div className="space-y-1">
                             {roster.map((r, i) => (

@@ -201,23 +201,28 @@ model Subject {
 model ClassAssignment {
   id             String     @id @default(cuid())
   subjectId      String
-  professeurId   String
+  professeurId   String?
   classLevel     ClassLevel
+  schoolClassId  String?
   academicYearId String
   status         String     @default("Active")
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  professeur   Professeur   @relation(fields: [professeurId], references: [id], onDelete: Cascade)
+  professeur   Professeur?  @relation(fields: [professeurId], references: [id], onDelete: SetNull)
   subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  schoolClass  SchoolClass? @relation(fields: [schoolClassId], references: [id], onDelete: SetNull)
   schedules    Schedule[]
   grades       Grade[]
 
-  @@unique([subjectId, classLevel, academicYearId, professeurId])
+  // Une matière ne peut être inscrite qu'une fois au programme d'un niveau
+  // (ou d'une section précise) pour une année donnée.
+  @@unique([subjectId, classLevel, academicYearId, schoolClassId])
   @@index([academicYearId])
   @@index([professeurId])
   @@index([subjectId])
+  @@index([schoolClassId])
   @@map("class_assignments")
 }
 
@@ -235,6 +240,7 @@ model SchoolClass {
   enrollments        Enrollment[]
   attendances        Attendance[]
   attendanceSessions AttendanceSession[]
+  classAssignments   ClassAssignment[]
 
   @@map("school_classes")
 }
@@ -289,7 +295,6 @@ model Transcript {
   academicYear     AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
   student          Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@unique([studentId, academicYearId, controlType, documentType])
   @@index([studentId])
   @@index([academicYearId])
   @@index([controlType])

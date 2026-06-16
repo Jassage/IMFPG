@@ -26,7 +26,12 @@ import { toast } from "react-toastify";
 import { useCallback, useEffect, useState } from "react";
 import { ClassAssignment } from "@/types/academic";
 import { useAssignmentStore } from "@/store/assignmentStore";
+import { useClassStore } from "@/store/classStore";
 import { Badge } from "../ui/badge";
+
+// Valeurs sentinelles pour les sélections optionnelles (Radix Select n'accepte pas "")
+const NO_PROFESSEUR = "none";
+const NO_SECTION = "none";
 
 // Interface pour les données du formulaire
 interface AssignmentFormData {
@@ -55,8 +60,12 @@ const classLevels = [
 // Schéma Zod avec validation complète
 const formSchema = z.object({
   subjectId: z.string().min(1, { message: "La matière est requise" }),
-  professeurId: z.string().min(1, { message: "Le professeur est requis" }),
+  // Optionnel : la matière peut être inscrite au programme avant qu'un
+  // professeur ne lui soit affecté ("À pourvoir")
+  professeurId: z.string().optional(),
   classLevel: z.string().min(1, { message: "La classe est requise" }),
+  // Optionnel : limite l'assignation à une section précise du niveau
+  schoolClassId: z.string().optional(),
   academicYearId: z
     .string()
     .min(1, { message: "L'année académique est requise" }),
@@ -94,6 +103,7 @@ export function ClassAssignmentForm({
     loading: profsLoading,
     fetchProfesseurs,
   } = useProfesseurStore();
+  const { classes, fetchClasses } = useClassStore();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -106,6 +116,7 @@ export function ClassAssignmentForm({
           fetchSubjects(),
           fetchAcademicYears(),
           fetchProfesseurs(),
+          fetchClasses(),
         ]);
       } catch (error) {
         console.error("Erreur lors du chargement des données:", error);
@@ -114,23 +125,24 @@ export function ClassAssignmentForm({
     };
 
     loadData();
-  }, [fetchSubjects, fetchAcademicYears, fetchProfesseurs]);
+  }, [fetchSubjects, fetchAcademicYears, fetchProfesseurs, fetchClasses]);
 
   // Vérifier si toutes les données sont disponibles
+  // (le professeur est optionnel, donc son absence ne bloque pas le formulaire)
   const isDataLoaded =
     !subjectsLoading &&
     !yearsLoading &&
     !profsLoading &&
     subjects.length > 0 &&
-    academicYears.length > 0 &&
-    professeurs.length > 0;
+    academicYears.length > 0;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       subjectId: "",
-      professeurId: "",
+      professeurId: NO_PROFESSEUR,
       classLevel: "",
+      schoolClassId: NO_SECTION,
       academicYearId: "",
       status: "Active",
     },
@@ -142,8 +154,10 @@ export function ClassAssignmentForm({
     if (assignment && isInitialized && isDataLoaded) {
       form.reset({
         subjectId: assignment.subject?.id || "",
-        professeurId: assignment.professeur?.id || "",
+        professeurId: assignment.professeur?.id || NO_PROFESSEUR,
         classLevel: assignment.classLevel || "",
+        schoolClassId:
+          assignment.schoolClass?.id || assignment.schoolClassId || NO_SECTION,
         academicYearId: assignment.academicYear?.id || "",
         status: assignment.status === "Inactive" ? "Inactive" : "Active",
       });
@@ -151,13 +165,20 @@ export function ClassAssignmentForm({
       // Réinitialiser pour une nouvelle assignation
       form.reset({
         subjectId: "",
-        professeurId: "",
+        professeurId: NO_PROFESSEUR,
         classLevel: "",
+        schoolClassId: NO_SECTION,
         academicYearId: academicYears.find((y) => y.isCurrent)?.id || "",
         status: "Active",
       });
     }
   }, [assignment, isInitialized, isDataLoaded, form, academicYears]);
+
+  // Sections disponibles pour le niveau sélectionné
+  const selectedClassLevel = form.watch("classLevel");
+  const availableSections = classes.filter(
+    (cls) => cls.level === selectedClassLevel
+  );
 
   // Fonction pour vérifier si une assignation existe déjà
   const checkExistingAssignment = useCallback(
@@ -199,8 +220,15 @@ export function ClassAssignmentForm({
     try {
       const assignmentData = {
         subjectId: values.subjectId,
-        professeurId: values.professeurId,
+        professeurId:
+          !values.professeurId || values.professeurId === NO_PROFESSEUR
+            ? null
+            : values.professeurId,
         classLevel: values.classLevel,
+        schoolClassId:
+          !values.schoolClassId || values.schoolClassId === NO_SECTION
+            ? null
+            : values.schoolClassId,
         academicYearId: values.academicYearId,
         status: values.status,
       };
@@ -371,9 +399,7 @@ export function ClassAssignmentForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel className="flex items-center justify-between">
-                  <span>
-                    Professeur <span className="text-red-500">*</span>
-                  </span>
+                  <span>Professeur</span>
                   {professeurs.length === 0 && (
                     <span className="text-xs text-amber-600">
                       Aucun professeur disponible
@@ -382,23 +408,20 @@ export function ClassAssignmentForm({
                 </FormLabel>
                 <Select
                   onValueChange={field.onChange}
-                  value={field.value}
-                  disabled={isSubmitting || professeurs.length === 0}
+                  value={field.value || NO_PROFESSEUR}
+                  disabled={isSubmitting}
                 >
                   <FormControl>
-                    <SelectTrigger
-                      className={!field.value ? "text-muted-foreground" : ""}
-                    >
-                      <SelectValue
-                        placeholder={
-                          professeurs.length === 0
-                            ? "Aucun professeur disponible"
-                            : "Sélectionnez un professeur"
-                        }
-                      />
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionnez un professeur" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
+                    <SelectItem value={NO_PROFESSEUR}>
+                      <span className="text-muted-foreground">
+                        À pourvoir (aucun professeur)
+                      </span>
+                    </SelectItem>
                     {professeurs.map((prof) => (
                       <SelectItem key={prof.id} value={prof.id}>
                         <div className="flex flex-col">
@@ -428,7 +451,12 @@ export function ClassAssignmentForm({
                   Classe/Niveau <span className="text-red-500">*</span>
                 </FormLabel>
                 <Select
-                  onValueChange={field.onChange}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    // La section sélectionnée ne s'applique probablement plus
+                    // au nouveau niveau : on la réinitialise
+                    form.setValue("schoolClassId", NO_SECTION);
+                  }}
                   value={field.value}
                   disabled={isSubmitting}
                 >
@@ -467,6 +495,47 @@ export function ClassAssignmentForm({
                         </SelectItem>
                       );
                     })}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* Section (optionnelle) */}
+          <FormField
+            control={form.control}
+            name="schoolClassId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Section</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  value={field.value || NO_SECTION}
+                  disabled={isSubmitting || !selectedClassLevel}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          !selectedClassLevel
+                            ? "Sélectionnez d'abord un niveau"
+                            : "Tout le niveau"
+                        }
+                      />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value={NO_SECTION}>
+                      <span className="text-muted-foreground">
+                        Tout le niveau (toutes les sections)
+                      </span>
+                    </SelectItem>
+                    {availableSections.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -571,19 +640,31 @@ export function ClassAssignmentForm({
             <div>
               <span className="text-muted-foreground">Professeur:</span>
               <p className="font-medium">
-                {form.watch("professeurId")
+                {form.watch("professeurId") &&
+                form.watch("professeurId") !== NO_PROFESSEUR
                   ? formatProfesseurName(
                       professeurs.find(
                         (p) => p.id === form.watch("professeurId")
                       ) || {}
                     )
-                  : "Non sélectionné"}
+                  : "À pourvoir"}
               </p>
             </div>
             <div>
               <span className="text-muted-foreground">Classe:</span>
               <p className="font-medium">
                 {form.watch("classLevel") || "Non sélectionnée"}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Section:</span>
+              <p className="font-medium">
+                {form.watch("schoolClassId") &&
+                form.watch("schoolClassId") !== NO_SECTION
+                  ? availableSections.find(
+                      (cls) => cls.id === form.watch("schoolClassId")
+                    )?.name
+                  : "Tout le niveau"}
               </p>
             </div>
             <div>

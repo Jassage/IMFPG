@@ -28,13 +28,17 @@ export enum DocumentType {
 export interface BulletinRequest {
   studentId: string;
   academicYearId: string;
-  controlType: ControlType;
+  // Requis uniquement pour documentType === BULLETIN (les autres types couvrent l'année entière)
+  controlType?: ControlType;
   documentType: DocumentType;
   language?: string;
   includeComments?: boolean;
 }
 
 export interface BulletinData {
+  documentType: DocumentType;
+  // Absent pour les documents "année entière" (RELEVE, CERTIFICAT_SCOLARITE)
+  controlType?: ControlType;
   student: {
     id: string;
     firstName: string;
@@ -57,6 +61,8 @@ export interface BulletinData {
     startDate: Date;
     endDate: Date;
   };
+  // Statut d'inscription, utilisé par CERTIFICAT_SCOLARITE
+  enrollmentStatus?: string;
   grades: Array<{
     subject: string;
     coefficient: number;
@@ -67,6 +73,25 @@ export interface BulletinData {
     professeur: string;
     comments?: string;
   }>;
+  // Notes regroupées par matière avec une colonne par contrôle, utilisé par RELEVE
+  multiControlGrades?: Array<{
+    subjectName: string;
+    coefficient: number;
+    maxGrade: number;
+    passingGrade: number;
+    controlGrades: Partial<Record<ControlType, { grade: number; gradeOn20: number }>>;
+  }>;
+  // Totaux/moyennes par contrôle, utilisé par RELEVE
+  yearlyTotals?: {
+    totalCoefficient: number;
+    totalsByControl: Partial<Record<ControlType, number>>;
+    averagesByControl: Partial<Record<ControlType, number>>;
+  };
+  // Décision globale (ADMIS / À REFAIRE / À REFAIRE AILLEURS), utilisé par RELEVE
+  decision?: {
+    label: string;
+    description: string;
+  };
   statistics: {
     average: number;
     weightedAverage: number;
@@ -81,6 +106,16 @@ export interface BulletinData {
     headTeacher: string;
     director: string;
     generalComment: string;
+  };
+  schoolInfo: {
+    name: string;
+    slogan?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+    logo?: string;
   };
   metadata: {
     generatedAt: Date;

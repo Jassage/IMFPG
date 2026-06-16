@@ -12,13 +12,15 @@ interface ClassAssignment {
     code: string;
     coefficient: number;
   };
-  professeur: {
+  professeurId?: string | null;
+  professeur?: {
     matricule: string;
     id: string;
     firstName: string;
     lastName: string;
-  };
+  } | null;
   classLevel: string;
+  schoolClassId?: string | null;
   academicYear?: {
     id: string;
     year: string;
@@ -27,7 +29,7 @@ interface ClassAssignment {
     id: string;
     name: string;
     level: string;
-  };
+  } | null;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -69,6 +71,17 @@ interface AssignmentStore {
   createAssignment: (data: any) => Promise<ClassAssignment>;
   updateAssignment: (id: string, data: any) => Promise<ClassAssignment>;
   deleteAssignment: (id: string) => Promise<void>;
+  assignSubjectToLevels: (data: {
+    subjectId: string;
+    classLevels: string[];
+    academicYearId: string;
+    professeurId?: string | null;
+  }) => Promise<{
+    assignedCount: number;
+    skippedCount: number;
+    skippedLevels?: string[];
+    message?: string;
+  }>;
   setFilters: (filters: Partial<AssignmentStore["filters"]>) => void;
   clearError: () => void;
 }
@@ -346,6 +359,35 @@ export const useAssignmentStore = create<AssignmentStore>((set, get) => ({
     } catch (error: any) {
       set({
         error: error.response?.data?.message || "Erreur de suppression",
+        loading: false,
+      });
+      throw error;
+    }
+  },
+
+  assignSubjectToLevels: async (data) => {
+    set({ loading: true, error: null });
+
+    try {
+      const response = await api.post(
+        "/class-assignments/assign-to-levels",
+        data
+      );
+      const result = response.data?.data;
+
+      set({ loading: false });
+
+      return {
+        assignedCount: result?.assignedCount ?? 0,
+        skippedCount: result?.skippedCount ?? 0,
+        skippedLevels: result?.skippedLevels,
+        message: response.data?.message,
+      };
+    } catch (error: any) {
+      set({
+        error:
+          error.response?.data?.message ||
+          "Erreur lors de l'inscription au programme",
         loading: false,
       });
       throw error;

@@ -4,6 +4,7 @@ import {
   Bulletin,
   BulletinGenerationRequest,
   ControlType,
+  DocumentType,
   Student,
   AcademicYear,
   GradeWithDetails,
@@ -522,6 +523,55 @@ class BulletinService {
     try {
       const response = await api.post("/bulletins/generate", request);
       console.log("📄 Bulletin generation response:", response.data);
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Génère un aperçu PDF du document sans l'enregistrer
+   */
+  async previewBulletin(request: BulletinGenerationRequest): Promise<Blob> {
+    try {
+      const response = await api.post("/bulletins/preview", request, {
+        responseType: "blob",
+      });
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Télécharge le PDF d'un document déjà généré
+   */
+  async downloadBulletin(transcriptId: string): Promise<Blob> {
+    try {
+      const response = await api.get(`/bulletins/download/${transcriptId}`, {
+        responseType: "blob",
+      });
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Récupère l'historique des documents générés pour un étudiant
+   */
+  async getStudentBulletins(
+    studentId: string,
+    academicYearId?: string,
+    documentType?: DocumentType
+  ): Promise<{ success: boolean; data: Bulletin[] }> {
+    try {
+      const response = await api.get(`/bulletins/student/${studentId}`, {
+        params: {
+          ...(academicYearId ? { academicYearId } : {}),
+          ...(documentType ? { documentType } : {}),
+        },
+      });
       return response.data;
     } catch (error) {
       throw this.handleError(error);

@@ -175,6 +175,9 @@ export const createFeePayment = async (req: Request, res: Response) => {
       reference,
       paymentDate,
       userId: (req as any).userId,
+      recordedByName: (req as any).user
+        ? `${(req as any).user.firstName} ${(req as any).user.lastName}`.trim()
+        : undefined,
     });
 
     // Log de succès

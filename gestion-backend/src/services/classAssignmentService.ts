@@ -24,8 +24,9 @@ const isValidClassLevel = (level: string): level is ClassLevel => {
 // Types pour les données d'entrée
 interface CreateClassAssignmentData {
   subjectId: string;
-  professeurId: string;
+  professeurId?: string | null;
   classLevel: ClassLevel;
+  schoolClassId?: string | null;
   academicYearId: string;
   status?: "Active" | "Inactive";
   notes?: string;
@@ -33,11 +34,20 @@ interface CreateClassAssignmentData {
 
 interface UpdateClassAssignmentData {
   subjectId?: string;
-  professeurId?: string;
+  professeurId?: string | null;
   classLevel?: ClassLevel;
+  schoolClassId?: string | null;
   academicYearId?: string;
   status?: "Active" | "Inactive";
   notes?: string;
+}
+
+// Données pour l'attribution en masse d'une matière au programme d'un ou plusieurs niveaux
+interface AssignSubjectToLevelsData {
+  subjectId: string;
+  classLevels: ClassLevel[];
+  academicYearId: string;
+  professeurId?: string | null;
 }
 
 interface ClassAssignmentFilters {
@@ -629,12 +639,14 @@ export class ClassAssignmentService {
           subjectId,
           professeurId,
           classLevel,
+          schoolClassId,
           academicYearId,
           status = "Active",
         } = data;
 
-        // Validation des données d'entrée
-        if (!subjectId || !professeurId || !classLevel || !academicYearId) {
+        // Validation des données d'entrée (le professeur est optionnel : la matière
+        // peut être inscrite au programme avant qu'un enseignant ne soit affecté)
+        if (!subjectId || !classLevel || !academicYearId) {
           throw {
             status: 400,
             response: {
@@ -644,7 +656,6 @@ export class ClassAssignmentService {
               data: {
                 missingFields: [
                   !subjectId && "subjectId",
-                  !professeurId && "professeurId",
                   !classLevel && "classLevel",
                   !academicYearId && "academicYearId",
                 ].filter(Boolean),
@@ -669,13 +680,14 @@ export class ClassAssignmentService {
           };
         }
 
-        // Vérifier l'unicité
+        // Vérifier que la matière n'est pas déjà inscrite au programme de ce
+        // niveau (ou de cette section précise) pour cette année
         const existingAssignment = await tx.classAssignment.findFirst({
           where: {
             subjectId,
             classLevel,
             academicYearId,
-            professeurId,
+            schoolClassId: schoolClassId || null,
           },
         });
 
@@ -684,52 +696,28 @@ export class ClassAssignmentService {
             status: 409,
             response: {
               success: false,
-              message: "Cette assignation existe déjà",
+              message: schoolClassId
+                ? "Cette matière est déjà au programme de cette section"
+                : "Cette matière est déjà au programme de ce niveau",
               code: "ASSIGNMENT_EXISTS",
               data: {
                 existingId: existingAssignment.id,
                 subjectId,
                 classLevel,
                 academicYearId,
-                professeurId,
-              },
-            },
-          };
-        }
-
-        //verifier si ce cours est attribuer a ce niveau par un autre professeur
-        const conflictingAssignment = await tx.classAssignment.findFirst({
-          where: {
-            subjectId,
-            classLevel,
-            academicYearId,
-            NOT: { professeurId: professeurId },
-          },
-        });
-
-        if (conflictingAssignment) {
-          throw {
-            status: 409,
-            response: {
-              success: false,
-              message:
-                "Cette matière est déjà assignée à ce niveau par un autre professeur",
-              code: "SUBJECT_ALREADY_ASSIGNED_TO_LEVEL",
-              data: {
-                existingId: conflictingAssignment.id,
-                subjectId,
-                classLevel,
-                academicYearId,
-                professeurId: conflictingAssignment.professeurId,
+                schoolClassId: schoolClassId || null,
               },
             },
           };
         }
 
         // Vérifier les relations simultanément
-        const [subject, academicYear] = await Promise.all([
+        const [subject, academicYear, schoolClass] = await Promise.all([
           tx.subject.findUnique({ where: { id: subjectId } }),
           tx.academicYear.findUnique({ where: { id: academicYearId } }),
+          schoolClassId
+            ? tx.schoolClass.findUnique({ where: { id: schoolClassId } })
+            : Promise.resolve(null),
         ]);
 
         if (!subject) {
@@ -754,82 +742,106 @@ export class ClassAssignmentService {
           };
         }
 
-        // Le professeur peut-il enseigner cette matière?
-        const teachingValidation = await this.canProfesseurTeachSubject(
-          tx,
-          professeurId,
-          subjectId,
-          classLevel
-        );
-
-        if (!teachingValidation.canTeach) {
-          throw {
-            status: 400,
-            response: {
-              success: false,
-              message:
-                teachingValidation.reason ||
-                "Le professeur ne peut pas enseigner cette matière",
-              code: "PROFESSEUR_CANNOT_TEACH_SUBJECT",
-              data: {
-                professeurId,
-                subjectId,
-                classLevel,
-                recommendations: teachingValidation.recommendations,
+        if (schoolClassId) {
+          if (!schoolClass) {
+            throw {
+              status: 404,
+              response: {
+                success: false,
+                message: "Classe non trouvée",
+                code: "SCHOOL_CLASS_NOT_FOUND",
               },
-            },
-          };
+            };
+          }
+
+          if (schoolClass.level !== classLevel) {
+            throw {
+              status: 400,
+              response: {
+                success: false,
+                message: "Cette classe ne correspond pas au niveau sélectionné",
+                code: "SCHOOL_CLASS_LEVEL_MISMATCH",
+                data: {
+                  schoolClassLevel: schoolClass.level,
+                  classLevel,
+                },
+              },
+            };
+          }
         }
 
-        // Vérifier la charge de travail du professeur
-        const professorAssignmentsCount = await tx.classAssignment.count({
-          where: {
+        let isPrimarySubject: boolean | undefined;
+
+        // Si un professeur est fourni, vérifier qu'il peut enseigner cette matière
+        if (professeurId) {
+          const teachingValidation = await this.canProfesseurTeachSubject(
+            tx,
             professeurId,
-            academicYearId,
-            status: "Active",
-          },
-        });
+            subjectId,
+            classLevel
+          );
 
-        if (professorAssignmentsCount >= MAX_ASSIGNMENTS_PER_PROFESSOR) {
-          throw {
-            status: 400,
-            response: {
-              success: false,
-              message: `Le professeur a déjà ${professorAssignmentsCount} assignations actives (maximum: ${MAX_ASSIGNMENTS_PER_PROFESSOR})`,
-              code: "TOO_MANY_ASSIGNMENTS",
-              data: {
-                currentCount: professorAssignmentsCount,
-                maxAllowed: MAX_ASSIGNMENTS_PER_PROFESSOR,
+          if (!teachingValidation.canTeach) {
+            throw {
+              status: 400,
+              response: {
+                success: false,
+                message:
+                  teachingValidation.reason ||
+                  "Le professeur ne peut pas enseigner cette matière",
+                code: "PROFESSEUR_CANNOT_TEACH_SUBJECT",
+                data: {
+                  professeurId,
+                  subjectId,
+                  classLevel,
+                  recommendations: teachingValidation.recommendations,
+                },
               },
+            };
+          }
+
+          // Vérifier la charge de travail du professeur
+          const professorAssignmentsCount = await tx.classAssignment.count({
+            where: {
+              professeurId,
+              academicYearId,
+              status: "Active",
             },
-          };
-        }
+          });
 
-        // Vérifier si c'est une matière principale du professeur
-        const isPrimarySubject =
-          teachingValidation.professeurSubject?.isPrimary;
+          if (professorAssignmentsCount >= MAX_ASSIGNMENTS_PER_PROFESSOR) {
+            throw {
+              status: 400,
+              response: {
+                success: false,
+                message: `Le professeur a déjà ${professorAssignmentsCount} assignations actives (maximum: ${MAX_ASSIGNMENTS_PER_PROFESSOR})`,
+                code: "TOO_MANY_ASSIGNMENTS",
+                data: {
+                  currentCount: professorAssignmentsCount,
+                  maxAllowed: MAX_ASSIGNMENTS_PER_PROFESSOR,
+                },
+              },
+            };
+          }
 
-        // Données d'audit
-        const auditData: any = {};
-        if (userId) {
-          auditData.createdById = userId;
-          auditData.updatedById = userId;
+          isPrimarySubject = teachingValidation.professeurSubject?.isPrimary;
         }
 
         // Créer l'assignation
         const assignment = await tx.classAssignment.create({
           data: {
             subjectId,
-            professeurId,
+            professeurId: professeurId || null,
             classLevel,
+            schoolClassId: schoolClassId || null,
             academicYearId,
             status,
-            ...auditData,
           },
           include: {
             subject: true,
             professeur: true,
             academicYear: true,
+            schoolClass: true,
           },
         });
 
@@ -894,6 +906,7 @@ export class ClassAssignmentService {
             subject: true,
             professeur: true,
             academicYear: true,
+            schoolClass: true,
           },
         });
 
@@ -915,6 +928,8 @@ export class ClassAssignmentService {
         if (data.subjectId !== undefined) updateData.subjectId = data.subjectId;
         if (data.professeurId !== undefined)
           updateData.professeurId = data.professeurId;
+        if (data.schoolClassId !== undefined)
+          updateData.schoolClassId = data.schoolClassId;
         if (data.classLevel !== undefined) {
           // Validation du niveau de classe
           if (!isValidClassLevel(data.classLevel)) {
@@ -954,7 +969,13 @@ export class ClassAssignmentService {
         const finalAcademicYearId =
           data.academicYearId || existingAssignment.academicYearId;
         const finalProfesseurId =
-          data.professeurId || existingAssignment.professeurId;
+          data.professeurId !== undefined
+            ? data.professeurId
+            : existingAssignment.professeurId;
+        const finalSchoolClassId =
+          data.schoolClassId !== undefined
+            ? data.schoolClassId
+            : existingAssignment.schoolClassId;
 
         // Vérification de l'unicité (sauf si c'est la même assignation)
         const duplicateAssignment = await tx.classAssignment.findFirst({
@@ -963,7 +984,7 @@ export class ClassAssignmentService {
             subjectId: finalSubjectId,
             classLevel: finalClassLevel,
             academicYearId: finalAcademicYearId,
-            professeurId: finalProfesseurId,
+            schoolClassId: finalSchoolClassId ?? null,
           },
         });
 
@@ -972,7 +993,9 @@ export class ClassAssignmentService {
             status: 409,
             response: {
               success: false,
-              message: "Cette assignation existe déjà",
+              message: finalSchoolClassId
+                ? "Cette matière est déjà au programme de cette section"
+                : "Cette matière est déjà au programme de ce niveau",
               code: "ASSIGNMENT_EXISTS",
               data: {
                 existingId: duplicateAssignment.id,
@@ -981,22 +1004,56 @@ export class ClassAssignmentService {
           };
         }
 
+        // Vérifier la nouvelle section si fournie
+        if (data.schoolClassId !== undefined && data.schoolClassId !== null) {
+          const schoolClass = await tx.schoolClass.findUnique({
+            where: { id: data.schoolClassId },
+          });
+
+          if (!schoolClass) {
+            throw {
+              status: 404,
+              response: {
+                success: false,
+                message: "Classe non trouvée",
+                code: "SCHOOL_CLASS_NOT_FOUND",
+              },
+            };
+          }
+
+          if (schoolClass.level !== finalClassLevel) {
+            throw {
+              status: 400,
+              response: {
+                success: false,
+                message:
+                  "Cette classe ne correspond pas au niveau sélectionné",
+                code: "SCHOOL_CLASS_LEVEL_MISMATCH",
+                data: {
+                  schoolClassLevel: schoolClass.level,
+                  classLevel: finalClassLevel,
+                },
+              },
+            };
+          }
+        }
+
         // Vérifier les nouvelles relations si fournies
         let newAcademicYear = null;
 
-        //  Le professeur peut-il enseigner cette matière?
-        if (data.subjectId || data.professeurId) {
-          const checkSubjectId = data.subjectId || existingAssignment.subjectId;
-          const checkProfesseurId =
-            data.professeurId || existingAssignment.professeurId;
-          const checkClassLevel =
-            data.classLevel || existingAssignment.classLevel;
-
+        // Le professeur peut-il enseigner cette matière?
+        // (uniquement si un professeur est affecté et qu'une donnée pertinente change)
+        if (
+          finalProfesseurId &&
+          (data.subjectId !== undefined ||
+            data.professeurId !== undefined ||
+            data.classLevel !== undefined)
+        ) {
           const teachingValidation = await this.canProfesseurTeachSubject(
             tx,
-            checkProfesseurId,
-            checkSubjectId,
-            checkClassLevel as ClassLevel
+            finalProfesseurId,
+            finalSubjectId,
+            finalClassLevel as ClassLevel
           );
 
           if (!teachingValidation.canTeach) {
@@ -1009,9 +1066,9 @@ export class ClassAssignmentService {
                   "Le professeur ne peut pas enseigner cette matière",
                 code: "PROFESSEUR_CANNOT_TEACH_SUBJECT",
                 data: {
-                  professeurId: checkProfesseurId,
-                  subjectId: checkSubjectId,
-                  classLevel: checkClassLevel,
+                  professeurId: finalProfesseurId,
+                  subjectId: finalSubjectId,
+                  classLevel: finalClassLevel,
                   recommendations: teachingValidation.recommendations,
                 },
               },
@@ -1062,7 +1119,6 @@ export class ClassAssignmentService {
 
         // Données d'audit
         if (userId) {
-          updateData.updatedById = userId;
           updateData.updatedAt = new Date();
         }
 
@@ -1074,13 +1130,9 @@ export class ClassAssignmentService {
             subject: true,
             professeur: true,
             academicYear: true,
+            schoolClass: true,
           },
         });
-
-        // Log des changements
-        const changedFields = Object.keys(updateData).filter(
-          (key) => updateData[key] !== (existingAssignment as any)[key]
-        );
 
         return {
           success: true,
@@ -1097,6 +1149,182 @@ export class ClassAssignmentService {
         }
 
         console.error("Error updating class assignment:", error);
+        throw {
+          status: 500,
+          response: {
+            success: false,
+            message: "Erreur interne du serveur",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        };
+      }
+    });
+  }
+
+  /**
+   * Inscrit une matière au programme d'un ou plusieurs niveaux en une seule opération.
+   * Les niveaux déjà au programme (pour ce niveau global, hors section) sont ignorés.
+   */
+  static async assignSubjectToLevels(
+    data: AssignSubjectToLevelsData,
+    userId?: string
+  ): Promise<ApiResponse> {
+    return await prisma.$transaction(async (tx: any) => {
+      try {
+        const { subjectId, classLevels, academicYearId, professeurId } = data;
+
+        if (!subjectId || !academicYearId || !classLevels?.length) {
+          throw {
+            status: 400,
+            response: {
+              success: false,
+              message: "Tous les champs obligatoires sont requis",
+              code: "MISSING_REQUIRED_FIELDS",
+              data: {
+                missingFields: [
+                  !subjectId && "subjectId",
+                  !academicYearId && "academicYearId",
+                  !classLevels?.length && "classLevels",
+                ].filter(Boolean),
+              },
+            },
+          };
+        }
+
+        const invalidLevels = classLevels.filter(
+          (level) => !isValidClassLevel(level)
+        );
+        if (invalidLevels.length > 0) {
+          throw {
+            status: 400,
+            response: {
+              success: false,
+              message: "Niveau(x) de classe invalide(s)",
+              code: "INVALID_CLASS_LEVEL",
+              data: {
+                received: invalidLevels,
+                validLevels: VALID_CLASS_LEVELS,
+              },
+            },
+          };
+        }
+
+        const [subject, academicYear, professeur] = await Promise.all([
+          tx.subject.findUnique({ where: { id: subjectId } }),
+          tx.academicYear.findUnique({ where: { id: academicYearId } }),
+          professeurId
+            ? tx.professeur.findUnique({ where: { id: professeurId } })
+            : Promise.resolve(null),
+        ]);
+
+        if (!subject) {
+          throw {
+            status: 404,
+            response: {
+              success: false,
+              message: "Matière non trouvée",
+              code: "SUBJECT_NOT_FOUND",
+            },
+          };
+        }
+
+        if (!academicYear) {
+          throw {
+            status: 404,
+            response: {
+              success: false,
+              message: "Année académique non trouvée",
+              code: "ACADEMIC_YEAR_NOT_FOUND",
+            },
+          };
+        }
+
+        if (professeurId && !professeur) {
+          throw {
+            status: 404,
+            response: {
+              success: false,
+              message: "Professeur non trouvé",
+              code: "PROFESSEUR_NOT_FOUND",
+            },
+          };
+        }
+
+        let assignedCount = 0;
+        let skippedCount = 0;
+        const skippedLevels: ClassLevel[] = [];
+        const createdAssignments: any[] = [];
+
+        for (const classLevel of classLevels) {
+          const existing = await tx.classAssignment.findFirst({
+            where: {
+              subjectId,
+              classLevel,
+              academicYearId,
+              schoolClassId: null,
+            },
+          });
+
+          if (existing) {
+            skippedCount++;
+            skippedLevels.push(classLevel);
+            continue;
+          }
+
+          if (professeurId) {
+            const teachingValidation = await this.canProfesseurTeachSubject(
+              tx,
+              professeurId,
+              subjectId,
+              classLevel
+            );
+
+            if (!teachingValidation.canTeach) {
+              skippedCount++;
+              skippedLevels.push(classLevel);
+              continue;
+            }
+          }
+
+          const assignment = await tx.classAssignment.create({
+            data: {
+              subjectId,
+              professeurId: professeurId || null,
+              classLevel,
+              schoolClassId: null,
+              academicYearId,
+              status: "Active",
+            },
+            include: {
+              subject: true,
+              professeur: true,
+              academicYear: true,
+            },
+          });
+
+          createdAssignments.push(assignment);
+          assignedCount++;
+        }
+
+        return {
+          success: true,
+          message:
+            assignedCount > 0
+              ? `${assignedCount} niveau(x) ajouté(s) au programme`
+              : "Aucun nouveau niveau ajouté au programme",
+          data: {
+            assignedCount,
+            skippedCount,
+            skippedLevels,
+            assignments: createdAssignments,
+          },
+        };
+      } catch (error: any) {
+        if (error.status === 404 || error.status === 400) {
+          throw error;
+        }
+
+        console.error("Error assigning subject to levels:", error);
         throw {
           status: 500,
           response: {
@@ -1409,9 +1637,11 @@ export class ClassAssignmentService {
       const assignedSubjectIds = existingAssignments.map(
         (a: { subjectId: any }) => a.subjectId
       );
-      const assignedProfesseurIds = existingAssignments.map(
-        (a: { professeurId: any }) => a.professeurId
-      );
+      const assignedProfesseurIds = existingAssignments
+        .map((a: { professeurId: any }) => a.professeurId)
+        .filter((professeurId: string | null): professeurId is string =>
+          Boolean(professeurId)
+        );
 
       // Filtres pour les requêtes
       const searchFilter = filters?.search || "";
@@ -1724,6 +1954,7 @@ export class ClassAssignmentService {
 
       const where: any = {
         classLevel: classLevel,
+        OR: [{ schoolClassId: null }, { schoolClassId: classId }],
       };
 
       if (academicYearId) {

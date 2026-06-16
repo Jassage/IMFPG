@@ -590,7 +590,7 @@ export class GradeService {
       console.log("🔍 DEBUG - User ID:", auditData.userId);
 
       if (auditData.userRole === UserRole.Professeur) {
-        if (assignment.professeur.userId !== auditData.userId) {
+        if (assignment.professeur?.userId !== auditData.userId) {
           console.log("❌ DEBUG - Professeur non assigné à cette classe");
           return {
             success: false,

@@ -3,6 +3,9 @@
  * @description Service pour la gestion des présences
  */
 
+import PDFDocument from "pdfkit";
+import path from "path";
+import fs from "fs";
 import { PrismaClient, AttendanceStatus } from "../../generated/prisma";
 import { AuditData } from "../types/auth";
 
@@ -1833,5 +1836,373 @@ export class AttendanceService {
     const year = date.getFullYear();
 
     await this.calculateAndSaveStats(studentId, academicYearId, month, year);
+  }
+
+  // ==================== FEUILLE DE PRÉSENCE PDF ====================
+
+  /**
+   * Génère une feuille de présence PDF pour une classe sur une période donnée.
+   * Format : A4 paysage, lignes = étudiants, colonnes = dates.
+   */
+  async generateAttendanceSheetPDF(params: {
+    classId: string;
+    startDate: Date;
+    endDate: Date;
+    academicYearId?: string;
+  }): Promise<Buffer> {
+    const { classId, startDate, endDate, academicYearId } = params;
+
+    const settings = await prisma.systemSettings.findFirst();
+    const schoolName = settings?.schoolName || "Institution Scolaire";
+    const rawLogo   = settings?.schoolLogo  || null;
+
+    const schoolClass = await prisma.schoolClass.findUnique({
+      where: { id: classId },
+      select: { name: true, level: true },
+    });
+    if (!schoolClass) throw Object.assign(new Error("Classe non trouvée"), { status: 404 });
+
+    const students = await prisma.student.findMany({
+      where: { classId, status: "Active" },
+      select: { id: true, firstName: true, lastName: true, studentCode: true },
+      orderBy: { lastName: "asc" },
+    });
+
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    const attendances = await prisma.attendance.findMany({
+      where: {
+        classId,
+        date: { gte: start, lte: end },
+        ...(academicYearId ? { academicYearId } : {}),
+      },
+      select: { studentId: true, date: true, status: true },
+    });
+
+    // Priorité de fusion : ABSENT > LATE > SICK > EXCUSED > PRESENT > HOLIDAY
+    const STATUS_PRIORITY = ["ABSENT", "LATE", "SICK", "EXCUSED", "PRESENT", "HOLIDAY"];
+    const matrix = new Map<string, Map<string, string>>();
+    for (const a of attendances) {
+      const dk = a.date.toISOString().split("T")[0];
+      if (!matrix.has(a.studentId)) matrix.set(a.studentId, new Map());
+      const existing = matrix.get(a.studentId)!.get(dk);
+      if (!existing || STATUS_PRIORITY.indexOf(a.status) < STATUS_PRIORITY.indexOf(existing)) {
+        matrix.get(a.studentId)!.set(dk, a.status);
+      }
+    }
+
+    const dates: Date[] = [];
+    const cur = new Date(start);
+    while (cur <= end) {
+      dates.push(new Date(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    // Résolution du logo (même logique que BulletinService)
+    let logoPath: string | null = null;
+    if (rawLogo && rawLogo.trim() && !rawLogo.startsWith("http")) {
+      const rel = rawLogo.startsWith("/") ? rawLogo.slice(1) : rawLogo;
+      const abs = path.join(process.cwd(), rel);
+      if (fs.existsSync(abs)) logoPath = abs;
+    }
+
+    return this.buildAttendanceSheetPDF({
+      schoolName,
+      logoPath,
+      className:  schoolClass.name,
+      classLevel: schoolClass.level,
+      students,
+      dates,
+      matrix,
+      startDate: start,
+      endDate:   end,
+    });
+  }
+
+  private buildAttendanceSheetPDF(data: {
+    schoolName:  string;
+    logoPath:    string | null;
+    className:   string;
+    classLevel:  string;
+    students:    Array<{ id: string; firstName: string; lastName: string; studentCode: string }>;
+    dates:       Date[];
+    matrix:      Map<string, Map<string, string>>;
+    startDate:   Date;
+    endDate:     Date;
+  }): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      try {
+        const { schoolName, logoPath, className, classLevel, students, dates, matrix, startDate, endDate } = data;
+
+        // Dimensions A4 paysage
+        const PW = 841.89;
+        const PH = 595.28;
+        const ML = 30;
+        const UW = PW - 2 * ML;
+
+        const C = {
+          navy:    "#1E3A5F",
+          gold:    "#B8860B",
+          text:    "#2D3748",
+          muted:   "#718096",
+          white:   "#FFFFFF",
+          border:  "#CBD5E0",
+          altRow:  "#F7FAFC",
+          present: "#276749",
+          absent:  "#C53030",
+          late:    "#C05621",
+          excused: "#2B6CB0",
+          sick:    "#6B46C1",
+        };
+
+        // Colonnes fixes
+        const COL_NO   = 22;
+        const COL_NOM  = 155;
+        const COL_CODE = 55;
+        const FIXED_W  = COL_NO + COL_NOM + COL_CODE;
+
+        // Hauteurs
+        const HEADER_H      = 88;
+        const TH_H          = 32;   // table header
+        const ROW_H         = 16;
+        const FOOTER_H      = 52;
+        const TABLE_TOP     = ML + HEADER_H + 4;
+        const CONTENT_TOP   = TABLE_TOP + TH_H;
+        const AVAILABLE_H   = PH - CONTENT_TOP - FOOTER_H;
+        const MAX_ROWS      = Math.floor(AVAILABLE_H / ROW_H);
+
+        // Pagination dates (max 35 par page)
+        const MAX_DATES = 35;
+        const datePages: Date[][] = [];
+        for (let i = 0; i < dates.length; i += MAX_DATES) datePages.push(dates.slice(i, i + MAX_DATES));
+        if (datePages.length === 0) datePages.push([]);
+
+        // Pagination étudiants
+        const studentPages: typeof students[] = [];
+        for (let i = 0; i < students.length; i += MAX_ROWS) studentPages.push(students.slice(i, i + MAX_ROWS));
+        if (studentPages.length === 0) studentPages.push([]);
+
+        const chunks: Buffer[] = [];
+        const doc = new PDFDocument({
+          size:    [PW, PH],
+          margins: { top: ML, left: ML, right: ML, bottom: 0 },
+          autoFirstPage: true,
+          info: { Title: "Feuille de Présence", Author: schoolName, Subject: `Présences ${className}` },
+        });
+        doc.on("data",  (c: Buffer) => chunks.push(c));
+        doc.on("end",   () => resolve(Buffer.concat(chunks)));
+        doc.on("error", reject);
+
+        const fmtDate = (d: Date) =>
+          d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+        const fmtDay  = (d: Date) => d.toLocaleDateString("fr-FR", { day: "2-digit" });
+        const fmtMonth = (d: Date) => d.toLocaleDateString("fr-FR", { month: "short" }).toUpperCase();
+
+        const statusCode = (s?: string) => {
+          switch (s) {
+            case "PRESENT": return "P";
+            case "ABSENT":  return "A";
+            case "LATE":    return "R";
+            case "EXCUSED": return "E";
+            case "SICK":    return "M";
+            default:        return "";
+          }
+        };
+
+        const statusColor = (s?: string) => {
+          switch (s) {
+            case "PRESENT": return C.present;
+            case "ABSENT":  return C.absent;
+            case "LATE":    return C.late;
+            case "EXCUSED": return C.excused;
+            case "SICK":    return C.sick;
+            default:        return C.text;
+          }
+        };
+
+        let firstPage = true;
+
+        for (const dateGroup of datePages) {
+          const dateColW = dateGroup.length > 0
+            ? Math.max(16, Math.min(35, (UW - FIXED_W) / dateGroup.length))
+            : 0;
+          const tableW = FIXED_W + dateColW * dateGroup.length;
+
+          for (const studentGroup of studentPages) {
+            if (!firstPage) {
+              doc.addPage({ size: [PW, PH], margins: { top: ML, left: ML, right: ML, bottom: 0 } });
+            }
+            firstPage = false;
+
+            // ── EN-TÊTE ───────────────────────────────────────────────────
+            const headerY = ML;
+            const LOGO_SZ = 54;
+
+            // Bandeau bleu
+            doc.rect(ML, headerY, UW, HEADER_H).fill(C.navy);
+
+            // Logo (si disponible)
+            if (logoPath) {
+              try {
+                doc.image(logoPath, ML + 6, headerY + (HEADER_H - LOGO_SZ) / 2, { width: LOGO_SZ, height: LOGO_SZ });
+              } catch { /* logo non affichable, on skip */ }
+            }
+
+            // Nom de l'école
+            const textX = logoPath ? ML + LOGO_SZ + 14 : ML + 12;
+            doc.fillColor(C.gold).font("Helvetica-Bold").fontSize(13)
+              .text(schoolName.toUpperCase(), textX, headerY + 12, { width: UW - (textX - ML) - 10 });
+
+            doc.fillColor(C.white).font("Helvetica-Bold").fontSize(16)
+              .text("FEUILLE DE PRÉSENCE", textX, headerY + 30, { width: UW - (textX - ML) - 10 });
+
+            doc.fillColor(C.white).font("Helvetica").fontSize(8.5)
+              .text(`Classe : ${className}  |  Niveau : ${classLevel}`, textX, headerY + 54, { width: UW - (textX - ML) - 10 })
+              .text(`Période : ${fmtDate(startDate)} — ${fmtDate(endDate)}`, textX, headerY + 66, { width: UW - (textX - ML) - 10 });
+
+            // Barre or
+            doc.rect(ML, headerY + HEADER_H, UW, 3).fill(C.gold);
+
+            // ── EN-TÊTE DU TABLEAU ────────────────────────────────────────
+            const thY = TABLE_TOP;
+            doc.rect(ML, thY, tableW, TH_H).fill(C.border);
+
+            // En-têtes colonnes fixes
+            doc.fillColor(C.navy).font("Helvetica-Bold").fontSize(7.5);
+            doc.rect(ML, thY, COL_NO, TH_H).stroke();
+            doc.text("N°",   ML + 2, thY + (TH_H - 8) / 2, { width: COL_NO - 4, align: "center" });
+
+            doc.rect(ML + COL_NO, thY, COL_NOM, TH_H).stroke();
+            doc.text("Nom et Prénom", ML + COL_NO + 4, thY + (TH_H - 8) / 2, { width: COL_NOM - 8 });
+
+            doc.rect(ML + COL_NO + COL_NOM, thY, COL_CODE, TH_H).stroke();
+            doc.text("Code", ML + COL_NO + COL_NOM + 2, thY + (TH_H - 8) / 2, { width: COL_CODE - 4, align: "center" });
+
+            // En-têtes dates (jour + mois abrégé sur 2 lignes)
+            if (dateGroup.length > 0) {
+              const firstMonth = fmtMonth(dateGroup[0]);
+              let prevMonth    = firstMonth;
+              let spanStart    = 0;
+              let spanCount    = 0;
+
+              const drawMonthSpan = (startIdx: number, count: number, monthLabel: string) => {
+                const spanX = ML + FIXED_W + startIdx * dateColW;
+                const spanW = count * dateColW;
+                doc.rect(spanX, thY, spanW, 14).fillAndStroke(C.navy, C.border);
+                doc.fillColor(C.white).font("Helvetica-Bold").fontSize(6.5)
+                  .text(monthLabel, spanX + 1, thY + 3, { width: spanW - 2, align: "center" });
+              };
+
+              for (let di = 0; di < dateGroup.length; di++) {
+                const m = fmtMonth(dateGroup[di]);
+                if (m !== prevMonth) {
+                  drawMonthSpan(spanStart, spanCount, prevMonth);
+                  prevMonth = m;
+                  spanStart = di;
+                  spanCount = 1;
+                } else {
+                  spanCount++;
+                }
+              }
+              drawMonthSpan(spanStart, spanCount, prevMonth);
+
+              // Numéros de jours
+              for (let di = 0; di < dateGroup.length; di++) {
+                const dx = ML + FIXED_W + di * dateColW;
+                doc.rect(dx, thY + 14, dateColW, TH_H - 14).stroke();
+                doc.fillColor(C.navy).font("Helvetica-Bold").fontSize(6.5)
+                  .text(fmtDay(dateGroup[di]), dx + 1, thY + 16, { width: dateColW - 2, align: "center" });
+              }
+            }
+
+            // ── LIGNES ÉTUDIANTS ──────────────────────────────────────────
+            for (let si = 0; si < studentGroup.length; si++) {
+              const student = studentGroup[si];
+              const ry = CONTENT_TOP + si * ROW_H;
+              const bgColor = si % 2 === 0 ? C.white : C.altRow;
+
+              doc.rect(ML, ry, tableW, ROW_H).fill(bgColor);
+
+              // N°
+              doc.rect(ML, ry, COL_NO, ROW_H).stroke();
+              doc.fillColor(C.muted).font("Helvetica").fontSize(7)
+                .text(String(si + 1), ML + 2, ry + (ROW_H - 7) / 2, { width: COL_NO - 4, align: "center" });
+
+              // Nom
+              const fullName = `${student.lastName.toUpperCase()} ${student.firstName}`;
+              doc.rect(ML + COL_NO, ry, COL_NOM, ROW_H).stroke();
+              doc.fillColor(C.text).font("Helvetica").fontSize(7)
+                .text(fullName, ML + COL_NO + 4, ry + (ROW_H - 7) / 2, { width: COL_NOM - 8, ellipsis: true });
+
+              // Code
+              doc.rect(ML + COL_NO + COL_NOM, ry, COL_CODE, ROW_H).stroke();
+              doc.fillColor(C.muted).font("Helvetica").fontSize(6.5)
+                .text(student.studentCode, ML + COL_NO + COL_NOM + 2, ry + (ROW_H - 7) / 2, { width: COL_CODE - 4, align: "center" });
+
+              // Cellules dates
+              const studentMap = matrix.get(student.id);
+              for (let di = 0; di < dateGroup.length; di++) {
+                const dk   = dateGroup[di].toISOString().split("T")[0];
+                const stat = studentMap?.get(dk);
+                const dx   = ML + FIXED_W + di * dateColW;
+                const code = statusCode(stat);
+                const col  = statusColor(stat);
+
+                doc.rect(dx, ry, dateColW, ROW_H).stroke();
+                if (code) {
+                  doc.fillColor(col).font("Helvetica-Bold").fontSize(6.5)
+                    .text(code, dx + 1, ry + (ROW_H - 6.5) / 2, { width: dateColW - 2, align: "center" });
+                }
+              }
+            }
+
+            // ── PIED DE PAGE ──────────────────────────────────────────────
+            const footerY = PH - FOOTER_H;
+            doc.rect(ML, footerY, UW, 1).fill(C.border);
+
+            // Légende
+            const legendItems: Array<[string, string, string]> = [
+              ["P", C.present, "Présent"],
+              ["A", C.absent,  "Absent"],
+              ["R", C.late,    "Retard"],
+              ["E", C.excused, "Excusé"],
+              ["M", C.sick,    "Malade"],
+            ];
+            let lx = ML;
+            doc.fillColor(C.muted).font("Helvetica").fontSize(7).text("Légende :", ML, footerY + 6);
+            lx += 48;
+            for (const [code, color, label] of legendItems) {
+              doc.fillColor(color).font("Helvetica-Bold").fontSize(7).text(code, lx, footerY + 6);
+              doc.fillColor(C.muted).font("Helvetica").fontSize(7).text(`=${label}`, lx + 7, footerY + 6);
+              lx += 62;
+            }
+
+            // Date de génération
+            doc.fillColor(C.muted).font("Helvetica").fontSize(7)
+              .text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, ML, footerY + 18);
+
+            // Signatures
+            const sigY = footerY + 18;
+            const sigW = 130;
+            const sigGap = 40;
+            const sigStartX = PW - ML - sigW * 2 - sigGap;
+
+            doc.fillColor(C.text).font("Helvetica").fontSize(7)
+              .text("Directeur(rice) :", sigStartX, sigY)
+              .text("Professeur(e) principal(e) :", sigStartX + sigW + sigGap, sigY);
+
+            doc.moveTo(sigStartX, sigY + 22).lineTo(sigStartX + sigW, sigY + 22).stroke(C.border);
+            doc.moveTo(sigStartX + sigW + sigGap, sigY + 22).lineTo(sigStartX + sigW * 2 + sigGap, sigY + 22).stroke(C.border);
+          }
+        }
+
+        doc.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 }

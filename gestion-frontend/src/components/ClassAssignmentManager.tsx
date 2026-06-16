@@ -24,6 +24,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -35,6 +36,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Search,
   Filter,
@@ -43,6 +46,7 @@ import {
   Trash2,
   Eye,
   Plus,
+  ListPlus,
   RefreshCw,
   CheckCircle,
   XCircle,
@@ -55,6 +59,12 @@ import {
 } from "lucide-react";
 import { ClassAssignmentForm } from "./classes/ClassAssignmentForm";
 import { ClassAssignment } from "@/types/academic";
+import { useSubjectStore } from "@/store/subjectStore";
+import { useAcademicYearStore } from "@/store/academicYearStore";
+import useProfesseurStore from "@/store/professorStore";
+
+// Sentinelle pour "À pourvoir" (aucun professeur affecté)
+const NO_PROFESSEUR = "none";
 
 // Constante pour les niveaux de classe
 const CLASS_LEVELS = [
@@ -93,7 +103,16 @@ const ClassAssignmentManager = () => {
     fetchAssignments,
     setFilters,
     deleteAssignment,
+    assignSubjectToLevels,
   } = useAssignmentStore();
+
+  const {
+    subjects,
+    loading: subjectsLoading,
+    fetchSubjects,
+  } = useSubjectStore();
+  const { academicYears, fetchAcademicYears } = useAcademicYearStore();
+  const { professeurs, fetchProfesseurs } = useProfesseurStore();
 
   // État de pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -112,6 +131,16 @@ const ClassAssignmentManager = () => {
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [formInitialized, setFormInitialized] = useState<boolean>(false);
+
+  // États du dialogue "Inscrire au programme" (assignation en masse)
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState<boolean>(false);
+  const [assignSubjectId, setAssignSubjectId] = useState<string>("");
+  const [assignClassLevels, setAssignClassLevels] = useState<string[]>([]);
+  const [assignAcademicYearId, setAssignAcademicYearId] =
+    useState<string>("");
+  const [assignProfesseurId, setAssignProfesseurId] =
+    useState<string>(NO_PROFESSEUR);
+  const [isAssigningBulk, setIsAssigningBulk] = useState<boolean>(false);
 
   // Détection de la taille d'écran
   useEffect(() => {
@@ -142,6 +171,23 @@ const ClassAssignmentManager = () => {
       setFormInitialized(false);
     }
   }, [isFormOpen]);
+
+  // Chargement des données de référence pour le dialogue "Inscrire au programme"
+  useEffect(() => {
+    if (isAssignDialogOpen) {
+      fetchSubjects();
+      fetchAcademicYears();
+      fetchProfesseurs();
+    }
+  }, [isAssignDialogOpen, fetchSubjects, fetchAcademicYears, fetchProfesseurs]);
+
+  // Présélectionner l'année académique en cours quand elle devient disponible
+  useEffect(() => {
+    if (isAssignDialogOpen && !assignAcademicYearId && academicYears.length > 0) {
+      const current = academicYears.find((y) => y.isCurrent);
+      setAssignAcademicYearId(current?.id || academicYears[0].id);
+    }
+  }, [isAssignDialogOpen, academicYears, assignAcademicYearId]);
 
   // Chargement initial
   useEffect(() => {
@@ -457,6 +503,94 @@ const ClassAssignmentManager = () => {
     setIsFormOpen(true);
   }, []);
 
+  // Réinitialiser le dialogue "Inscrire au programme"
+  const resetAssignDialog = useCallback(() => {
+    setAssignSubjectId("");
+    setAssignClassLevels([]);
+    setAssignAcademicYearId("");
+    setAssignProfesseurId(NO_PROFESSEUR);
+  }, []);
+
+  // Cocher/décocher un niveau de classe dans le dialogue d'inscription en masse
+  const handleToggleAssignLevel = useCallback((level: string) => {
+    setAssignClassLevels((prev) =>
+      prev.includes(level)
+        ? prev.filter((l) => l !== level)
+        : [...prev, level]
+    );
+  }, []);
+
+  // Inscrire une matière au programme d'un ou plusieurs niveaux
+  const handleBulkAssign = useCallback(async () => {
+    if (!assignSubjectId) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner une matière",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (assignClassLevels.length === 0) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner au moins un niveau",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!assignAcademicYearId) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner une année académique",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsAssigningBulk(true);
+    try {
+      const result = await assignSubjectToLevels({
+        subjectId: assignSubjectId,
+        classLevels: assignClassLevels,
+        academicYearId: assignAcademicYearId,
+        professeurId:
+          assignProfesseurId === NO_PROFESSEUR ? null : assignProfesseurId,
+      });
+
+      toast({
+        title: "Programme mis à jour",
+        description:
+          result.message ||
+          `${result.assignedCount} niveau(x) inscrit(s)${
+            result.skippedCount > 0
+              ? `, ${result.skippedCount} déjà inscrit(s)`
+              : ""
+          }`,
+      });
+
+      setIsAssignDialogOpen(false);
+      resetAssignDialog();
+      fetchAssignments();
+    } catch (err: any) {
+      toast({
+        title: "Erreur",
+        description:
+          err.message || "Impossible d'inscrire la matière au programme",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAssigningBulk(false);
+    }
+  }, [
+    assignSubjectId,
+    assignClassLevels,
+    assignAcademicYearId,
+    assignProfesseurId,
+    assignSubjectToLevels,
+    resetAssignDialog,
+    fetchAssignments,
+  ]);
+
   // Debug: Vérifier ce qui est affiché
   useEffect(() => {
     console.log("🔍 État actuel:", {
@@ -511,6 +645,18 @@ const ClassAssignmentManager = () => {
                 <Plus className="h-4 w-4" />
                 <span className="hidden sm:inline">Nouvelle assignation</span>
                 <span className="sm:hidden">Nouveau</span>
+              </Button>
+
+              <Button
+                onClick={() => setIsAssignDialogOpen(true)}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <ListPlus className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  Inscrire au programme
+                </span>
+                <span className="sm:hidden">Programme</span>
               </Button>
 
               <Button
@@ -831,14 +977,20 @@ const ClassAssignmentManager = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {assignment.professeur
-                          ? `${assignment.professeur.firstName || ""} ${
+                        {assignment.professeur ? (
+                          <>
+                            {`${assignment.professeur.firstName || ""} ${
                               assignment.professeur.lastName || ""
-                            }`
-                          : "Non assigné"}
-                        <div className="text-xs text-muted-foreground">
-                          {assignment.professeur?.matricule || ""}
-                        </div>
+                            }`}
+                            <div className="text-xs text-muted-foreground">
+                              {assignment.professeur?.matricule || ""}
+                            </div>
+                          </>
+                        ) : (
+                          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100">
+                            À pourvoir
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -847,6 +999,9 @@ const ClassAssignmentManager = () => {
                         >
                           {formatClassLevel(assignment.classLevel)}
                         </Badge>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {assignment.schoolClass?.name || "Tout le niveau"}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {assignment.academicYear?.year || "Non spécifiée"}
@@ -963,13 +1118,17 @@ const ClassAssignmentManager = () => {
                         <span className="text-muted-foreground w-24 shrink-0">
                           Professeur:
                         </span>
-                        <span className="font-medium truncate">
-                          {assignment.professeur
-                            ? `${assignment.professeur.firstName || ""} ${
-                                assignment.professeur.lastName || ""
-                              }`
-                            : "Non assigné"}
-                        </span>
+                        {assignment.professeur ? (
+                          <span className="font-medium truncate">
+                            {`${assignment.professeur.firstName || ""} ${
+                              assignment.professeur.lastName || ""
+                            }`}
+                          </span>
+                        ) : (
+                          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100">
+                            À pourvoir
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center">
                         <span className="text-muted-foreground w-24 shrink-0">
@@ -981,6 +1140,14 @@ const ClassAssignmentManager = () => {
                         >
                           {formatClassLevel(assignment.classLevel)}
                         </Badge>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="text-muted-foreground w-24 shrink-0">
+                          Section:
+                        </span>
+                        <span className="truncate">
+                          {assignment.schoolClass?.name || "Tout le niveau"}
+                        </span>
                       </div>
                       <div className="flex items-center">
                         <span className="text-muted-foreground w-24 shrink-0">
@@ -1146,6 +1313,134 @@ const ClassAssignmentManager = () => {
               setFormInitialized(false);
             }}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialogue d'inscription au programme (assignation en masse) */}
+      <Dialog
+        open={isAssignDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) resetAssignDialog();
+          setIsAssignDialogOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListPlus className="h-5 w-5" />
+              Inscrire au programme
+            </DialogTitle>
+            <DialogDescription>
+              Ajoute une matière au programme d'un ou plusieurs niveaux pour
+              toutes les sections. Les niveaux déjà inscrits sont ignorés.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="assignSubject">Matière</Label>
+              <Select
+                value={assignSubjectId}
+                onValueChange={setAssignSubjectId}
+                disabled={subjectsLoading}
+              >
+                <SelectTrigger id="assignSubject">
+                  <SelectValue placeholder="Sélectionner une matière" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map((subject) => (
+                    <SelectItem key={subject.id} value={subject.id}>
+                      {subject.name} ({subject.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assignAcademicYear">Année académique</Label>
+              <Select
+                value={assignAcademicYearId}
+                onValueChange={setAssignAcademicYearId}
+              >
+                <SelectTrigger id="assignAcademicYear">
+                  <SelectValue placeholder="Sélectionner une année" />
+                </SelectTrigger>
+                <SelectContent>
+                  {academicYears.map((year) => (
+                    <SelectItem key={year.id} value={year.id}>
+                      {year.year}
+                      {year.isCurrent ? " (en cours)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assignProfesseur">
+                Professeur (optionnel)
+              </Label>
+              <Select
+                value={assignProfesseurId}
+                onValueChange={setAssignProfesseurId}
+              >
+                <SelectTrigger id="assignProfesseur">
+                  <SelectValue placeholder="À pourvoir" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PROFESSEUR}>
+                    <span className="text-muted-foreground">
+                      À pourvoir (aucun professeur)
+                    </span>
+                  </SelectItem>
+                  {professeurs.map((professeur) => (
+                    <SelectItem key={professeur.id} value={professeur.id}>
+                      {professeur.firstName} {professeur.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Niveaux concernés</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {CLASS_LEVELS.map((level) => (
+                  <label
+                    key={level}
+                    className="flex items-center gap-2 text-sm cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={assignClassLevels.includes(level)}
+                      onCheckedChange={() => handleToggleAssignLevel(level)}
+                    />
+                    {formatClassLevel(level)}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsAssignDialogOpen(false)}
+              disabled={isAssigningBulk}
+            >
+              Annuler
+            </Button>
+            <Button onClick={handleBulkAssign} disabled={isAssigningBulk}>
+              {isAssigningBulk ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Inscription...
+                </>
+              ) : (
+                "Inscrire"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

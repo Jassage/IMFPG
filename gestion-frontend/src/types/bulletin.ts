@@ -184,7 +184,8 @@ export interface BulletinData {
   statisticsByControl?: Record<string, BulletinStatistics>;
   student: Student;
   academicYear: AcademicYear;
-  controlType: ControlType;
+  // Absent pour les documents "année entière" (RELEVE, CERTIFICAT_SCOLARITE)
+  controlType?: ControlType;
   classLevel: string;
   documentType: DocumentType;
   grades: GradeWithDetails[];
@@ -266,7 +267,8 @@ export interface Bulletin {
 export interface BulletinGenerationRequest {
   studentId: string;
   academicYearId: string;
-  controlType: ControlType;
+  // Requis uniquement pour documentType === BULLETIN (les autres types couvrent l'année entière)
+  controlType?: ControlType;
   documentType: DocumentType;
   language?: string;
   includeComments?: boolean;

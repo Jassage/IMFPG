@@ -25,7 +25,6 @@ import feeStructureRoutes from "./routes/feeStructureRoutes";
 import studentFeeRoutes from "./routes/studentFeeRoutes";
 import auditRoutes from "./routes/auditRoutes";
 import backupRoutes from "./routes/backupRoutes";
-import transcriptRoutes from "./routes/transcriptRoutes";
 import bulletinRoutes from "./routes/bulletinRoutes";
 import settingsRoutes from "./routes/settingsRoutes";
 import attendanceRoutes from "./routes/attendanceRoutes";
@@ -72,7 +71,7 @@ const corsOptions = {
     }
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
@@ -128,7 +127,6 @@ app.use("/api/student-fees", studentFeeRoutes);
 app.use("/api/fee-payments", feePaymentRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/backup", backupRoutes);
-app.use("/api/transcripts", transcriptRoutes);
 app.use("/api/bulletins", bulletinRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/attendance", attendanceRoutes);

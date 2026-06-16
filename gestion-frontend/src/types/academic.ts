@@ -660,8 +660,9 @@ export interface Grade {
 export interface ClassAssignment {
   id: string;
   subjectId: string;
-  professeurId: string; // Note: "professeurId" avec "e" (français)
+  professeurId?: string | null; // null = "À pourvoir" (aucun enseignant affecté)
   classLevel: ClassLevel;
+  schoolClassId?: string | null; // section précise, ou null = tout le niveau
   academicYearId: string;
   status: string;
   createdAt: string;
@@ -669,11 +670,11 @@ export interface ClassAssignment {
 
   // Relations
   academicYear?: AcademicYear;
-  professeur?: Professeur;
+  professeur?: Professeur | null;
   subject?: Subject;
   schedules?: Schedule[];
   grades?: Grade[];
-  SchoolClass?: SchoolClass;
+  schoolClass?: SchoolClass | null;
 }
 
 export interface Schedule {

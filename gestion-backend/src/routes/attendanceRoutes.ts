@@ -35,6 +35,7 @@ import {
   openAttendanceSession,
   getSessionRoster,
   saveSessionAttendance,
+  generateAttendanceSheet,
 } from "../controllers/attendanceController";
 
 const router = Router();
@@ -114,6 +115,23 @@ router.get(
   requireAuth,
   requireTeacherOrStaff,
   getClassAttendances,
+);
+
+/**
+ * @route POST /api/attendance/sheet-pdf
+ * @description Génère une feuille de présence PDF (classe + période)
+ * @access Staff/Admin/Teacher
+ *
+ * NOTE: déclarée avant /:id pour éviter que le segment unique ne l'intercepte
+ */
+router.post(
+  "/sheet-pdf",
+  requireAuth,
+  requireTeacherOrStaff,
+  validateContentType(),
+  validateRequestBody,
+  sanitizeInput,
+  generateAttendanceSheet,
 );
 
 /**

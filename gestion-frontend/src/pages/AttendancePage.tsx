@@ -337,7 +337,13 @@ export const AttendancePage: React.FC = () => {
           >
             {selectMode ? "Annuler la sélection" : "Sélection multiple"}
           </Button>
-          <AttendanceExport attendances={attendances} />
+          <AttendanceExport
+            attendances={attendances}
+            classes={classes}
+            academicYears={academicYears}
+            defaultClassId={selectedClassId !== "all" ? selectedClassId : ""}
+            defaultYearId={selectedAcademicYearId}
+          />
           {selectMode && selectedAttendances.length > 0 && (
             <Button onClick={handleBulkValidation}>
               <CheckCircle className="h-4 w-4 mr-2" />

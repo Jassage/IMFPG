@@ -27,6 +27,21 @@ const DOCUMENT_TYPES = [
     icon: <FileText className="h-6 w-6" />,
     color: "bg-blue-100 text-blue-700 border-blue-300",
   },
+  {
+    type: DocumentType.RELEVE,
+    title: "Relevé de Notes",
+    description:
+      "Relevé de notes annuel récapitulant tous les contrôles de l'année",
+    icon: <FileCheck className="h-6 w-6" />,
+    color: "bg-green-100 text-green-700 border-green-300",
+  },
+  {
+    type: DocumentType.CERTIFICAT_SCOLARITE,
+    title: "Certificat de Scolarité",
+    description: "Justificatif officiel d'inscription de l'élève",
+    icon: <School className="h-6 w-6" />,
+    color: "bg-purple-100 text-purple-700 border-purple-300",
+  },
 ];
 
 export const DocumentSelector: React.FC<DocumentSelectorProps> = ({
@@ -46,7 +61,7 @@ export const DocumentSelector: React.FC<DocumentSelectorProps> = ({
           value={selected}
           onValueChange={(value) => onSelect(value as DocumentType)}
         >
-          <TabsList className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+          <TabsList className="grid grid-cols-1 lg:grid-cols-3 gap-2">
             {DOCUMENT_TYPES.map((doc) => (
               <TabsTrigger
                 key={doc.type}

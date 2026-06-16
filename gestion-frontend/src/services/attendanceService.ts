@@ -208,6 +208,20 @@ class AttendanceService {
     return response.data;
   }
 
+  // ==================== FEUILLE DE PRÉSENCE PDF ====================
+
+  async downloadAttendanceSheet(params: {
+    classId:        string;
+    startDate:      string;
+    endDate:        string;
+    academicYearId?: string;
+  }): Promise<Blob> {
+    const response = await api.post(`${this.baseUrl}/sheet-pdf`, params, {
+      responseType: "blob",
+    });
+    return response.data;
+  }
+
   // ==================== STATISTICS ====================
 
   async getAttendanceStats(filters?: {

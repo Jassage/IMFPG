@@ -11,7 +11,7 @@ const router = express.Router();
 const bulletinController = new BulletinController();
 
 // Middleware d'authentification pour toutes les routes
-router.use(authenticateToken);
+router.use(authenticateToken());
 
 // Routes pour les bulletins
 router.post(

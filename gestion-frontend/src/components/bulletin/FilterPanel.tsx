@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { ControlType } from "@/types/bulletin";
+import { ControlType, DocumentType } from "@/types/bulletin";
 import { Calendar, Filter, Layers, Loader2 } from "lucide-react";
 
 interface FilterPanelProps {
@@ -18,6 +18,7 @@ interface FilterPanelProps {
     classLevel: string;
   };
   academicYears: Array<{ id: string; year: string; isCurrent: boolean }>;
+  documentType: DocumentType;
   onFilterChange: (filters: Partial<FilterPanelProps["filters"]>) => void;
 }
 
@@ -47,6 +48,7 @@ const CLASS_LEVELS = [
 export const FilterPanel: React.FC<FilterPanelProps> = ({
   filters,
   academicYears = [],
+  documentType,
   onFilterChange,
 }) => {
   const [loading, setLoading] = useState(false);
@@ -61,6 +63,15 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       }
     }
   }, [academicYears, filters.academicYearId, onFilterChange]);
+
+  // RELEVE et CERTIFICAT_SCOLARITE couvrent l'année entière : pas de période de contrôle
+  const showControlType = documentType === DocumentType.BULLETIN;
+
+  useEffect(() => {
+    if (!showControlType && filters.controlType !== "all") {
+      onFilterChange({ controlType: "all" });
+    }
+  }, [showControlType, filters.controlType, onFilterChange]);
 
   return (
     <Card>
@@ -130,29 +141,31 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
         </div>
 
         {/* Type de contrôle */}
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <Calendar className="h-4 w-4" />
-            Période de Contrôle
-          </Label>
-          <Select
-            value={filters.controlType}
-            onValueChange={(value) =>
-              onFilterChange({ controlType: value as ControlType | "all" })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Sélectionner une période" />
-            </SelectTrigger>
-            <SelectContent>
-              {CONTROL_TYPES.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  {type.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {showControlType && (
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Période de Contrôle
+            </Label>
+            <Select
+              value={filters.controlType}
+              onValueChange={(value) =>
+                onFilterChange({ controlType: value as ControlType | "all" })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner une période" />
+              </SelectTrigger>
+              <SelectContent>
+                {CONTROL_TYPES.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Niveau de classe */}
         <div className="space-y-2">

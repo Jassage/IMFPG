@@ -9,9 +9,10 @@ export const validateCreateClassAssignment = [
     .isString()
     .withMessage("L'ID de la matière doit être une chaîne de caractères"),
 
+  // Le professeur est optionnel : la matière peut être inscrite au programme
+  // d'un niveau avant qu'un enseignant ne lui soit affecté ("À pourvoir")
   body("professeurId")
-    .notEmpty()
-    .withMessage("L'ID du professeur est requis")
+    .optional({ nullable: true })
     .isString()
     .withMessage("L'ID du professeur doit être une chaîne de caractères"),
 
@@ -20,6 +21,12 @@ export const validateCreateClassAssignment = [
     .withMessage("Le niveau de classe est requis")
     .isIn(Object.values(ClassLevel))
     .withMessage("Niveau de classe invalide"),
+
+  // Section précise (optionnelle) à laquelle s'applique cette assignation
+  body("schoolClassId")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("L'ID de la classe doit être une chaîne de caractères"),
 
   body("academicYearId")
     .notEmpty()
@@ -48,8 +55,9 @@ export const validateUpdateClassAssignment = [
     .isString()
     .withMessage("L'ID de la matière doit être une chaîne de caractères"),
 
+  // Accepte explicitement `null` pour désaffecter le professeur ("À pourvoir")
   body("professeurId")
-    .optional()
+    .optional({ nullable: true })
     .isString()
     .withMessage("L'ID du professeur doit être une chaîne de caractères"),
 
@@ -57,6 +65,12 @@ export const validateUpdateClassAssignment = [
     .optional()
     .isIn(Object.values(ClassLevel))
     .withMessage("Niveau de classe invalide"),
+
+  // Accepte explicitement `null` pour retirer la section ("tout le niveau")
+  body("schoolClassId")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("L'ID de la classe doit être une chaîne de caractères"),
 
   body("academicYearId")
     .optional()
@@ -76,4 +90,33 @@ export const validateUpdateClassAssignment = [
     .withMessage("Les notes doivent être une chaîne de caractères")
     .isLength({ max: 500 })
     .withMessage("Les notes ne peuvent pas dépasser 500 caractères"),
+];
+
+export const validateAssignSubjectToLevels = [
+  body("subjectId")
+    .notEmpty()
+    .withMessage("L'ID de la matière est requis")
+    .isString()
+    .withMessage("L'ID de la matière doit être une chaîne de caractères"),
+
+  body("classLevels")
+    .isArray({ min: 1 })
+    .withMessage("Au moins un niveau de classe est requis"),
+
+  body("classLevels.*")
+    .isIn(Object.values(ClassLevel))
+    .withMessage("Niveau de classe invalide"),
+
+  body("academicYearId")
+    .notEmpty()
+    .withMessage("L'ID de l'année académique est requis")
+    .isString()
+    .withMessage(
+      "L'ID de l'année académique doit être une chaîne de caractères"
+    ),
+
+  body("professeurId")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("L'ID du professeur doit être une chaîne de caractères"),
 ];

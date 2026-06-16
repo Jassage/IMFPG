@@ -8,6 +8,9 @@ declare global {
         id: string;
         email: string;
         role: string;
+        firstName: string;
+        lastName: string;
+        requiresPasswordChange?: boolean;
       };
     }
   }

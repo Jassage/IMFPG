@@ -42,6 +42,8 @@ import {
   MapPin,
   BookOpen,
   Users,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -63,8 +65,9 @@ interface AssignmentItem {
     lastName: string;
   };
   classLevel: string;
-  professeurId?: string;
+  professeurId?: string | null;
   classId?: string;
+  schoolClassId?: string | null;
 }
 
 interface ScheduleFormProps {
@@ -202,6 +205,33 @@ const scheduleFormSchema = z
 
 type ScheduleFormValues = z.infer<typeof scheduleFormSchema>;
 
+const DAY_LABELS_FR: Record<string, string> = {
+  MONDAY: "Lundi",
+  TUESDAY: "Mardi",
+  WEDNESDAY: "Mercredi",
+  THURSDAY: "Jeudi",
+  FRIDAY: "Vendredi",
+  SATURDAY: "Samedi",
+};
+
+// Créneau supplémentaire pour la création multiple (même assignation/classe/récurrence)
+interface ExtraSlot {
+  key: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  classroom: string;
+}
+
+let extraSlotKeyCounter = 0;
+const createExtraSlot = (): ExtraSlot => ({
+  key: `slot-${++extraSlotKeyCounter}`,
+  dayOfWeek: "",
+  startTime: "08:00",
+  endTime: "09:30",
+  classroom: "",
+});
+
 export const ScheduleForm: React.FC<ScheduleFormProps> = ({
   open,
   onClose,
@@ -215,6 +245,7 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
 }) => {
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isValidating, setIsValidating] = React.useState(false);
+  const [extraSlots, setExtraSlots] = React.useState<ExtraSlot[]>([]);
   const isEdit = !!schedule;
 
   // Initialiser le formulaire avec validation en temps réel
@@ -417,6 +448,7 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
 
       form.reset(defaultValues);
       setServerError(null);
+      setExtraSlots([]);
     } else if (open) {
       form.reset({
         assignmentId: "",
@@ -430,8 +462,65 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
         notes: "",
       });
       setServerError(null);
+      setExtraSlots([]);
     }
   }, [schedule, open, form, extractTimeFromISO, extractDateFromISO]);
+
+  // Gestion des créneaux supplémentaires (création multiple)
+  const handleAddExtraSlot = useCallback(() => {
+    setExtraSlots((prev) => [...prev, createExtraSlot()]);
+  }, []);
+
+  const handleRemoveExtraSlot = useCallback((key: string) => {
+    setExtraSlots((prev) => prev.filter((slot) => slot.key !== key));
+  }, []);
+
+  const handleExtraSlotChange = useCallback(
+    (key: string, field: keyof Omit<ExtraSlot, "key">, value: string) => {
+      setExtraSlots((prev) =>
+        prev.map((slot) => (slot.key === key ? { ...slot, [field]: value } : slot))
+      );
+    },
+    []
+  );
+
+  // Validation d'un créneau supplémentaire (mêmes règles que le créneau principal)
+  const validateExtraSlot = useCallback((slot: ExtraSlot): string | null => {
+    if (!slot.dayOfWeek) return "le jour est requis";
+    if (!slot.startTime || !slot.endTime) return "les heures sont requises";
+
+    const [startHour, startMinute] = slot.startTime.split(":").map(Number);
+    const [endHour, endMinute] = slot.endTime.split(":").map(Number);
+    const startTotal = startHour * 60 + startMinute;
+    const endTotal = endHour * 60 + endMinute;
+    const duration = endTotal - startTotal;
+
+    if (duration <= 0) return "l'heure de fin doit être après l'heure de début";
+    if (duration < 30) return "durée minimale de 30 minutes";
+    if (duration > 240) return "durée maximale de 4 heures";
+
+    return null;
+  }, []);
+
+  // Extrait un message d'erreur lisible à partir d'une erreur API
+  const extractErrorMessage = useCallback((error: any): string => {
+    if (error.response?.data?.code === "PROFESSEUR_CONFLICT") {
+      return "Le professeur a déjà un cours à ce créneau horaire";
+    }
+    if (error.response?.data?.code === "CLASS_CONFLICT") {
+      return "La classe a déjà un cours à ce créneau horaire";
+    }
+    if (error.response?.data?.message) {
+      return error.response.data.message;
+    }
+    if (error.response?.data?.errors) {
+      const apiErrors = error.response.data.errors;
+      if (Array.isArray(apiErrors)) {
+        return apiErrors.map((err: any) => err.message).join(", ");
+      }
+    }
+    return "Erreur lors de l'opération";
+  }, []);
 
   // Fonction de soumission du formulaire
   const handleFormSubmit = useCallback(
@@ -448,69 +537,104 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
           return;
         }
 
-        // Formater les données pour l'API
-        const formattedData: any = {
-          ...formData,
-          startTime: formatTimeForAPI(formData.startTime),
-          endTime: formatTimeForAPI(formData.endTime),
-          classroom: formData.classroom?.trim() || null,
-          notes: formData.notes?.trim() || null,
-        };
+        // Valider les créneaux supplémentaires
+        for (const slot of extraSlots) {
+          const slotError = validateExtraSlot(slot);
+          if (slotError) {
+            toast.error(`Créneau supplémentaire invalide : ${slotError}`);
+            setIsValidating(false);
+            return;
+          }
+        }
 
         // Gérer untilDate en fonction de recurrence
+        let untilDate: string | null | undefined;
         if (formData.recurrence !== "NONE" && formData.untilDate) {
-          formattedData.untilDate = formatDateForAPI(formData.untilDate);
-          if (!formattedData.untilDate) {
+          untilDate = formatDateForAPI(formData.untilDate);
+          if (!untilDate) {
             toast.error("Date de fin invalide");
             setIsValidating(false);
             return;
           }
-        } else {
-          delete formattedData.untilDate;
         }
 
-        // Nettoyer les champs vides
-        if (!formattedData.classroom) delete formattedData.classroom;
-        if (!formattedData.notes) delete formattedData.notes;
+        // Champs communs partagés par tous les créneaux
+        const commonData: any = {
+          assignmentId: formData.assignmentId,
+          classId: formData.classId,
+          recurrence: formData.recurrence,
+          notes: formData.notes?.trim() || null,
+        };
+        if (untilDate) commonData.untilDate = untilDate;
+        if (!commonData.notes) delete commonData.notes;
 
-        console.log("📤 Données formatées pour API:", formattedData);
+        // Liste des créneaux à créer (principal + supplémentaires)
+        const slots = [
+          {
+            dayOfWeek: formData.dayOfWeek,
+            startTime: formData.startTime,
+            endTime: formData.endTime,
+            classroom: formData.classroom,
+          },
+          ...extraSlots,
+        ];
 
-        // Appeler la fonction de soumission fournie par le parent
-        await onSubmit(formattedData, isEdit);
+        let successCount = 0;
+        const failures: string[] = [];
 
-        // Succès
-        toast.success(
-          isEdit
-            ? "L'horaire a été mis à jour avec succès"
-            : "L'horaire a été ajouté avec succès"
-        );
+        for (const slot of slots) {
+          const payload: any = {
+            ...commonData,
+            dayOfWeek: slot.dayOfWeek,
+            startTime: formatTimeForAPI(slot.startTime),
+            endTime: formatTimeForAPI(slot.endTime),
+            classroom: slot.classroom?.trim() || null,
+          };
+          if (!payload.classroom) delete payload.classroom;
 
-        setIsValidating(false);
-        onSuccess();
-      } catch (error: any) {
-        console.error("Error submitting schedule form:", error);
-        setIsValidating(false);
-
-        let errorMessage = "Erreur lors de l'opération";
-
-        if (error.response?.data?.code === "PROFESSEUR_CONFLICT") {
-          errorMessage = "Le professeur a déjà un cours à ce créneau horaire";
-        } else if (error.response?.data?.code === "CLASS_CONFLICT") {
-          errorMessage = "La classe a déjà un cours à ce créneau horaire";
-        } else if (error.response?.data?.message) {
-          errorMessage = error.response.data.message;
-        } else if (error.response?.data?.errors) {
-          const apiErrors = error.response.data.errors;
-          if (Array.isArray(apiErrors)) {
-            errorMessage = apiErrors.map((err) => err.message).join(", ");
+          try {
+            await onSubmit(payload, isEdit);
+            successCount++;
+          } catch (error: any) {
+            const dayLabel = DAY_LABELS_FR[slot.dayOfWeek] || slot.dayOfWeek;
+            failures.push(
+              `${dayLabel} ${slot.startTime}-${slot.endTime} : ${extractErrorMessage(error)}`
+            );
           }
         }
 
+        setIsValidating(false);
+
+        if (failures.length === 0) {
+          toast.success(
+            isEdit
+              ? "L'horaire a été mis à jour avec succès"
+              : successCount > 1
+              ? `${successCount} horaires ont été créés avec succès`
+              : "L'horaire a été ajouté avec succès"
+          );
+          onSuccess();
+          return;
+        }
+
+        if (successCount > 0) {
+          toast.warning(
+            `${successCount} créneau(x) créé(s), ${failures.length} échec(s) : ${failures.join("; ")}`
+          );
+          onSuccess();
+        } else {
+          setServerError(failures.join("; "));
+          toast.error(failures.join("; "));
+        }
+      } catch (error: any) {
+        console.error("Error submitting schedule form:", error);
+        setIsValidating(false);
+        const errorMessage = extractErrorMessage(error);
         setServerError(errorMessage);
         toast.error(errorMessage);
       }
     },
-    [form, isEdit, onSubmit, onSuccess]
+    [form, isEdit, onSubmit, onSuccess, extraSlots, validateExtraSlot, extractErrorMessage]
   );
 
   const days = useMemo(
@@ -563,7 +687,11 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
       if (!selectedClass) return assignments;
 
       return assignments.filter(
-        (assignment) => assignment.classLevel === selectedClass.level
+        (assignment) =>
+          assignment.classLevel === selectedClass.level &&
+          (!assignment.schoolClassId ||
+            assignment.schoolClassId === selectedClassId) &&
+          !!assignment.professeurId
       );
     },
     [assignments, classes]
@@ -870,6 +998,109 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
                 )}
               />
             </div>
+
+            {/* Créneaux supplémentaires (création multiple) */}
+            {!isEdit && (
+              <div className="space-y-3">
+                {extraSlots.map((slot) => (
+                  <div
+                    key={slot.key}
+                    className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-end rounded-md border p-3"
+                  >
+                    <div>
+                      <Label className="text-xs">Jour</Label>
+                      <Select
+                        value={slot.dayOfWeek}
+                        onValueChange={(value) =>
+                          handleExtraSlotChange(slot.key, "dayOfWeek", value)
+                        }
+                        disabled={loading}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Jour" />
+                        </SelectTrigger>
+                        <SelectContent>{renderDayOptions}</SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Début</Label>
+                      <Select
+                        value={slot.startTime}
+                        onValueChange={(value) =>
+                          handleExtraSlotChange(slot.key, "startTime", value)
+                        }
+                        disabled={loading}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="HH:mm" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {renderStartTimeOptions}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Fin</Label>
+                      <Select
+                        value={slot.endTime}
+                        onValueChange={(value) =>
+                          handleExtraSlotChange(slot.key, "endTime", value)
+                        }
+                        disabled={loading}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="HH:mm" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {renderEndTimeOptions}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Salle</Label>
+                      <Input
+                        placeholder="Ex: Salle 101"
+                        value={slot.classroom}
+                        onChange={(e) =>
+                          handleExtraSlotChange(slot.key, "classroom", e.target.value)
+                        }
+                        disabled={loading}
+                        maxLength={100}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:bg-destructive/10"
+                      onClick={() => handleRemoveExtraSlot(slot.key)}
+                      disabled={loading}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddExtraSlot}
+                  disabled={loading}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter un créneau
+                </Button>
+                {extraSlots.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {extraSlots.length + 1} cours seront créés pour la même
+                    assignation et la même classe (récurrence, date limite et
+                    notes communes).
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Récurrence */}
             <FormField
               control={form.control}

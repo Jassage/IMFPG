@@ -156,6 +156,7 @@ export class FeePaymentService {
     paymentDate?: string;
     description?: string;
     userId?: string;
+    recordedByName?: string;
   }) {
     const {
       studentFeeId,
@@ -165,6 +166,7 @@ export class FeePaymentService {
       paymentDate,
       description,
       userId,
+      recordedByName,
     } = data;
 
     console.log("📥 Création paiement - Données:", data);
@@ -245,7 +247,7 @@ export class FeePaymentService {
           reference: reference || null,
           paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
           description: description || null,
-          recordedBy: userId || "admin",
+          recordedBy: recordedByName || userId || "admin",
         },
       });
 

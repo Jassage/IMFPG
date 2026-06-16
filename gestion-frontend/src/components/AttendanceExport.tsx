@@ -1,27 +1,38 @@
 // src/components/attendance/AttendanceExport.tsx
 
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Attendance } from "@/types/attendance.types";
-import { Download, FileSpreadsheet, FileText } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, ClipboardList } from "lucide-react";
 import { formatDate } from "@/utils/attendanceUtils";
 import { toast } from "sonner";
+import { AttendanceSheetDialog } from "@/components/AttendanceSheetDialog";
 
 interface AttendanceExportProps {
-  attendances: Attendance[];
-  filename?: string;
+  attendances:    Attendance[];
+  filename?:      string;
+  classes?:       Array<{ id: string; name: string; level: string }>;
+  academicYears?: Array<{ id: string; year: string; isCurrent?: boolean }>;
+  defaultClassId?: string;
+  defaultYearId?:  string;
 }
 
 export const AttendanceExport: React.FC<AttendanceExportProps> = ({
   attendances,
-  filename = "presences",
+  filename       = "presences",
+  classes        = [],
+  academicYears  = [],
+  defaultClassId = "",
+  defaultYearId  = "",
 }) => {
+  const [sheetDialogOpen, setSheetDialogOpen] = useState(false);
   const exportToCSV = () => {
     if (!attendances.length) {
       toast.error("Aucune donnée à exporter");
@@ -105,23 +116,39 @@ export const AttendanceExport: React.FC<AttendanceExportProps> = ({
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline">
-          <Download className="h-4 w-4 mr-2" />
-          Exporter
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <DropdownMenuItem onClick={exportToCSV}>
-          <FileSpreadsheet className="h-4 w-4 mr-2" />
-          Exporter en CSV
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={exportToJSON}>
-          <FileText className="h-4 w-4 mr-2" />
-          Exporter en JSON
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Exporter
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => setSheetDialogOpen(true)}>
+            <ClipboardList className="h-4 w-4 mr-2" />
+            Feuille de présence PDF
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={exportToCSV}>
+            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            Exporter en CSV
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={exportToJSON}>
+            <FileText className="h-4 w-4 mr-2" />
+            Exporter en JSON
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AttendanceSheetDialog
+        open={sheetDialogOpen}
+        onOpenChange={setSheetDialogOpen}
+        classes={classes}
+        academicYears={academicYears}
+        defaultClassId={defaultClassId}
+        defaultYearId={defaultYearId}
+      />
+    </>
   );
 };

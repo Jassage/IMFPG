@@ -184,6 +184,77 @@ export const createClassAssignment = async (
 };
 
 /**
+ * @desc Inscrit une matière au programme d'un ou plusieurs niveaux
+ */
+export const assignSubjectToLevels = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    // Vérifier les erreurs de validation express-validator
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const response: ApiResponse = {
+        success: false,
+        message: "Erreur de validation",
+        code: "VALIDATION_ERROR",
+        errors: errors.array().map((err) => ({
+          path: err.type === "field" ? err.path : "unknown",
+          message: err.msg,
+        })),
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    const data = req.body;
+
+    const result = await ClassAssignmentService.assignSubjectToLevels(
+      data,
+      auditData.userId || undefined
+    );
+
+    await createAuditLog({
+      ...auditData,
+      action: "CLASS_ASSIGNMENT_BULK_ASSIGNED",
+      entity: "ClassAssignment",
+      description: `Matière ${data.subjectId} ajoutée au programme de ${result.data.assignedCount} niveau(x)`,
+      status: "SUCCESS",
+      metadata: {
+        subjectId: data.subjectId,
+        classLevels: data.classLevels,
+        academicYearId: data.academicYearId,
+        professeurId: data.professeurId,
+        assignedCount: result.data.assignedCount,
+        skippedCount: result.data.skippedCount,
+      },
+    });
+
+    res.status(201).json(result);
+  } catch (error: any) {
+    await createAuditLog({
+      ...auditData,
+      action: "CLASS_ASSIGNMENT_BULK_ASSIGN_ERROR",
+      entity: "ClassAssignment",
+      description: "Erreur lors de l'inscription en masse au programme",
+      status: "ERROR",
+      errorMessage: error.message,
+      metadata: { attemptedData: req.body },
+    });
+
+    const response: ApiResponse = {
+      success: false,
+      message: error.response?.message || "Erreur interne du serveur",
+      code: error.response?.code || "INTERNAL_ERROR",
+    };
+
+    res.status(error.status || 500).json(response);
+  }
+};
+
+/**
  * @desc Met à jour une assignation
  */
 export const updateClassAssignment = async (

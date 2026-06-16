@@ -4,7 +4,7 @@
 
 import { Request, Response } from "express";
 import { BulletinService } from "../services/BulletinService";
-import { BulletinRequest } from "../types/bulletin";
+import { BulletinRequest, DocumentType } from "../types/bulletin";
 import { PrismaClient } from "../../generated/prisma";
 
 export class BulletinController {
@@ -21,12 +21,15 @@ export class BulletinController {
     try {
       const request: BulletinRequest = req.body;
       const userId = req.user?.id || "system";
+      const generatedByName = req.user
+        ? `${req.user.firstName} ${req.user.lastName}`.trim()
+        : "Système";
 
       // Valider la requête
       if (
         !request.studentId ||
         !request.academicYearId ||
-        !request.controlType
+        !request.documentType
       ) {
         return res.status(400).json({
           success: false,
@@ -52,7 +55,7 @@ export class BulletinController {
       const transcript = await this.bulletinService.saveTranscript(
         bulletinData,
         pdfBuffer,
-        userId
+        generatedByName
       );
 
       res.json({
@@ -130,11 +133,12 @@ export class BulletinController {
   getStudentBulletins = async (req: Request, res: Response) => {
     try {
       const { studentId } = req.params;
-      const { academicYearId } = req.query;
+      const { academicYearId, documentType } = req.query;
 
       const transcripts = await this.bulletinService.getStudentTranscripts(
         studentId,
-        academicYearId as string
+        academicYearId as string | undefined,
+        documentType as DocumentType | undefined
       );
 
       res.json({
@@ -156,6 +160,18 @@ export class BulletinController {
   previewBulletin = async (req: Request, res: Response) => {
     try {
       const request: BulletinRequest = req.body;
+
+      // Valider la requête
+      if (
+        !request.studentId ||
+        !request.academicYearId ||
+        !request.documentType
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Données requises manquantes",
+        });
+      }
 
       // Récupérer les données du bulletin
       const bulletinData = await this.bulletinService.getBulletinData(request);

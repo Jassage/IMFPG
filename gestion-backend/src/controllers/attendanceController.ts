@@ -546,8 +546,8 @@ export const getAttendanceSessions = async (
       endDate: req.query.endDate
         ? new Date(req.query.endDate as string)
         : undefined,
-      isCompleted: req.query.isCompleted === "true",
-      isCancelled: req.query.isCancelled === "true",
+      isCompleted: req.query.isCompleted !== undefined ? req.query.isCompleted === "true" : undefined,
+      isCancelled: req.query.isCancelled !== undefined ? req.query.isCancelled === "true" : undefined,
     };
 
     const result = await attendanceService.getAttendanceSessions(
@@ -929,6 +929,70 @@ export const saveSessionAttendance = async (
     };
 
     res.status(500).json(response);
+  }
+};
+
+// ==================== FEUILLE DE PRÉSENCE PDF ====================
+
+/**
+ * @desc Génère et renvoie une feuille de présence PDF
+ */
+export const generateAttendanceSheet = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const auditData = extractAuditData(req);
+
+  try {
+    const { classId, startDate, endDate, academicYearId } = req.body;
+
+    if (!classId || !startDate || !endDate) {
+      res.status(400).json({
+        success: false,
+        message: "classId, startDate et endDate sont requis",
+        code: "MISSING_PARAMS",
+      });
+      return;
+    }
+
+    const buffer = await attendanceService.generateAttendanceSheetPDF({
+      classId,
+      startDate:    new Date(startDate),
+      endDate:      new Date(endDate),
+      academicYearId: academicYearId as string | undefined,
+    });
+
+    await createAuditLog({
+      ...auditData,
+      action:      "ATTENDANCE_SHEET_PDF_GENERATED",
+      entity:      "Attendance",
+      description: `Feuille de présence PDF générée pour la classe ${classId}`,
+      status:      "SUCCESS",
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="feuille_presence_${classId}_${new Date().getTime()}.pdf"`);
+    res.send(buffer);
+  } catch (error: any) {
+    await createAuditLog({
+      ...auditData,
+      action:      "ATTENDANCE_SHEET_PDF_ERROR",
+      entity:      "Attendance",
+      description: "Erreur lors de la génération de la feuille de présence",
+      status:      "ERROR",
+      errorMessage: error.message,
+    });
+
+    if (error.status === 404) {
+      res.status(404).json({ success: false, message: error.message });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Erreur lors de la génération de la feuille de présence",
+      code:    "INTERNAL_ERROR",
+    });
   }
 };
 

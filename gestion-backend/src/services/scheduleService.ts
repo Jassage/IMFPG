@@ -643,12 +643,32 @@ export class ScheduleService {
           throw this.createError(404, "CLASS_NOT_FOUND", "Classe non trouvée");
         }
 
+        if (!assignment.professeurId || !assignment.professeur) {
+          throw this.createError(
+            400,
+            "NO_PROFESSEUR_ASSIGNED",
+            "Cette assignation n'a pas encore de professeur affecté"
+          );
+        }
+
         // Vérifier la correspondance des niveaux
         if (schoolClass.level !== assignment.classLevel) {
           throw this.createError(
             400,
             "CLASS_LEVEL_MISMATCH",
             "Le niveau de la classe ne correspond pas à l'assignation"
+          );
+        }
+
+        // Vérifier la correspondance de la section (si l'assignation est limitée à une section)
+        if (
+          assignment.schoolClassId &&
+          assignment.schoolClassId !== validatedData.classId
+        ) {
+          throw this.createError(
+            400,
+            "SCHOOL_CLASS_MISMATCH",
+            "Cette assignation est réservée à une autre section"
           );
         }
 

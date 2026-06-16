@@ -16,6 +16,7 @@ import {
   requireDirector,
 } from "../middleware";
 import {
+  assignSubjectToLevels,
   createClassAssignment,
   deleteClassAssignment,
   getAvailableAssignments,
@@ -27,6 +28,7 @@ import {
   updateClassAssignment,
 } from "../controllers/classAssignmentController";
 import {
+  validateAssignSubjectToLevels,
   validateCreateClassAssignment,
   validateUpdateClassAssignment,
 } from "../utils/classAssignmentValidators";
@@ -85,6 +87,27 @@ router.post(
   validateCreateClassAssignment,
   handleValidationErrors,
   createClassAssignment
+);
+
+/**
+ * @route POST /api/academic/class-assignments/assign-to-levels
+ * @description Inscrit une matière au programme d'un ou plusieurs niveaux en une fois
+ * @access Admin
+ * @body {string} subjectId - ID de la matière
+ * @body {string[]} classLevels - Niveaux de classe concernés
+ * @body {string} academicYearId - ID de l'année académique
+ * @body {string} [professeurId] - ID du professeur à affecter (optionnel)
+ */
+router.post(
+  "/assign-to-levels",
+  requireAuth,
+  requireDirector,
+  validateContentType(),
+  validateRequestBody,
+  sanitizeInput,
+  validateAssignSubjectToLevels,
+  handleValidationErrors,
+  assignSubjectToLevels
 );
 
 /**

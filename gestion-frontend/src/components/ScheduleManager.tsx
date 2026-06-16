@@ -67,7 +67,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, addDays, addWeeks, startOfWeek, differenceInCalendarWeeks } from "date-fns";
 import { fr } from "date-fns/locale";
 import useProfesseurStore from "@/store/professorStore";
 import { useAssignmentStore } from "@/store/assignmentStore";
@@ -841,6 +841,49 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     return grouped;
   }, [filteredSchedules, formatTimeFromISO]);
 
+  // Dates de la semaine affichée (lundi -> samedi) selon currentWeekOffset
+  const currentWeekStart = useMemo(() => {
+    return addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), currentWeekOffset);
+  }, [currentWeekOffset]);
+
+  const currentWeekDates = useMemo(() => {
+    return DAYS.map((_, index) => addDays(currentWeekStart, index));
+  }, [currentWeekStart]);
+
+  // Détermine si un horaire récurrent s'applique à une date donnée
+  const isScheduleActiveOnDate = useCallback(
+    (schedule: any, date: Date): boolean => {
+      if (schedule.untilDate) {
+        const until = new Date(schedule.untilDate);
+        if (date > until) return false;
+      }
+
+      if (schedule.recurrence === "BIWEEKLY" || schedule.recurrence === "MONTHLY") {
+        const created = new Date(schedule.createdAt);
+        const weeksDiff = Math.abs(
+          differenceInCalendarWeeks(date, created, { weekStartsOn: 1 })
+        );
+        if (schedule.recurrence === "BIWEEKLY" && weeksDiff % 2 !== 0) return false;
+        if (schedule.recurrence === "MONTHLY" && weeksDiff % 4 !== 0) return false;
+      }
+
+      return true;
+    },
+    []
+  );
+
+  // Horaires de la vue semaine, filtrés selon la récurrence pour la semaine affichée
+  const weekSchedulesByDay = useMemo(() => {
+    const result: Record<string, typeof schedules> = {};
+    DAYS.forEach((day, index) => {
+      const daySchedules = schedulesByDay[day.value] || [];
+      result[day.value] = daySchedules.filter((schedule) =>
+        isScheduleActiveOnDate(schedule, currentWeekDates[index])
+      );
+    });
+    return result;
+  }, [schedulesByDay, currentWeekDates, isScheduleActiveOnDate]);
+
   // Statistiques
   const stats = useMemo(() => {
     return {
@@ -964,7 +1007,6 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           console.log(" Vérification des conflits désactivée pour le test");
 
           await createSchedule(formattedData);
-          toast.success("L'horaire a été ajouté avec succès");
         }
         // Pour une édition
         else {
@@ -1008,16 +1050,12 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           }
 
           await updateSchedule(selectedSchedule.id, updateData);
-          toast.success("L'horaire a été mis à jour avec succès");
         }
 
         // Rafraîchir les données
         if (selectedClassId && selectedClassId !== "all") {
           await fetchClassTimetable(selectedClassId, selectedAcademicYearId);
         }
-
-        setIsFormOpen(false);
-        setSelectedSchedule(null);
       } catch (error: any) {
         console.error(" Erreur dans handleFormSubmit:", error);
 
@@ -1042,6 +1080,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             maxWidth: "500px",
           },
         });
+
+        throw error;
       }
     },
     [
@@ -1332,7 +1372,10 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
               <div>
                 <CardTitle>Vue Hebdomadaire</CardTitle>
                 <CardDescription>
-                  Vue d'ensemble des cours de la semaine
+                  Semaine du{" "}
+                  {format(currentWeekDates[0], "dd MMM", { locale: fr })} au{" "}
+                  {format(currentWeekDates[5], "dd MMM yyyy", { locale: fr })}
+                  {currentWeekOffset !== 0 && " (différente de la semaine en cours)"}
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -1344,7 +1387,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <Button
-                  variant="outline"
+                  variant={currentWeekOffset === 0 ? "default" : "outline"}
                   size="sm"
                   onClick={handleWeekViewReset}
                 >
@@ -1382,8 +1425,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                       <span>Heures</span>
                     </div>
                   </div>
-                  {DAYS.map((day) => {
-                    const daySchedules = schedulesByDay[day.value] || [];
+                  {DAYS.map((day, dayIndex) => {
+                    const daySchedules = weekSchedulesByDay[day.value] || [];
                     const dayHours = daySchedules.reduce((total, schedule) => {
                       const start = timeToMinutes(
                         formatTimeFromISO(schedule.startTime)
@@ -1402,7 +1445,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                         <div className="flex flex-col items-center gap-1">
                           <div className="font-bold">{day.short}</div>
                           <div className="text-xs text-muted-foreground">
-                            {day.label}
+                            {format(currentWeekDates[dayIndex], "dd/MM", { locale: fr })}
                           </div>
                           <div className="text-xs font-medium">
                             {daySchedules.length} cours
@@ -1437,7 +1480,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
 
                       {/* Cellules des jours */}
                       {DAYS.map((day) => {
-                        const daySchedules = schedulesByDay[day.value] || [];
+                        const daySchedules = weekSchedulesByDay[day.value] || [];
                         const cellSchedules = daySchedules.filter(
                           (schedule) => {
                             try {
@@ -1531,7 +1574,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       );
     };
   }, [
-    schedulesByDay,
+    weekSchedulesByDay,
+    currentWeekDates,
+    currentWeekOffset,
     weekViewExpanded,
     formatTimeFromISO,
     getSubjectName,
