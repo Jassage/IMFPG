@@ -88,6 +88,9 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { StudentCardGenerator } from "@/components/StudentCardGenerator";
 import { AttendancePage } from "./AttendancePage";
 import { ProfessorAttendance } from "@/components/attendance/ProfessorAttendance";
+import MessagingPage from "@/components/messaging/MessagingPage";
+import { useSocket } from "@/hooks/useSocket";
+import { cn } from "@/lib/utils";
 
 // Types pour les rôles
 type UserRole =
@@ -259,6 +262,7 @@ const Index = () => {
   const { user, isAuthenticated, logout } = useAuthStore();
   const { hasPermission, canAccessTab } = usePermissions();
   const { currentAcademicYear } = useAcademicYearStore();
+  useSocket(); // Initialize WebSocket connection once user is authenticated
 
   // Gestion du thème
   useEffect(() => {
@@ -413,6 +417,7 @@ const Index = () => {
         ) : (
           <AttendancePage />
         ),
+      messaging: <MessagingPage />,
     };
 
     const component = tabComponents[activeTab];
@@ -772,7 +777,12 @@ const Index = () => {
           </div>
         )}
 
-        <main className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 w-full bg-background">
+        <main
+          className={cn(
+            "flex-1 overflow-auto w-full bg-background",
+            activeTab === "messaging" ? "p-0 overflow-hidden" : "p-3 md:p-4 lg:p-6",
+          )}
+        >
           {renderContent()}
           {/* <PendingGradesAlert /> */}
         </main>

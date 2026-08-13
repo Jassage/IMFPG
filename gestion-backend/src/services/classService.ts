@@ -3,10 +3,9 @@
  * @description Service pour la gestion des classes
  */
 
-import { PrismaClient, ClassLevel } from "../../generated/prisma";
+import { ClassLevel } from "../../generated/prisma";
 import { AuditData } from "../types/auth";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 // Interfaces
 export interface ClassFilters {

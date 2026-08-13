@@ -5,11 +5,9 @@
  */
 
 import { Request, Response } from "express";
-import { PrismaClient } from "../../generated/prisma";
 import { CreateAuditLogParams } from "../types/auth";
 import { asyncErrorHandler } from "../middleware/asyncHandler";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 /**
  * @function createAuditLog

@@ -4,12 +4,11 @@
  * @version 1.1.0 - Compatible Haïti
  */
 
-import { PrismaClient, UserStatus } from "../../generated/prisma";
+import { UserStatus } from "../../generated/prisma";
 import * as crypto from "crypto";
 import bcrypt from "bcrypt";
 import { sendEmail } from "./emailService";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 // Codes d'erreur standardisés
 export const PROFESSEUR_ERRORS = {
@@ -1558,29 +1557,33 @@ export const sendLoginCredentialsEmail = async (
 };
 
 /**
- * @desc Génère un mot de passe temporaire sécurisé
+ * @desc Génère un mot de passe temporaire sécurisé (cryptographique)
  */
 const generateTemporaryPassword = (): string => {
-  const length = 12;
+  const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const digits = "0123456789";
+  const specials = "!@#$%^&*";
   const charset =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
-  let password = "";
+  const length = 12;
 
-  // Assurer au moins une majuscule, un chiffre et un caractère spécial
-  password += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
-  password += "0123456789"[Math.floor(Math.random() * 10)];
-  password += "!@#$%^&*"[Math.floor(Math.random() * 8)];
+  const randomByte = () => crypto.randomBytes(1)[0];
+  const pickFrom = (chars: string) => chars[randomByte() % chars.length];
 
-  // Remplir le reste
-  for (let i = 3; i < length; i++) {
-    password += charset[Math.floor(Math.random() * charset.length)];
+  const chars = [
+    pickFrom(uppercase),
+    pickFrom(digits),
+    pickFrom(specials),
+    ...Array.from({ length: length - 3 }, () => pickFrom(charset)),
+  ];
+
+  // Mélange cryptographique (Fisher-Yates)
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomByte() % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
   }
 
-  // Mélanger
-  return password
-    .split("")
-    .sort(() => Math.random() - 0.5)
-    .join("");
+  return chars.join("");
 };
 
 /**

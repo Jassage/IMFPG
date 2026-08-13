@@ -7,6 +7,7 @@ import path from "path";
 import fs from "fs";
 
 import { PrismaClient } from "../../generated/prisma";
+import prisma from "../prisma";
 import {
   BulletinData,
   BulletinPDFOptions,
@@ -26,7 +27,7 @@ export class BulletinService {
   private prisma: PrismaClient;
 
   constructor() {
-    this.prisma = new PrismaClient();
+    this.prisma = prisma;
   }
 
   // ═══════════════════════════════════════════════════════════════

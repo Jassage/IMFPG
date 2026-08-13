@@ -599,6 +599,11 @@ model User {
   attendanceSessionsCreated AttendanceSession[] @relation("AttendanceSessionCreated")
   attendanceRecordsRecorded AttendanceRecord[]  @relation("AttendanceRecordRecorded")
 
+  // Messaging relations
+  conversationsCreated     Conversation[]              @relation("ConversationCreator")
+  conversationParticipants ConversationParticipant[]
+  sentMessages             Message[]                   @relation("MessageSender")
+
   @@index([email, status])
   @@index([role, status])
   @@map("users")
@@ -1008,4 +1013,74 @@ model AttendanceHoliday {
   @@index([type])
   @@index([academicYearId])
   @@map("attendance_holidays")
+}
+
+// ============================================
+// MESSAGING
+// ============================================
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+model Conversation {
+  id          String           @id @default(cuid())
+  type        ConversationType @default(DIRECT)
+  name        String?
+  createdById String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  createdBy    User                      @relation("ConversationCreator", fields: [createdById], references: [id])
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([createdById])
+  @@index([updatedAt])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id              String    @id @default(cuid())
+  conversationId  String
+  userId          String
+  joinedAt        DateTime  @default(now())
+  lastReadAt      DateTime?
+  lastDeliveredAt DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+enum AttachmentType {
+  PHOTO
+  DOCUMENT
+  VOICE
+}
+
+model Message {
+  id             String          @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String          @db.Text
+  attachmentUrl  String?
+  attachmentType AttachmentType?
+  fileName       String?
+  fileSize       Int?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("MessageSender", fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
 }

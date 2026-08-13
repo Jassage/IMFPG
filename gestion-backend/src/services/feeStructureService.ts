@@ -4,9 +4,8 @@
  * @module Services/FeeStructures
  */
 
-import { PrismaClient, ClassLevel } from "../../generated/prisma";
-
-const prisma = new PrismaClient();
+import { ClassLevel } from "../../generated/prisma";
+import prisma from "../prisma";
 
 // Interfaces
 export interface FeeStructureFilters {

@@ -51,6 +51,7 @@ export type ActiveTab =
   // Communication
   | "announcements"
   | "events"
+  | "messaging"
 
   // Pages d'authentification
   | "login"
@@ -151,6 +152,7 @@ export const PERMISSIONS = {
 
   // Communication
   SEND_ANNOUNCEMENTS: "send_announcements",
+  USE_MESSAGING: "use_messaging",
 
   // Permissions spécifiques par rôle
   // Admin
@@ -230,6 +232,7 @@ export const getTabDisplayName = (tab: ActiveTab): string => {
     unauthorized: "Non autorisé",
     maintenance: "Maintenance",
     events: "Evenements",
+    messaging: "Messagerie",
   };
 
   return tabNames[tab] || tab;
@@ -271,6 +274,7 @@ export const getTabIcon = (tab: ActiveTab): string => {
     unauthorized: "ShieldOff",
     maintenance: "Wrench",
     events: "CalendarDays",
+    messaging: "MessageSquare",
   };
 
   return iconMap[tab] || "Square";

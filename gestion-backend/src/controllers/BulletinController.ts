@@ -5,7 +5,7 @@
 import { Request, Response } from "express";
 import { BulletinService } from "../services/BulletinService";
 import { BulletinRequest, DocumentType } from "../types/bulletin";
-import { PrismaClient } from "../../generated/prisma";
+import prisma from "../prisma";
 
 export class BulletinController {
   private bulletinService: BulletinService;
@@ -208,7 +208,6 @@ export class BulletinController {
    */
   private getTranscriptById = async (id: string) => {
     // Implémentation de la méthode getTranscriptById
-    const prisma = new PrismaClient();
     return prisma.transcript.findUnique({
       where: { id },
     });
@@ -222,7 +221,6 @@ export class BulletinController {
     userAgent?: string
   ) => {
     // Implémentation de la méthode recordDocumentAction
-    const prisma = new PrismaClient();
     await prisma.documentHistory.create({
       data: {
         transcriptId,

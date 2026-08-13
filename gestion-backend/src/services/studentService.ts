@@ -5,7 +5,6 @@
  */
 
 import {
-  PrismaClient,
   Prisma,
   StudentStatus,
   UserStatus,
@@ -25,8 +24,7 @@ import {
   StudentStatistics,
   StudentUpdateData,
 } from "../types/studentTypes";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 /**
  * Service pour la gestion des étudiants

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireAuth, requireAdmin } from "../middleware";
 import {
   getAllAnalyticss,
   getAnalyticsById,
@@ -9,10 +10,10 @@ import {
 
 const router = Router();
 
-router.get("/", getAllAnalyticss);
-router.get("/:id", getAnalyticsById);
-router.post("/", createAnalytics);
-router.put("/:id", updateAnalytics);
-router.delete("/:id", deleteAnalytics);
+router.get("/", requireAuth, requireAdmin, getAllAnalyticss);
+router.get("/:id", requireAuth, requireAdmin, getAnalyticsById);
+router.post("/", requireAuth, requireAdmin, createAnalytics);
+router.put("/:id", requireAuth, requireAdmin, updateAnalytics);
+router.delete("/:id", requireAuth, requireAdmin, deleteAnalytics);
 
 export default router;

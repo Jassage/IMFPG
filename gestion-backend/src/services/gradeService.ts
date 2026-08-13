@@ -4,7 +4,6 @@
  */
 
 import {
-  PrismaClient,
   ClassLevel,
   GradeStatus,
   ControlType,
@@ -13,8 +12,8 @@ import {
 } from "../../generated/prisma/client";
 import { AuditData } from "../types/auth";
 import { EnrollmentService } from "./enrollmentService";
+import prisma from "../prisma";
 
-const prisma = new PrismaClient();
 const enrollmentService = new EnrollmentService();
 
 // Interfaces

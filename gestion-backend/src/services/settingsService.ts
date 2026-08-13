@@ -6,11 +6,9 @@
 
 import path from "path";
 import fs from "fs";
-import { PrismaClient } from "../../generated/prisma";
 import { SettingsUpdateData, SystemSettings } from "../types/settings";
 import { sanitizeInput } from "../utils/validators";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 /**
  * @class SettingsService

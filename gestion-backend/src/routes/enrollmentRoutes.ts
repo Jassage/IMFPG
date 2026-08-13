@@ -57,6 +57,19 @@ router.get("/", requireAuth, requireStaff, getEnrollments);
 router.get("/stats", requireAuth, requireAdmin, getEnrollmentStats);
 
 /**
+ * @route GET /api/enrollments/fee-structures
+ * @description Récupère les structures de frais disponibles pour l'inscription
+ * @access Staff/Admin
+ * @returns {Object} Liste des structures de frais
+ */
+router.get(
+  "/fee-structures",
+  requireAuth,
+  requireStaff,
+  getAvailableFeeStructures
+);
+
+/**
  * @route GET /api/enrollments/:id
  * @description Récupère une inscription par ID
  * @access Staff/Admin
@@ -188,19 +201,6 @@ router.post(
 );
 
 // router.delete("/:id", requireAuth, requireAdmin, deleteEnrollment);
-
-/**
- * @route GET /api/enrollments/fee-structures
- * @description Récupère les structures de frais disponibles pour l'inscription
- * @access Staff/Admin
- * @returns {Object} Liste des structures de frais
- */
-router.get(
-  "/fee-structures",
-  requireAuth,
-  requireStaff,
-  getAvailableFeeStructures
-);
 
 /**
  * @route DELETE /api/enrollments/:id/delete

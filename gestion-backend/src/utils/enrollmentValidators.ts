@@ -5,9 +5,7 @@
  */
 
 import { body, param, query } from "express-validator";
-import { PrismaClient } from "../../generated/prisma";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 // Validateur pour la création d'inscription
 export const validateCreateEnrollment = [

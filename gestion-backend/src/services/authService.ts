@@ -4,7 +4,7 @@
  * @version 1.0.0
  */
 
-import { PrismaClient, UserRole } from "../../generated/prisma";
+import { UserRole } from "../../generated/prisma";
 import {
   hashPassword,
   verifyPassword,
@@ -23,8 +23,7 @@ import {
   AuthResponse,
   LoginAttemptData,
 } from "../types/auth";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 /**
  * @constant {number} MAX_LOGIN_ATTEMPTS - Tentatives de connexion max avant verrouillage

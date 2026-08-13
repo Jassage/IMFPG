@@ -6,10 +6,9 @@
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
-import { PrismaClient, AttendanceStatus } from "../../generated/prisma";
+import { AttendanceStatus } from "../../generated/prisma";
 import { AuditData } from "../types/auth";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 // Interfaces
 export interface AttendanceFilters {

@@ -4,9 +4,7 @@
  * @module Services/Announcements
  */
 
-import { PrismaClient } from "../../generated/prisma";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 // Fonctions utilitaires
 const getUserAudience = (userRole: string | undefined): string => {

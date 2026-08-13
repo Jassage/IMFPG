@@ -5,7 +5,6 @@
  */
 
 import { Request, Response } from "express";
-import { PrismaClient } from "../../generated/prisma";
 
 import {
   generateResetToken,
@@ -20,8 +19,7 @@ import {
 import { createAuditLog } from "./auditController";
 import { AuthActionTypes, AuthControllerResponse } from "./auth/authTypes";
 import { sendEmail } from "../services/emailService";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 /**
  * @desc Récupère la liste des utilisateurs avec pagination et filtres

@@ -4,10 +4,9 @@
  */
 
 import { success } from "zod";
-import { PrismaClient, SubjectType } from "../../generated/prisma";
+import { SubjectType } from "../../generated/prisma";
 import { AuditData } from "../types/auth";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 // Interfaces
 export interface SubjectFilters {

@@ -4,7 +4,7 @@
  */
 
 import { Request, Response } from "express";
-import { PrismaClient, UserRole } from "../../generated/prisma/client";
+import { UserRole } from "../../generated/prisma/client";
 import { extractAuditData } from "./auth/authUtils";
 import { createAuditLog } from "./auditController";
 import {
@@ -16,8 +16,8 @@ import {
   SubmitGradesData,
   ApiResponse,
 } from "../services/gradeService";
+import prisma from "../prisma";
 
-const prisma = new PrismaClient();
 const gradeService = new GradeService();
 
 /**

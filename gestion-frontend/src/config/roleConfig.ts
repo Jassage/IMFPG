@@ -37,6 +37,7 @@ import {
   Database,
   ShieldAlert,
   Building,
+  MessageSquare,
 } from "lucide-react";
 
 // Mappage des icônes par nom
@@ -70,6 +71,7 @@ export const ICONS: Record<string, any> = {
   Database,
   ShieldAlert,
   Building,
+  MessageSquare,
 };
 
 const createNavItem = (
@@ -224,7 +226,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.SEND_ANNOUNCEMENTS,
         "Gestion des annonces",
       ),
-
+      createNavItem(
+        "messaging",
+        "Messagerie",
+        "MessageSquare",
+        PERMISSIONS.USE_MESSAGING,
+        "Messages entre utilisateurs",
+      ),
       createNavItem(
         "audit-logs",
         "Journal d'audit",
@@ -335,6 +343,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.SEND_ANNOUNCEMENTS,
         "Gestion des annonces",
       ),
+      createNavItem(
+        "messaging",
+        "Messagerie",
+        "MessageSquare",
+        PERMISSIONS.USE_MESSAGING,
+        "Messages entre utilisateurs",
+      ),
     ],
   },
 
@@ -360,6 +375,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "UserPlus",
         PERMISSIONS.PROCESS_ENROLLMENTS,
         "Traitement des inscriptions",
+      ),
+      createNavItem(
+        "messaging",
+        "Messagerie",
+        "MessageSquare",
+        PERMISSIONS.USE_MESSAGING,
+        "Messages entre utilisateurs",
       ),
     ],
     academicItems: [],
@@ -404,6 +426,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.VIEW_SCHEDULE,
         "Planning scolaire",
       ),
+      createNavItem(
+        "messaging",
+        "Messagerie",
+        "MessageSquare",
+        PERMISSIONS.USE_MESSAGING,
+        "Messages entre utilisateurs",
+      ),
     ],
     academicItems: [],
     documentItems: [
@@ -435,6 +464,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         PERMISSIONS.VIEW_DASHBOARD,
         "Vue d'ensemble personnelle",
       ),
+      createNavItem(
+        "messaging",
+        "Messagerie",
+        "MessageSquare",
+        PERMISSIONS.USE_MESSAGING,
+        "Messages entre utilisateurs",
+      ),
     ],
     academicItems: [],
     documentItems: [],
@@ -465,6 +501,13 @@ export const ROLE_NAVIGATION_CONFIG: Record<UserRole, RoleNavigationConfig> = {
         "ClipboardCheck",
         PERMISSIONS.MANAGE_ATTENDANCE,
         "Présence de mes élèves",
+      ),
+      createNavItem(
+        "messaging",
+        "Messagerie",
+        "MessageSquare",
+        PERMISSIONS.USE_MESSAGING,
+        "Messages entre utilisateurs",
       ),
     ],
     academicItems: [],
@@ -504,6 +547,7 @@ export const rolePermissions: Record<UserRole, string[]> = {
     PERMISSIONS.MANAGE_SETTINGS,
     PERMISSIONS.VIEW_AUDIT_LOGS,
     PERMISSIONS.MANAGE_BACKUP,
+    PERMISSIONS.USE_MESSAGING,
   ],
   Secretaire: [
     PERMISSIONS.VIEW_DASHBOARD,
@@ -516,11 +560,13 @@ export const rolePermissions: Record<UserRole, string[]> = {
     PERMISSIONS.GENERATE_DOCUMENTS,
     PERMISSIONS.VIEW_SCHEDULE,
     PERMISSIONS.VIEW_SETTINGS,
+    PERMISSIONS.USE_MESSAGING,
   ],
   Comptable: [
     PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.MANAGE_FEES,
     PERMISSIONS.VIEW_OWN_PAYMENTS,
+    PERMISSIONS.USE_MESSAGING,
   ],
   Student: [
     PERMISSIONS.VIEW_DASHBOARD,
@@ -530,6 +576,7 @@ export const rolePermissions: Record<UserRole, string[]> = {
     PERMISSIONS.VIEW_SCHEDULE,
     PERMISSIONS.VIEW_OWN_PAYMENTS,
     PERMISSIONS.VIEW_SETTINGS,
+    PERMISSIONS.USE_MESSAGING,
   ],
   Professeur: [
     PERMISSIONS.VIEW_DASHBOARD,
@@ -541,6 +588,7 @@ export const rolePermissions: Record<UserRole, string[]> = {
     PERMISSIONS.GENERATE_REPORTS,
     PERMISSIONS.SEND_ANNOUNCEMENTS,
     PERMISSIONS.VIEW_SETTINGS,
+    PERMISSIONS.USE_MESSAGING,
   ],
   Directeur: [
     PERMISSIONS.VIEW_DASHBOARD,
@@ -558,6 +606,7 @@ export const rolePermissions: Record<UserRole, string[]> = {
     PERMISSIONS.VIEW_SCHEDULE,
     PERMISSIONS.VIEW_SETTINGS,
     PERMISSIONS.VIEW_AUDIT_LOGS,
+    PERMISSIONS.USE_MESSAGING,
   ],
 };
 

@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from "express";
-import { PrismaClient, UserRole } from "../../generated/prisma";
+import { UserRole } from "../../generated/prisma";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -14,10 +14,11 @@ import rateLimit from "express-rate-limit";
 import { createAuditLog } from "./auditController";
 import { createSafeAuditData, extractAuditData } from "./auth/authUtils";
 import { UserService } from "../services/userService";
-
-const prisma = new PrismaClient();
-const JWT_SECRET =
-  process.env.JWT_SECRET || "votre_secret_jwt_super_securise_changez_moi";
+import prisma from "../prisma";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET manquant dans les variables d'environnement");
+}
 
 // Rate limiting pour le login
 export const loginLimiter = rateLimit({

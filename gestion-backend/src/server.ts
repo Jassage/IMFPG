@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import dotenv from "dotenv";
+import { createServer } from "http";
+import { Server as SocketServer } from "socket.io";
 import prisma from "./prisma";
 
 // Import de toutes les routes générées (adapte les chemins si besoin)
@@ -28,6 +30,7 @@ import backupRoutes from "./routes/backupRoutes";
 import bulletinRoutes from "./routes/bulletinRoutes";
 import settingsRoutes from "./routes/settingsRoutes";
 import attendanceRoutes from "./routes/attendanceRoutes";
+import messageRoutes from "./routes/messageRoutes";
 
 import {
   ensureAcademicYearsExist,
@@ -42,10 +45,13 @@ import {
 } from "./middleware/sessionTimeout";
 import { initializeAcademicYearCron } from "./services/cronService";
 import { requirePasswordChange } from "./middleware/requirePasswordChange";
+import { initSocketServer } from "./socket/socketHandler";
+import { errorHandler } from "./middleware/errorMiddleware";
 
 dotenv.config();
 
 const app = express();
+const httpServer = createServer(app);
 // Middleware pour gérer les CORS et le JSON
 
 // Origines autorisées : valeurs par défaut pour le dev local,
@@ -91,15 +97,46 @@ app.use(cors(corsOptions));
 
 cleanupExpiredSessions();
 app.use(trackUserActivity);
+
+// Helmet pose Cross-Origin-Resource-Policy: same-origin globalement.
+// Les ressources statiques (images profil, pièces jointes) doivent être
+// chargées par le frontend (port 3000) depuis le backend (port 5000) :
+// origines différentes → on autorise explicitement le chargement cross-origin.
+const allowCrossOriginResource = (
+  _req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+};
+
 app.use(
   "/uploads/profiles",
+  allowCrossOriginResource,
   express.static(path.join(process.cwd(), "uploads", "profiles")),
 );
 app.use(
   "/uploads/imports",
+  allowCrossOriginResource,
   express.static(path.join(process.cwd(), "uploads", "imports")),
 );
+app.use(
+  "/uploads/attachments",
+  allowCrossOriginResource,
+  express.static(path.join(process.cwd(), "uploads", "attachments")),
+);
 app.use(express.json());
+
+// Socket.io — same CORS as Express
+const io = new SocketServer(httpServer, {
+  cors: {
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
+});
+initSocketServer(io);
 
 const PORT = process.env.PORT || 5000;
 
@@ -130,6 +167,7 @@ app.use("/api/backup", backupRoutes);
 app.use("/api/bulletins", bulletinRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/messages", messageRoutes);
 app.use((req, res, next) => {
   // Vérifie si aucune route n'a matché
   if (!req.route) {
@@ -141,6 +179,9 @@ app.use((req, res, next) => {
     next();
   }
 });
+
+// Gestionnaire d'erreurs global (doit être le dernier middleware)
+app.use(errorHandler);
 
 // Fonction d'initialisation asynchrone
 const initializeApp = async () => {
@@ -168,9 +209,7 @@ const initializeApp = async () => {
 };
 
 // Lancer le serveur
-app.listen(PORT, async () => {
-  // Initialiser l'application de manière asynchrone
+httpServer.listen(PORT, async () => {
   await initializeApp();
-
   console.log(` API prête à recevoir des requêtes sur le port ${PORT}`);
 });

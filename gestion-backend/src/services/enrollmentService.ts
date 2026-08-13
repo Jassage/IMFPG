@@ -12,8 +12,7 @@ import {
 } from "../../generated/prisma";
 import { DefaultArgs } from "../../generated/prisma/runtime/library";
 import { AuditData } from "../types/auth";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 // Interfaces
 export interface EnrollmentFilters {

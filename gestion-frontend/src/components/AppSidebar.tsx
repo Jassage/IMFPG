@@ -33,6 +33,7 @@ import roleConfigurations from "@/config/roleConfig";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSettings } from "@/hooks/useSystemSettings";
 import { useHelp } from "@/help-section/context/HelpContext";
+import { useMessageStore } from "@/store/messageStore";
 
 interface AppSidebarProps {
   activeTab: ActiveTab;
@@ -58,6 +59,7 @@ export function AppSidebar({
   const { currentAcademicYear } = useAcademicYearStore();
   const { user: authUser } = useAuthStore();
   const { hasPermission: internalHasPermission } = usePermissions();
+  const { totalUnread } = useMessageStore();
 
   // Utiliser les paramètres système
   const { settings, isModuleEnabled, isLoading } = useSettings();
@@ -183,13 +185,25 @@ export function AppSidebar({
                       )}
                       disabled={!hasAccess}
                     >
-                      <Icon className="h-4 w-4" />
+                      <div className="relative">
+                        <Icon className="h-4 w-4" />
+                        {item.id === "messaging" && totalUnread > 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white leading-none">
+                            {totalUnread > 9 ? "9+" : totalUnread}
+                          </span>
+                        )}
+                      </div>
                       {(!isCollapsed || isMobile) && (
                         <div className="flex flex-col flex-1 min-w-0">
                           <span className="font-medium">{item.label}</span>
                         </div>
                       )}
-                      {isActive && (
+                      {(!isCollapsed || isMobile) && item.id === "messaging" && totalUnread > 0 && (
+                        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+                          {totalUnread > 99 ? "99+" : totalUnread}
+                        </span>
+                      )}
+                      {isActive && (item.id !== "messaging" || totalUnread === 0) && (
                         <div className="ml-auto h-2 w-2 rounded-full bg-primary" />
                       )}
                     </SidebarMenuButton>

@@ -4,10 +4,8 @@
  * @version 1.0.0
  */
 
-import { PrismaClient } from "../../generated/prisma";
 import studentService from "./studentService";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma";
 
 /**
  * @class UserService
